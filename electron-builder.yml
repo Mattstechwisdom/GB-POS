@@ -1,0 +1,14 @@
+appId: com.gadgetboy.pos
+productName: GadgetBoy POS
+files:
+  - dist/**
+  - app/electron/**
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  #icon: build/icon.ico

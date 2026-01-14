@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Repair Categories Demo</title>
+  <style>
+    :root{--bg:#0b0b0c;--panel:#18181b;--muted:#9ca3af;--accent:#39ff14;--yellow:#f7f1b1;--border:#27272a;--radius:8px}
+    html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .container{display:flex;gap:0;height:100vh;padding:16px;box-sizing:border-box}
+    .left{flex:0 0 65%;padding:16px;background:transparent}
+    .right{flex:0 0 35%;padding:16px;border-left:1px solid var(--border);display:flex;flex-direction:column;}
+    .toolbar{display:flex;align-items:center;gap:8px;height:48px}
+    select,input,textarea,button{background:#111;border:1px solid var(--border);color:#fff;padding:8px;border-radius:6px}
+    .btn{background:var(--panel);border:1px solid var(--border);padding:8px 12px;border-radius:6px;color:#fff}
+    .btn-primary{background:var(--accent);color:#000}
+    .grid{margin-top:12px;border:1px solid var(--border);border-radius:6px;overflow:auto;height:calc(100vh - 220px)}
+    table{width:100%;border-collapse:collapse}
+    th{background:#0f0f10;padding:8px;text-align:left;font-weight:700;border-bottom:1px solid var(--border)}
+    td{padding:10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)}
+    tr:hover{background:#111}
+    .right .field{margin-bottom:8px}
+    .yellow{background:var(--yellow);color:#000}
+    .footer-actions{margin-top:12px;display:flex;justify-content:flex-end;gap:8px}
+    .title{font-size:18px;margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .divider{height:1px;background:var(--border);margin:8px 0}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="left">
+      <div class="toolbar">
+        <label class="muted">Devices</label>
+        <select style="width:220px">
+          <option value="">All Devices</option>
+          <option>Phones</option>
+          <option>Computers</option>
+          <option>Tablets</option>
+        </select>
+        <input placeholder="search products and services..." style="flex:1" />
+        <button class="btn">Find</button>
+        <button class="btn">Show all</button>
+      </div>
+      <div class="grid">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:22%">Category</th>
+              <th style="width:46%">Title</th>
+              <th style="width:12%">Type</th>
+              <th style="width:20%">Model #</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Phones</td>
+              <td>Screen Replacement</td>
+              <td>service</td>
+              <td>iPhone X</td>
+            </tr>
+            <tr>
+              <td>Phones</td>
+              <td>Battery Replacement</td>
+              <td>service</td>
+              <td>Galaxy S9</td>
+            </tr>
+            <tr>
+              <td>Computers</td>
+              <td>SSD Upgrade</td>
+              <td>product</td>
+              <td>M.2 1TB</td>
+            </tr>
+            <tr>
+              <td>Computers</td>
+              <td>Keyboard Repair</td>
+              <td>service</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Tablets</td>
+              <td>Glass + Digitizer</td>
+              <td>product</td>
+              <td>iPad Air</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="right">
+      <div class="title">Repair Categories</div>
+      <div class="field">
+        <label class="muted">Device Category</label>
+        <select style="width:100%">
+          <option>Phones</option>
+          <option>Computers</option>
+          <option>Tablets</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="muted">Product / Service</label>
+        <input value="Screen Replacement" style="width:100%" />
+      </div>
+      <div class="field">
+        <label class="muted">Alt. description</label>
+        <textarea rows="3" style="width:100%">Front glass shattered and touch unresponsive</textarea>
+      </div>
+      <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label class="muted">Part costs</label>
+          <input class="yellow" value="29.00" />
+        </div>
+        <div>
+          <label class="muted">Labor costs</label>
+          <input class="yellow" value="49.00" />
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="field">
+        <label class="muted">Order date</label>
+        <input type="date" />
+      </div>
+      <div class="field">
+        <label class="muted">Est. delivery date</label>
+        <input type="date" />
+      </div>
+      <div class="field">
+        <label class="muted">Part source</label>
+        <input value="Local" />
+      </div>
+      <div class="field">
+        <label class="muted">Order source url</label>
+        <input value="https://supplier.example.com/part/123" />
+      </div>
+      <div class="footer-actions">
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

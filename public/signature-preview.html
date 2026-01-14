@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Signature Preview</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#111827; color:#e5e7eb; padding:20px }
+    .card { background:#0b1220; border:1px solid #1f2937; padding:18px; border-radius:8px; max-width:780px; margin:0 auto }
+    .label { font-size:12px; color:#9ca3af; margin-bottom:6px }
+    input { padding:8px; border-radius:6px; border:1px solid #334155; background:#071024; color:#fff }
+    button { padding:8px 10px; border-radius:6px; border:0; background:#111827; color:#e5e7eb; cursor:pointer }
+    .sig-actions { margin-top:8px; display:flex; gap:8px; align-items:center }
+    #sigBox { position:relative; min-height:96px; background:#ffffff; border:1px solid #000; border-radius:4px; overflow:hidden }
+    #dateBox { border-bottom:2px solid #000; min-height:24px; margin-bottom:4px; color:#000 }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 style="margin-top:0">Interactive Signature Preview</h2>
+    <div style="display:flex; gap:18px">
+      <div style="flex:1">
+        <canvas id="sigPad" style="width:100%; height:96px; display:block; background:#ffffff; border:1px solid #000; border-radius:4px"></canvas>
+        <div class="sig-actions">
+          <input id="sigName" placeholder="Type full name to sign" style="flex:1" type="text" />
+          <button id="sigApply" type="button">Apply Typed</button>
+          <button id="sigClear" type="button">Clear</button>
+          <button id="finalize" type="button">Finalize & Save</button>
+        </div>
+      </div>
+      <div style="width:220px">
+        <div id="dateBox"></div>
+        <div style="font-size:12pt; color:#9ca3af">Date</div>
+      </div>
+    </div>
+    <div style="margin-top:12px; color:#9ca3af">Notes: Draw with mouse or finger. Typing a name and clicking "Apply Typed" will replace the canvas and show the typed name in a signature-like font.</div>
+  </div>
+
+  <script>
+  (function(){
+    const interactiveSection = document.body; // single-preview page
+    const canvas = document.getElementById('sigPad');
+    const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+    const sigInput = document.getElementById('sigName');
+    const sigApply = document.getElementById('sigApply');
+    const sigClear = document.getElementById('sigClear');
+    const dateBox = document.getElementById('dateBox');
+    const finalizeBtn = document.getElementById('finalize');
+
+    function resize(){
+      if (!canvas || !ctx) return;
+      const r = canvas.getBoundingClientRect();
+      const dpr = (window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.floor(r.width * dpr));
+      canvas.height = Math.max(1, Math.floor(r.height * dpr));
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(dpr, dpr);
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#000000';
+      try { if (canvas.style) canvas.style.touchAction = 'none'; } catch {}
+    }
+
+  let drawing=false, last=[0,0], dirty=false;
+  let typed=false;
+    function pos(e){ if (!canvas) return [0,0]; const r=canvas.getBoundingClientRect(); const pt = (e.touches? e.touches[0] : e); const x = pt.clientX - r.left; const y = pt.clientY - r.top; return [x,y]; }
+  function start(e){ if (!ctx || typed) return; drawing=true; last=pos(e); e.preventDefault(); }
+  function move(e){ if(!drawing||!ctx||typed) return; const p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; e.preventDefault(); }
+    function end(){ drawing=false; }
+
+    if (canvas && ctx) {
+      window.addEventListener('resize', resize, { passive: true });
+      resize();
+      try { canvas.style.touchAction = 'none'; } catch {}
+      canvas.addEventListener('pointerdown', function(e){ try{ start(e); if (typeof canvas.setPointerCapture==='function') canvas.setPointerCapture(e.pointerId); } catch{} }, { passive: false });
+      canvas.addEventListener('pointermove', move, { passive: false });
+      window.addEventListener('pointerup', function(e){ try{ end(); if (typeof canvas.releasePointerCapture==='function') canvas.releasePointerCapture(e.pointerId); } catch{} });
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, {passive:false});
+      canvas.addEventListener('touchmove', move, {passive:false});
+      window.addEventListener('touchend', end);
+      canvas.addEventListener('mouseleave', end);
+    }
+
+  if (sigClear && canvas && ctx) sigClear.addEventListener('click', ()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); resize(); dirty=false; typed=false; try{ if (sigInput) sigInput.removeAttribute('disabled'); if (sigApply) sigApply.removeAttribute('disabled'); }catch{} });
+
+    function placeTypedSignature(name){ if (!canvas || !ctx) return; // draw the typed name into the canvas centered
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // Choose a signature-like font and size relative to canvas height
+      const size = Math.floor(Math.max(20, (canvas.height / (window.devicePixelRatio || 1)) * 0.5));
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Try a cursive font family; if not available fallback to serif
+      ctx.font = `${size}px "Brush Script MT", "Lucida Handwriting", cursive, serif`;
+      // Draw text in the middle of the canvas (account for DPR)
+      const cx = (canvas.width / (window.devicePixelRatio || 1)) / 2;
+      const cy = (canvas.height / (window.devicePixelRatio || 1)) / 2;
+      ctx.fillText(name, cx, cy);
+      dirty = true; typed = true;
+    }
+
+    if (sigApply && sigInput) {
+      sigApply.addEventListener('click', function(e){
+        try { e && e.preventDefault(); } catch {}
+        const name = (sigInput instanceof HTMLInputElement ? sigInput.value : '').trim();
+        console.debug('Apply Typed clicked, name=', name);
+        if (!name) { alert('Please enter your full name to sign.'); return; }
+        placeTypedSignature(name);
+        try{ if (sigInput.setAttribute) sigInput.setAttribute('disabled',''); }catch{}
+        try{ if (sigApply.setAttribute) sigApply.setAttribute('disabled',''); }catch{}
+      });
+    }
+
+    if (finalizeBtn) finalizeBtn.addEventListener('click', ()=>{
+      try {
+        if (dateBox) { const now=new Date(); const pad=(n)=>String(n).padStart(2,'0'); const mm=pad(now.getMonth()+1), dd=pad(now.getDate()), yy=String(now.getFullYear()).slice(-2); dateBox.innerHTML=''; const d=document.createElement('div'); d.style.padding='8px 0'; d.style.textAlign='center'; d.style.fontWeight='600'; d.textContent='Date Signed: '+mm+'/'+dd+'/'+yy; dateBox.appendChild(d); }
+        if (canvas && ctx && dirty) {
+          const tmp = document.createElement('canvas'); tmp.width = canvas.width; tmp.height = canvas.height; const tctx = tmp.getContext('2d'); let dataUrl = '';
+          if (tctx) { tctx.fillStyle = '#ffffff'; tctx.fillRect(0,0,tmp.width,tmp.height); tctx.drawImage(canvas,0,0); dataUrl = tmp.toDataURL('image/png'); }
+          else { dataUrl = canvas.toDataURL('image/png'); }
+          // Replace the canvas with a static image to show the finalized signature
+          const img=document.createElement('img'); img.src=dataUrl; img.style.width='100%'; img.style.height='96px'; img.style.objectFit='contain'; img.style.border='1px solid #000'; img.style.borderRadius='4px';
+          if (canvas.parentElement) { canvas.parentElement.replaceChild(img, canvas); }
+        }
+      } catch(e) { console.error(e); }
+      // For preview, we won't call exportPdf; just show an alert
+      alert('Finalized — preview only (no PDF export in this preview).');
+    });
+
+    // small hint
+    console.debug('Signature preview ready.');
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+:root {
+  --accent-green: #39ff14;
+  --panel-bg: #18181b;
+}
+.repair-root { background: var(--panel-bg); min-height: 100vh; display: flex; }
+.left-pane { flex: 65%; }
+.right-pane { flex: 35%; }
+.toolbar .btn { background: var(--panel-bg); border: 1px solid #3f3f46; color: white; padding: 6px 10px; border-radius: 6px; }
+.btn-primary { background: var(--accent-green); color: black; padding: 8px 12px; border-radius: 6px; }
+.btn-secondary { background: transparent; color: white; padding: 8px 12px; border-radius: 6px; border: 1px solid #3f3f46; }
+.data-grid table { width: 100%; border-collapse: collapse; }
+.data-grid th, .data-grid td { border-bottom: 1px solid #27272a; }
+.data-grid tr:hover { background: #262626; }
+.data-grid tr.selected { background: #333333; }
+.yellow-input { background: #f7f1b1; color: black; }

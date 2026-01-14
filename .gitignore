@@ -1,0 +1,47 @@
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm-cache/
+
+# Vite / build outputs
+dist/
+dist-main/
+
+# Electron builder outputs
+release/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/tasks.json
+
+# Logs / local notes
+*.log
+*-log.txt
+install-log.txt
+npm-start-log.txt
+node-list.txt
+node_modules-list.txt
+tsc-log.txt
+
+# .NET (desktop/RepairCategoriesApp etc.)
+**/bin/
+**/obj/
+
+# Packaged/bundled binaries (don’t commit)
+quote-generator/
+
+# Legacy build outputs (don’t commit)
+quote-legacy/frontend/build/
+
+
