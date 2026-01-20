@@ -25,7 +25,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8" HorizontalAlignment="Left" VerticalAlignment="Center" Spacing="8">
+            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <StackPanel Orientation="Vertical">
                     <Label>Devices</Label>
                     <ComboBox Width="220" ItemsSource="{Binding DeviceCategories}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedDeviceCategory}"/>
@@ -76,8 +76,8 @@
                 <TextBox Text="{Binding SelectedRepair.OrderSourceUrl, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" Spacing="8">
-                <Button Content="Cancel" Width="90" Command="{Binding CancelCommand}" />
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button Content="Cancel" Width="90" Command="{Binding CancelCommand}" Margin="0,0,8,0" />
                 <Button Content="Save" Width="90" Command="{Binding SaveCommand}" />
             </StackPanel>
         </Grid>

@@ -5,21 +5,21 @@ namespace RepairCategories
 {
     public class RepairItem : INotifyPropertyChanged, IEditableObject
     {
-        private RepairItem _backupCopy;
+        private RepairItem? _backupCopy;
         private bool _inEdit;
 
-        public string Id { get; set; }
-        public string Name { get; set; }
-        public string Type { get; set; }
-        public string ModelNumber { get; set; }
-        public string AltDescription { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string ModelNumber { get; set; } = string.Empty;
+        public string AltDescription { get; set; } = string.Empty;
         public decimal PartCost { get; set; }
         public decimal LaborCost { get; set; }
-        public string PartSource { get; set; }
-        public string OrderSourceUrl { get; set; }
-        public DeviceCategory DeviceCategory { get; set; }
+        public string PartSource { get; set; } = string.Empty;
+        public string OrderSourceUrl { get; set; } = string.Empty;
+        public DeviceCategory DeviceCategory { get; set; } = new DeviceCategory();
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         protected void Raise(string prop) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(prop));
 
@@ -33,6 +33,11 @@ namespace RepairCategories
         public void CancelEdit()
         {
             if (!_inEdit) return;
+            if (_backupCopy == null)
+            {
+                _inEdit = false;
+                return;
+            }
             this.Id = _backupCopy.Id;
             this.Name = _backupCopy.Name;
             this.Type = _backupCopy.Type;

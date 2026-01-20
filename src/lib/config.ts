@@ -9,3 +9,15 @@ export function getDefaultModel(): string {
   }
   return 'gpt-4';
 }
+
+export function getServerBaseUrl(): string {
+  // Configure at build time via Vite env, e.g. VITE_GBPOS_SERVER_URL=https://pos.example.com
+  // Falls back to localhost for development.
+  try {
+    const envUrl = (import.meta as any)?.env?.VITE_GBPOS_SERVER_URL;
+    if (envUrl && typeof envUrl === 'string') return envUrl;
+  } catch {
+    // ignore
+  }
+  return 'http://localhost:3000';
+}

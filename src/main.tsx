@@ -21,6 +21,7 @@ import BackupWindow from './components/BackupWindow';
 import ClearDatabaseWindow from './components/ClearDatabaseWindow';
 import ClockInWindow from './components/ClockInWindow';
 import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
+import UpdateGate from './components/UpdateGate';
 import './styles/index.css';
 
 declare global {
@@ -91,51 +92,53 @@ try {
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
 	const root = createRoot(rootEl);
+
+	const wrap = (node: React.ReactNode) => <UpdateGate>{node}</UpdateGate>;
 	
 	if (showDeviceCategories) {
-		root.render(<DeviceCategoriesWindow />);
+		root.render(wrap(<DeviceCategoriesWindow />));
 	} else if (showWorkOrderRepairPicker) {
-		root.render(<WorkOrderRepairPickerWindow />);
+		root.render(wrap(<WorkOrderRepairPickerWindow />));
 	} else if (showRepairCategories) {
 		const modeParam = params.get('mode');
 		const mode = modeParam === 'admin' || modeParam === 'workorder' ? modeParam : 'admin';
-		root.render(<RepairCategoriesWindow mode={mode} />);
+		root.render(wrap(<RepairCategoriesWindow mode={mode} />));
 	} else if (showCheckout) {
-		root.render(<CheckoutWindow />);
+		root.render(wrap(<CheckoutWindow />));
 	} else if (showCustomerOverview) {
-		root.render(<CustomerOverviewWindow onClose={() => window.close()} closeOnSave={false} />);
+		root.render(wrap(<CustomerOverviewWindow onClose={() => window.close()} closeOnSave={false} />));
 	} else if (showDevMenu) {
-		root.render(<DevMenuWindow />);
+		root.render(wrap(<DevMenuWindow />));
 	} else if (showDataTools) {
-		root.render(<DataToolsWindow />);
+		root.render(wrap(<DataToolsWindow />));
 	} else if (showReporting) {
-		root.render(<ReportingWindow />);
+		root.render(wrap(<ReportingWindow />));
 	} else if (showCharts) {
-		root.render(<ChartsWindow />);
+		root.render(wrap(<ChartsWindow />));
 	} else if (showBackup) {
-		root.render(<BackupWindow />);
+		root.render(wrap(<BackupWindow />));
 	} else if (showClearDb) {
-		root.render(<ClearDatabaseWindow />);
+		root.render(wrap(<ClearDatabaseWindow />));
 	} else if (showClockIn) {
-		root.render(<ClockInWindow />);
+		root.render(wrap(<ClockInWindow />));
 	} else if (showQuote) {
-		root.render(<QuoteGeneratorWindow />);
+		root.render(wrap(<QuoteGeneratorWindow />));
 	} else if (showReleaseForm) {
-		root.render(<ReleaseFormWindow />);
+		root.render(wrap(<ReleaseFormWindow />));
 	} else if (showCustomerReceipt) {
-		root.render(<CustomerReceiptWindow />);
+		root.render(wrap(<CustomerReceiptWindow />));
 	} else if (showCalendar) {
-		root.render(<CalendarWindow />);
+		root.render(wrap(<CalendarWindow />));
 	} else if (showProductForm) {
-		root.render(<ProductFormWindow />);
+		root.render(wrap(<ProductFormWindow />));
 	} else if (showProducts) {
-		root.render(<ProductsWindow />);
+		root.render(wrap(<ProductsWindow />));
 	} else if (showNewSale) {
-		root.render(<SaleWindow />);
+		root.render(wrap(<SaleWindow />));
 	} else if (payload) {
-		root.render(<NewWorkOrderWindow />);
+		root.render(wrap(<NewWorkOrderWindow />));
 	} else {
-		root.render(<App />);
+		root.render(wrap(<App />));
 	}
 
 } catch (e: any) {

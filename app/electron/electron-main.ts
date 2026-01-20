@@ -1,6 +1,7 @@
 const electron = require('electron');
 const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = electron;
 const path = require('path');
+const fs = require('fs');
 
 // Determine dev mode early so it is available for handlers
 const isDev = !app.isPackaged;
@@ -16,6 +17,21 @@ if (!app.isPackaged && process.env.ELECTRON_DISABLE_SECURITY_WARNINGS !== 'true'
 
 // Central dev server base (adjust here if port changes)
 const DEV_SERVER_URL = 'http://localhost:5173';
+
+function getWindowIconPath(): string | undefined {
+  try {
+    const devCandidate = path.join(process.cwd(), 'build', 'icon.ico');
+    const resourcesPath = (process as any).resourcesPath || app.getAppPath();
+    const prodCandidate = path.join(resourcesPath, 'build', 'icon.ico');
+    const candidate = app.isPackaged ? prodCandidate : devCandidate;
+    if (candidate && fs.existsSync(candidate)) return candidate;
+  } catch (_e) {
+    // ignore
+  }
+  return undefined;
+}
+
+const WINDOW_ICON = getWindowIconPath();
 
 // Helper: center a window either over its parent (if any) or the active screen
 function centerWindow(win: any) {
@@ -152,6 +168,7 @@ ipcMain.handle('pick-repair-item', async (_event: any) => {
       resizable: true,
       parent: BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#18181b',
       webPreferences: {
         nodeIntegration: false,
@@ -218,6 +235,24 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
   }
 });
 
+// App info (used for update/version gating)
+ipcMain.handle('app:getInfo', async () => {
+  try {
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    };
+  } catch (e) {
+    return {
+      version: '0.0.0',
+      platform: process.platform,
+      arch: process.arch,
+      error: String(e),
+    };
+  }
+});
+
 // isDev already declared above
 
 function createWindow() {
@@ -226,6 +261,7 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     autoHideMenuBar: true,
     webPreferences: {
@@ -285,6 +321,7 @@ ipcMain.handle('open-calendar', async () => {
     frame: true,
     parent: undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     fullscreenable: true,
     autoHideMenuBar: true,
@@ -323,6 +360,7 @@ ipcMain.handle('open-backup', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -348,6 +386,7 @@ ipcMain.handle('open-clock-in', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -397,6 +436,7 @@ ipcMain.handle('open-quote-generator', async () => {
     frame: true,
     parent: undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     fullscreenable: true,
     autoHideMenuBar: true,
@@ -428,7 +468,6 @@ ipcMain.handle('open-quote-generator', async () => {
 });
 
 // Simple JSON file DB stored in userData
-const fs = require('fs');
 const dbFile = path.join(app.getPath('userData'), 'gbpos-db.json');
 
 function readDb() {
@@ -648,6 +687,7 @@ ipcMain.handle('open-products', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     autoHideMenuBar: true,
     webPreferences: {
@@ -673,6 +713,7 @@ ipcMain.handle('open-dev-menu', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -844,6 +885,7 @@ ipcMain.handle('open-data-tools', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -869,6 +911,7 @@ ipcMain.handle('open-clear-database', async (event: any) => {
     resizable: true,
     parent: parentWin as any,
     modal: true,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -893,6 +936,7 @@ ipcMain.handle('open-charts', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1044,6 +1088,7 @@ ipcMain.handle('export-pdf', async (_e: any, html: string, filenameBase?: string
         contextIsolation: true,
         preload: path.join(__dirname, '..', 'electron', 'preload.js'),
       },
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#ffffff',
     });
     const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''));
@@ -1078,6 +1123,7 @@ ipcMain.handle('open-interactive-html', async (_e: any, html: string, title?: st
       maximizable: true,
       parent: BrowserWindow.getAllWindows()[0] || undefined,
       modal: false,
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#ffffff',
       webPreferences: {
         nodeIntegration: false,
@@ -1111,6 +1157,7 @@ ipcMain.handle('open-release-form', async (_event: any, payload: any) => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#ffffff',
     webPreferences: {
       nodeIntegration: false,
@@ -1137,6 +1184,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     resizable: true,
     parent: parentWin as any,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#ffffff',
     webPreferences: {
       nodeIntegration: false,
@@ -1164,6 +1212,7 @@ ipcMain.handle('open-product-form', async (event: any, payload: any) => {
     resizable: true,
     parent: parentWin as any,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#ffffff',
     webPreferences: {
       nodeIntegration: false,
@@ -1190,6 +1239,7 @@ ipcMain.handle('open-reporting', async () => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1252,6 +1302,7 @@ ipcMain.handle('open-new-workorder', async (_event: any, payload: any) => {
     frame: true,
     parent: undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     fullscreenable: true,
     autoHideMenuBar: true,
@@ -1283,6 +1334,7 @@ ipcMain.handle('open-device-categories', async (_event: any) => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1306,6 +1358,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1330,6 +1383,7 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1357,6 +1411,7 @@ ipcMain.handle('pick-sale-product', async (_event: any) => {
       resizable: true,
       parent: BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#18181b',
       webPreferences: {
         nodeIntegration: false,
@@ -1395,6 +1450,7 @@ ipcMain.handle('open-customer-overview', async (_event: any, customerId: number)
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
       nodeIntegration: false,
@@ -1431,6 +1487,7 @@ ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
     frame: true,
     parent: undefined,
     modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     fullscreenable: true,
     autoHideMenuBar: true,
@@ -1467,6 +1524,7 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
       resizable: false,
       parent: parentWin as any,
       modal: true,
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#18181b',
       webPreferences: {
         nodeIntegration: false,

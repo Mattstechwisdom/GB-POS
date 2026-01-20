@@ -8,6 +8,7 @@ declare global {
 
   interface Window {
     api: {
+    getAppInfo: () => Promise<{ version: string; platform: string; arch: string; error?: string }>;
     getCustomers: () => Promise<any[]>;
     addCustomer: (c: any) => Promise<any>;
     findCustomers: (q: any) => Promise<any[]>;
@@ -55,6 +56,7 @@ declare global {
     exportHtml: (html: string, filenameBase?: string) => Promise<any>;
     exportPdf: (html: string, filenameBase?: string) => Promise<any>;
     openInteractiveHtml: (html: string, title?: string) => Promise<any>;
+    openUrl: (url: string) => Promise<any>;
     openReporting: () => Promise<any>;
   openCharts: () => Promise<any>;
     openReleaseForm: (payload: any) => Promise<any>;

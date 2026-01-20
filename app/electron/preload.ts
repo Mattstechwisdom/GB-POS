@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
   pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
   getCustomers: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'customers'),
   addCustomer: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'customers', c),

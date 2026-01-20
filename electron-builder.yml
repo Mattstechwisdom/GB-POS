@@ -3,12 +3,17 @@ productName: GadgetBoy POS
 files:
   - dist/**
   - app/electron/**
+extraResources:
+  - from: build/icon.ico
+    to: build/icon.ico
 win:
   target:
     - nsis
+  icon: build/icon.ico
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  #icon: build/icon.ico
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico

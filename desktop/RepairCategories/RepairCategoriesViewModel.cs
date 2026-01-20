@@ -16,14 +16,14 @@ namespace RepairCategories
         public ObservableCollection<RepairItem> Repairs { get; } = new ObservableCollection<RepairItem>();
         public ICollectionView RepairsView { get; }
 
-        private DeviceCategory _selectedDeviceCategory;
-        public DeviceCategory SelectedDeviceCategory { get => _selectedDeviceCategory; set { _selectedDeviceCategory = value; Raise(nameof(SelectedDeviceCategory)); RepairsView.Refresh(); } }
+        private DeviceCategory? _selectedDeviceCategory;
+        public DeviceCategory? SelectedDeviceCategory { get => _selectedDeviceCategory; set { _selectedDeviceCategory = value; Raise(nameof(SelectedDeviceCategory)); RepairsView.Refresh(); } }
 
-        private string _searchText;
-        public string SearchText { get => _searchText; set { _searchText = value; Raise(nameof(SearchText)); RepairsView.Refresh(); } }
+        private string _searchText = string.Empty;
+        public string SearchText { get => _searchText; set { _searchText = value ?? string.Empty; Raise(nameof(SearchText)); RepairsView.Refresh(); } }
 
-        private RepairItem _selectedRepair;
-        public RepairItem SelectedRepair { get => _selectedRepair; set { _selectedRepair = value; Raise(nameof(SelectedRepair)); } }
+        private RepairItem? _selectedRepair;
+        public RepairItem? SelectedRepair { get => _selectedRepair; set { _selectedRepair = value; Raise(nameof(SelectedRepair)); } }
 
         public bool ShowAllIgnoresDevice { get; set; } = true;
 
@@ -86,7 +86,11 @@ namespace RepairCategories
         private async Task SaveAsync()
         {
             if (!CanSave()) return;
-            await _repo.SaveAsync(SelectedRepair);
+
+            var selectedRepair = SelectedRepair;
+            if (selectedRepair == null) return;
+
+            await _repo.SaveAsync(selectedRepair);
             RepairsView.Refresh();
         }
 
@@ -96,23 +100,26 @@ namespace RepairCategories
             // optionally close window via messaging or callback
         }
 
-        public string Error => null;
+        public string Error => string.Empty;
         public string this[string columnName]
         {
             get
             {
-                if (SelectedRepair == null) return null;
+                if (SelectedRepair == null) return string.Empty;
                 switch(columnName)
                 {
-                    case nameof(SelectedRepair.PartCost): return SelectedRepair.PartCost < 0 ? "Must be >= 0" : null;
-                    case nameof(SelectedRepair.LaborCost): return SelectedRepair.LaborCost < 0 ? "Must be >= 0" : null;
-                    case nameof(SelectedRepair.OrderSourceUrl): return string.IsNullOrEmpty(SelectedRepair.OrderSourceUrl) || Uri.IsWellFormedUriString(SelectedRepair.OrderSourceUrl, UriKind.Absolute) ? null : "Invalid URL";
+                    case nameof(SelectedRepair.PartCost): return SelectedRepair.PartCost < 0 ? "Must be >= 0" : string.Empty;
+                    case nameof(SelectedRepair.LaborCost): return SelectedRepair.LaborCost < 0 ? "Must be >= 0" : string.Empty;
+                    case nameof(SelectedRepair.OrderSourceUrl):
+                        return string.IsNullOrEmpty(SelectedRepair.OrderSourceUrl) || Uri.IsWellFormedUriString(SelectedRepair.OrderSourceUrl, UriKind.Absolute)
+                            ? string.Empty
+                            : "Invalid URL";
                 }
-                return null;
+                return string.Empty;
             }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
         private void Raise(string p) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
     }
 }
