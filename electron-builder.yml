@@ -6,7 +6,7 @@ directories:
   output: release
 files:
   - dist/**
-  - app/electron/**
+  - dist-main/app/electron/**
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico
