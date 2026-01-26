@@ -29,6 +29,19 @@ jobs:
         run: npm ci
 
       - name: Typecheck + Build + Dist
+        run: npm run dist -- --publish never
+
+      - name: List release artifacts
+        run: |
+          echo "Release folder contents:"
+          dir release
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --publish always
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
