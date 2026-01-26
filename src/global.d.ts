@@ -9,6 +9,11 @@ declare global {
   interface Window {
     api: {
     getAppInfo: () => Promise<{ version: string; platform: string; arch: string; error?: string }>;
+    updateCheck: () => Promise<any>;
+    updateDownload: () => Promise<any>;
+    updateQuitAndInstall: () => Promise<any>;
+    updateSkip: (version: string) => Promise<any>;
+    onUpdateEvent: (cb: (ev: any) => void) => () => void;
     getCustomers: () => Promise<any[]>;
     addCustomer: (c: any) => Promise<any>;
     findCustomers: (q: any) => Promise<any[]>;
@@ -34,6 +39,7 @@ declare global {
     dbAdd: (key: string, item: any) => Promise<any>;
     dbUpdate: (key: string, id: any, item: any) => Promise<any>;
   dbDelete: (key: string, id: any) => Promise<boolean>;
+    dbResetAll: () => Promise<{ ok: boolean; removed?: string[]; errors?: string[]; userDataPath?: string }>;
   sendRepairSelected: (repair: any) => void;
     openDevMenu: () => Promise<any>;
     devOpenUserDataFolder: () => Promise<any>;
@@ -57,6 +63,12 @@ declare global {
     exportPdf: (html: string, filenameBase?: string) => Promise<any>;
     openInteractiveHtml: (html: string, title?: string) => Promise<any>;
     openUrl: (url: string) => Promise<any>;
+    // email
+    emailGetConfig: () => Promise<{ ok: boolean; fromEmail?: string; fromName?: string; hasAppPassword?: boolean; error?: string }>;
+    emailSetGmailAppPassword: (appPassword: string, fromName?: string) => Promise<{ ok: boolean; error?: string }>;
+    emailSetFromName: (fromName: string) => Promise<{ ok: boolean; error?: string }>;
+    emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
+    emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     openReporting: () => Promise<any>;
   openCharts: () => Promise<any>;
     openReleaseForm: (payload: any) => Promise<any>;

@@ -2,6 +2,16 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
+  // Updates
+  updateCheck: (): Promise<any> => ipcRenderer.invoke('update:check'),
+  updateDownload: (): Promise<any> => ipcRenderer.invoke('update:download'),
+  updateQuitAndInstall: (): Promise<any> => ipcRenderer.invoke('update:quitAndInstall'),
+  updateSkip: (version: string): Promise<any> => ipcRenderer.invoke('update:skip', version),
+  onUpdateEvent: (cb: (ev: any) => void) => {
+    const handler = (_e: any, payload: any) => cb(payload);
+    ipcRenderer.on('update:event', handler);
+    return () => ipcRenderer.removeListener('update:event', handler);
+  },
   pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
   getCustomers: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'customers'),
   addCustomer: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'customers', c),
@@ -36,6 +46,12 @@ contextBridge.exposeInMainWorld('api', {
   exportHtml: (html: string, filenameBase?: string): Promise<any> => ipcRenderer.invoke('export-html', html, filenameBase),
   exportPdf: (html: string, filenameBase?: string): Promise<any> => ipcRenderer.invoke('export-pdf', html, filenameBase),
   openInteractiveHtml: (html: string, title?: string): Promise<any> => ipcRenderer.invoke('open-interactive-html', html, title),
+  // Email
+  emailGetConfig: (): Promise<any> => ipcRenderer.invoke('email:getConfig'),
+  emailSetGmailAppPassword: (appPassword: string, fromName?: string): Promise<any> => ipcRenderer.invoke('email:setGmailAppPassword', appPassword, fromName),
+  emailSetFromName: (fromName: string): Promise<any> => ipcRenderer.invoke('email:setFromName', fromName),
+  emailClearGmailAppPassword: (): Promise<any> => ipcRenderer.invoke('email:clearGmailAppPassword'),
+  emailSendQuoteHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuoteHtml', payload),
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),
@@ -54,6 +70,7 @@ contextBridge.exposeInMainWorld('api', {
   dbAdd: (key: string, item: any): Promise<any> => ipcRenderer.invoke('db-add', key, item),
   dbUpdate: (key: string, id: any, item: any): Promise<any> => ipcRenderer.invoke('db-update', key, id, item),
   dbDelete: (key: string, id: any): Promise<boolean> => ipcRenderer.invoke('db-delete', key, id),
+  dbResetAll: (): Promise<any> => ipcRenderer.invoke('db-reset-all'),
   sendRepairSelected: (repair: any) => ipcRenderer.send('repair-selected', repair),
   _emitCheckoutSave: (result: any) => ipcRenderer.send('workorder:checkout:save', result),
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),

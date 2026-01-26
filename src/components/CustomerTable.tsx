@@ -7,9 +7,10 @@ interface Props {
   selectedId?: number | null;
   onSelect: (c: Customer) => void;
   onActivate: (c: Customer) => void;
+	onContextMenu?: (e: React.MouseEvent, c: Customer) => void;
 }
 
-const CustomerTable: React.FC<Props> = ({ customers, selectedId, onSelect, onActivate }) => {
+const CustomerTable: React.FC<Props> = ({ customers, selectedId, onSelect, onActivate, onContextMenu }) => {
   return (
     <div className="border border-zinc-700 rounded overflow-hidden">
       <table className="w-full text-xs">
@@ -35,6 +36,7 @@ const CustomerTable: React.FC<Props> = ({ customers, selectedId, onSelect, onAct
               <tr
                 key={c.id}
                 onClick={() => onSelect(c)}
+                onContextMenu={(e) => onContextMenu?.(e, c)}
                 onDoubleClick={() => onActivate(c)}
                 className={`${i % 2 ? 'bg-zinc-900' : 'bg-zinc-800'} cursor-pointer hover:bg-zinc-700/60 ${selected ? 'outline-none' : ''}`}
               >

@@ -1,7 +1,8 @@
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electron;
 const path = require('path');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 // Determine dev mode early so it is available for handlers
 const isDev = !app.isPackaged;
@@ -17,6 +18,131 @@ if (!app.isPackaged && process.env.ELECTRON_DISABLE_SECURITY_WARNINGS !== 'true'
 
 // Central dev server base (adjust here if port changes)
 const DEV_SERVER_URL = 'http://localhost:5173';
+
+function normalizeVersion(v: string): string {
+  return String(v || '0.0.0').trim().replace(/^v/i, '');
+}
+
+function compareVersions(aRaw: string, bRaw: string): number {
+  const a = normalizeVersion(aRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
+  const b = normalizeVersion(bRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
+  for (let i = 0; i < 3; i += 1) {
+    const av = Number.isFinite(a[i]) ? a[i] : 0;
+    const bv = Number.isFinite(b[i]) ? b[i] : 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+function readUpdateConfig(): { skippedVersion?: string } {
+  try {
+    const p = path.join(app.getPath('userData'), 'update-config.json');
+    if (!fs.existsSync(p)) return {};
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    return json && typeof json === 'object' ? json : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeUpdateConfig(cfg: { skippedVersion?: string }) {
+  try {
+    const p = path.join(app.getPath('userData'), 'update-config.json');
+    fs.writeFileSync(p, JSON.stringify(cfg || {}, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+// -------------------------------------------------------------
+// Email (Company sender via SMTP)
+// -------------------------------------------------------------
+function emailConfigPath(): string {
+  return path.join(app.getPath('userData'), 'email-config.json');
+}
+
+function readEmailConfig(): any {
+  try {
+    const p = emailConfigPath();
+    if (!fs.existsSync(p)) return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+    return {
+      fromEmail: json.fromEmail || 'gadgetboysc@gmail.com',
+      fromName: json.fromName || 'GadgetBoy Repair & Retail',
+      // Stored encrypted (base64)
+      gmailAppPasswordEnc: json.gmailAppPasswordEnc || null,
+    };
+  } catch {
+    return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+  }
+}
+
+function writeEmailConfig(cfg: any) {
+  try {
+    const p = emailConfigPath();
+    fs.writeFileSync(p, JSON.stringify(cfg || {}, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function decryptAppPassword(cfg: any): string | null {
+  try {
+    const enc = cfg?.gmailAppPasswordEnc;
+    if (!enc || typeof enc !== 'string') return null;
+    const buf = Buffer.from(enc, 'base64');
+    if (safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(buf);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function broadcastUpdateEvent(payload: any) {
+  try {
+    for (const w of BrowserWindow.getAllWindows()) {
+      try { w.webContents.send('update:event', payload); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function setupAutoUpdater() {
+  try {
+    // electron-updater uses electron-builder publish config in packaged builds.
+    autoUpdater.autoDownload = false;
+    autoUpdater.on('checking-for-update', () => broadcastUpdateEvent({ kind: 'checking' }));
+    autoUpdater.on('update-available', (info: any) => broadcastUpdateEvent({
+      kind: 'available',
+      version: info?.version,
+      releaseName: info?.releaseName,
+      releaseNotes: info?.releaseNotes,
+    }));
+    autoUpdater.on('update-not-available', (info: any) => broadcastUpdateEvent({ kind: 'not-available', version: info?.version }));
+    autoUpdater.on('download-progress', (p: any) => broadcastUpdateEvent({
+      kind: 'progress',
+      percent: p?.percent,
+      transferred: p?.transferred,
+      total: p?.total,
+      bytesPerSecond: p?.bytesPerSecond,
+    }));
+    autoUpdater.on('update-downloaded', (info: any) => broadcastUpdateEvent({
+      kind: 'downloaded',
+      version: info?.version,
+      releaseName: info?.releaseName,
+    }));
+    autoUpdater.on('error', (err: any) => broadcastUpdateEvent({ kind: 'error', message: String(err?.message || err) }));
+  } catch (e) {
+    // ignore
+  }
+}
 
 function getWindowIconPath(): string | undefined {
   try {
@@ -80,7 +206,11 @@ function setupContextMenu(win: typeof BrowserWindow.prototype) {
       }
       if (!template.length) return;
       const menu = Menu.buildFromTemplate(template);
-      menu.popup({ window: win });
+      const x = typeof params?.x === 'number' ? params.x : undefined;
+      const y = typeof params?.y === 'number' ? params.y : undefined;
+      // On Windows, omitting x/y can cause the first popup to appear at (0,0).
+      if (typeof x === 'number' && typeof y === 'number') menu.popup({ window: win, x, y });
+      else menu.popup({ window: win });
     });
   } catch {}
 }
@@ -235,6 +365,113 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
   }
 });
 
+// -------------------------
+// Email IPC
+// -------------------------
+ipcMain.handle('email:getConfig', async () => {
+  try {
+    const cfg = readEmailConfig();
+    // Never return secrets to the renderer
+    return {
+      ok: true,
+      fromEmail: cfg.fromEmail || 'gadgetboysc@gmail.com',
+      fromName: cfg.fromName || 'GadgetBoy Repair & Retail',
+      hasAppPassword: !!decryptAppPassword(cfg),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:setGmailAppPassword', async (_e: any, appPassword: string, fromName?: string) => {
+  try {
+    const pass = String(appPassword || '').trim();
+    if (!pass) return { ok: false, error: 'Missing app password' };
+    if (!(safeStorage && typeof safeStorage.encryptString === 'function')) {
+      return { ok: false, error: 'safeStorage not available on this system' };
+    }
+    const cfg = readEmailConfig();
+    const encBuf = safeStorage.encryptString(pass);
+    cfg.fromEmail = 'gadgetboysc@gmail.com';
+    if (fromName != null) cfg.fromName = String(fromName || '').trim() || 'GadgetBoy Repair & Retail';
+    cfg.gmailAppPasswordEnc = Buffer.from(encBuf).toString('base64');
+    writeEmailConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:setFromName', async (_e: any, fromName: string) => {
+  try {
+    const cfg = readEmailConfig();
+    cfg.fromEmail = 'gadgetboysc@gmail.com';
+    cfg.fromName = String(fromName || '').trim() || 'GadgetBoy Repair & Retail';
+    writeEmailConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:clearGmailAppPassword', async () => {
+  try {
+    const cfg = readEmailConfig();
+    cfg.gmailAppPasswordEnc = null;
+    writeEmailConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
+  try {
+    const cfg = readEmailConfig();
+    const appPass = decryptAppPassword(cfg);
+    if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
+
+    const to = String(payload?.to || '').trim();
+    if (!to) return { ok: false, error: 'Missing recipient email' };
+    const subject = String(payload?.subject || 'Gadgetboy Quote');
+    const bodyText = String(payload?.bodyText || '');
+    const htmlAttachment = String(payload?.html || '');
+    if (!htmlAttachment) return { ok: false, error: 'Missing HTML attachment content' };
+    const filename = String(payload?.filename || 'gadgetboy-quote.html').trim() || 'gadgetboy-quote.html';
+
+    // Lazy require to keep startup fast
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'gadgetboysc@gmail.com',
+        pass: appPass,
+      },
+    });
+
+    const fromName = String(cfg.fromName || 'GadgetBoy Repair & Retail').trim() || 'GadgetBoy Repair & Retail';
+    const from = `${fromName} <gadgetboysc@gmail.com>`;
+
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text: bodyText,
+      attachments: [
+        {
+          filename,
+          content: htmlAttachment,
+          contentType: 'text/html; charset=utf-8',
+        },
+      ],
+    });
+
+    return { ok: true, messageId: info?.messageId || null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 // App info (used for update/version gating)
 ipcMain.handle('app:getInfo', async () => {
   try {
@@ -250,6 +487,75 @@ ipcMain.handle('app:getInfo', async () => {
       arch: process.arch,
       error: String(e),
     };
+  }
+});
+
+ipcMain.handle('update:check', async () => {
+  try {
+    const currentVersion = normalizeVersion(app.getVersion());
+    if (!app.isPackaged) return { ok: true, notPackaged: true, updateAvailable: false, currentVersion };
+
+    const cfg = readUpdateConfig();
+
+    let latestVersion: string | undefined;
+    let releaseName: string | undefined;
+    let releaseNotes: any;
+    try {
+      const res = await autoUpdater.checkForUpdates();
+      latestVersion = res?.updateInfo?.version ? normalizeVersion(res.updateInfo.version) : undefined;
+      releaseName = res?.updateInfo?.releaseName;
+      releaseNotes = res?.updateInfo?.releaseNotes;
+    } catch (e: any) {
+      // If publishing isn't configured or network is down, surface the error to the UI.
+      return { ok: false, error: String(e?.message || e), currentVersion };
+    }
+
+    const updateAvailable = !!(latestVersion && compareVersions(currentVersion, latestVersion) < 0);
+    const skipped = !!(updateAvailable && cfg?.skippedVersion && normalizeVersion(cfg.skippedVersion) === latestVersion);
+    return {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: updateAvailable && !skipped,
+      skippedVersion: cfg?.skippedVersion,
+      releaseName,
+      releaseNotes,
+    };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('update:download', async () => {
+  try {
+    if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
+    await autoUpdater.downloadUpdate();
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('update:quitAndInstall', async () => {
+  try {
+    if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
+    // quits and installs immediately
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('update:skip', async (_e: any, version: string) => {
+  try {
+    if (!version) return { ok: false, error: 'Missing version' };
+    const cfg = readUpdateConfig();
+    cfg.skippedVersion = normalizeVersion(version);
+    writeUpdateConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
   }
 });
 
@@ -490,6 +796,81 @@ function writeDb(db: any) {
   }).catch(() => { /* swallow to keep queue moving */ });
   return true;
 }
+
+ipcMain.handle('db-reset-all', async () => {
+  const removed: string[] = [];
+  const errors: string[] = [];
+
+  // Ensure any pending writes finish before we remove files.
+  try {
+    await writeQueue;
+  } catch {
+    // ignore
+  }
+  writeQueue = Promise.resolve();
+
+  function tryUnlink(p: string) {
+    try {
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        removed.push(p);
+      }
+    } catch (e: any) {
+      errors.push(`${p}: ${String(e?.message || e)}`);
+    }
+  }
+
+  function tryRmDir(p: string) {
+    try {
+      if (fs.existsSync(p)) {
+        // Node 14+ supports rmSync
+        if (typeof (fs as any).rmSync === 'function') {
+          (fs as any).rmSync(p, { recursive: true, force: true });
+        } else {
+          (fs as any).rmdirSync(p, { recursive: true });
+        }
+        removed.push(p);
+      }
+    } catch (e: any) {
+      errors.push(`${p}: ${String(e?.message || e)}`);
+    }
+  }
+
+  const userDataPath = app.getPath('userData');
+  const backupsDir = path.join(userDataPath, 'backups');
+  const backupConfigPath = path.join(userDataPath, 'backup-config.json');
+  const updateConfigPath = path.join(userDataPath, 'update-config.json');
+
+  // Primary database
+  tryUnlink(dbFile);
+  tryUnlink(dbFile + '.tmp');
+
+  // Local configs/backups
+  tryUnlink(backupConfigPath);
+  tryUnlink(updateConfigPath);
+  tryRmDir(backupsDir);
+
+  // Notify renderers to refresh in case any window is open.
+  try {
+    const wins = BrowserWindow.getAllWindows();
+    for (const w of wins) {
+      try { w.webContents.send('customers:changed'); } catch {}
+      try { w.webContents.send('workorders:changed'); } catch {}
+      try { w.webContents.send('sales:changed'); } catch {}
+      try { w.webContents.send('technicians:changed'); } catch {}
+      try { w.webContents.send('deviceCategories:changed'); } catch {}
+      try { w.webContents.send('productCategories:changed'); } catch {}
+      try { w.webContents.send('products:changed'); } catch {}
+      try { w.webContents.send('partSources:changed'); } catch {}
+      try { w.webContents.send('calendarEvents:changed'); } catch {}
+      try { w.webContents.send('timeEntries:changed'); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+
+  return { ok: errors.length === 0, removed, errors, userDataPath };
+});
 
 ipcMain.handle('db-get', async (_e: any, key: string) => {
   const db = readDb();
@@ -1091,8 +1472,19 @@ ipcMain.handle('export-pdf', async (_e: any, html: string, filenameBase?: string
       ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#ffffff',
     });
-    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''));
-    await win.loadURL(dataUrl);
+
+    // Avoid giant data: URLs (can exceed Chromium/Electron limits when HTML contains base64 images)
+    // by writing the HTML to a temp file and loading via file://.
+    const tempDir = path.join(app.getPath('userData'), 'quote-previews');
+    try { fs.mkdirSync(tempDir, { recursive: true }); } catch {}
+    const safeBase = String(filenameBase || 'gadgetboy-quote')
+      .replace(/[^a-z0-9\-\_\+]+/gi, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'gadgetboy-quote';
+    const tempPath = path.join(tempDir, `${safeBase}-${Date.now()}-pdf.html`);
+    fs.writeFileSync(tempPath, String(html || ''), 'utf-8');
+    await win.loadFile(tempPath);
     // Give layout a moment to settle
     await new Promise((r) => setTimeout(r, 150));
     const pdfBuffer = await win.webContents.printToPDF({
@@ -1102,6 +1494,7 @@ ipcMain.handle('export-pdf', async (_e: any, html: string, filenameBase?: string
       landscape: false,
     } as any);
     fs.writeFileSync(result.filePath, pdfBuffer);
+    try { fs.unlinkSync(tempPath); } catch {}
     try { win.destroy(); } catch {}
     return { ok: true, filePath: result.filePath };
   } catch (e: any) {
@@ -1134,14 +1527,25 @@ ipcMain.handle('open-interactive-html', async (_e: any, html: string, title?: st
       title: title || 'Interactive Quote',
     });
     if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''));
+
+    // Load from a temp file instead of a data: URL to avoid URL-length limits for large HTML.
+    const tempDir = path.join(app.getPath('userData'), 'quote-previews');
+    try { fs.mkdirSync(tempDir, { recursive: true }); } catch {}
+    const safeTitle = String(title || 'Interactive Quote')
+      .replace(/[^a-z0-9\-\_\+]+/gi, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'interactive-quote';
+    const tempPath = path.join(tempDir, `${safeTitle}-${Date.now()}.html`);
+    fs.writeFileSync(tempPath, String(html || ''), 'utf-8');
+
     // Pre-set a reasonable content size
     try { child.setContentSize(1100, 800); } catch {}
     // Register load listener BEFORE loading to avoid missing the event
     child.webContents.once('did-finish-load', () => {
       try { centerWindow(child); child.show(); child.focus(); } catch {}
     });
-    await child.loadURL(dataUrl);
+    await child.loadFile(tempPath);
     // Fallback: if for some reason the event fired before registration, ensure shown
     try { if (!child.isVisible()) { centerWindow(child); child.show(); child.focus(); } } catch {}
     return { ok: true };
@@ -1269,6 +1673,7 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId('com.gadgetboy.pos');
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
+    setupAutoUpdater();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

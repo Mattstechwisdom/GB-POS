@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { getServerBaseUrl } from '../lib/config';
+import React, { useEffect, useState } from 'react';
 
 type AppInfo = {
   version: string;
@@ -8,106 +7,97 @@ type AppInfo = {
   error?: string;
 };
 
-type ClientPolicyResponse = {
-  minVersion?: string;
-  latestVersion?: string;
-  updateUrl?: string;
-  message?: string;
-  required?: boolean;
-};
-
 type GateState =
   | { kind: 'checking' }
   | { kind: 'ok' }
-  | { kind: 'offline'; reason: string }
   | {
-      kind: 'updateRequired';
+      kind: 'updateAvailable';
       app: AppInfo;
-      minVersion: string;
-      latestVersion?: string;
-      updateUrl?: string;
-      message?: string;
+      latestVersion: string;
+      releaseName?: string;
+      releaseNotes?: any;
     }
+  | { kind: 'downloading'; app: AppInfo; latestVersion: string; progressPct: number }
+  | { kind: 'downloaded'; app: AppInfo; latestVersion: string }
   | { kind: 'error'; message: string };
 
-function normalizeVersion(v: string): string {
-  return String(v || '0.0.0').trim().replace(/^v/i, '');
-}
-
-function compareVersions(aRaw: string, bRaw: string): number {
-  // Minimal semver-ish compare (major.minor.patch). Ignores prerelease/build metadata.
-  const a = normalizeVersion(aRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
-  const b = normalizeVersion(bRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
-  for (let i = 0; i < 3; i += 1) {
-    const av = Number.isFinite(a[i]) ? a[i] : 0;
-    const bv = Number.isFinite(b[i]) ? b[i] : 0;
-    if (av > bv) return 1;
-    if (av < bv) return -1;
+function fmtBytes(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
   }
-  return 0;
-}
-
-async function fetchClientPolicy(serverBaseUrl: string, app: AppInfo): Promise<ClientPolicyResponse> {
-  const url = new URL('/api/client-policy', serverBaseUrl);
-  url.searchParams.set('app', 'gadgetboy-pos');
-  url.searchParams.set('platform', app.platform);
-  url.searchParams.set('arch', app.arch);
-  url.searchParams.set('version', app.version);
-
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
-    cache: 'no-store',
-  });
-
-  if (!res.ok) {
-    throw new Error(`Policy request failed: ${res.status} ${res.statusText}`);
-  }
-
-  return (await res.json()) as ClientPolicyResponse;
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 export default function UpdateGate({ children }: { children: React.ReactNode }) {
-  const serverBaseUrl = useMemo(() => getServerBaseUrl(), []);
   const [state, setState] = useState<GateState>({ kind: 'checking' });
+
+  const shouldEnforceGate = (import.meta as any).env?.PROD;
 
   async function checkNow() {
     setState({ kind: 'checking' });
 
     try {
-      if (!navigator.onLine) {
-        setState({ kind: 'offline', reason: 'Internet connection is required.' });
+      const api = (window as any)?.api;
+      const hasBridge = api && typeof api.getAppInfo === 'function';
+      if (!hasBridge && !shouldEnforceGate) {
+        setState({ kind: 'ok' });
         return;
       }
 
-      const appInfo = (await window.api.getAppInfo()) as AppInfo;
-      const policy = await fetchClientPolicy(serverBaseUrl, appInfo);
-
-      const minVersion = normalizeVersion(policy.minVersion || '0.0.0');
-      const current = normalizeVersion(appInfo.version);
-
-      const forced = policy.required === true;
-      const belowMin = compareVersions(current, minVersion) < 0;
-
-      if (forced || belowMin) {
+      if (!hasBridge) {
         setState({
-          kind: 'updateRequired',
+          kind: 'error',
+          message:
+            'App bridge is unavailable (window.api.getAppInfo). If you opened the Vite URL in a browser, use the Electron app window instead.',
+        });
+        return;
+      }
+
+      const appInfo = (await api.getAppInfo()) as AppInfo;
+
+      // If the packaged app has update support, ask the main process to check.
+      if (typeof api.updateCheck !== 'function') {
+        setState({ kind: 'ok' });
+        return;
+      }
+
+      const res = await api.updateCheck();
+      if (res?.notPackaged) {
+        setState({ kind: 'ok' });
+        return;
+      }
+      if (!res?.ok) {
+        // In prod, show error UI but allow “Continue anyway”.
+        setState({ kind: 'error', message: res?.error || 'Unable to check for updates.' });
+        return;
+      }
+
+      if (res?.updateAvailable && res?.latestVersion) {
+        setState({
+          kind: 'updateAvailable',
           app: appInfo,
-          minVersion,
-          latestVersion: policy.latestVersion ? normalizeVersion(policy.latestVersion) : undefined,
-          updateUrl: policy.updateUrl,
-          message: policy.message,
+          latestVersion: String(res.latestVersion),
+          releaseName: res?.releaseName,
+          releaseNotes: res?.releaseNotes,
         });
         return;
       }
 
       setState({ kind: 'ok' });
     } catch (e: any) {
-      // If we can't reach the server, treat as offline (since internet is required by policy).
       const msg = String(e?.message || e);
-      setState({ kind: 'offline', reason: msg || 'Unable to reach server.' });
+
+      if (!shouldEnforceGate) {
+        setState({ kind: 'ok' });
+        return;
+      }
+
+      setState({ kind: 'error', message: msg || 'Unable to check for updates.' });
     }
   }
 
@@ -136,41 +126,26 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         {state.kind === 'checking' && (
           <>
             <div className={titleClass}>Checking for updates…</div>
-            <div className={subClass}>Verifying server connection and required app version.</div>
+            <div className={subClass}>Looking for a newer version of GadgetBoy POS.</div>
           </>
         )}
 
-        {state.kind === 'offline' && (
+        {state.kind === 'updateAvailable' && (
           <>
-            <div className={titleClass}>Internet connection required</div>
-            <div className={subClass}>{state.reason}</div>
-            <div className="mt-4 flex gap-3">
-              <button className={primaryBtnClass} onClick={() => checkNow()}>
-                Retry
-              </button>
-              <button className={btnClass} onClick={() => window.close()}>
-                Close
-              </button>
-            </div>
-          </>
-        )}
-
-        {state.kind === 'updateRequired' && (
-          <>
-            <div className={titleClass}>Update required</div>
+            <div className={titleClass}>Update available</div>
             <div className={subClass}>
-              {state.message || 'A newer version is required before you can continue.'}
+              A newer version is available. Download to ensure you’re up to date.
             </div>
             <div className="mt-4 text-sm text-gray-300 space-y-1">
               <div>
                 Current: <span className="text-gray-100">{state.app.version}</span>
               </div>
               <div>
-                Required: <span className="text-gray-100">{state.minVersion}+</span>
+                New: <span className="text-gray-100">{state.latestVersion}</span>
               </div>
-              {state.latestVersion && (
+              {state.releaseName && (
                 <div>
-                  Latest: <span className="text-gray-100">{state.latestVersion}</span>
+                  Release: <span className="text-gray-100">{state.releaseName}</span>
                 </div>
               )}
             </div>
@@ -179,28 +154,94 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
               <button
                 className={primaryBtnClass}
                 onClick={async () => {
-                  if (state.updateUrl) {
-                    await window.api.openUrl(state.updateUrl);
+                  const api = (window as any)?.api;
+                  try {
+                    if (!api?.updateDownload) throw new Error('Update download is unavailable.');
+                    setState({ kind: 'downloading', app: state.app, latestVersion: state.latestVersion, progressPct: 0 });
+
+                    const unsub = typeof api?.onUpdateEvent === 'function'
+                      ? api.onUpdateEvent((ev: any) => {
+                          if (ev?.kind === 'progress' && typeof ev?.percent === 'number') {
+                            setState((prev) => {
+                              if (prev.kind !== 'downloading') return prev;
+                              return { ...prev, progressPct: Math.max(0, Math.min(100, Number(ev.percent))) };
+                            });
+                          }
+                          if (ev?.kind === 'downloaded') {
+                            setState({ kind: 'downloaded', app: state.app, latestVersion: state.latestVersion });
+                          }
+                        })
+                      : null;
+
+                    const res = await api.updateDownload();
+                    if (unsub) unsub();
+                    if (!res?.ok) throw new Error(res?.error || 'Download failed');
+                    // If the downloaded event didn't arrive for some reason, fall back.
+                    setState((prev) => (prev.kind === 'downloading' ? { kind: 'downloaded', app: state.app, latestVersion: state.latestVersion } : prev));
+                  } catch (e: any) {
+                    setState({ kind: 'error', message: String(e?.message || e) });
                   }
                 }}
-                disabled={!state.updateUrl}
-                title={state.updateUrl ? undefined : 'No update URL provided by server'}
               >
                 Download update
+              </button>
+              <button
+                className={btnClass}
+                onClick={async () => {
+                  const api = (window as any)?.api;
+                  try {
+                    if (api?.updateSkip) await api.updateSkip(state.latestVersion);
+                  } catch {}
+                  setState({ kind: 'ok' });
+                }}
+              >
+                Skip (can’t ensure up to date)
               </button>
               <button className={btnClass} onClick={() => checkNow()}>
                 Re-check
               </button>
-              <button className={btnClass} onClick={() => window.close()}>
-                Close
+            </div>
+          </>
+        )}
+
+        {state.kind === 'downloading' && (
+          <>
+            <div className={titleClass}>Downloading update…</div>
+            <div className={subClass}>Please keep this window open.</div>
+            <div className="mt-4">
+              <div className="h-3 bg-zinc-800 rounded">
+                <div
+                  className="h-3 bg-[#39FF14] rounded"
+                  style={{ width: `${Math.max(0, Math.min(100, state.progressPct))}%` }}
+                />
+              </div>
+              <div className="mt-2 text-xs text-gray-400">{state.progressPct.toFixed(0)}%</div>
+            </div>
+          </>
+        )}
+
+        {state.kind === 'downloaded' && (
+          <>
+            <div className={titleClass}>Update ready</div>
+            <div className={subClass}>Restart to apply the update and continue.</div>
+            <div className="mt-4 flex gap-3">
+              <button
+                className={primaryBtnClass}
+                onClick={async () => {
+                  const api = (window as any)?.api;
+                  try {
+                    await api.updateQuitAndInstall();
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+              >
+                Restart and apply
+              </button>
+              <button className={btnClass} onClick={() => setState({ kind: 'ok' })}>
+                Later
               </button>
             </div>
-
-            {!state.updateUrl && (
-              <div className="mt-3 text-xs text-gray-400">
-                Server did not provide an update URL (`updateUrl`).
-              </div>
-            )}
           </>
         )}
 
@@ -212,9 +253,12 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
               <button className={primaryBtnClass} onClick={() => checkNow()}>
                 Retry
               </button>
-              <button className={btnClass} onClick={() => window.close()}>
-                Close
+              <button className={btnClass} onClick={() => setState({ kind: 'ok' })}>
+                Continue anyway
               </button>
+            </div>
+            <div className="mt-3 text-xs text-gray-400">
+              {shouldEnforceGate ? 'Updates may not be configured yet (electron-builder publish settings).' : 'Update checking is optional in dev.'}
             </div>
           </>
         )}

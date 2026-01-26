@@ -1,5 +1,7 @@
 appId: com.gadgetboy.pos
 productName: GadgetBoy POS
+# Keep the installer name predictable on GitHub Releases (no folder digging).
+artifactName: 'GadgetBoy-POS-Setup-${version}.${ext}'
 files:
   - dist/**
   - app/electron/**
@@ -17,3 +19,8 @@ nsis:
   createDesktopShortcut: true
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+
+# Required for in-app updates via electron-updater.
+# Set the correct repo in package.json "repository.url".
+publish:
+  - provider: github

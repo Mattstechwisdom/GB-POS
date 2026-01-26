@@ -29,28 +29,28 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           >Admin ▾</button>
           {showAdmin && (
             <div className="absolute left-0 top-full mt-2 w-full bg-zinc-900 border border-zinc-700 rounded shadow-lg z-50">
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { await (window as any).api.openRepairCategories?.(); }
                 catch { const mod = await import('../repair-category/openRepairCategoriesWindow'); mod.default(); }
               }}>Devices/Repairs</button>
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { await (window as any).api.openProducts?.(); }
                 catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
               }}>Products</button>
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { const api = (window as any).api; if (api?.openReporting) await api.openReporting(); else window.open(window.location.origin + '/?reporting=true', '_blank'); }
                 catch (e) { console.error(e); }
               }}>Reporting</button>
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
                 try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
                 catch (e) { console.error(e); openRoute(); }
               }}>Data Mgmt</button>
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); }
                 catch (e) { console.error(e); }

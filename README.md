@@ -26,6 +26,17 @@ npm run build && npm run dist # Installer in dist/
 - `npm run build` — Builds the React app
 - `npm run dist` — Packages the app as a Windows .exe installer (NSIS)
 
+## Installer output
+- Local installer builds are written to `dist/` (example: `dist/GadgetBoy POS Setup X.Y.Z.exe`).
+
+## Downloading from GitHub
+- End users should download the installer from the GitHub **Releases** page (the `.exe` asset), not the “Source code (zip)”.
+- You should see a clearly named asset like `GadgetBoy-POS-Setup-X.Y.Z.exe`.
+
+## Updates (GitHub Releases)
+- In-app updates use GitHub Releases and require installed builds (NSIS installer), not `npm run dev`.
+- To publish an update: bump `package.json` version, tag `vX.Y.Z`, push the tag, and GitHub Actions builds the release artifacts.
+
 ## Project Structure
 
 - `/app/electron/electron-main.ts` — Electron bootstrap

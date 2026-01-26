@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron/electron-main.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mattstechwisdom/GB-POS.git"
+  },
   "author": "",
   "license": "MIT",
   "scripts": {
@@ -23,7 +27,9 @@
   },
   "dependencies": {
     "asar": "^3.2.0",
+    "electron-updater": "^6.6.2",
     "html2pdf.js": "^0.12.1",
+    "nodemailer": "^7.0.12",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

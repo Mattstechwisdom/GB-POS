@@ -36,6 +36,21 @@ type RepairsState = {
   selectedRepairId?: string;
 };
 
+const PERIPHERAL_TYPE_OPTIONS: string[] = [
+  'Monitor',
+  'Keyboard',
+  'Mouse',
+  'Keyboard/Mouse Combo',
+  'Headset',
+  'Speakers',
+  'External Storage Device',
+  'Controller',
+  'Webcam',
+  'Microphone',
+  'USB Hub/Dock',
+  'Other',
+];
+
 // Lightweight Field and ComboInput used in this window
 const Field: React.FC<{ label: string; value: any; onChange: (v: string) => void; type?: string; placeholder?: string }> = ({ label, value, onChange, type, placeholder }) => (
   <div>
@@ -127,6 +142,19 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
+  const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showEmailSettings, setShowEmailSettings] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailFromName, setEmailFromName] = useState('GadgetBoy Repair & Retail');
+  const [emailAppPassword, setEmailAppPassword] = useState('');
+  const [emailHasPassword, setEmailHasPassword] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailErr, setEmailErr] = useState<string | null>(null);
+  const [emailSettingsSaving, setEmailSettingsSaving] = useState(false);
+  const [emailSettingsErr, setEmailSettingsErr] = useState<string | null>(null);
+  const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<number | undefined>(undefined);
   // Track expanded categories per item for Custom PC (keyed by item index string)
   const [openCats, setOpenCats] = useState<Record<string, Record<string, boolean>>>({});
@@ -171,41 +199,62 @@ function QuoteGeneratorWindow(): JSX.Element {
   const stampTitle = `${mm}${dd}${yy} ${hh}${mi}${ss}`; // full timestamp for document title
   const stampShort = `${mm}${dd}${yy} ${hh}${mi}`; // for filenames (no seconds)
 
-    // Removed unused helpers (titleForItem, specRows) from interactive HTML builder to fix scope/brace issues
-    // Minimal Items page for interactive HTML (now includes Signature section on same page)
-    const itemsPage = () => {
+    // Final page for non-custom devices: Notes box + checklist + terms + signature/date (single page)
+    const finalPageInteractive = () => {
       const labels = sales.items.map((it, i) => {
         const model = String(((it.model ?? (it as any).dynamic?.model) || '')).trim();
         return (model ? [it.brand, model].filter(Boolean).join(' ').trim() : '') || `Item ${i + 1}`;
       });
+      const checklistHtml = labels
+        .map((label, i) => {
+          const safe = esc(label);
+          return `<label style="display:flex; align-items:flex-start; gap:8px; margin:0 0 6px 0"><input type="checkbox" style="margin-top:2px"/> <span>${safe || `Item ${i + 1}`}</span></label>`;
+        })
+        .join('');
+
       return `
       <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
-        <div class="page-inner" style="padding-top:8px">
-          <div style="font-weight:700; margin-bottom:6px; font-size:13pt">Notes & Terms</div>
-          <div style="border:2px solid #f00; border-radius:4px; padding:12px; min-height:240mm">
-            <div style="font-weight:700; margin-bottom:8px">Terms and Conditions</div>
-            <ul style="padding-left:1.1rem; margin:0; font-size:12pt; line-height:1.45">
-              <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Prices valid at issue and subject to availability; special‑order parts may be non‑returnable.</li>
-              <li style="margin-bottom:6px"><b>Warranty:</b> 90‑day limited hardware warranty for defects under normal use; exclusions apply.</li>
-              <li style="margin-bottom:6px"><b>Data & Software:</b> Client responsible for backups and licensing; we are not liable for data loss.</li>
-              <li style="margin-bottom:6px"><b>Liability:</b> Liability limited to amount paid; incidental or consequential damages are excluded.</li>
-            </ul>
-            <div style="height:200mm; margin-top:12px"></div>
+        <div class="page-inner" style="display:flex; flex-direction:column; min-height:273mm; padding-top:8px">
+          <div style="font-weight:800; margin-bottom:10px; font-size:14pt; text-align:center">Notes, Checklist, Terms</div>
+
+          <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Notes</div>
+          <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences…" style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
+
+          <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Checklist</div>
+          <div style="border:2px solid #f00; border-radius:4px; padding:10px; font-size:11pt; line-height:1.35">
+            <div style="columns:2; column-gap:16px">${checklistHtml || '<div style="color:#666">No items listed.</div>'}</div>
           </div>
-          <div style="font-weight:700; margin-top:16px; margin-bottom:6px; font-size:13pt">Signature</div>
-          <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; margin-top:12px; break-inside: avoid; page-break-inside: avoid">
-            <div style="flex:1">
-              <canvas id="sigPad" style="width:100%; height:96px; display:block; background:#ffffff; border:1px solid #000; border-radius:4px"></canvas>
-              <div class="sig-actions" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-                <input id="sigName" type="text" placeholder="Type full name to sign" style="flex:1; padding:6px; font-size:12px" />
-                <button id="sigApply" type="button" style="padding:6px; font-size:12px">Apply Typed</button>
-                <button id="sigClear" type="button" style="padding:6px; font-size:12px">Clear</button>
-                <button id="finalize" type="button" style="padding:6px; font-size:12px">Finalize & Save</button>
-              </div>
+          <div style="margin-top:auto">
+            <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
+            <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
+              <ul style="padding-left:1.1rem; margin:0">
+                <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
+                <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90‑day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third‑party accessories.</li>
+                <li style="margin-bottom:6px"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
+                <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special‑order items may be non‑returnable and subject to supplier restocking policies.</li>
+                <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non‑refundable.</li>
+                <li style="margin-bottom:6px"><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
+                <li style="margin-bottom:0"><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
+              </ul>
             </div>
-            <div style="width:220px">
-              <div id="dateBox" style="border-bottom:2px solid #000; height:0; margin-bottom:4px"></div>
-              <div style="font-size:12pt">Date</div>
+
+            <div style="margin-top:16px">
+              <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
+              <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; break-inside: avoid; page-break-inside: avoid">
+                <div style="flex:1">
+                  <canvas id="sigPad" style="width:100%; height:96px; display:block; background:#ffffff; border:1px solid #000; border-radius:4px"></canvas>
+                  <div class="sig-actions no-print" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+                    <input id="sigName" type="text" placeholder="Type full name to sign" style="flex:1; padding:6px; font-size:12px" />
+                    <button id="sigApply" type="button" style="padding:6px; font-size:12px">Apply Typed</button>
+                    <button id="sigClear" type="button" style="padding:6px; font-size:12px">Clear</button>
+                    <button id="finalize" type="button" style="padding:6px; font-size:12px">Finalize</button>
+                  </div>
+                </div>
+                <div style="width:220px">
+                  <div id="dateBox" style="border-bottom:2px solid #000; height:0; margin-bottom:4px"></div>
+                  <div style="font-size:12pt">Date</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -322,6 +371,21 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (!desc && !priceRaw && !image && !image2) return; // skip completely empty
         parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
+
+      // Peripherals (Custom PC) — render as line items directly under OS
+      const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
+      pcExtras.forEach((e: any, i: number) => {
+        const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
+        const desc = String(e?.desc || '').trim();
+        const priceRaw = Number(e?.price || 0) || 0;
+        const imagesArr = Array.isArray(e?.images) ? e.images : [];
+        let image: string | undefined = e?.image ? String(e.image) : undefined;
+        let image2: string | undefined = e?.image2 ? String(e.image2) : undefined;
+        if (!image && imagesArr[0]) image = String(imagesArr[0]);
+        if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
+        if (!desc && !priceRaw && !image && !image2) return;
+        parts.push({ label, key: `pc-extra-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+      });
       // Extra parts (array)
       const extras = Array.isArray(dyn.extraParts) ? dyn.extraParts : [];
       extras.forEach((e: any) => {
@@ -429,7 +493,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
       let partPagesHtml = firstPageHtml + otherPagesHtml;
 
-      // Summary + Notes page (labor + totals + large notes area + signature)
+      // Summary page (labor + totals)
       const pricedParts = parts.filter(p => !(String(p.key).toLowerCase() === 'os' || String(p.label).toLowerCase().includes('operating system')));
       const partsSubtotal = pricedParts.reduce((acc, p) => acc + (p.priceMarked || 0), 0);
       const taxableParts = partsSubtotal; // Labor is NOT taxed
@@ -455,23 +519,65 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <tr><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:700">Total (after tax)</td><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:700">$${totalAfterTax.toFixed(2)}</td></tr>
               </tfoot>
             </table>
-            <div style="font-weight:700; margin-top:18px; margin-bottom:6px; font-size:12pt">Notes</div>
-            <div style="border:2px solid #f00; border-radius:4px; min-height:220px; padding:10px"><div style="height:200px"></div></div>
-            <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; margin-top:24px">
-              <div style="flex:1"><div id="sigBox" style="min-height:96px; border-bottom:2px solid #000"></div></div>
-              <div style="width:220px"><div id="dateBox" style="border-bottom:2px solid #000; min-height:24px; margin-bottom:4px"></div></div>
-            </div>
           </div>
         </div>`;
 
-      // Final page: Replace Terms list with a large Notes page
-      const termsPage = `
+      // Final page: Client notes + approval checklist + terms + optional signature/date + download button
+      const checklistHtml = (parts || []).map((p, i) => {
+        const line = `<b>${esc(p.label || '')}</b>${p.desc ? ` — ${esc(p.desc)}` : ''}`;
+        return `
+          <label style="display:block; break-inside:avoid; margin:0 0 6px 0; font-size:10.5pt; line-height:1.25">
+            <input type="checkbox" class="approve-box" data-approve-index="${i}" style="width:14px; height:14px; vertical-align:middle; margin-right:8px" />
+            <span style="vertical-align:middle">${line}</span>
+          </label>`;
+      }).join('');
+      const approvalPage = `
         <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
           <div class="page-inner">
-            <div style="font-weight:700; font-size:13pt; margin-bottom:10px; text-align:center">Notes / Terms</div>
-            <div style="border:2px solid #f00; border-radius:4px; padding:14px; min-height:220mm">
-              <div style="height:200mm"></div>
+            <div style="font-weight:700; font-size:13pt; margin-bottom:10px; text-align:center">Client Notes & Parts Approval</div>
+
+            <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Client Notes</div>
+            <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences…" style="width:100%; min-height:60mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
+
+            <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Parts Approval Checklist</div>
+            <div style="border:2px solid #f00; border-radius:4px; padding:10px">
+              <div style="font-size:10.5pt; color:#444; margin-bottom:8px">Check the components you approve. Leave items unchecked if you do not approve them yet or require changes.</div>
+              <div style="columns:2; column-gap:16px">${checklistHtml || '<div style="color:#666">No parts listed.</div>'}</div>
             </div>
+
+            <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
+            <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
+              <ul style="padding-left:1.1rem; margin:0">
+                <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability, and is subject to change prior to purchase. Special‑order items may require a deposit and may be non‑returnable.</li>
+                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Limitation of Liability:</b> We provide a 90‑day limited warranty covering defects in parts and workmanship under normal use. At our discretion, warranty remedies may include repair, replacement with an equivalent part, or refund. This warranty does not cover physical/impact damage, liquid exposure, cosmetic wear, loss or theft, abuse or neglect, unauthorized repairs/modifications, or damage caused by third‑party accessories. Damage or conditions outside warranty may result in additional diagnostic and/or repair charges, subject to client approval. To the maximum extent permitted by law, our total liability is limited to the amount paid for the applicable device or service, and we are not liable for incidental, indirect, special, or consequential damages.</li>
+                <li style="margin-bottom:0"><b>Data & Software:</b> The client is responsible for backing up all data prior to service. Service may require software updates, configuration changes, operating system reinstall, and/or factory reset, which may result in partial or total data loss. We do not guarantee data retention or recovery and are not responsible for data loss. The client is responsible for software licensing, activation, account credentials, and access to third‑party services.</li>
+              </ul>
+            </div>
+
+            <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; margin-top:16px">
+              <div style="flex:1">
+                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Optional Signature</div>
+                <div style="border:2px solid #f00; border-radius:4px; padding:10px">
+                  <canvas id="sigPad" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff"></canvas>
+                  <div id="typedSigBox" style="display:none; width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; align-items:center; justify-content:center; font-family:'Alex Brush','Segoe Script','Edwardian Script ITC','Brush Script MT','Lucida Handwriting',cursive; font-size:40px; font-style:normal; line-height:1; letter-spacing:0.2px; text-align:center; padding:6px"></div>
+                  <div class="sig-actions no-print" style="display:flex; gap:8px; align-items:center; margin-top:8px">
+                    <button id="sigToggle" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef; font-weight:600">Type Instead</button>
+                    <input id="sigName" type="text" placeholder="Type full name (optional)" style="flex:1; border:1px solid #000; border-radius:4px; padding:6px 8px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; display:none" />
+                    <button id="sigApply" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef; font-weight:600">Apply</button>
+                    <button id="sigClear" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef">Clear</button>
+                  </div>
+                </div>
+              </div>
+              <div style="width:220px">
+                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
+                <div id="dateBox" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box"></div>
+              </div>
+            </div>
+
+            <div class="no-print" style="display:flex; justify-content:center; margin-top:14px">
+              <button id="finalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Preview / Download</button>
+            </div>
+            <div class="no-print" style="text-align:center; margin-top:6px; color:#333; font-size:10.5pt">Tip: Signature is optional. Use “Preview / Download” to print or save as PDF.</div>
           </div>
         </div>`;
 
@@ -481,18 +587,157 @@ function QuoteGeneratorWindow(): JSX.Element {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Custom Build Quote</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />
         <style>
-          @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } }
+          @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } .no-print { display:none !important; } }
           html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
         </style>
         <script>
           try { window.__GB_CUSTOM_PRINT__ = true; console.log('[GB POS] Custom Build Print active'); } catch(e) {}
         </script>
+        <script>
+          (function(){
+            function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
+            ready(function(){
+              // Minimal signature pad (optional)
+              var canvas = document.getElementById('sigPad');
+              var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+              var typedBox = document.getElementById('typedSigBox');
+              var sigToggle = document.getElementById('sigToggle');
+              var sigInput = document.getElementById('sigName');
+              var sigApply = document.getElementById('sigApply');
+              var sigClear = document.getElementById('sigClear');
+              var dateBox = document.getElementById('dateBox');
+              var finalizeBtn = document.getElementById('finalize');
+              var drawing=false, last=[0,0], dirty=false;
+              var typeMode=false;
+
+              function setMode(isType){
+                typeMode = !!isType;
+                try {
+                  if (canvas && canvas.style) canvas.style.display = typeMode ? 'none' : 'block';
+                  if (typedBox && typedBox.style) typedBox.style.display = typeMode ? 'flex' : 'none';
+                  if (sigInput && sigInput.style) sigInput.style.display = typeMode ? 'block' : 'none';
+                  if (sigToggle) sigToggle.textContent = typeMode ? 'Write Instead' : 'Type Instead';
+                } catch(_) {}
+
+                // If switching back to draw mode, the canvas may have been hidden
+                // (0x0 rect) — re-measure after layout.
+                if (!typeMode) {
+                  try { setTimeout(resize, 0); } catch(_) {}
+                }
+              }
+
+              function resize(){
+                if(!canvas || !ctx) return;
+                var r = canvas.getBoundingClientRect();
+                var parentW = 0;
+                try { parentW = canvas.parentElement ? canvas.parentElement.getBoundingClientRect().width : 0; } catch(_) { parentW = 0; }
+                var dpr = (window.devicePixelRatio || 1);
+                var cssW = r.width || parentW || 600;
+                var cssH = r.height || 96;
+                canvas.width = Math.max(1, Math.floor(cssW * dpr));
+                canvas.height = Math.max(1, Math.floor(cssH * dpr));
+                ctx.setTransform(1,0,0,1,0,0);
+                ctx.scale(dpr, dpr);
+                ctx.lineWidth = 2.5;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000000';
+              }
+              function pos(e){ if(!canvas) return [0,0]; var r=canvas.getBoundingClientRect(); var pt=(e.touches? e.touches[0] : e); return [pt.clientX - r.left, pt.clientY - r.top]; }
+              function start(e){ if(!ctx || typeMode) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch(_){} }
+              function move(e){ if(!drawing || !ctx || typeMode) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch(_){} }
+              function end(){ drawing=false; }
+              function setDate(){
+                if(!dateBox) return;
+                var now=new Date();
+                var pad=function(n){ return String(n).padStart(2,'0'); };
+                var mm=pad(now.getMonth()+1), dd=pad(now.getDate()), yy=String(now.getFullYear());
+                dateBox.textContent = mm + '/' + dd + '/' + yy;
+              }
+              function applyTypedSignature(name){
+                if(!typedBox) return;
+                typedBox.textContent = name;
+                setDate();
+              }
+
+              if(canvas && ctx){
+                window.addEventListener('resize', resize, { passive: true });
+                resize();
+                try { canvas.style.touchAction = 'none'; } catch(_){}
+                canvas.addEventListener('pointerdown', function(e){ start(e); try{ if (typeof canvas.setPointerCapture==='function') canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
+                canvas.addEventListener('pointermove', move, { passive:false });
+                window.addEventListener('pointerup', function(){ end(); });
+
+                // Fallbacks for environments where Pointer Events are flaky
+                canvas.addEventListener('mousedown', function(e){ start(e); }, false);
+                canvas.addEventListener('mousemove', function(e){ move(e); }, false);
+                window.addEventListener('mouseup', function(){ end(); }, false);
+                canvas.addEventListener('touchstart', function(e){ start(e); }, { passive:false });
+                canvas.addEventListener('touchmove', function(e){ move(e); }, { passive:false });
+                window.addEventListener('touchend', function(){ end(); }, false);
+                window.addEventListener('pointercancel', function(){ end(); }, false);
+              }
+
+              // Default to draw mode
+              setMode(false);
+
+              // Live preview typed signature into the signature box
+              if (sigInput) sigInput.addEventListener('input', function(){
+                try {
+                  if (!typeMode) return;
+                  var name = (sigInput && sigInput.value ? sigInput.value : '').trim();
+                  if (typedBox) typedBox.textContent = name;
+                } catch(_) {}
+              });
+
+              if(sigToggle) sigToggle.addEventListener('click', function(e){
+                try{ e.preventDefault(); }catch(_){}
+                setMode(!typeMode);
+              });
+
+              if(sigClear) sigClear.addEventListener('click', function(e){
+                try{ e.preventDefault(); }catch(_){}
+                try {
+                  if (canvas && ctx) { ctx.clearRect(0,0,canvas.width,canvas.height); resize(); }
+                } catch(_){}
+                try { if (typedBox) typedBox.textContent = ''; } catch(_){}
+                try { if (sigInput) sigInput.value = ''; } catch(_){}
+                dirty=false;
+                try { if(dateBox) dateBox.textContent=''; }catch(_){}
+              });
+
+              if(sigApply) sigApply.addEventListener('click', function(e){
+                try{ e.preventDefault(); }catch(_){}
+                // Apply works for both draw and type. Always sets date.
+                if (typeMode) {
+                  var name = (sigInput && sigInput.value ? sigInput.value : '').trim();
+                  if(!name) return;
+                  applyTypedSignature(name);
+                } else {
+                  // Draw mode: don't modify signature; simply lock in the date.
+                  setDate();
+                }
+              });
+
+              // Preview/Download (print dialog). Signature is optional.
+              if(finalizeBtn) finalizeBtn.addEventListener('click', function(){
+                try {
+                  // If user drew or typed but didn't hit Apply, set a date anyway.
+                  if ((dirty || typeMode) && (!dateBox || !dateBox.textContent)) { try{ setDate(); }catch(_){} }
+                } catch(_) {}
+                try { window.print(); } catch(_) {}
+              });
+            });
+          })();
+        </script>
       </head>
       <body>
         ${partPagesHtml}
         ${summaryPage}
-        ${termsPage}
+        ${approvalPage}
       </body>
       </html>`;
       // Debug: attempt to save generated HTML into the app DB for inspection
@@ -529,9 +774,8 @@ function QuoteGeneratorWindow(): JSX.Element {
       pages.push(devicePageInteractive(item, title, true));
     });
 
-    // Items page removed (handled later as final page if needed)
-
-    // Signature is now included on the Items page; no separate Signature page
+    // Append final page for all non-custom device quotes
+    pages.push(finalPageInteractive());
 
     return `<!doctype html>
     <html>
@@ -544,6 +788,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           @page { size: A4; margin: 12mm; }
           .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
           .print-page:last-of-type { page-break-after: auto; }
+          .no-print { display:none !important; }
           html, body { background: #ffffff !important; color: #000000 !important; }
         }
         html, body { margin: 0; padding: 0; background: #1f2937; color: #e5e7eb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
@@ -606,7 +851,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         if (sigClear && canvas && ctx) sigClear.addEventListener('click', function(){ try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch{} resize(); dirty=false; typed=false; try{ if (sigInput) sigInput.removeAttribute('disabled'); if (sigApply) sigApply.removeAttribute('disabled'); }catch{} });
 
-        function placeTypedSignature(name){ if (!canvas || !ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); const dpr=(window.devicePixelRatio||1); const cssH = canvas.height / dpr; const size = Math.floor(Math.max(20, cssH * 0.5)); ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font = String(size) + 'px "Brush Script MT", "Lucida Handwriting", cursive, serif'; const cx=(canvas.width/dpr)/2; const cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; typed=true; }
+        function placeTypedSignature(name){ if (!canvas || !ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); const dpr=(window.devicePixelRatio||1); const cssH = canvas.height / dpr; const size = Math.floor(Math.max(20, cssH * 0.5)); ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Edwardian Script ITC", "Brush Script MT", "Lucida Handwriting", cursive'; const cx=(canvas.width/dpr)/2; const cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; typed=true; }
 
         if (sigApply && sigInput) sigApply.addEventListener('click', function(e){ try{ e.preventDefault(); }catch{} const name = (sigInput instanceof HTMLInputElement ? sigInput.value : '').trim(); if (!name) { try{ alert('Please enter your full name to sign.'); }catch{} return; } placeTypedSignature(name); try{ sigInput.setAttribute('disabled',''); }catch{} try{ sigApply.setAttribute('disabled',''); }catch{} });
 
@@ -867,12 +1112,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         pagesArr.push(devicePage(item, title, true));
       });
 
-      // Append the original Items/Notes/Terms/Signature page as the final page (restored behavior)
-      try {
-        pagesArr.push(itemsPage());
-      } catch (e) {
-        // fallback: if itemsPage isn't available for some reason, don't block printing
-      }
+      // Keep Custom PC/Build pipeline as-is (no shared final page appended here).
 
       const html = `<!doctype html>
       <html>
@@ -904,6 +1144,60 @@ function QuoteGeneratorWindow(): JSX.Element {
       } catch {}
       return html;
     }
+
+    const finalPagePrint = () => {
+      const checklistHtml = (labels || [])
+        .map((label, i) => {
+          const safe = esc(label);
+          return `<div style="display:flex; align-items:flex-start; gap:8px; margin:0 0 6px 0"><div style="width:14px; height:14px; border:1px solid #000; border-radius:2px; margin-top:2px"></div> <span>${safe || `Item ${i + 1}`}</span></div>`;
+        })
+        .join('');
+
+      return `
+        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
+          <div class="page-inner" style="display:flex; flex-direction:column; min-height:273mm; padding-top:8px">
+            <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Notes</div>
+            <div style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; box-sizing:border-box"></div>
+
+            <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Checklist</div>
+            <div style="border:2px solid #f00; border-radius:4px; padding:10px; font-size:11pt; line-height:1.35">
+              <div style="columns:2; column-gap:16px">${checklistHtml || '<div style="color:#666">No items listed.</div>'}</div>
+            </div>
+
+            <div style="margin-top:auto">
+              <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
+              <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
+                <ul style="padding-left:1.1rem; margin:0">
+                  <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
+                  <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90‑day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third‑party accessories.</li>
+                  <li style="margin-bottom:6px"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
+                  <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special‑order items may be non‑returnable and subject to supplier restocking policies.</li>
+                  <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non‑refundable.</li>
+                  <li style="margin-bottom:6px"><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
+                  <li style="margin-bottom:0"><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
+                </ul>
+              </div>
+
+              <div style="margin-top:16px">
+                <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; break-inside: avoid; page-break-inside: avoid">
+                  <div style="flex:1">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <div style="font-weight:400; font-size:12pt; white-space:nowrap">Signature</div>
+                      <div style="border-bottom:2px solid #000; height:24px; flex:1"></div>
+                    </div>
+                  </div>
+                  <div style="width:220px">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <div style="font-weight:400; font-size:12pt; white-space:nowrap">Date</div>
+                      <div id="dateBox" style="border-bottom:2px solid #000; height:24px; flex:1"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    };
 
     const specRows = (item: SaleItem) => {
       const rows: Array<[string, string]> = [];
@@ -1188,7 +1482,10 @@ function QuoteGeneratorWindow(): JSX.Element {
               </div>`;
             pages.push(breakdownPage);
           }
-          // Final page (notes/terms) intentionally removed
+          // Final page for all non-custom-build device quotes
+          if (!(first && first.deviceType === 'Custom Build')) {
+            pages.push(finalPagePrint());
+          }
 
           const html = `<!doctype html>
       <html>
@@ -1202,6 +1499,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             @page { size: A4; margin: 12mm; }
             .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
             .print-page:last-of-type { page-break-after: auto; }
+            .no-print { display:none !important; }
           }
           html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
           .page-inner { transform-origin: top center; }
@@ -1609,6 +1907,209 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   function printPreview() {
     setShowPreview(true);
+  }
+
+  async function openHtmlPreview() {
+    try {
+      if (mode !== 'sales') {
+        setSaveMsg('HTML Preview currently available for Sales');
+        setTimeout(() => setSaveMsg(null), 1800);
+        return;
+      }
+      const html = await generateInteractiveSalesHtml();
+      try { if (htmlPreviewUrl) URL.revokeObjectURL(htmlPreviewUrl); } catch {}
+      const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+      setHtmlPreviewUrl(url);
+      setShowHtmlPreview(true);
+    } catch (e) {
+      console.error('openHtmlPreview failed', e);
+      setSaveMsg('Could not open HTML Preview');
+      setTimeout(() => setSaveMsg(null), 2000);
+    }
+  }
+
+  function closeHtmlPreview() {
+    setShowHtmlPreview(false);
+    try { if (htmlPreviewUrl) URL.revokeObjectURL(htmlPreviewUrl); } catch {}
+    setHtmlPreviewUrl(null);
+  }
+
+  function downloadTextFile(filename: string, content: string, mime: string) {
+    try {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 250);
+    } catch (e) {
+      console.error('downloadTextFile failed', e);
+    }
+  }
+
+  function htmlToPlainText(html: string): string {
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      doc.querySelectorAll('script,style,noscript').forEach((n) => n.remove());
+      const text = (doc.body?.innerText || doc.documentElement?.innerText || '').trim();
+      return text;
+    } catch {
+      return String(html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/[pdivtrlih\d]+>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+  }
+
+  async function sendHtmlToGmail() {
+    // Keep the button label "Send to Email" but send from inside the app.
+    try {
+      if (mode !== 'sales') {
+        setSaveMsg('HTML Preview currently available for Sales');
+        setTimeout(() => setSaveMsg(null), 1800);
+        return;
+      }
+      setEmailErr(null);
+      const cfg = await window.api.emailGetConfig();
+      if (cfg?.ok) {
+        setEmailFromName(String(cfg.fromName || 'GadgetBoy Repair & Retail'));
+        setEmailHasPassword(!!cfg.hasAppPassword);
+      }
+      setShowEmailModal(true);
+    } catch {
+      setSaveMsg('Email setup unavailable');
+      setTimeout(() => setSaveMsg(null), 2000);
+    }
+  }
+
+  async function openEmailSettings() {
+    try {
+      setEmailSettingsErr(null);
+      const cfg = await window.api.emailGetConfig();
+      if (cfg?.ok) {
+        setEmailFromName(String(cfg.fromName || 'GadgetBoy Repair & Retail'));
+        setEmailHasPassword(!!cfg.hasAppPassword);
+      }
+      setEmailAppPassword('');
+      setShowEmailSettings(true);
+    } catch {
+      setEmailSettingsErr('Could not load email settings');
+      setShowEmailSettings(true);
+    }
+  }
+
+  async function saveEmailSettings() {
+    try {
+      setEmailSettingsErr(null);
+      setEmailSettingsSaving(true);
+      const name = emailFromName.trim() || 'GadgetBoy Repair & Retail';
+
+      // If a password was provided, update both name + password.
+      if (emailAppPassword.trim()) {
+        const res = await window.api.emailSetGmailAppPassword(emailAppPassword.trim(), name);
+        if (!res?.ok) {
+          setEmailSettingsErr(String(res?.error || 'Could not save app password'));
+          return;
+        }
+        setEmailHasPassword(true);
+        setEmailAppPassword('');
+      } else {
+        const res = await window.api.emailSetFromName(name);
+        if (!res?.ok) {
+          setEmailSettingsErr(String(res?.error || 'Could not save sender name'));
+          return;
+        }
+      }
+
+      setSaveMsg('Email settings saved');
+      setTimeout(() => setSaveMsg(null), 1800);
+      setShowEmailSettings(false);
+    } catch (e: any) {
+      setEmailSettingsErr(String(e?.message || e || 'Could not save settings'));
+    } finally {
+      setEmailSettingsSaving(false);
+    }
+  }
+
+  async function clearEmailPassword() {
+    try {
+      setEmailSettingsErr(null);
+      setEmailSettingsSaving(true);
+      const res = await window.api.emailClearGmailAppPassword();
+      if (!res?.ok) {
+        setEmailSettingsErr(String(res?.error || 'Could not clear password'));
+        return;
+      }
+      setEmailHasPassword(false);
+      setEmailAppPassword('');
+      setSaveMsg('Email password cleared');
+      setTimeout(() => setSaveMsg(null), 1800);
+    } catch {
+      setEmailSettingsErr('Could not clear password');
+    } finally {
+      setEmailSettingsSaving(false);
+    }
+  }
+
+  async function doSendEmail() {
+    try {
+      if (mode !== 'sales') return;
+      setEmailErr(null);
+      const to = emailTo.trim();
+      if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        setEmailErr('Enter a valid recipient email');
+        return;
+      }
+
+      setEmailSending(true);
+      // Ensure password exists (if user pasted one in this modal, save it first)
+      if (!emailHasPassword) {
+        const pass = emailAppPassword.trim();
+        if (!pass) {
+          setEmailErr('Paste the Gmail App Password for gadgetboysc@gmail.com');
+          return;
+        }
+        const res = await window.api.emailSetGmailAppPassword(pass, emailFromName.trim());
+        if (!res?.ok) {
+          setEmailErr(String(res?.error || 'Could not save email credentials'));
+          return;
+        }
+        setEmailHasPassword(true);
+        setEmailAppPassword('');
+      }
+
+      const html = await generateInteractiveSalesHtml();
+      const cust = (sales.customerName || '').trim() || 'Customer';
+      const sanitize = (s: string) => String(s || '').replace(/[^a-z0-9\-\_\+]+/gi, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
+      const filename = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}.html`;
+      const subject = 'Gadgetboy Quote';
+      const bodyText = 'Attached is the following quote for the product(s) you have requested, feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!';
+
+      const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
+      if (!sendRes?.ok) {
+        setEmailErr(String(sendRes?.error || 'Failed to send email'));
+        return;
+      }
+
+      setShowEmailModal(false);
+      setSaveMsg('Email sent');
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch (e: any) {
+      setEmailErr(String(e?.message || e || 'Failed to send'));
+    } finally {
+      setEmailSending(false);
+    }
   }
 
   async function saveQuote() {
@@ -2134,16 +2635,70 @@ function QuoteGeneratorWindow(): JSX.Element {
                             {(Array.isArray((it.dynamic as any)?.pcExtras) ? (it.dynamic as any).pcExtras : []).map((e: any, iExtra: number) => (
                               <div key={`pc-extra-${iExtra}`} className="col-span-16">
                                 <div className="flex items-end gap-2">
+                                  <div className="w-[220px]">
+                                    <label className="block text-xs text-zinc-400 mb-1">Image</label>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                        {e?.image ? (
+                                          <img src={String(e.image)} alt={String(e?.label || e?.type || 'Peripheral')} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <span className="text-[10px] text-zinc-500">No image</span>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <button
+                                          type="button"
+                                          className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                          onClick={() => {
+                                            const input = document.createElement('input');
+                                            input.type = 'file';
+                                            input.accept = 'image/*';
+                                            input.onchange = (ev: any) => addImageForPcExtra(idx, iExtra, (ev.target as HTMLInputElement).files);
+                                            input.click();
+                                          }}
+                                        >
+                                          Add Image
+                                        </button>
+                                        {e?.image && (
+                                          <button
+                                            type="button"
+                                            className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                            onClick={() => removeImageForPcExtra(idx, iExtra)}
+                                          >
+                                            Remove
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
                                   <div className="flex-1 min-w-0">
-                                    <label className="block text-xs text-zinc-400 mb-1">Description</label>
-                                    <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Item description" value={e?.desc || ''} onChange={(ev) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => { if (i2 !== idx) return x; const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : []; list[iExtra] = { ...(list[iExtra] || {}), desc: ev.target.value }; return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } }; }) }))} />
+                                    <label className="block text-xs text-zinc-400 mb-1">Peripheral</label>
+                                    <ComboInput
+                                      value={String(e?.label || '')}
+                                      onChange={(v) => setSales((s) => ({
+                                        ...s,
+                                        items: s.items.map((x, i2) => {
+                                          if (i2 !== idx) return x;
+                                          const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : [];
+                                          list[iExtra] = { ...(list[iExtra] || {}), label: v };
+                                          return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } };
+                                        }),
+                                      }))}
+                                      options={PERIPHERAL_TYPE_OPTIONS}
+                                      placeholder="Select or type a peripheral…"
+                                    />
+                                    <div className="mt-2">
+                                      <label className="block text-xs text-zinc-400 mb-1">Description</label>
+                                      <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Optional notes (brand/model, color, etc.)" value={e?.desc || ''} onChange={(ev) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => { if (i2 !== idx) return x; const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : []; list[iExtra] = { ...(list[iExtra] || {}), desc: ev.target.value }; return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } }; }) }))} />
+                                    </div>
                                   </div>
                                   <div className="w-32">
                                     <label className="block text-xs text-zinc-400 mb-1">Price</label>
                                     <input type="number" step="0.01" min="0" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="0.00" value={e?.price || ''} onChange={(ev) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => { if (i2 !== idx) return x; const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : []; list[iExtra] = { ...(list[iExtra] || {}), price: (ev.target as HTMLInputElement).value }; return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } }; }) }))} />
+                                    <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                                   </div>
                                   <div>
-                                    <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removePcExtra(idx, iExtra)}>✕</button>
+                                    <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removePcExtra(idx, iExtra)}>✕</button>
                                   </div>
                                 </div>
                               </div>
@@ -3014,39 +3569,143 @@ function QuoteGeneratorWindow(): JSX.Element {
           <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-zinc-400 h-6 flex items-center">{saveMsg}</div>
           <div className="flex flex-wrap items-center gap-1">
-            <button
-              className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
-              onClick={async () => {
-                try {
-                  if (mode !== 'sales') { setSaveMsg('Interactive editor currently available for Sales'); setTimeout(() => setSaveMsg(null), 1800); return; }
-                  const html = await generateInteractiveSalesHtml();
-                  const title = `Interactive Quote - ${(sales.customerName||'').trim()||'Customer'}`;
-                  const res = await (window as any).api.openInteractiveHtml(html, title);
-                  if (!res?.ok && !res?.canceled) { setSaveMsg('Could not open interactive editor'); setTimeout(() => setSaveMsg(null), 2000); }
-                } catch {
-                  setSaveMsg('Failed to open interactive editor'); setTimeout(() => setSaveMsg(null), 2000);
-                }
-              }}
-            >Interactive Editor</button>
-            <button
-              className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
-              onClick={async () => {
-                try {
-                  if (mode !== 'sales') { setSaveMsg('HTML export currently available for Sales'); setTimeout(() => setSaveMsg(null), 1800); return; }
-                  const html = await generateInteractiveSalesHtml();
-                  const name = `Quote-${(sales.customerName||'').trim()||'Customer'}`;
-                  const res = await (window as any).api.exportHtml(html, name);
-                  if (res?.ok) { setSaveMsg('Saved interactive HTML'); } else if (res?.canceled) { /* no-op */ } else { setSaveMsg('Could not save HTML'); }
-                  setTimeout(() => setSaveMsg(null), 2000);
-                } catch {
-                  setSaveMsg('Failed to export HTML'); setTimeout(() => setSaveMsg(null), 2000);
-                }
-              }}
-            >Download HTML</button>
             <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'Saving…' : 'Save Quote'}</button>
-            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Preview / Print</button>
+            <button
+              className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
+              onClick={openHtmlPreview}
+            >HTML Preview</button>
+            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Print Preview</button>
           </div>
           </div>
+
+          {showHtmlPreview && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={closeHtmlPreview}>
+              <div className="absolute top-3 right-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md text-base font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+                  onClick={async () => {
+                    try {
+                      if (mode !== 'sales') return;
+                      const html = await generateInteractiveSalesHtml();
+                      const name = `Quote-${(sales.customerName || '').trim() || 'Customer'}`;
+                      const api = (window as any).api;
+                      if (api && typeof api.exportHtml === 'function') {
+                        const res = await api.exportHtml(html, name);
+                        if (res?.ok) { setSaveMsg('Saved interactive HTML'); } else if (!res?.canceled) { setSaveMsg('Could not save HTML'); }
+                      } else {
+                        downloadTextFile(`${name}.html`, html, 'text/html');
+                        setSaveMsg('Downloaded interactive HTML');
+                      }
+                      setTimeout(() => setSaveMsg(null), 2000);
+                    } catch {
+                      setSaveMsg('Failed to export HTML'); setTimeout(() => setSaveMsg(null), 2000);
+                    }
+                  }}
+                >Download</button>
+                <button
+                  className="px-4 py-2 bg-zinc-900 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#39FF14]/60"
+                  onClick={sendHtmlToGmail}
+                >Send to Email</button>
+                <button
+                  className="px-4 py-2 bg-zinc-800 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-700"
+                  onClick={openEmailSettings}
+                >Email Settings</button>
+                <button
+                  className="px-4 py-2 bg-zinc-800 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-700"
+                  onClick={closeHtmlPreview}
+                >Close</button>
+              </div>
+
+              {showEmailModal && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]" onClick={() => { if (!emailSending) setShowEmailModal(false); }}>
+                  <div className="bg-zinc-900 text-gray-100 border border-zinc-700 rounded-lg w-[720px] max-w-[95vw] p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-lg font-semibold">Send Quote Email</div>
+                      <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { if (!emailSending) setShowEmailModal(false); }}>Close</button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-12 gap-3 items-end">
+                      <div className="col-span-12">
+                        <div className="text-xs text-zinc-400 mb-1">To</div>
+                        <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@email.com" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                      </div>
+                      <div className="col-span-12">
+                        <div className="text-xs text-zinc-400 mb-1">From Name (shows as sender name)</div>
+                        <input value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} placeholder="GadgetBoy Repair & Retail" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                      </div>
+                      {!emailHasPassword && (
+                        <div className="col-span-12">
+                          <div className="text-xs text-zinc-400 mb-1">Gmail App Password (for gadgetboysc@gmail.com)</div>
+                          <input value={emailAppPassword} onChange={(e) => setEmailAppPassword(e.target.value)} placeholder="xxxx xxxx xxxx xxxx" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                          <div className="text-[11px] text-zinc-400 mt-1">This is an App Password from Google (not your normal password). It is stored encrypted in the app’s userData.</div>
+                        </div>
+                      )}
+                    </div>
+                    {emailErr && (<div className="mt-3 text-sm text-red-300">{emailErr}</div>)}
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSending} onClick={() => setShowEmailModal(false)}>Cancel</button>
+                      <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSending} onClick={openEmailSettings}>Email Settings</button>
+                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSending} onClick={doSendEmail}>{emailSending ? 'Sending…' : 'Send'}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showEmailSettings && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[70]" onClick={() => { if (!emailSettingsSaving) setShowEmailSettings(false); }}>
+                  <div className="bg-zinc-900 text-gray-100 border border-zinc-700 rounded-lg w-[760px] max-w-[95vw] p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-lg font-semibold">Email Settings</div>
+                      <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { if (!emailSettingsSaving) setShowEmailSettings(false); }}>Close</button>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="text-xs text-zinc-400 mb-1">Sender Address</div>
+                      <div className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm">gadgetboysc@gmail.com</div>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="text-xs text-zinc-400 mb-1">Sender Display Name</div>
+                      <input value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="text-xs text-zinc-400 mb-1">Gmail App Password</div>
+                      <div className="text-[11px] text-zinc-400 mb-2">Required to send mail from inside the app. Stored encrypted in userData via Electron safeStorage.</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm">Status:</div>
+                        <div className={`text-sm font-semibold ${emailHasPassword ? 'text-[#39FF14]' : 'text-yellow-200'}`}>{emailHasPassword ? 'Configured' : 'Not configured'}</div>
+                        <div className="flex-1" />
+                        {emailHasPassword && (
+                          <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving} onClick={clearEmailPassword}>Clear Password</button>
+                        )}
+                      </div>
+                      <input value={emailAppPassword} onChange={(e) => setEmailAppPassword(e.target.value)} placeholder={emailHasPassword ? 'Paste to replace password (optional)' : 'Paste app password'} className="mt-2 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                    </div>
+
+                    {emailSettingsErr && (<div className="mt-3 text-sm text-red-300">{emailSettingsErr}</div>)}
+
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving} onClick={() => setShowEmailSettings(false)}>Cancel</button>
+                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSettingsSaving} onClick={saveEmailSettings}>{emailSettingsSaving ? 'Saving…' : 'Save Settings'}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white text-black w-[1100px] max-w-[95vw] max-h-[90vh] overflow-hidden rounded shadow-xl" onClick={(e) => e.stopPropagation()}>
+                {htmlPreviewUrl ? (
+                  <iframe
+                    title="HTML Preview"
+                    src={htmlPreviewUrl}
+                    className="w-full h-[90vh]"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                  />
+                ) : (
+                  <div className="p-6 text-sm">Loading…</div>
+                )}
+              </div>
+            </div>
+          )}
 
           {showPreview && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
@@ -3056,6 +3715,20 @@ function QuoteGeneratorWindow(): JSX.Element {
                 className="px-4 py-2 bg-zinc-900 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#39FF14]/60"
                 onClick={printDocument}
               >Print</button>
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-md text-base font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+                onClick={() => {
+                  try {
+                    if (mode !== 'sales') return;
+                    const cust = (sales.customerName || '').trim() || 'Customer';
+                    const html = buildSalesPrintHtml();
+                    // Word can open HTML when saved with .doc extension
+                    downloadTextFile(`Quote-${cust}-print.doc`, html, 'application/msword');
+                  } catch {
+                    setSaveMsg('Could not save'); setTimeout(() => setSaveMsg(null), 2000);
+                  }
+                }}
+              >Save</button>
             </div>
             <div id="quote-print-root" className="bg-white text-black w-[1100px] max-w-[95vw] max-h-[90vh] overflow-auto rounded shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="p-6">
@@ -3131,6 +3804,21 @@ function QuoteGeneratorWindow(): JSX.Element {
                           if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
                           if (!desc && !priceRaw && !image && !image2) return;
                           parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+                        });
+
+                        // Peripherals (Custom PC) — render as line items directly under OS
+                        const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
+                        pcExtras.forEach((e: any, i: number) => {
+                          const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
+                          const desc = String(e?.desc || '').trim();
+                          const priceRaw = Number(e?.price || 0) || 0;
+                          const imagesArr = Array.isArray(e?.images) ? e.images : [];
+                          let image: string | undefined = e?.image ? String(e.image) : undefined;
+                          let image2: string | undefined = e?.image2 ? String(e.image2) : undefined;
+                          if (!image && imagesArr[0]) image = String(imagesArr[0]);
+                          if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
+                          if (!desc && !priceRaw && !image && !image2) return;
+                          parts.push({ label, key: `pc-extra-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
                         });
                         const extras = Array.isArray(dyn.extraParts) ? dyn.extraParts : [];
                         extras.forEach((e: any) => {
@@ -3465,41 +4153,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                               </div>
                             </React.Fragment>
                           ))}
-                          {/* Final page: Items Listed + Notes + Terms + Signature */}
-                          <div className="page-break" style={{ height: 1 }} />
-                          {(() => {
-                            // Items Listed page: one checkbox per device model in the quote
-                            const labels = sales.items.map((it, idx) => {
-                              const modelForItem = String(((it.model ?? it.dynamic?.model) || '')).trim();
-                              const label = (modelForItem ? [it.brand, modelForItem].filter(Boolean).join(' ').trim() : '') || `Item ${idx + 1}`;
-                              return label;
-                            });
-                            return (
-                              <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
-                                <div style={{ paddingTop: 8 }}>
-                                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '13pt', textAlign: 'center' }}>Notes & Terms</div>
-                                  <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, minHeight: '240mm' }}>
-                                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Terms and Conditions</div>
-                                    <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '12pt', lineHeight: 1.5 }}>
-                                      <li style={{ marginBottom: 6 }}><b>Quote Validity & Availability:</b> Prices are valid at issue and subject to availability; special‑order parts may be non‑returnable.</li>
-                                      <li style={{ marginBottom: 6 }}><b>Warranty:</b> 90‑day limited hardware warranty for defects under normal use; exclusions apply.</li>
-                                      <li style={{ marginBottom: 6 }}><b>Data & Software:</b> Client responsible for backups and licensing; we are not liable for data loss.</li>
-                                      <li style={{ marginBottom: 6 }}><b>Liability:</b> Liability limited to amount paid; incidental or consequential damages are excluded.</li>
-                                    </ul>
-                                    <div style={{ height: '200mm' }} />
-                                  </div>
-                                  <div id="sigSection" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 24 }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div id="sigBox" style={{ minHeight: 96, borderBottom: '2px solid #000' }} />
-                                    </div>
-                                    <div style={{ width: 220 }}>
-                                      <div id="dateBox" style={{ borderBottom: '2px solid #000', minHeight: 24, marginBottom: 4 }} />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
+                          {/* Final page is rendered once after all devices (below). */}
                         </>
                       );
                     })()}
@@ -3615,36 +4269,53 @@ function QuoteGeneratorWindow(): JSX.Element {
                       });
                       return (
                         <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
-                          <div style={{ paddingTop: 8 }}>
-                            {/* Notes section */}
-                            <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '13pt' }}>Notes</div>
-                            <div style={{ border: '2px solid #FF0000', borderRadius: 4, minHeight: 140, padding: 10 }}>
-                              {/* Blank area for handwriting */}
-                              <div style={{ height: 120 }} />
+                          <div style={{ paddingTop: 8, minHeight: '273mm', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '12pt' }}>Notes</div>
+                            <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 10, height: 200 }}>
+                              <div style={{ height: 180 }} />
                             </div>
 
-                            {/* Terms and Conditions (condensed) */}
-                            <div style={{ fontWeight: 700, marginTop: 16, marginBottom: 6, fontSize: '13pt' }}>Terms and Conditions</div>
-                            <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, fontSize: '12pt', lineHeight: 1.45 }}>
-                              <div style={{ marginBottom: 6 }}>By signing below, the client acknowledges and agrees to the following concise terms:</div>
-                              <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
-                                <li style={{ marginBottom: 6 }}><b>Warranty & Remedies:</b> We provide a 90‑day limited warranty covering defects in parts and workmanship. Remedies may include repair, replacement with equivalent parts, or refund at our discretion. This warranty excludes damage from accidents, liquids, abuse, neglect, or unauthorized repairs/modifications.</li>
-                                <li style={{ marginBottom: 6 }}><b>Physical Damage & Exclusions:</b> Physical/impact damage, liquid exposure, cosmetic wear, loss/theft, and damage caused by third‑party accessories are excluded from warranty and may incur additional repair charges.</li>
-                                <li style={{ marginBottom: 6 }}><b>Parts & Availability:</b> Parts are subject to availability; special‑order items may require deposits and may be non‑returnable. Quoted prices exclude taxes and fees; applicable taxes will be added at purchase.</li>
-                                <li style={{ marginBottom: 6 }}><b>Data & Software:</b> Clients must back up data prior to service. We are not responsible for data loss, software configuration, or recovery. Service may require restoring devices to factory settings.</li>
-                                <li style={{ marginBottom: 4 }}><b>Limitation of Liability:</b> Our liability is limited to the cost paid for the device or service; we are not liable for incidental, indirect, or consequential damages.</li>
-                              </ul>
-                            </div>
-
-                            {/* Signature */}
-                            <div style={{ display: 'flex', gap: 24, alignItems: 'center', marginTop: 70 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ borderBottom: '2px solid #000', height: 0, marginBottom: 4 }} />
-                                <div style={{ fontSize: '12pt' }}>Client Signature</div>
+                            <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Checklist</div>
+                            <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 10, fontSize: '11pt', lineHeight: 1.35 }}>
+                              <div style={{ columns: 2, columnGap: 16 } as any}>
+                                {labels.map((l, i) => (
+                                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                                    <div style={{ width: 14, height: 14, border: '1px solid #000', marginTop: 2, borderRadius: 2 }} />
+                                    <span>{l || `Item ${i + 1}`}</span>
+                                  </div>
+                                ))}
                               </div>
-                              <div style={{ width: 220 }}>
-                                <div style={{ borderBottom: '2px solid #000', height: 0, marginBottom: 4 }} />
-                                <div style={{ fontSize: '12pt' }}>Date</div>
+                            </div>
+
+                            <div style={{ marginTop: 'auto' }}>
+                              <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Terms and Conditions</div>
+                              <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, fontSize: '11pt', lineHeight: 1.45 }}>
+                                <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
+                                  <li style={{ marginBottom: 6 }}><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Warranty & Exclusions:</b> 90‑day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third‑party accessories.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special‑order items may be non‑returnable and subject to supplier restocking policies.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non‑refundable.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
+                                  <li style={{ marginBottom: 0 }}><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
+                                </ul>
+                              </div>
+
+                              <div style={{ marginTop: 16 }}>
+                                <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                      <div style={{ fontWeight: 400, fontSize: '12pt', whiteSpace: 'nowrap' }}>Signature</div>
+                                      <div style={{ borderBottom: '2px solid #000', height: 24, flex: 1 }} />
+                                    </div>
+                                  </div>
+                                  <div style={{ width: 220 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                      <div style={{ fontWeight: 400, fontSize: '12pt', whiteSpace: 'nowrap' }}>Date</div>
+                                      <div style={{ borderBottom: '2px solid #000', height: 24, flex: 1 }} />
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>

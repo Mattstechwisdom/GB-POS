@@ -4,6 +4,9 @@ import CustomerSearchForm, { CustomerSearchFilters } from './CustomerSearchForm'
 import CustomerTable from './CustomerTable';
 import Button from './Button';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
+import ContextMenu, { ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
+import { formatPhone } from '../lib/format';
 
 interface Props {
   onClose: () => void;
@@ -16,6 +19,9 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
+	const ctx = useContextMenu<Customer>();
+	const ctxCustomer = ctx.state.data;
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -82,6 +88,52 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
     }
   }, []);
 
+  const openContextMenu = useCallback((e: React.MouseEvent, c: Customer) => {
+    setSelected(c);
+    ctx.openFromEvent(e, c);
+  }, [ctx]);
+
+  const ctxItems: ContextMenuItem[] = useMemo(() => {
+    if (!ctxCustomer) return [];
+    const name = [ctxCustomer.firstName, ctxCustomer.lastName].filter(Boolean).join(' ').trim() || `Customer #${ctxCustomer.id}`;
+    const phone = (formatPhone(String(ctxCustomer.phone || '')) || String(ctxCustomer.phone || '')).trim();
+    const phoneAlt = (formatPhone(String((ctxCustomer as any).phoneAlt || '')) || String((ctxCustomer as any).phoneAlt || '')).trim();
+    const email = String((ctxCustomer as any).email || '').trim();
+    const api = (window as any).api;
+
+    return [
+      { type: 'header', label: name },
+      { label: 'Open Customer', onClick: async () => { await api?.openCustomerOverview?.(ctxCustomer.id); } },
+      { label: 'New Work Order', onClick: async () => {
+        await api?.openNewWorkOrder?.({ customerId: ctxCustomer.id, customerName: name, customerPhone: ctxCustomer.phone || '' });
+      }},
+      { type: 'separator' },
+      { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(phone); } catch {} } },
+      { label: 'Copy Phone (alt)', disabled: !phoneAlt, hint: phoneAlt || undefined, onClick: async () => { if (!phoneAlt) return; try { await navigator.clipboard.writeText(phoneAlt); } catch {} } },
+      { label: 'Copy Email', disabled: !email, hint: email || undefined, onClick: async () => { if (!email) return; try { await navigator.clipboard.writeText(email); } catch {} } },
+      { type: 'separator' },
+      { label: 'Copy Name', onClick: async () => { try { await navigator.clipboard.writeText(name); } catch {} } },
+      { type: 'separator' },
+      {
+        label: 'Delete…',
+        danger: true,
+        onClick: async () => {
+          try {
+            const orders = await api?.findWorkOrders?.({ customerId: ctxCustomer.id }).catch(() => []);
+            const count = Array.isArray(orders) ? orders.length : 0;
+            const msg = count > 0
+              ? `Delete ${name}?\n\nThis customer has ${count} work order(s). Deleting the customer may leave old work orders without a linked customer.`
+              : `Delete ${name}?`;
+            if (!window.confirm(msg)) return;
+            await api?.dbDelete?.('customers', ctxCustomer.id);
+          } catch (e) {
+            console.error('Delete customer failed', e);
+          }
+        },
+      },
+    ];
+  }, [ctxCustomer]);
+
   async function handleAddCustomer(payload: Partial<Customer>) {
     try {
       const added = await window.api.addCustomer({ ...payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
@@ -105,6 +157,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
             selectedId={selected?.id}
             onSelect={c => setSelected(c)}
             onActivate={handleActivate}
+				onContextMenu={openContextMenu}
           />
         </div>
         <div className="mt-auto p-3 border-t border-zinc-700 flex items-center justify-between gap-2 bg-zinc-800/60 sticky bottom-0">
@@ -121,6 +174,15 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
           onSaved={(c) => { setCustomersList(s => { const idx = s.findIndex(x => x.id === c.id); if (idx === -1) return [...s, c]; const copy = [...s]; copy[idx] = c; return copy; }); }}
         />
       )}
+
+		<ContextMenu
+			id="customer-search-ctx"
+			open={ctx.state.open}
+			x={ctx.state.x}
+			y={ctx.state.y}
+			items={ctxItems}
+			onClose={ctx.close}
+		/>
     </div>
   );
 };

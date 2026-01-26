@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { listTechnicians } from '../lib/admin';
 import { formatPhone } from '../lib/format';
+import ContextMenu, { ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
 
 interface WorkOrderRow {
   id: number; status?: string; assignedTo?: string | null; checkInAt?: string; customerId?: number;
@@ -15,13 +17,12 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   const [techIndex, setTechIndex] = useState<Record<string,string>>({});
   const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string }>>({});
   const [loading, setLoading] = useState(false);
-  const [ctxOpen, setCtxOpen] = useState(false);
-  const [ctxX, setCtxX] = useState(0);
-  const [ctxY, setCtxY] = useState(0);
-  const [ctxRow, setCtxRow] = useState<WorkOrderRow | null>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+
+	const ctx = useContextMenu<WorkOrderRow>();
+	const ctxRow = ctx.state.data;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,27 +68,10 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     return () => { try { if (unsub) unsub(); } catch {} };
   }, [load]);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (!ctxOpen) return;
-      // Close menu when clicking outside
-      const el = document.getElementById('wo-ctx-menu');
-      if (el && !el.contains(e.target as Node)) setCtxOpen(false);
-    };
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtxOpen(false); };
-    window.addEventListener('mousedown', onClick);
-    window.addEventListener('keydown', onEsc);
-    return () => { window.removeEventListener('mousedown', onClick); window.removeEventListener('keydown', onEsc); };
-  }, [ctxOpen]);
 
   const openContextMenu = (e: React.MouseEvent, r: WorkOrderRow) => {
-    e.preventDefault();
     setSelectedId(r.id);
-    // Use viewport coordinates and render menu in a portal with fixed positioning to avoid clipping
-    setCtxX(e.clientX);
-    setCtxY(e.clientY);
-    setCtxRow(r);
-    setCtxOpen(true);
+    ctx.openFromEvent(e, r);
   };
 
   const computeTotals = (w: any) => {
@@ -104,32 +88,62 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   };
 
   const onOpen = async () => {
-    if (!ctxRow) return; setCtxOpen(false);
-    await (window as any).api.openNewWorkOrder({ workOrderId: ctxRow.id });
+    if (!ctxRow) return;
+    await (window as any).api?.openNewWorkOrder?.({ workOrderId: ctxRow.id });
   };
   const onViewCustomer = async () => {
-    if (!ctxRow?.customerId) return; setCtxOpen(false);
-    await (window as any).api.openCustomerOverview(ctxRow.customerId);
+    if (!ctxRow?.customerId) return;
+    await (window as any).api?.openCustomerOverview?.(ctxRow.customerId);
   };
   const onCopyInvoice = async () => {
-    if (!ctxRow) return; setCtxOpen(false);
+    if (!ctxRow) return;
     const inv = `GB${String(ctxRow.id).padStart(7,'0')}`;
     try { await navigator.clipboard.writeText(inv); } catch { /* ignore */ }
   };
+  const onCopyPhone = async () => {
+    if (!ctxRow) return;
+    const rawPhone = (ctxRow.customerId && customerIndex[ctxRow.customerId!]?.phone) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
+    const phone = (formatPhone(rawPhone || '') || rawPhone || '').toString().trim();
+    if (!phone) return;
+    try { await navigator.clipboard.writeText(phone); } catch { /* ignore */ }
+  };
+  const onPrintReceipt = async () => {
+    if (!ctxRow) return;
+    await (window as any).api?.openCustomerReceipt?.({ workOrderId: ctxRow.id });
+  };
+  const onPrintReleaseForm = async () => {
+    if (!ctxRow) return;
+    await (window as any).api?.openReleaseForm?.({ workOrderId: ctxRow.id });
+  };
+  const onDuplicate = async () => {
+    if (!ctxRow) return;
+    const nowIso = new Date().toISOString();
+    const base = { ...ctxRow } as any;
+    delete base.id;
+    const draft = {
+      ...base,
+      status: 'open',
+      amountPaid: 0,
+      checkInAt: nowIso,
+    };
+    const totals = computeTotals(draft);
+    draft.totals = totals;
+    await (window as any).api?.dbAdd?.('workOrders', draft);
+  };
   const onMarkPaid = async () => {
-    if (!ctxRow) return; setCtxOpen(false);
+    if (!ctxRow) return;
     const totals = computeTotals(ctxRow);
     const updated = { ...ctxRow, amountPaid: totals.total, totals: { ...totals, remaining: 0 }, status: 'closed' };
-    await (window as any).api.dbUpdate('workOrders', ctxRow.id, updated);
+    await (window as any).api?.dbUpdate?.('workOrders', ctxRow.id, updated);
   };
   const onReopen = async () => {
-    if (!ctxRow) return; setCtxOpen(false);
+    if (!ctxRow) return;
     const totals = computeTotals(ctxRow);
     const updated = { ...ctxRow, status: 'open', totals };
-    await (window as any).api.dbUpdate('workOrders', ctxRow.id, updated);
+    await (window as any).api?.dbUpdate?.('workOrders', ctxRow.id, updated);
   };
   const onDelete = async () => {
-    if (!ctxRow) return; setCtxOpen(false);
+    if (!ctxRow) return;
     setConfirmText('');
     setConfirmOpen(true);
   };
@@ -141,11 +155,31 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     setConfirmOpen(false);
   };
 
-  // Compute clamped position so the menu stays within viewport
-  const menuWidth = 240; // approximate
-  const menuHeight = 260; // approximate; grows with items
-  const posLeft = Math.max(8, Math.min(ctxX, (typeof window !== 'undefined' ? window.innerWidth : 0) - menuWidth - 8));
-  const posTop = Math.max(8, Math.min(ctxY, (typeof window !== 'undefined' ? window.innerHeight : 0) - menuHeight - 8));
+  const ctxItems: ContextMenuItem[] = useMemo(() => {
+    if (!ctxRow) return [];
+    const inv = `GB${String(ctxRow.id).padStart(7,'0')}`;
+    const remaining = (ctxRow.totals?.remaining ?? Math.max(0, (ctxRow.totals?.total ?? 0) - (ctxRow.amountPaid || 0)));
+    const hasCustomer = !!ctxRow.customerId;
+    const rawPhone = (ctxRow.customerId && customerIndex[ctxRow.customerId!]?.phone) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
+    const phone = (formatPhone(rawPhone || '') || rawPhone || '').toString().trim();
+
+    return [
+      { type: 'header', label: `Invoice ${inv}` },
+      { label: 'Edit / Open', onClick: onOpen },
+      { label: 'View Customer', onClick: onViewCustomer, disabled: !hasCustomer },
+      { type: 'separator' },
+      { label: 'Copy Invoice #', onClick: onCopyInvoice },
+      { label: 'Copy Phone', onClick: onCopyPhone, disabled: !phone, hint: phone ? phone : undefined },
+      { type: 'separator' },
+      { label: 'Print Customer Receipt', onClick: onPrintReceipt },
+      { label: 'Print Release Form', onClick: onPrintReleaseForm },
+      { type: 'separator' },
+      { label: 'Duplicate', onClick: onDuplicate },
+      remaining > 0 ? ({ label: 'Mark Paid in Full', onClick: onMarkPaid } as ContextMenuItem) : ({ label: 'Reopen', onClick: onReopen } as ContextMenuItem),
+      { type: 'separator' },
+      { label: 'Delete…', onClick: onDelete, danger: true },
+    ];
+  }, [ctxRow, customerIndex]);
 
   return (
     <div className="overflow-x-auto relative" ref={tableRef}>
@@ -258,30 +292,14 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
           })}
         </tbody>
       </table>
-      {ctxOpen && ctxRow && createPortal(
-        <>
-          {/* backdrop to handle outside clicks */}
-          <div className="fixed inset-0 z-40" onMouseDown={() => setCtxOpen(false)} />
-          <div
-            id="wo-ctx-menu"
-            className="fixed z-50 min-w-[220px] bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1"
-            style={{ left: posLeft, top: posTop }}
-          >
-            <div className="px-3 py-2 text-xs text-zinc-400">Invoice GB{String(ctxRow.id).padStart(7,'0')}</div>
-            <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={onOpen}>Open</button>
-            <button className="w-full text-left px-3 py-2 hover:bg-zinc-800 disabled:opacity-50" onClick={onViewCustomer} disabled={!ctxRow.customerId}>View Customer</button>
-            <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={onCopyInvoice}>Copy Invoice #</button>
-            {((ctxRow.totals?.remaining ?? (ctxRow.totals?.total ?? 0) - (ctxRow.amountPaid || 0)) > 0) ? (
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={onMarkPaid}>Mark Paid in Full</button>
-            ) : (
-              <button className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={onReopen}>Reopen</button>
-            )}
-            <div className="my-1 border-t border-zinc-800" />
-            <button className="w-full text-left px-3 py-2 hover:bg-red-900/50 text-red-300" onClick={onDelete}>Delete…</button>
-          </div>
-        </>,
-        document.body
-      )}
+      <ContextMenu
+        id="wo-ctx-menu"
+        open={ctx.state.open}
+        x={ctx.state.x}
+        y={ctx.state.y}
+        items={ctxItems}
+        onClose={ctx.close}
+      />
 
       {confirmOpen && ctxRow && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center">

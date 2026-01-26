@@ -92,53 +92,69 @@ try {
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
 	const root = createRoot(rootEl);
-
-	const wrap = (node: React.ReactNode) => <UpdateGate>{node}</UpdateGate>;
 	
 	if (showDeviceCategories) {
-		root.render(wrap(<DeviceCategoriesWindow />));
+		root.render(<DeviceCategoriesWindow />);
 	} else if (showWorkOrderRepairPicker) {
-		root.render(wrap(<WorkOrderRepairPickerWindow />));
+		root.render(<WorkOrderRepairPickerWindow />);
 	} else if (showRepairCategories) {
 		const modeParam = params.get('mode');
 		const mode = modeParam === 'admin' || modeParam === 'workorder' ? modeParam : 'admin';
-		root.render(wrap(<RepairCategoriesWindow mode={mode} />));
+		root.render(<RepairCategoriesWindow mode={mode} />);
 	} else if (showCheckout) {
-		root.render(wrap(<CheckoutWindow />));
+		root.render(<CheckoutWindow />);
 	} else if (showCustomerOverview) {
-		root.render(wrap(<CustomerOverviewWindow onClose={() => window.close()} closeOnSave={false} />));
+		root.render(<CustomerOverviewWindow onClose={() => window.close()} closeOnSave={false} />);
 	} else if (showDevMenu) {
-		root.render(wrap(<DevMenuWindow />));
+		root.render(<DevMenuWindow />);
 	} else if (showDataTools) {
-		root.render(wrap(<DataToolsWindow />));
+		root.render(<DataToolsWindow />);
 	} else if (showReporting) {
-		root.render(wrap(<ReportingWindow />));
+		root.render(<ReportingWindow />);
 	} else if (showCharts) {
-		root.render(wrap(<ChartsWindow />));
+		root.render(<ChartsWindow />);
 	} else if (showBackup) {
-		root.render(wrap(<BackupWindow />));
+		root.render(<BackupWindow />);
 	} else if (showClearDb) {
-		root.render(wrap(<ClearDatabaseWindow />));
+		root.render(<ClearDatabaseWindow />);
 	} else if (showClockIn) {
-		root.render(wrap(<ClockInWindow />));
+		root.render(<ClockInWindow />);
 	} else if (showQuote) {
-		root.render(wrap(<QuoteGeneratorWindow />));
+		const hasElectronApi = !!(window as any)?.api;
+		if (!hasElectronApi) {
+			root.render(
+				<div style={{ padding: 16, fontFamily: 'system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial', color: '#111' }}>
+					<h2 style={{ margin: 0, marginBottom: 8 }}>Quote Generator requires the Electron app</h2>
+					<div style={{ color: '#333', lineHeight: 1.45 }}>
+						This route uses the Electron preload API (<code>window.api</code>) and won’t run in a normal browser/Simple Browser.
+						<br />
+						Open it from the running POS app instead.
+					</div>
+				</div>
+			);
+		} else {
+			root.render(<QuoteGeneratorWindow />);
+		}
 	} else if (showReleaseForm) {
-		root.render(wrap(<ReleaseFormWindow />));
+		root.render(<ReleaseFormWindow />);
 	} else if (showCustomerReceipt) {
-		root.render(wrap(<CustomerReceiptWindow />));
+		root.render(<CustomerReceiptWindow />);
 	} else if (showCalendar) {
-		root.render(wrap(<CalendarWindow />));
+		root.render(<CalendarWindow />);
 	} else if (showProductForm) {
-		root.render(wrap(<ProductFormWindow />));
+		root.render(<ProductFormWindow />);
 	} else if (showProducts) {
-		root.render(wrap(<ProductsWindow />));
+		root.render(<ProductsWindow />);
 	} else if (showNewSale) {
-		root.render(wrap(<SaleWindow />));
+		root.render(<SaleWindow />);
 	} else if (payload) {
-		root.render(wrap(<NewWorkOrderWindow />));
+		root.render(<NewWorkOrderWindow />);
 	} else {
-		root.render(wrap(<App />));
+		root.render(
+			<UpdateGate>
+				<App />
+			</UpdateGate>
+		);
 	}
 
 } catch (e: any) {

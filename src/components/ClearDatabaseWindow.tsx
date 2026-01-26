@@ -21,6 +21,7 @@ const ClearDatabaseWindow: React.FC = () => {
   // Same comprehensive scan list used in BackupWindow (kept smaller here, can expand later)
   const dataCollections = useMemo(() => Array.from(new Set([
     'technicians','timeEntries','customers','workOrders','sales','calendarEvents','deviceCategories','productCategories','products','partSources','repairCategories','repairItems','intakeSources',
+    'quoteFiles',
     // safe extras if present
     'suppliers','vendors','invoices','payments','settings','preferences','userProfiles','systemLogs'
   ])), []);
@@ -98,6 +99,25 @@ const ClearDatabaseWindow: React.FC = () => {
   const canDelete = selectedCollections.length > 0 && totalSelectedRecords >= 0;
   const confirmEnabled = confirmText.trim().toUpperCase() === 'CLEAR';
 
+  async function factoryReset() {
+    if (!api) return;
+    setBusy(true);
+    setMessage('⏳ Wiping all local data (database, backups, update config)…');
+    try {
+      const res = await api.dbResetAll?.();
+      const removedCount = Array.isArray(res?.removed) ? res.removed.length : 0;
+      setMessage(`✅ Factory reset complete. Removed ${removedCount} file(s)/folder(s).`);
+      setSelected(new Set());
+      setConfirmOpen(false);
+      setConfirmText('');
+      setTimeout(loadCounts, 250);
+    } catch (e: any) {
+      setMessage(`❌ Factory reset failed: ${String(e?.message || e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="h-screen bg-zinc-900 text-gray-100 p-4">
       <div className="max-w-5xl mx-auto space-y-3">
@@ -108,6 +128,18 @@ const ClearDatabaseWindow: React.FC = () => {
             Select the data categories to permanently remove from the local database. This action cannot be undone.
             Make a backup first if you might need this data again.
           </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              onClick={factoryReset}
+              disabled={busy}
+              className="px-3 py-1 text-xs bg-red-700 hover:bg-red-800 border border-red-600 rounded disabled:opacity-50"
+            >
+              Factory Reset (Wipe Everything)
+            </Button>
+            <div className="text-xs text-zinc-400">
+              Removes the DB file, backups, and update-skip config.
+            </div>
+          </div>
         </div>
 
         <div className="bg-zinc-800 border border-zinc-700 rounded p-3">

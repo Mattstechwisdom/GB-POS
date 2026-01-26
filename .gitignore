@@ -26,6 +26,8 @@ Desktop.ini
 !.vscode/tasks.json
 
 # Logs / local notes
+logs/
+exports/
 *.log
 *-log.txt
 install-log.txt

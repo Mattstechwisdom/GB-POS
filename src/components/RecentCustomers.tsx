@@ -1,5 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { formatPhone } from '../lib/format';
+import ContextMenu, { ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
 
 interface CustomerLite {
   id: number;
@@ -13,6 +15,42 @@ const RecentCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+	const ctx = useContextMenu<CustomerLite>();
+	const ctxCustomer = ctx.state.data;
+
+  const ctxItems = useMemo<ContextMenuItem[]>(() => {
+    if (!ctxCustomer) return [];
+    const name = [ctxCustomer.firstName, ctxCustomer.lastName].filter(Boolean).join(' ').trim() || `Customer #${ctxCustomer.id}`;
+    const phone = formatPhone(ctxCustomer.phone || '') || (ctxCustomer.phone || '');
+    const api = (window as any).api;
+    return [
+      { type: 'header', label: name },
+      { label: 'Open Customer', onClick: async () => { await api?.openCustomerOverview?.(ctxCustomer.id); } },
+      { label: 'New Work Order', onClick: async () => { await api?.openNewWorkOrder?.({ customerId: ctxCustomer.id, customerName: name, customerPhone: ctxCustomer.phone || '' }); } },
+      { type: 'separator' },
+      { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(String(phone)); } catch {} } },
+      { label: 'Copy Name', onClick: async () => { try { await navigator.clipboard.writeText(name); } catch {} } },
+      { type: 'separator' },
+      {
+        label: 'Delete…',
+        danger: true,
+        onClick: async () => {
+          try {
+            const orders = await api?.findWorkOrders?.({ customerId: ctxCustomer.id }).catch(() => []);
+            const count = Array.isArray(orders) ? orders.length : 0;
+            const msg = count > 0
+              ? `Delete ${name}?\n\nThis customer has ${count} work order(s). Deleting the customer may leave old work orders without a linked customer.`
+              : `Delete ${name}?`;
+            if (!window.confirm(msg)) return;
+            await api?.dbDelete?.('customers', ctxCustomer.id);
+          } catch (e) {
+            console.error('Delete customer failed', e);
+          }
+        },
+      },
+    ];
+  }, [ctxCustomer]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -123,6 +161,11 @@ const RecentCustomers: React.FC = () => {
               className={`${i % 2 ? 'bg-zinc-900' : 'bg-zinc-800'} hover:bg-zinc-700 cursor-pointer`}
               title="Open customer overview"
               onClick={() => { if (typeof c.id === 'number' && c.id > 0) { (window as any).api.openCustomerOverview?.(c.id); } }}
+        onContextMenu={(e) => {
+          if (typeof c.id === 'number' && c.id > 0) {
+            ctx.openFromEvent(e, c);
+          }
+        }}
             >
               <td className="py-1 pr-2">{c.lastName || ''}</td>
               <td className="py-1 pr-2">{c.firstName || ''}</td>
@@ -131,6 +174,15 @@ const RecentCustomers: React.FC = () => {
           ))}
         </tbody>
       </table>
+
+    <ContextMenu
+      id="recent-customers-ctx"
+      open={ctx.state.open}
+      x={ctx.state.x}
+      y={ctx.state.y}
+      items={ctxItems}
+      onClose={ctx.close}
+    />
     </div>
   );
 };

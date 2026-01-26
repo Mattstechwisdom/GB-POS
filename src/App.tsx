@@ -6,6 +6,9 @@ import SalesTable from './components/SalesTable';
 import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
+import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
+import { useContextMenu } from './lib/useContextMenu';
+import { formatPhone } from './lib/format';
 
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
@@ -127,6 +130,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       ...wo.map(w => ({
         type: 'workorder' as const,
         id: w.id,
+        customerId: (w as any).customerId as number | undefined,
         date: new Date(w.checkInAt || w.createdAt || 0),
         status: (Math.max(0, Number(w.totals?.total || w.total || 0) - Number(w.amountPaid || 0)) <= 0 ? 'closed' : 'open') as 'open'|'closed',
         desc: w.productDescription || w.summary || '',
@@ -166,6 +170,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       ...sa.map(s => ({
         type: 'sale' as const,
         id: s.id,
+        customerId: (s as any).customerId as number | undefined,
         date: new Date(s.checkInAt || s.createdAt || 0),
         status: ((Number(s.totals?.total || s.total || 0) || 0) - (Number(s.amountPaid || 0) || 0) <= 0 ? 'closed' : 'open') as 'open'|'closed',
         desc: (Array.isArray(s.items) && s.items[0]?.description) || s.itemDescription || '',
@@ -218,6 +223,104 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       .sort((a, b) => b.id - a.id);
   }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
+  const ctx = useContextMenu<(typeof rows)[number]>();
+  const ctxRow = ctx.state.data;
+
+  const computeWOTotals = React.useCallback((w: any) => {
+    const labor = Number(w.laborCost || 0);
+    const parts = Number(w.partCosts || 0);
+    const discount = Number(w.discount || 0);
+    const taxRate = Number(w.taxRate || 0);
+    const subTotal = Math.max(0, labor + parts - discount);
+    const tax = Math.round((subTotal * (taxRate / 100)) * 100) / 100;
+    const total = Math.round((subTotal + tax) * 100) / 100;
+    const amountPaid = Number(w.amountPaid || 0);
+    const remaining = Math.max(0, Math.round((total - amountPaid) * 100) / 100);
+    return { subTotal, tax, total, remaining };
+  }, []);
+
+  const ctxItems: ContextMenuItem[] = React.useMemo(() => {
+    if (!ctxRow) return [];
+
+    const inv = `GB${String(ctxRow.id).padStart(7, '0')}`;
+    const hasCustomer = !!ctxRow.customerId;
+    const phone = (formatPhone(String(ctxRow.phone || '')) || String(ctxRow.phone || '')).trim();
+
+    const api = (window as any).api;
+
+    if (ctxRow.type === 'workorder') {
+      return [
+        { type: 'header', label: `Work Order ${inv}` },
+        { label: 'Edit / Open', onClick: async () => { await api?.openNewWorkOrder?.({ workOrderId: ctxRow.id }); } },
+        { label: 'View Customer', disabled: !hasCustomer, onClick: async () => { await api?.openCustomerOverview?.(ctxRow.customerId); } },
+        { type: 'separator' },
+        { label: 'Copy Invoice #', onClick: async () => { try { await navigator.clipboard.writeText(inv); } catch {} } },
+        { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(phone); } catch {} } },
+        { type: 'separator' },
+        { label: 'Print Customer Receipt', onClick: async () => { await api?.openCustomerReceipt?.({ workOrderId: ctxRow.id }); } },
+        { label: 'Print Release Form', onClick: async () => { await api?.openReleaseForm?.({ workOrderId: ctxRow.id }); } },
+        { type: 'separator' },
+        {
+          label: 'Mark Paid in Full',
+          disabled: !(ctxRow.remaining > 0),
+          onClick: async () => {
+            // Load, compute totals, and update to closed/paid
+            const found = await api?.findWorkOrders?.({ id: ctxRow.id }).catch(() => []);
+            const full = Array.isArray(found) ? found[0] : null;
+            if (!full) return;
+            const totals = computeWOTotals(full);
+            const updated = { ...full, amountPaid: totals.total, totals: { ...totals, remaining: 0 }, status: 'closed' };
+            await api?.dbUpdate?.('workOrders', ctxRow.id, updated);
+          },
+        },
+        {
+          label: 'Reopen',
+          disabled: !(ctxRow.remaining <= 0),
+          onClick: async () => {
+            const found = await api?.findWorkOrders?.({ id: ctxRow.id }).catch(() => []);
+            const full = Array.isArray(found) ? found[0] : null;
+            if (!full) return;
+            const totals = computeWOTotals(full);
+            const updated = { ...full, status: 'open', totals };
+            await api?.dbUpdate?.('workOrders', ctxRow.id, updated);
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Delete…',
+          danger: true,
+          onClick: async () => {
+            const ok = window.confirm(`Delete work order ${inv}? This cannot be undone.`);
+            if (!ok) return;
+            await api?.dbDelete?.('workOrders', ctxRow.id);
+          },
+        },
+      ];
+    }
+
+    // Sale
+    return [
+      { type: 'header', label: `Sale ${inv}` },
+      { label: 'Edit / Open', onClick: async () => { await api?.openNewSale?.({ id: ctxRow.id }); } },
+      { label: 'View Customer', disabled: !hasCustomer, onClick: async () => { await api?.openCustomerOverview?.(ctxRow.customerId); } },
+      { type: 'separator' },
+      { label: 'Copy Invoice #', onClick: async () => { try { await navigator.clipboard.writeText(inv); } catch {} } },
+      { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(phone); } catch {} } },
+      { type: 'separator' },
+      { label: 'Print Product Form', onClick: async () => { await api?.openProductForm?.({ saleId: ctxRow.id }); } },
+      { type: 'separator' },
+      {
+        label: 'Delete…',
+        danger: true,
+        onClick: async () => {
+          const ok = window.confirm(`Delete sale ${inv}? This cannot be undone.`);
+          if (!ok) return;
+          await api?.dbDelete?.('sales', ctxRow.id);
+        },
+      },
+    ];
+  }, [ctxRow, computeWOTotals]);
+
   return (
     <div className="p-2">
       <table className="w-full text-sm">
@@ -241,14 +344,12 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
           {loading && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">Loading...</td></tr>)}
           {!loading && rows.length === 0 && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">No entries yet</td></tr>)}
           {!loading && rows.map(r => {
-            const phone = (() => {
-              const raw = (r.phone || '') as string;
-              try { const { formatPhone } = require('./lib/format'); return formatPhone(raw) || raw || ''; } catch { return raw || ''; }
-            })();
+            const phone = (formatPhone(String(r.phone || '')) || String(r.phone || '')).trim();
             return (
               <tr
                 key={`${r.type}-${r.id}`}
                 className="odd:bg-zinc-900 even:bg-zinc-800/40 cursor-pointer"
+                onContextMenu={(e) => ctx.openFromEvent(e, r)}
                 onDoubleClick={async () => {
                   try {
                     const api = (window as any).api;
@@ -278,6 +379,15 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
           })}
         </tbody>
       </table>
+
+      <ContextMenu
+        id="home-ctx-menu"
+        open={ctx.state.open}
+        x={ctx.state.x}
+        y={ctx.state.y}
+        items={ctxItems}
+        onClose={ctx.close}
+      />
     </div>
   );
 };
