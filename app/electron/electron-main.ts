@@ -2,6 +2,7 @@ const electron = require('electron');
 const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electron;
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { autoUpdater } = require('electron-updater');
 
 // -------------------------------------------------------------
@@ -67,6 +68,11 @@ if (!app.isPackaged && process.env.ELECTRON_DISABLE_SECURITY_WARNINGS !== 'true'
 
 // Central dev server base (adjust here if port changes)
 const DEV_SERVER_URL = 'http://localhost:5173';
+
+function getProdIndexUrl(): string {
+  // Use a proper file:// URL so Windows paths/spaces work reliably.
+  return pathToFileURL(path.join(app.getAppPath(), 'dist', 'index.html')).toString();
+}
 
 function normalizeVersion(v: string): string {
   return String(v || '0.0.0').trim().replace(/^v/i, '');
@@ -634,9 +640,14 @@ function createWindow() {
     url = DEV_SERVER_URL;
   } else {
     // In production, load the bundled index.html from the app path
-    url = `file://${path.join(app.getAppPath(), 'dist', 'index.html')}`;
+    url = getProdIndexUrl();
   }
-  win.loadURL(url);
+  win.webContents.on('did-fail-load', (_e: any, errorCode: number, errorDescription: string, validatedURL: string) => {
+    appendStartupLog(`did-fail-load code=${errorCode} desc=${errorDescription} url=${validatedURL}`);
+  });
+  win.loadURL(url).catch((e: any) => {
+    appendStartupLog(`main loadURL failed: ${String(e?.message || e)}`);
+  });
   // After loading, check for ?newWorkOrder= in the URL and set the title
   win.webContents.on('did-finish-load', () => {
   win.webContents.executeJavaScript('window.location.search').then((search: string) => {
