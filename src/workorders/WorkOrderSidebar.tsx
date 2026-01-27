@@ -168,7 +168,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     amountPaid: Number((workOrder as any).amountPaid || 0),
                   };
 
-                  await printReleaseForm(wo, { logoSrc: '/logo.png', autoCloseMs: 0, autoPrint: true });
+                  await printReleaseForm(wo, { autoCloseMs: 0, autoPrint: true });
                 } catch (e) { console.error('Failed to open release form', e); }
               }}
             >

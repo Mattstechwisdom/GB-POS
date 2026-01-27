@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { listTechnicians } from '../lib/admin';
+import { publicAsset } from '../lib/publicAsset';
 
 interface Props {
   technicianFilter: string;
@@ -61,7 +62,7 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
       </div>
       {/* Logo: smaller, centered, no border/background */}
       <div className="w-full mb-2 flex items-center justify-center">
-        <img src="/logo.png" alt="Logo" className="w-1/2 max-w-[140px] h-auto object-contain" />
+        <img src={publicAsset('logo.png')} alt="Logo" className="w-1/2 max-w-[140px] h-auto object-contain" />
       </div>
       <div>
         <label className="block text-xs mb-1 leading-none">Status</label>

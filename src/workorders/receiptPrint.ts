@@ -1,4 +1,5 @@
 import type { WorkOrder } from './releasePrint';
+import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
 
 function htmlEscape(s: string): string {
   return s
@@ -10,11 +11,15 @@ function htmlEscape(s: string): string {
 }
 
 function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): string {
-  const logoSrc = opts?.logoSrc ?? '/assets/gadgetboy-logo.png';
+  const logoSrc = opts?.logoSrc ?? '';
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
   const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+
+  const logoBlock = logoSrc
+    ? `<img src="${logoSrc}" alt="GADGETBOY" style="height:72px; width:auto;" />`
+    : `<div style="height:72px; display:flex; align-items:center; font-weight:800; font-size:22pt; letter-spacing:0.8px;">GADGETBOY</div>`;
 
   const items = Array.isArray(wo.items) ? wo.items : [];
   const rows = items.map(li => `
@@ -113,7 +118,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       <div class="page-inner">
         <div class="brand">
           <div class="brand-left">
-            <img src="${logoSrc}" alt="GADGETBOY" style="height:72px; width:auto;" />
+            ${logoBlock}
             <div>
               <div class="brand-title">GADGETBOY Repair & Retail</div>
               <div style="font-size:10pt; color:#222;">2822 Devine Street, Columbia, SC 29205</div>
@@ -270,7 +275,11 @@ function iframeFallback(html: string) {
 }
 
 export async function printCustomerReceipt(workOrder: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): Promise<void> {
-  const html = buildHtml(workOrder, opts);
+  let resolvedLogoSrc = opts?.logoSrc;
+  if (!resolvedLogoSrc) {
+    resolvedLogoSrc = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+  }
+  const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc });
   const ok = openPopupAndPrint(html);
   if (!ok) iframeFallback(html);
 }

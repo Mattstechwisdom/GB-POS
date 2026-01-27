@@ -23,6 +23,8 @@ export type WorkOrder = {
   amountPaid: number;
 };
 
+import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
+
 function buildPatternSvg(seq: number[], size: number = 140): string {
   const padding = 12;
   const grid = 3;
@@ -82,7 +84,7 @@ function htmlEscape(s: string): string {
 }
 
 function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): string {
-  const logoSrc = opts?.logoSrc ?? '/assets/gadgetboy-logo.png';
+  const logoSrc = opts?.logoSrc ?? '';
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
@@ -110,6 +112,9 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const seq = Array.isArray(wo.patternSequence) ? wo.patternSequence : [];
   const hasPattern = seq.length > 0;
   const invoiceDisplay = (wo.invoiceId ?? '').toString().padStart(6, '0');
+  const logoBlock = logoSrc
+    ? `<img src="${logoSrc}" alt="GADGETBOY" style="height:72px; width:auto;" />`
+    : `<div style="height:72px; display:flex; align-items:center; font-weight:800; font-size:22pt; letter-spacing:0.8px;">GADGETBOY</div>`;
 
   return `<!doctype html>
   <html>
@@ -168,7 +173,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
 
       <div class="brand">
         <div class="brand-left">
-          <img src="${logoSrc}" alt="GADGETBOY" style="height:72px; width:auto;" />
+          ${logoBlock}
           <div>
             <div class="brand-title">GADGETBOY Repair & Retail</div>
             <div style="font-size:10pt; color:#222;">2822 Devine Street, Columbia, SC 29205</div>
@@ -333,7 +338,11 @@ function iframeFallback(html: string) {
 }
 
 export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): Promise<void> {
-  const html = buildHtml(workOrder, opts);
+  let resolvedLogoSrc = opts?.logoSrc;
+  if (!resolvedLogoSrc) {
+    resolvedLogoSrc = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+  }
+  const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc });
   const ok = openPopupAndPrint(html);
   if (!ok) iframeFallback(html);
 }

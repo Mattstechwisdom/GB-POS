@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import { publicAsset } from '../lib/publicAsset';
 
 function getPayload() {
   try {
@@ -97,7 +98,7 @@ const CustomerReceiptWindow: React.FC = () => {
         </div>
         <div className="brand">
           <div className="brand-left">
-            <img src="/logo.png" alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+            <img src={publicAsset('logo.png')} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
             <div>
               <div className="brand-title">GADGETBOY Repair & Retail</div>
               <div style={{ fontSize: '10pt', color: '#222' }}>2822 Devine Street, Columbia, SC 29205</div>

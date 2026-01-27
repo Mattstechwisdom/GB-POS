@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo } from 'react';
+import { publicAsset } from '../lib/publicAsset';
 
 function getPayload() {
   try {
@@ -55,7 +56,7 @@ const ProductFormWindow: React.FC = () => {
         <div className="page-inner">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="/logo.png" alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
+              <img src={publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR & RETAIL</div>
                 <div style={{ fontSize: 11, color: '#666' }}>Product Sales Form</div>

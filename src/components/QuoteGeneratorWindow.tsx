@@ -1,3 +1,4 @@
+import { publicAsset } from '../lib/publicAsset';
 import React, { useEffect, useMemo, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
@@ -188,6 +189,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   }, [repairs]);
 
   function buildInteractiveSalesHtml(logoDataUrl?: string): string {
+      const fallbackLogo = publicAsset('logo-spin.gif');
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const cust = `${sales.customerName || ''}`.trim();
     const phone = `${sales.customerPhone || ''}`.trim();
@@ -410,7 +412,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
       const headerBlock = () => `
         <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px">
-          <img src="${logoDataUrl || '/logo-spin.gif'}" alt="GadgetBoy" style="height:30mm; width:auto" />
+           <img src="${logoDataUrl || fallbackLogo}" alt="GadgetBoy" style="height:30mm; width:auto" />
           <div style="line-height:1.15; flex:1">
             <div style="font-size:18pt; font-weight:700; letter-spacing:0.3px">Custom PC Build Quote</div>
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -428,14 +430,14 @@ function QuoteGeneratorWindow(): JSX.Element {
           return `
         <div style=\"display:grid; grid-template-columns:42mm 1fr; column-gap:10px; align-items:stretch; margin-bottom:8px\">
           <div></div>
-          <div style=\"border:2px solid #f00; border-radius:6px; padding:8px; min-height:22mm\">
+            <div style=\"border:2px solid #f00; border-radius:6px; padding:8px; min-height:22mm\">
             <div style=\"font-weight:700; margin-bottom:2px\">${esc(p.label)}</div>
             <div style=\"font-size:10.5pt; line-height:1.35\">${esc(p.desc || '-') }</div>
           </div>
         </div>`;
         }
         const imgs = [p.image, p.image2].filter(Boolean) as string[];
-        const leftCol = imgs.length >= 2
+          const leftCol = imgs.length >= 2
           ? `
             <div style="width:44mm; height:34mm; display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; padding:4px; box-sizing:border-box">
               <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden"><img src="${imgs[0]}" style="max-width:100%; max-height:100%; object-fit:contain; display:block" /></div>
@@ -753,7 +755,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       <div class=\"print-page\" style=\"width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm\">
         <div class=\"page-inner\">
           <div style=\"display:flex; gap:12px; align-items:flex-start; margin-bottom:8px\">
-            <img src=\"${logoDataUrl || '/logo-spin.gif'}\" alt=\"GadgetBoy\" style=\"height:35mm; width:auto\" />
+            <img src=\"${logoDataUrl || publicAsset('logo-spin.gif')}\" alt=\"GadgetBoy\" style=\"height:35mm; width:auto\" />
             <div style=\"line-height:1.2; flex:1\">
               <div style=\"font-size:20pt; font-weight:700; letter-spacing:0.2px\">Gadgetboy Quote</div>
               <div style=\"font-size:13pt; font-weight:700\">GADGETBOY Repair & Retail</div>
@@ -944,7 +946,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   async function generateInteractiveSalesHtml(): Promise<string> {
     // Try to fetch the logo from the current app and convert to data URL; fallback to no logo
     try {
-  const res = await fetch('/logo-spin.gif');
+  const res = await fetch(publicAsset('logo-spin.gif'));
       if (!res.ok) throw new Error('logo fetch failed');
       const blob = await res.blob();
       const dataUrl: string = await new Promise((resolve, reject) => {
@@ -1087,7 +1089,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
           <div class="page-inner">
             <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-              <img src="/logo-spin.gif" alt="GadgetBoy" style="height:35mm; width:auto" />
+              <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
               <div style="line-height:1.2; flex:1">
                 <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
                 <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -1373,7 +1375,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
               <div class="page-inner">
               <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-                <img src="/logo-spin.gif" alt="GadgetBoy" style="height:35mm; width:auto" />
+                <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
                 <div style="line-height:1.2; flex:1">
                   <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
                   <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -1542,7 +1544,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; padding:12mm;">
         <div class="page-inner">
         <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-          <img src="/logo-spin.gif" alt="GadgetBoy" style="height:35mm; width:auto" />
+          <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
           <div style="line-height:1.2; flex:1">
             <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Repairs Quote</div>
             <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -3267,7 +3269,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   <div className="col-span-9 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
+              <img src={publicAsset('logo.png')} alt="Logo" className="w-10 h-10 object-contain" />
               <h1 className="text-2xl font-bold text-[#39FF14]">Generate Quote</h1>
             </div>
             <div className="flex items-center gap-2" />
@@ -3888,7 +3890,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                             {/* Page 1: header + first 3 part boxes */}
                             <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
                               <div className="flex items-start gap-4" style={{ marginBottom: 8 }}>
-                                <img src="/logo.png" alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
+                                <img src={publicAsset('logo.png')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
                                 <div className="flex-1" style={{ lineHeight: 1.2 }}>
                                   <div style={{ fontSize: '20pt', fontWeight: 700, letterSpacing: 0.2 }}>Gadgetboy Quote</div>
                                   <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
@@ -3947,7 +3949,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                         <>
                           <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
                             <div className="flex items-start gap-4" style={{ marginBottom: 8 }}>
-                              <img src="/logo.png" alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
+                              <img src={publicAsset('logo.png')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
                               <div className="flex-1" style={{ lineHeight: 1.2 }}>
                                 <div style={{ fontSize: '20pt', fontWeight: 700, letterSpacing: 0.2 }}>Gadgetboy Quote</div>
                                 <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
