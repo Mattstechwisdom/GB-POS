@@ -3,7 +3,6 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electr
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { autoUpdater } = require('electron-updater');
 
 // -------------------------------------------------------------
 // Startup crash logging (helps diagnose packaged SyntaxError)
@@ -53,6 +52,17 @@ function setupStartupCrashLogging() {
 }
 
 setupStartupCrashLogging();
+
+// Optional dependency: if packaging ever omits node_modules or a machine blocks it,
+// we still want the POS to launch. Update checks will be disabled in that case.
+let autoUpdater: any = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+  appendStartupLog('autoUpdater loaded');
+} catch (e: any) {
+  autoUpdater = null;
+  appendStartupLog(`autoUpdater unavailable: ${String(e?.message || e)}`);
+}
 
 // Determine dev mode early so it is available for handlers
 const isDev = !app.isPackaged;
@@ -171,6 +181,7 @@ function broadcastUpdateEvent(payload: any) {
 
 function setupAutoUpdater() {
   try {
+    if (!autoUpdater) return;
     // electron-updater uses electron-builder publish config in packaged builds.
     autoUpdater.autoDownload = false;
     autoUpdater.on('checking-for-update', () => broadcastUpdateEvent({ kind: 'checking' }));
@@ -549,6 +560,7 @@ ipcMain.handle('update:check', async () => {
   try {
     const currentVersion = normalizeVersion(app.getVersion());
     if (!app.isPackaged) return { ok: true, notPackaged: true, updateAvailable: false, currentVersion };
+    if (!autoUpdater) return { ok: true, updateAvailable: false, currentVersion, warning: 'Updater unavailable on this machine.' };
 
     const cfg = readUpdateConfig();
 
@@ -587,6 +599,7 @@ ipcMain.handle('update:check', async () => {
 ipcMain.handle('update:download', async () => {
   try {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
+    if (!autoUpdater) return { ok: false, error: 'Updater unavailable on this machine.' };
     await autoUpdater.downloadUpdate();
     return { ok: true };
   } catch (e: any) {
@@ -597,6 +610,7 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:quitAndInstall', async () => {
   try {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
+    if (!autoUpdater) return { ok: false, error: 'Updater unavailable on this machine.' };
     // quits and installs immediately
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
