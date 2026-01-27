@@ -561,8 +561,11 @@ ipcMain.handle('update:check', async () => {
       releaseName = res?.updateInfo?.releaseName;
       releaseNotes = res?.updateInfo?.releaseNotes;
     } catch (e: any) {
-      // If publishing isn't configured or network is down, surface the error to the UI.
-      return { ok: false, error: String(e?.message || e), currentVersion };
+      // Update checks should never block the POS from starting.
+      // Common case: GitHub 404 for private repos or missing auth. Treat as “no update”.
+      const msg = String(e?.message || e);
+      appendStartupLog(`update:check failed (non-fatal): ${msg}`);
+      return { ok: true, updateAvailable: false, currentVersion, warning: msg };
     }
 
     const updateAvailable = !!(latestVersion && compareVersions(currentVersion, latestVersion) < 0);

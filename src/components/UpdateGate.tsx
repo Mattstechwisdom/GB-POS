@@ -72,8 +72,9 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         return;
       }
       if (!res?.ok) {
-        // In prod, show error UI but allow “Continue anyway”.
-        setState({ kind: 'error', message: res?.error || 'Unable to check for updates.' });
+        // Never block startup for update-check failures.
+        console.warn('[UpdateGate] update check failed (non-fatal):', res?.error);
+        setState({ kind: 'ok' });
         return;
       }
 
@@ -92,12 +93,9 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
     } catch (e: any) {
       const msg = String(e?.message || e);
 
-      if (!shouldEnforceGate) {
-        setState({ kind: 'ok' });
-        return;
-      }
-
-      setState({ kind: 'error', message: msg || 'Unable to check for updates.' });
+      // Never block startup for update-check failures.
+      console.warn('[UpdateGate] update check threw (non-fatal):', msg);
+      setState({ kind: 'ok' });
     }
   }
 
