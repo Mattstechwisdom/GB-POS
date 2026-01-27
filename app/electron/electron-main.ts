@@ -4,6 +4,55 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// -------------------------------------------------------------
+// Startup crash logging (helps diagnose packaged SyntaxError)
+// -------------------------------------------------------------
+function safeGetUserDataPath(): string {
+  try {
+    return app.getPath('userData');
+  } catch {
+    // Fallback: best-effort relative folder
+    return path.join(process.cwd(), 'userData');
+  }
+}
+
+function appendStartupLog(line: string) {
+  try {
+    const dir = safeGetUserDataPath();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    const logPath = path.join(dir, 'gbpos-startup.log');
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${line}\n`, 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function setupStartupCrashLogging() {
+  // Capture the most common “Uncaught exception / SyntaxError” details.
+  try {
+    appendStartupLog('--- app start ---');
+    appendStartupLog(`versions node=${process.versions?.node} electron=${process.versions?.electron} chrome=${process.versions?.chrome}`);
+
+    process.on('uncaughtException', (err: any) => {
+      try {
+        const msg = err?.stack || err?.message || String(err);
+        appendStartupLog(`uncaughtException: ${msg}`);
+      } catch {}
+    });
+
+    process.on('unhandledRejection', (reason: any) => {
+      try {
+        const msg = reason?.stack || reason?.message || String(reason);
+        appendStartupLog(`unhandledRejection: ${msg}`);
+      } catch {}
+    });
+  } catch {
+    // ignore
+  }
+}
+
+setupStartupCrashLogging();
+
 // Determine dev mode early so it is available for handlers
 const isDev = !app.isPackaged;
 // Control whether DevTools auto-open. Disable by default to avoid noisy DevTools protocol warnings (e.g., Autofill.enable)
