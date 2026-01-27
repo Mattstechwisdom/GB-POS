@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "dist-main/app/electron/electron-main.js",
   "repository": {
@@ -9,22 +9,6 @@
   },
   "author": "",
   "license": "MIT",
-  "scripts": {
-    "predev": "npm run generate:icon",
-    "dev": "npm run dev:split",
-    "vite": "vite --config vite.config.ts",
-    "typecheck:renderer": "tsc -p tsconfig.json --noEmit",
-    "typecheck:main": "tsc -p tsconfig.electron.json --noEmit",
-    "typecheck": "npm run typecheck:renderer && npm run typecheck:main",
-    "generate:icon": "node tools/generate-icon.cjs",
-    "electron:buildmain": "tsc --project tsconfig.electron.json",
-    "electron": "wait-on tcp:5173 dist-main/app/electron/electron-main.js && electron ./dist-main/app/electron/electron-main.js",
-    "dev:split": "cross-env ELECTRON_DISABLE_SECURITY_WARNINGS=true concurrently -n VITE,ELECTRON -c green,magenta \"npm run vite\" \"npm run electron:buildmain && npm run electron\"",
-    "dev:nodemon": "wait-on tcp:5173 dist-main/app/electron/electron-main.js && nodemon --watch dist-main/app/electron --ext js --exec \"electron ./dist-main/app/electron/electron-main.js\"",
-    "build": "vite build --config vite.config.ts",
-    "predist": "npm run generate:icon && npm run typecheck && npm run electron:buildmain && npm run build",
-    "dist": "electron-builder --win nsis"
-  },
   "dependencies": {
     "asar": "^3.2.0",
     "electron-updater": "^6.6.2",
@@ -34,24 +18,5 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-select": "^5.10.2"
-  },
-  "devDependencies": {
-    "@types/node": "^24.4.0",
-    "@types/react": "^18.3.27",
-    "@types/react-dom": "^18.3.7",
-    "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.0",
-    "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
-    "electron": "^29.0.0",
-    "electron-builder": "^24.0.0",
-    "nodemon": "^3.1.10",
-    "png-to-ico": "^2.1.8",
-    "postcss": "^8.4.0",
-    "tailwindcss": "^3.3.0",
-    "ts-node": "^10.9.0",
-    "typescript": "^5.9.2",
-    "vite": "^5.0.0",
-    "wait-on": "^7.0.1"
   }
 }
