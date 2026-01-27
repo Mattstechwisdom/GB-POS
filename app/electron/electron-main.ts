@@ -3,25 +3,60 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electr
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const os = require('os');
 
 // -------------------------------------------------------------
 // Startup crash logging (helps diagnose packaged SyntaxError)
 // -------------------------------------------------------------
 function safeGetUserDataPath(): string {
+  // Goal: a writable folder even if Electron isn't fully initialized yet.
+  // Prefer Electron's userData when available, otherwise use OS env vars.
   try {
-    return app.getPath('userData');
+    const p = app.getPath('userData');
+    if (p) return p;
   } catch {
-    // Fallback: best-effort relative folder
+    // ignore
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      const base = process.env.APPDATA || process.env.LOCALAPPDATA;
+      if (base) return path.join(base, 'GadgetBoy POS');
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    return path.join(os.homedir?.() || process.cwd(), '.gadgetboy-pos');
+  } catch {
     return path.join(process.cwd(), 'userData');
   }
 }
 
 function appendStartupLog(line: string) {
   try {
+    const msg = `${new Date().toISOString()} ${line}\n`;
+
     const dir = safeGetUserDataPath();
     try { fs.mkdirSync(dir, { recursive: true }); } catch {}
-    const logPath = path.join(dir, 'gbpos-startup.log');
-    fs.appendFileSync(logPath, `${new Date().toISOString()} ${line}\n`, 'utf-8');
+    try {
+      const logPath = path.join(dir, 'gbpos-startup.log');
+      fs.appendFileSync(logPath, msg, 'utf-8');
+    } catch {
+      // ignore
+    }
+
+    // Also write to temp (useful if Program Files / userData isn't writable yet)
+    try {
+      const tmpDir = os.tmpdir?.() || null;
+      if (tmpDir) {
+        const tmpPath = path.join(tmpDir, 'gbpos-startup.log');
+        fs.appendFileSync(tmpPath, msg, 'utf-8');
+      }
+    } catch {
+      // ignore
+    }
   } catch {
     // ignore
   }
