@@ -41,6 +41,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
 
+      - name: Tool versions
+        run: |
+          node --version
+          npm --version
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -51,16 +56,22 @@ jobs:
         run: npm ci
 
       - name: Build installer (NSIS)
-        run: npm run dist -- --publish never
+        env:
+          ELECTRON_BUILDER_LOG_LEVEL: debug
+          DEBUG: electron-builder,electron-updater
+        run: npm run dist -- --publish never --debug
 
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: GadgetBoy-POS-installer
           path: |
             release/*.exe
             release/*.yml
             release/*.blockmap
+            release/builder-effective-config.yaml
+            release/*.yaml
 
       - name: Publish to GitHub Release (tag builds only)
         if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true') }}
