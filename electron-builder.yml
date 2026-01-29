@@ -4,9 +4,16 @@ productName: GadgetBoy POS
 artifactName: 'GadgetBoy-POS-Setup-${version}.${ext}'
 directories:
   output: release
+extraMetadata:
+  main: dist-main/app/electron/electron-main.js
 files:
   - dist/**
   - dist-main/app/electron/**
+  - '!app/**'
+  - '!src/**'
+  - '!**/*.ts'
+  - '!**/*.tsx'
+  - '!**/*.map'
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico
