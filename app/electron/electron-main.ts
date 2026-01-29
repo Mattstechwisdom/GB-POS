@@ -6,6 +6,207 @@ const { pathToFileURL } = require('url');
 const os = require('os');
 
 // -------------------------------------------------------------
+// App data location (ProgramData default, user-approved)
+// -------------------------------------------------------------
+const APP_DATA_DIRNAME = 'GadgetBoy POS';
+const DATA_LOCATION_FILE = 'data-location.json';
+
+type DataLocationConfig = {
+  version: number;
+  dataRoot: string;
+  chosenAt: string;
+};
+
+function defaultProgramDataRoot(): string {
+  if (process.platform === 'win32') {
+    const base = process.env.ProgramData || 'C:\\ProgramData';
+    return path.join(base, APP_DATA_DIRNAME);
+  }
+  // Non-Windows fallback
+  try {
+    return path.join(app.getPath('userData'), 'data');
+  } catch {
+    return path.join(process.cwd(), 'data');
+  }
+}
+
+function dataLocationPath(): string {
+  // Pointer stays in Electron userData so we can find it reliably.
+  // All business data goes under the chosen dataRoot.
+  return path.join(app.getPath('userData'), DATA_LOCATION_FILE);
+}
+
+let dataRootCache: string | null = null;
+
+function readDataLocationConfig(): DataLocationConfig | null {
+  try {
+    const p = dataLocationPath();
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return null;
+    const dr = (json as any).dataRoot;
+    if (!dr || typeof dr !== 'string') return null;
+    return {
+      version: Number((json as any).version) || 1,
+      dataRoot: dr,
+      chosenAt: String((json as any).chosenAt || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ensureDir(p: string) {
+  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+}
+
+function canWriteToFolder(folderPath: string): { ok: boolean; error?: string } {
+  try {
+    ensureDir(folderPath);
+    const testPath = path.join(folderPath, `.__gbpos_write_test_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+    fs.writeFileSync(testPath, 'ok', 'utf-8');
+    fs.unlinkSync(testPath);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+function resolveDataRoot(): string {
+  if (dataRootCache !== null) return dataRootCache;
+
+  let resolved: string = '';
+  try {
+    const cfg = readDataLocationConfig();
+    if (cfg?.dataRoot) resolved = cfg.dataRoot;
+  } catch {
+    // ignore
+  }
+
+  // Default for now: per-user (until user approves ProgramData)
+  if (!resolved) {
+    try {
+      resolved = app.getPath('userData');
+    } catch {
+      resolved = '';
+    }
+  }
+
+  if (!resolved) resolved = path.join(process.cwd(), 'userData');
+
+  dataRootCache = resolved;
+  ensureDir(resolved);
+  return resolved;
+}
+
+function setDataRoot(newRoot: string) {
+  dataRootCache = newRoot;
+  ensureDir(newRoot);
+  try {
+    const cfg: DataLocationConfig = {
+      version: 1,
+      dataRoot: newRoot,
+      chosenAt: new Date().toISOString(),
+    };
+    ensureDir(path.dirname(dataLocationPath()));
+    fs.writeFileSync(dataLocationPath(), JSON.stringify(cfg, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function copyDirRecursive(srcDir: string, dstDir: string) {
+  try {
+    if (!fs.existsSync(srcDir)) return;
+    ensureDir(dstDir);
+    if (typeof (fs as any).cpSync === 'function') {
+      (fs as any).cpSync(srcDir, dstDir, { recursive: true, force: false, errorOnExist: false });
+      return;
+    }
+    const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+    for (const ent of entries) {
+      const s = path.join(srcDir, ent.name);
+      const d = path.join(dstDir, ent.name);
+      if (ent.isDirectory()) {
+        copyDirRecursive(s, d);
+      } else if (ent.isFile()) {
+        if (!fs.existsSync(d)) {
+          try { fs.copyFileSync(s, d); } catch {}
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function migrateUserDataToDataRoot(oldUserData: string, newRoot: string) {
+  const moved: string[] = [];
+  const skipped: string[] = [];
+  const errors: string[] = [];
+
+  function copyFileIfMissing(src: string, dst: string) {
+    try {
+      if (!fs.existsSync(src)) return;
+      if (fs.existsSync(dst)) {
+        skipped.push(dst);
+        return;
+      }
+      ensureDir(path.dirname(dst));
+      fs.copyFileSync(src, dst);
+      moved.push(dst);
+    } catch (e: any) {
+      errors.push(`${src} -> ${dst}: ${String(e?.message || e)}`);
+    }
+  }
+
+  try {
+    // Files we own
+    copyFileIfMissing(path.join(oldUserData, 'gbpos-db.json'), path.join(newRoot, 'gbpos-db.json'));
+    copyFileIfMissing(path.join(oldUserData, 'update-config.json'), path.join(newRoot, 'update-config.json'));
+    copyFileIfMissing(path.join(oldUserData, 'email-config.json'), path.join(newRoot, 'email-config.json'));
+    copyFileIfMissing(path.join(oldUserData, 'backup-config.json'), path.join(newRoot, 'backup-config.json'));
+
+    // Folders we own
+    const backupsOld = path.join(oldUserData, 'backups');
+    const backupsNew = path.join(newRoot, 'backups');
+    if (fs.existsSync(backupsOld) && !fs.existsSync(backupsNew)) {
+      copyDirRecursive(backupsOld, backupsNew);
+      moved.push(backupsNew);
+    }
+
+    const previewsOld = path.join(oldUserData, 'quote-previews');
+    const previewsNew = path.join(newRoot, 'quote-previews');
+    if (fs.existsSync(previewsOld) && !fs.existsSync(previewsNew)) {
+      copyDirRecursive(previewsOld, previewsNew);
+      moved.push(previewsNew);
+    }
+  } catch (e: any) {
+    errors.push(String(e?.message || e));
+  }
+
+  return { moved, skipped, errors };
+}
+
+function looksLikeGbposDataRoot(rootPath: string): boolean {
+  try {
+    if (!rootPath) return false;
+    const markers = [
+      'gbpos-db.json',
+      'email-config.json',
+      'update-config.json',
+      'backup-config.json',
+      'backups',
+      'quote-previews',
+    ];
+    return markers.some((m) => fs.existsSync(path.join(rootPath, m)));
+  } catch {
+    return false;
+  }
+}
+
+// -------------------------------------------------------------
 // Startup crash logging (helps diagnose packaged SyntaxError)
 // -------------------------------------------------------------
 function safeGetUserDataPath(): string {
@@ -37,6 +238,22 @@ function safeGetUserDataPath(): string {
 function appendStartupLog(line: string) {
   try {
     const msg = `${new Date().toISOString()} ${line}\n`;
+
+    // Try chosen data root first (if configured), then fall back.
+    try {
+      const chosen = readDataLocationConfig()?.dataRoot;
+      if (chosen) {
+        try { fs.mkdirSync(chosen, { recursive: true }); } catch {}
+        try {
+          const logPath = path.join(chosen, 'gbpos-startup.log');
+          fs.appendFileSync(logPath, msg, 'utf-8');
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
 
     const dir = safeGetUserDataPath();
     try { fs.mkdirSync(dir, { recursive: true }); } catch {}
@@ -137,7 +354,7 @@ function compareVersions(aRaw: string, bRaw: string): number {
 
 function readUpdateConfig(): { skippedVersion?: string } {
   try {
-    const p = path.join(app.getPath('userData'), 'update-config.json');
+    const p = path.join(resolveDataRoot(), 'update-config.json');
     if (!fs.existsSync(p)) return {};
     const raw = fs.readFileSync(p, 'utf-8');
     const json = JSON.parse(raw);
@@ -149,7 +366,7 @@ function readUpdateConfig(): { skippedVersion?: string } {
 
 function writeUpdateConfig(cfg: { skippedVersion?: string }) {
   try {
-    const p = path.join(app.getPath('userData'), 'update-config.json');
+    const p = path.join(resolveDataRoot(), 'update-config.json');
     fs.writeFileSync(p, JSON.stringify(cfg || {}, null, 2), 'utf-8');
   } catch {
     // ignore
@@ -160,7 +377,7 @@ function writeUpdateConfig(cfg: { skippedVersion?: string }) {
 // Email (Company sender via SMTP)
 // -------------------------------------------------------------
 function emailConfigPath(): string {
-  return path.join(app.getPath('userData'), 'email-config.json');
+  return path.join(resolveDataRoot(), 'email-config.json');
 }
 
 function readEmailConfig(): any {
@@ -886,12 +1103,15 @@ ipcMain.handle('open-quote-generator', async () => {
 });
 
 // Simple JSON file DB stored in userData
-const dbFile = path.join(app.getPath('userData'), 'gbpos-db.json');
+function dbFilePath(): string {
+  return path.join(resolveDataRoot(), 'gbpos-db.json');
+}
 
 function readDb() {
   try {
-    if (!fs.existsSync(dbFile)) return { customers: [], workOrders: [] };
-    const raw = fs.readFileSync(dbFile, 'utf-8');
+    const p = dbFilePath();
+    if (!fs.existsSync(p)) return { customers: [], workOrders: [] };
+    const raw = fs.readFileSync(p, 'utf-8');
     return JSON.parse(raw || '{}');
   } catch (e) {
     return { customers: [], workOrders: [] };
@@ -902,9 +1122,10 @@ function readDb() {
 let writeQueue: Promise<void> = Promise.resolve();
 function writeDb(db: any) {
   writeQueue = writeQueue.then(() => {
-    const tmp = dbFile + '.tmp';
+    const p = dbFilePath();
+    const tmp = p + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf-8');
-    fs.renameSync(tmp, dbFile);
+    fs.renameSync(tmp, p);
   }).catch(() => { /* swallow to keep queue moving */ });
   return true;
 }
@@ -948,18 +1169,20 @@ ipcMain.handle('db-reset-all', async () => {
     }
   }
 
-  const userDataPath = app.getPath('userData');
-  const backupsDir = path.join(userDataPath, 'backups');
-  const backupConfigPath = path.join(userDataPath, 'backup-config.json');
-  const updateConfigPath = path.join(userDataPath, 'update-config.json');
+  const dataRoot = resolveDataRoot();
+  const backupsDir = path.join(dataRoot, 'backups');
+  const backupConfigPath = path.join(dataRoot, 'backup-config.json');
+  const updateConfigPath = path.join(dataRoot, 'update-config.json');
+  const emailConfig = path.join(dataRoot, 'email-config.json');
 
   // Primary database
-  tryUnlink(dbFile);
-  tryUnlink(dbFile + '.tmp');
+  tryUnlink(dbFilePath());
+  tryUnlink(dbFilePath() + '.tmp');
 
   // Local configs/backups
   tryUnlink(backupConfigPath);
   tryUnlink(updateConfigPath);
+  tryUnlink(emailConfig);
   tryRmDir(backupsDir);
 
   // Notify renderers to refresh in case any window is open.
@@ -981,7 +1204,7 @@ ipcMain.handle('db-reset-all', async () => {
     // ignore
   }
 
-  return { ok: errors.length === 0, removed, errors, userDataPath };
+  return { ok: errors.length === 0, removed, errors, dataRoot };
 });
 
 ipcMain.handle('db-get', async (_e: any, key: string) => {
@@ -1224,7 +1447,7 @@ ipcMain.handle('open-dev-menu', async () => {
 });
 
 ipcMain.handle('dev:openUserDataFolder', async () => {
-  const folder = app.getPath('userData');
+  const folder = resolveDataRoot();
   try {
     await shell.openPath(folder);
     return { ok: true, folder };
@@ -1235,15 +1458,16 @@ ipcMain.handle('dev:openUserDataFolder', async () => {
 
 ipcMain.handle('dev:backupDb', async () => {
   try {
-    const userData = app.getPath('userData');
-    const backupsDir = path.join(userData, 'backups');
+    const dataRoot = resolveDataRoot();
+    const backupsDir = path.join(dataRoot, 'backups');
     if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
     const ts = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     const stamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
     const backupPath = path.join(backupsDir, `gbpos-db-backup-${stamp}.json`);
-    if (fs.existsSync(dbFile)) {
-      fs.copyFileSync(dbFile, backupPath);
+    const p = dbFilePath();
+    if (fs.existsSync(p)) {
+      fs.copyFileSync(p, backupPath);
       return { ok: true, backupPath };
     } else {
       // create empty db backup to mark point-in-time
@@ -1305,8 +1529,8 @@ ipcMain.handle('backup:import', async () => {
 
     // Auto-backup current DB before overwriting
     try {
-      const userData = app.getPath('userData');
-      const backupsDir = path.join(userData, 'backups');
+      const dataRoot = resolveDataRoot();
+      const backupsDir = path.join(dataRoot, 'backups');
       if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
       const ts = new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
@@ -1316,7 +1540,7 @@ ipcMain.handle('backup:import', async () => {
     } catch (_e) { /* best effort */ }
 
   // Replace database
-  fs.writeFileSync(dbFile, JSON.stringify(dbPayload, null, 2), 'utf-8');
+  fs.writeFileSync(dbFilePath(), JSON.stringify(dbPayload, null, 2), 'utf-8');
 
     // Notify renderers that data might have changed
     const channels = [
@@ -1351,6 +1575,7 @@ ipcMain.handle('dev:environmentInfo', async () => {
       arch: process.arch,
       appVersion: app.getVersion ? app.getVersion() : undefined,
       userData: app.getPath('userData'),
+      dataRoot: resolveDataRoot(),
       cwd: process.cwd(),
       isDev,
     };
@@ -1510,8 +1735,7 @@ ipcMain.handle('backup:exportPayloadNamed', async (_e: any, payload: any, label?
     fs.writeFileSync(result.filePath, JSON.stringify(payload || {}, null, 2), 'utf-8');
     // Persist last backup path for UI convenience
     try {
-      const userDataPath = app.getPath('userData');
-      const configPath = path.join(userDataPath, 'backup-config.json');
+      const configPath = path.join(resolveDataRoot(), 'backup-config.json');
       const config = { lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() };
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     } catch {}
@@ -1587,7 +1811,7 @@ ipcMain.handle('export-pdf', async (_e: any, html: string, filenameBase?: string
 
     // Avoid giant data: URLs (can exceed Chromium/Electron limits when HTML contains base64 images)
     // by writing the HTML to a temp file and loading via file://.
-    const tempDir = path.join(app.getPath('userData'), 'quote-previews');
+    const tempDir = path.join(resolveDataRoot(), 'quote-previews');
     try { fs.mkdirSync(tempDir, { recursive: true }); } catch {}
     const safeBase = String(filenameBase || 'gadgetboy-quote')
       .replace(/[^a-z0-9\-\_\+]+/gi, '-')
@@ -1641,7 +1865,7 @@ ipcMain.handle('open-interactive-html', async (_e: any, html: string, title?: st
     if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
 
     // Load from a temp file instead of a data: URL to avoid URL-length limits for large HTML.
-    const tempDir = path.join(app.getPath('userData'), 'quote-previews');
+    const tempDir = path.join(resolveDataRoot(), 'quote-previews');
     try { fs.mkdirSync(tempDir, { recursive: true }); } catch {}
     const safeTitle = String(title || 'Interactive Quote')
       .replace(/[^a-z0-9\-\_\+]+/gi, '-')
@@ -2138,8 +2362,7 @@ ipcMain.handle('create-encrypted-backup', async (_event: any, backupData: any, p
     fs.writeFileSync(result.filePath, JSON.stringify(encryptedBackup, null, 2));
 
     // Store last backup path
-    const userDataPath = app.getPath('userData');
-    const configPath = path.join(userDataPath, 'backup-config.json');
+    const configPath = path.join(resolveDataRoot(), 'backup-config.json');
     const config = { lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() };
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -2237,8 +2460,7 @@ ipcMain.handle('restore-encrypted-backup', async (_event: any, password: string)
 // Get last backup path
 ipcMain.handle('get-last-backup-path', async () => {
   try {
-    const userDataPath = app.getPath('userData');
-    const configPath = path.join(userDataPath, 'backup-config.json');
+    const configPath = path.join(resolveDataRoot(), 'backup-config.json');
     
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -2249,4 +2471,162 @@ ipcMain.handle('get-last-backup-path', async () => {
     console.warn('[BACKUP] Failed to get last backup path:', error);
     return '';
   }
+});
+
+// ============================================
+// STORAGE LOCATION + DIAGNOSTICS IPC
+// ============================================
+
+ipcMain.handle('storage:getInfo', async () => {
+  try {
+    const cfg = readDataLocationConfig();
+    return {
+      ok: true,
+      configured: Boolean(cfg?.dataRoot),
+      dataRoot: cfg?.dataRoot || null,
+      recommended: defaultProgramDataRoot(),
+      userData: app.getPath('userData'),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('storage:ensure', async (event: any) => {
+  const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+  try {
+    const existing = readDataLocationConfig();
+    if (existing?.dataRoot) {
+      const writeCheck = canWriteToFolder(existing.dataRoot);
+      if (writeCheck.ok) {
+        setDataRoot(existing.dataRoot);
+        return { ok: true, configured: true, dataRoot: existing.dataRoot, isFirstRun: false };
+      }
+    }
+
+    const recommended = defaultProgramDataRoot();
+    const perUser = app.getPath('userData');
+
+    // Fail-safe: if the pointer file is missing but an existing data folder is present,
+    // offer to reuse it (common after reinstall or if userData was wiped).
+    const candidateExistingRoot = (() => {
+      if (looksLikeGbposDataRoot(recommended)) return recommended;
+      if (looksLikeGbposDataRoot(perUser)) return perUser;
+      return null;
+    })();
+
+    if (candidateExistingRoot) {
+      const reuse = await dialog.showMessageBox(parentWin as any, {
+        type: 'question',
+        buttons: ['Use Existing Data Folder', 'Choose Folder…', 'Use Per-User (AppData)'],
+        defaultId: 0,
+        cancelId: 2,
+        title: 'GadgetBoy POS Data Found',
+        message: 'An existing GadgetBoy POS data folder was found.',
+        detail: `${candidateExistingRoot}\n\nDo you want to keep using this folder? This preserves your customers/work orders/backups across updates and reinstalls.`,
+        noLink: true,
+      });
+
+      if (reuse.response === 0) {
+        const writeCheck = canWriteToFolder(candidateExistingRoot);
+        if (writeCheck.ok) {
+          setDataRoot(candidateExistingRoot);
+          return { ok: true, configured: true, dataRoot: candidateExistingRoot, isFirstRun: false, reusedExisting: true };
+        }
+      }
+      // Otherwise fall through to normal chooser.
+    }
+
+    const choice = await dialog.showMessageBox(parentWin as any, {
+      type: 'question',
+      buttons: ['Use Recommended (ProgramData)', 'Choose Folder...', 'Use Per-User (AppData)'],
+      defaultId: 0,
+      cancelId: 2,
+      title: 'GadgetBoy POS Setup',
+      message: 'Choose where GadgetBoy POS should store its data',
+      detail: `Recommended: ${recommended}\n\nThis includes the database (customers/work orders), email settings, backups, and quote preview temp files.`,
+      noLink: true,
+    });
+
+    let selectedRoot: string = perUser;
+    if (choice.response === 0) {
+      selectedRoot = recommended;
+    } else if (choice.response === 1) {
+      const open = await dialog.showOpenDialog(parentWin as any, {
+        title: 'Select a folder to store GadgetBoy POS data',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (!open.canceled && open.filePaths && open.filePaths[0]) {
+        const base = open.filePaths[0];
+        selectedRoot = path.basename(base).toLowerCase() === APP_DATA_DIRNAME.toLowerCase()
+          ? base
+          : path.join(base, APP_DATA_DIRNAME);
+      }
+    }
+
+    const writeCheck = canWriteToFolder(selectedRoot);
+    if (!writeCheck.ok) {
+      await dialog.showMessageBox(parentWin as any, {
+        type: 'warning',
+        buttons: ['OK'],
+        defaultId: 0,
+        title: 'Cannot Write to Folder',
+        message: 'GadgetBoy POS could not write to the selected folder.',
+        detail: `${selectedRoot}\n\nFalling back to per-user storage.\n\nError: ${writeCheck.error || 'Unknown error'}`,
+        noLink: true,
+      });
+      selectedRoot = perUser;
+    }
+
+    setDataRoot(selectedRoot);
+
+    // Best-effort migration from previous per-user location
+    let migration: any = null;
+    try {
+      const oldUserData = app.getPath('userData');
+      if (oldUserData && selectedRoot && path.resolve(oldUserData) !== path.resolve(selectedRoot)) {
+        migration = migrateUserDataToDataRoot(oldUserData, selectedRoot);
+      }
+    } catch {
+      // ignore
+    }
+
+    return { ok: true, configured: true, dataRoot: selectedRoot, isFirstRun: true, migration };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e), dataRoot: resolveDataRoot() };
+  }
+});
+
+ipcMain.handle('diagnostics:run', async () => {
+  const results: any[] = [];
+  const dataRoot = resolveDataRoot();
+  try {
+    results.push({ name: 'dataRoot', ok: true, value: dataRoot });
+
+    const writeCheck = canWriteToFolder(dataRoot);
+    results.push({ name: 'writeAccess', ok: writeCheck.ok, error: writeCheck.error || null });
+
+    // DB parse check
+    try {
+      const db = readDb();
+      results.push({ name: 'dbRead', ok: true, keys: Object.keys(db || {}) });
+    } catch (e: any) {
+      results.push({ name: 'dbRead', ok: false, error: e?.message || String(e) });
+    }
+
+    // Temp preview dir check
+    try {
+      const tempDir = path.join(dataRoot, 'quote-previews');
+      const chk = canWriteToFolder(tempDir);
+      results.push({ name: 'quotePreviewsWritable', ok: chk.ok, error: chk.error || null });
+    } catch (e: any) {
+      results.push({ name: 'quotePreviewsWritable', ok: false, error: e?.message || String(e) });
+    }
+  } catch (e: any) {
+    results.push({ name: 'diagnostics', ok: false, error: e?.message || String(e) });
+  }
+
+  const ok = results.every((r) => r && r.ok !== false);
+  try { appendStartupLog(`diagnostics ok=${ok} dataRoot=${dataRoot}`); } catch {}
+  return { ok, dataRoot, results };
 });

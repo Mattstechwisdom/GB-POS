@@ -21,6 +21,8 @@ nsis:
   createDesktopShortcut: true
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  # Safety: never delete user data on uninstall (DB/backups/etc.)
+  deleteAppDataOnUninstall: false
 
 # Required for in-app updates via electron-updater.
 # Set the correct repo in package.json "repository.url".

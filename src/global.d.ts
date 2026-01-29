@@ -9,6 +9,9 @@ declare global {
   interface Window {
     api: {
     getAppInfo: () => Promise<{ version: string; platform: string; arch: string; error?: string }>;
+    storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
+    storageEnsure: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string; isFirstRun?: boolean; migration?: any; error?: string }>;
+    runDiagnostics: () => Promise<{ ok: boolean; dataRoot?: string; results?: any[]; error?: string }>;
     updateCheck: () => Promise<any>;
     updateDownload: () => Promise<any>;
     updateQuitAndInstall: () => Promise<any>;
@@ -39,7 +42,7 @@ declare global {
     dbAdd: (key: string, item: any) => Promise<any>;
     dbUpdate: (key: string, id: any, item: any) => Promise<any>;
   dbDelete: (key: string, id: any) => Promise<boolean>;
-    dbResetAll: () => Promise<{ ok: boolean; removed?: string[]; errors?: string[]; userDataPath?: string }>;
+    dbResetAll: () => Promise<{ ok: boolean; removed?: string[]; errors?: string[]; dataRoot?: string }>;
   sendRepairSelected: (repair: any) => void;
     openDevMenu: () => Promise<any>;
     devOpenUserDataFolder: () => Promise<any>;

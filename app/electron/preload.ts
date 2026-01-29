@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
+  // Storage / diagnostics
+  storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
+  storageEnsure: (): Promise<any> => ipcRenderer.invoke('storage:ensure'),
+  runDiagnostics: (): Promise<any> => ipcRenderer.invoke('diagnostics:run'),
   // Updates
   updateCheck: (): Promise<any> => ipcRenderer.invoke('update:check'),
   updateDownload: (): Promise<any> => ipcRenderer.invoke('update:download'),

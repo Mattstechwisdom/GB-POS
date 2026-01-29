@@ -22,6 +22,7 @@ import ClearDatabaseWindow from './components/ClearDatabaseWindow';
 import ClockInWindow from './components/ClockInWindow';
 import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
 import UpdateGate from './components/UpdateGate';
+import DataPathGate from './components/DataPathGate';
 import './styles/index.css';
 
 declare global {
@@ -151,9 +152,11 @@ try {
 		root.render(<NewWorkOrderWindow />);
 	} else {
 		root.render(
-			<UpdateGate>
-				<App />
-			</UpdateGate>
+			<DataPathGate>
+				<UpdateGate>
+					<App />
+				</UpdateGate>
+			</DataPathGate>
 		);
 	}
 
