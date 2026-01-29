@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('api', {
   updateDownload: (): Promise<any> => ipcRenderer.invoke('update:download'),
   updateQuitAndInstall: (): Promise<any> => ipcRenderer.invoke('update:quitAndInstall'),
   updateSkip: (version: string): Promise<any> => ipcRenderer.invoke('update:skip', version),
+  updateOpenReleases: (): Promise<any> => ipcRenderer.invoke('update:openReleases'),
+  updatePickInstallerAndRun: (): Promise<any> => ipcRenderer.invoke('update:pickInstallerAndRun'),
+  updateRunInstaller: (installerPath: string, opts?: { silent?: boolean }): Promise<any> => ipcRenderer.invoke('update:runInstaller', installerPath, opts),
   onUpdateEvent: (cb: (ev: any) => void) => {
     const handler = (_e: any, payload: any) => cb(payload);
     ipcRenderer.on('update:event', handler);

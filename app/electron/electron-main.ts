@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const os = require('os');
+const { spawn } = require('child_process');
 
 // -------------------------------------------------------------
 // App data location (ProgramData default, user-approved)
@@ -462,6 +463,45 @@ function setupAutoUpdater() {
   }
 }
 
+function getReleasesUrl(): string {
+  try {
+    // In production this resolves inside app.asar; require works fine.
+    const pkg = require(path.join(app.getAppPath(), 'package.json'));
+    const repoUrl = pkg?.repository?.url;
+    if (typeof repoUrl === 'string' && repoUrl.length) {
+      // Support https://github.com/owner/repo(.git)
+      const cleaned = repoUrl.replace(/\.git$/i, '');
+      if (cleaned.includes('github.com/')) return `${cleaned}/releases`;
+    }
+  } catch {
+    // ignore
+  }
+  return 'https://github.com/Mattstechwisdom/GB-POS/releases';
+}
+
+function runInstallerExe(installerPathRaw: string, opts?: { silent?: boolean }) {
+  try {
+    if (!installerPathRaw) return { ok: false, error: 'Missing installer path.' };
+    const installerPath = path.resolve(String(installerPathRaw));
+    if (!fs.existsSync(installerPath)) return { ok: false, error: 'Installer file not found.' };
+    if (path.extname(installerPath).toLowerCase() !== '.exe') return { ok: false, error: 'Please select a .exe installer.' };
+
+    // For NSIS installers, /S performs a silent install.
+    const args = opts?.silent ? ['/S'] : [];
+    const child = spawn(installerPath, args, { detached: true, stdio: 'ignore' });
+    child.unref();
+
+    // Quit this app so files can be replaced.
+    setTimeout(() => {
+      try { app.quit(); } catch {}
+    }, 250);
+
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 function getWindowIconPath(): string | undefined {
   try {
     const devCandidate = path.join(process.cwd(), 'build', 'icon.ico');
@@ -596,12 +636,84 @@ function setupApplicationMenu() {
         : [ { role: 'minimize' }, { role: 'close' } ],
     });
 
+    template.push({
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Open Releases Page',
+          click: async () => {
+            try { await shell.openExternal(getReleasesUrl()); } catch {}
+          },
+        },
+        {
+          label: 'Install Update From File…',
+          click: async () => {
+            try {
+              const res = await dialog.showOpenDialog({
+                title: 'Select GadgetBoy POS update installer (.exe)',
+                properties: ['openFile'],
+                filters: [
+                  { name: 'Installer', extensions: ['exe'] },
+                  { name: 'All Files', extensions: ['*'] },
+                ],
+              });
+              if (res.canceled || !res.filePaths?.length) return;
+              const picked = res.filePaths[0];
+
+              const confirm = await dialog.showMessageBox({
+                type: 'question',
+                buttons: ['Run Installer', 'Cancel'],
+                defaultId: 0,
+                cancelId: 1,
+                title: 'Install Update',
+                message: 'This will close GadgetBoy POS and launch the installer to update the application.',
+                detail: 'Your ProgramData (or chosen data folder) is not deleted by the installer.',
+              });
+              if (confirm.response !== 0) return;
+              runInstallerExe(picked);
+            } catch {}
+          },
+        },
+      ],
+    });
+
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
   } catch {
     // best effort; if menu fails, keyboard shortcuts might be limited
   }
 }
+
+// Manual update IPC (for optional UI buttons)
+ipcMain.handle('update:openReleases', async () => {
+  try {
+    await shell.openExternal(getReleasesUrl());
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('update:pickInstallerAndRun', async () => {
+  try {
+    const res = await dialog.showOpenDialog({
+      title: 'Select GadgetBoy POS update installer (.exe)',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Installer', extensions: ['exe'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (res.canceled || !res.filePaths?.length) return { ok: false, canceled: true };
+    return runInstallerExe(res.filePaths[0]);
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('update:runInstaller', async (_e: any, installerPath: string, opts?: { silent?: boolean }) => {
+  return runInstallerExe(installerPath, opts);
+});
 
 app.on('browser-window-created', (_event: any, win: typeof BrowserWindow.prototype) => {
   setupContextMenu(win);

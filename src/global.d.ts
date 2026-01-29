@@ -16,6 +16,9 @@ declare global {
     updateDownload: () => Promise<any>;
     updateQuitAndInstall: () => Promise<any>;
     updateSkip: (version: string) => Promise<any>;
+    updateOpenReleases: () => Promise<any>;
+    updatePickInstallerAndRun: () => Promise<any>;
+    updateRunInstaller: (installerPath: string, opts?: { silent?: boolean }) => Promise<any>;
     onUpdateEvent: (cb: (ev: any) => void) => () => void;
     getCustomers: () => Promise<any[]>;
     addCustomer: (c: any) => Promise<any>;
