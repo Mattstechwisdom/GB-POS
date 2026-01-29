@@ -25,8 +25,6 @@ on:
       - 'package-lock.json'
       - 'tsconfig*.json'
       - 'vite.config.ts'
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -74,7 +72,7 @@ jobs:
             release/*.yaml
 
       - name: Publish to GitHub Release (tag builds only)
-        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true' && startsWith(github.event.inputs.ref, 'v') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}
