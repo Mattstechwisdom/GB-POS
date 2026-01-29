@@ -5,15 +5,11 @@ artifactName: 'GadgetBoy-POS-Setup-${version}.${ext}'
 directories:
   output: release
 extraMetadata:
-  main: dist-main/app/electron/electron-main.js
+  main: app/electron-main.js
 files:
   - dist/**
-  - dist-main/app/electron/**
-  - '!app/**'
-  - '!src/**'
-  - '!**/*.ts'
-  - '!**/*.tsx'
-  - '!**/*.map'
+  - dist-main/**
+  - app/electron-main.js
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico

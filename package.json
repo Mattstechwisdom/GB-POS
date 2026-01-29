@@ -2,7 +2,7 @@
   "name": "gadgetboy-pos",
   "version": "0.2.2",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
-  "main": "dist-main/app/electron/electron-main.js",
+  "main": "app/electron-main.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/Mattstechwisdom/GB-POS.git"
