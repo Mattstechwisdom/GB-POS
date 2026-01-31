@@ -20,6 +20,7 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  allowDowngrade: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   installerIcon: build/icon.ico

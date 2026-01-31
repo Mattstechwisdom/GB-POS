@@ -64,6 +64,14 @@ jobs:
           DEBUG: electron-builder,electron-updater
         run: npm run dist -- --publish never --debug
 
+      - name: Create "Update" installer alias
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path release -Filter 'GadgetBoy-POS-Setup-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) { throw 'Setup installer not found in release/*.exe' }
+          $updateName = $setup.Name -replace '^GadgetBoy-POS-Setup-', 'GadgetBoy-POS-Update-'
+          Copy-Item -Force $setup.FullName (Join-Path $setup.DirectoryName $updateName)
+
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4
         if: ${{ always() }}
