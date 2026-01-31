@@ -341,6 +341,28 @@ function normalizeVersion(v: string): string {
   return String(v || '0.0.0').trim().replace(/^v/i, '');
 }
 
+function getAppDisplayVersion(): string {
+  try {
+    return normalizeVersion(app.getVersion());
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function getAppDisplayTitle(): string {
+  return `GadgetBoy POS v${getAppDisplayVersion()}`;
+}
+
+function windowTitle(prefix?: string): string {
+  const base = getAppDisplayTitle();
+  const p = String(prefix || '').trim();
+  if (!p) return base;
+  // Avoid duplicated titles if caller passes full title.
+  if (p.includes(base)) return p;
+  if (p === 'GadgetBoy POS' || p.startsWith('GadgetBoy POS v')) return base;
+  return `${p} — ${base}`;
+}
+
 function compareVersions(aRaw: string, bRaw: string): number {
   const a = normalizeVersion(aRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
   const b = normalizeVersion(bRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
@@ -736,7 +758,7 @@ ipcMain.handle('pick-repair-item', async (_event: any) => {
         preload: path.join(__dirname, '..', 'electron', 'preload.js'),
       },
       show: false,
-      title: 'Add Repair to Work Order',
+      title: windowTitle('Add Repair to Work Order'),
     });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1012,7 +1034,7 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'GadgetBoy POS',
+    title: windowTitle(),
   });
   win.once('ready-to-show', () => { try { win.maximize(); } catch {} win.show(); });
   if (isDev && OPEN_MAIN_DEVTOOLS) win.webContents.openDevTools({ mode: 'detach' });
@@ -1033,7 +1055,7 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
   win.webContents.executeJavaScript('window.location.search').then((search: string) => {
       if (search && search.includes('newWorkOrder=')) {
-        win.setTitle('New Work Order');
+        win.setTitle(windowTitle('New Work Order'));
       }
     });
   });
@@ -1078,7 +1100,7 @@ ipcMain.handle('open-calendar', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Calendar',
+    title: windowTitle('Calendar'),
   });
   try { child.setFullScreen(false); } catch {}
   try { if (typeof child.setFullScreenable === 'function') child.setFullScreenable(true); } catch {}
@@ -1115,7 +1137,7 @@ ipcMain.handle('open-backup', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Data Management',
+    title: windowTitle('Data Management'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1141,7 +1163,7 @@ ipcMain.handle('open-clock-in', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Employee Clock In/Out',
+    title: windowTitle('Employee Clock In/Out'),
   });
   // Center and show when ready; dev server might delay first paint
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
@@ -1193,7 +1215,7 @@ ipcMain.handle('open-quote-generator', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Generate Quote',
+    title: windowTitle('Generate Quote'),
   });
   try { child.setFullScreen(false); } catch {}
   try { if (typeof child.setFullScreenable === 'function') child.setFullScreenable(true); } catch {}
@@ -1524,7 +1546,7 @@ ipcMain.handle('open-products', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Products',
+    title: windowTitle('Products'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1549,7 +1571,7 @@ ipcMain.handle('open-dev-menu', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Dev Menu',
+    title: windowTitle('Dev Menu'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1723,7 +1745,7 @@ ipcMain.handle('open-data-tools', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Data Tools',
+    title: windowTitle('Data Tools'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1749,7 +1771,7 @@ ipcMain.handle('open-clear-database', async (event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Clear Database',
+    title: windowTitle('Clear Database'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1774,7 +1796,7 @@ ipcMain.handle('open-charts', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Charts',
+    title: windowTitle('Charts'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2017,7 +2039,7 @@ ipcMain.handle('open-release-form', async (_event: any, payload: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Release Form',
+    title: windowTitle('Release Form'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2044,7 +2066,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Customer Receipt',
+    title: windowTitle('Customer Receipt'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
@@ -2072,7 +2094,7 @@ ipcMain.handle('open-product-form', async (event: any, payload: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Product Form',
+    title: windowTitle('Product Form'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
@@ -2099,7 +2121,7 @@ ipcMain.handle('open-reporting', async () => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Reporting',
+    title: windowTitle('Reporting'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2165,7 +2187,7 @@ ipcMain.handle('open-new-workorder', async (_event: any, payload: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'New Work Order',
+    title: windowTitle('New Work Order'),
   });
   child.once('ready-to-show', () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
@@ -2195,7 +2217,7 @@ ipcMain.handle('open-device-categories', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Device Categories',
+    title: windowTitle('Device Categories'),
   });
   child.once('ready-to-show', () => { centerWindow(child); child.show(); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
@@ -2219,7 +2241,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Work Order Item',
+    title: windowTitle('Work Order Item'),
   });
   child.once('ready-to-show', () => child.show());
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
@@ -2244,7 +2266,7 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Add Repair to Work Order',
+    title: windowTitle('Add Repair to Work Order'),
   });
   child.once('ready-to-show', () => child.show());
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
@@ -2311,7 +2333,7 @@ ipcMain.handle('open-customer-overview', async (_event: any, customerId: number)
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'Customer Overview',
+    title: windowTitle('Customer Overview'),
   });
   child.once('ready-to-show', () => child.show());
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2350,7 +2372,7 @@ ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: 'New Sale',
+    title: windowTitle('New Sale'),
   });
   child.once('ready-to-show', () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
