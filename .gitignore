@@ -15,6 +15,9 @@ dist-main/
 release/
 out/
 
+# Temporary release artifacts
+release-v023-test/
+
 # OS
 .DS_Store
 Thumbs.db
