@@ -595,6 +595,8 @@ function QuoteGeneratorWindow(): JSX.Element {
         <style>
           @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } .no-print { display:none !important; } }
           html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+          /* Mobile drawing reliability */
+          #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
         </style>
         <script>
           try { window.__GB_CUSTOM_PRINT__ = true; console.log('[GB POS] Custom Build Print active'); } catch(e) {}
@@ -672,6 +674,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 canvas.addEventListener('pointerdown', function(e){ start(e); try{ if (typeof canvas.setPointerCapture==='function') canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
                 canvas.addEventListener('pointermove', move, { passive:false });
                 window.addEventListener('pointerup', function(){ end(); });
+                window.addEventListener('pointercancel', function(){ end(); });
 
                 // Fallbacks for environments where Pointer Events are flaky
                 canvas.addEventListener('mousedown', function(e){ start(e); }, false);
@@ -680,6 +683,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 canvas.addEventListener('touchstart', function(e){ start(e); }, { passive:false });
                 canvas.addEventListener('touchmove', function(e){ move(e); }, { passive:false });
                 window.addEventListener('touchend', function(){ end(); }, false);
+                window.addEventListener('touchcancel', function(){ end(); }, false);
                 window.addEventListener('pointercancel', function(){ end(); }, false);
               }
 
@@ -783,7 +787,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     <html>
     <head>
       <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <title>Quote - ${esc(cust || 'Customer')} - ${stampTitle}</title>
       <style>
         @media print {
@@ -793,10 +797,23 @@ function QuoteGeneratorWindow(): JSX.Element {
           .no-print { display:none !important; }
           html, body { background: #ffffff !important; color: #000000 !important; }
         }
-        html, body { margin: 0; padding: 0; background: #1f2937; color: #e5e7eb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+        html, body { margin: 0; padding: 0; background: #1f2937; color: #e5e7eb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-text-size-adjust: 100%; }
+        #mobileHelp { max-width: 920px; margin: 12px auto; padding: 12px; border-radius: 12px; background: #111827; border: 1px solid #374151; color: #e5e7eb; font-size: 11.5pt; line-height: 1.35; }
+        #mobileHelp b { color: #ffffff; }
+        @media (min-width: 900px) { #mobileHelp { display:none; } }
+        /* Mobile drawing reliability */
+        #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
       </style>
     </head>
     <body>
+      <noscript>
+        <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
+          This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app preview, tap “Open in Browser” (Safari/Chrome), then try again.
+        </div>
+      </noscript>
+      <div id="mobileHelp" class="no-print">
+        <b>On mobile:</b> If the signature box doesn’t let you draw, tap “Open in Browser” (Safari/Chrome). After you sign, tap <b>Finalize</b>, then use <b>Share PDF</b> to send it back to <b>gadgetboysc@gmail.com</b>.
+      </div>
       ${pages.join('\n')}
       <script>
       (function(){
@@ -819,8 +836,14 @@ function QuoteGeneratorWindow(): JSX.Element {
           if (!canvas || !ctx) return;
           const r = canvas.getBoundingClientRect();
           const dpr = (window.devicePixelRatio || 1);
-          canvas.width = Math.max(1, Math.floor(r.width * dpr));
-          canvas.height = Math.max(1, Math.floor(r.height * dpr));
+          // On some mobile viewers the first layout pass reports width/height as 0.
+          // Fall back to parent width and a fixed height so drawing/typed signature still works.
+          let parentW = 0;
+          try { parentW = canvas.parentElement ? canvas.parentElement.getBoundingClientRect().width : 0; } catch { parentW = 0; }
+          const cssW = (r && r.width >= 2) ? r.width : (parentW >= 2 ? parentW : 600);
+          const cssH = (r && r.height >= 2) ? r.height : 96;
+          canvas.width = Math.max(1, Math.floor(cssW * dpr));
+          canvas.height = Math.max(1, Math.floor(cssH * dpr));
           ctx.setTransform(1,0,0,1,0,0);
           ctx.scale(dpr, dpr);
           ctx.lineWidth = 2.5;
@@ -830,30 +853,73 @@ function QuoteGeneratorWindow(): JSX.Element {
         }
 
         let drawing=false, last=[0,0], dirty=false, typed=false;
-        function pos(e){ if (!canvas) return [0,0]; const r=canvas.getBoundingClientRect(); const pt = (e.touches? e.touches[0] : e); const x = pt.clientX - r.left; const y = pt.clientY - r.top; return [x,y]; }
-        function start(e){ if (!ctx || typed) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch{} }
+        function pos(e){
+          if (!canvas) return [0,0];
+          const r=canvas.getBoundingClientRect();
+          const touch = (e && e.touches && e.touches.length) ? e.touches[0]
+                       : (e && e.changedTouches && e.changedTouches.length) ? e.changedTouches[0]
+                       : null;
+          const pt = touch || e || { clientX: 0, clientY: 0 };
+          const x = (pt.clientX || 0) - r.left;
+          const y = (pt.clientY || 0) - r.top;
+          return [x,y];
+        }
+        function start(e){
+          if (!ctx || typed) return;
+          try { if (canvas && (canvas.width <= 2 || canvas.height <= 2)) resize(); } catch {}
+          drawing=true;
+          last=pos(e);
+          try{ e.preventDefault(); }catch{}
+        }
         function move(e){ if(!drawing||!ctx||typed) return; const p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch{} }
         function end(){ drawing=false; }
 
         if (canvas && ctx) {
           window.addEventListener('resize', resize, { passive: true });
           resize();
+          // Mobile pinch-zoom doesn't always trigger 'resize'; observe layout changes.
+          try {
+            if (window.ResizeObserver && canvas.parentElement) {
+              const ro = new ResizeObserver(function(){ try { resize(); } catch {} });
+              ro.observe(canvas.parentElement);
+            }
+          } catch {}
+          try { window.addEventListener('orientationchange', function(){ setTimeout(function(){ try{ resize(); }catch{} }, 60); }, { passive: true }); } catch {}
+          try { setTimeout(function(){ try { resize(); } catch {} }, 80); } catch {}
           try { canvas.style.touchAction = 'none'; } catch {}
           canvas.addEventListener('pointerdown', function(e){ try{ start(e); if (typeof canvas.setPointerCapture==='function') canvas.setPointerCapture(e.pointerId); } catch{} }, { passive: false });
           canvas.addEventListener('pointermove', move, { passive: false });
           window.addEventListener('pointerup', function(e){ try{ end(); if (typeof canvas.releasePointerCapture==='function') canvas.releasePointerCapture(e.pointerId); } catch{} });
+          window.addEventListener('pointercancel', function(){ try{ end(); } catch{} });
           canvas.addEventListener('mousedown', start);
           canvas.addEventListener('mousemove', move);
           window.addEventListener('mouseup', end);
           canvas.addEventListener('touchstart', start, {passive:false});
           canvas.addEventListener('touchmove', move, {passive:false});
           window.addEventListener('touchend', end);
+          window.addEventListener('touchcancel', end);
           canvas.addEventListener('mouseleave', end);
         }
 
         if (sigClear && canvas && ctx) sigClear.addEventListener('click', function(){ try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch{} resize(); dirty=false; typed=false; try{ if (sigInput) sigInput.removeAttribute('disabled'); if (sigApply) sigApply.removeAttribute('disabled'); }catch{} });
 
-        function placeTypedSignature(name){ if (!canvas || !ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); const dpr=(window.devicePixelRatio||1); const cssH = canvas.height / dpr; const size = Math.floor(Math.max(20, cssH * 0.5)); ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Edwardian Script ITC", "Brush Script MT", "Lucida Handwriting", cursive'; const cx=(canvas.width/dpr)/2; const cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; typed=true; }
+        function placeTypedSignature(name){
+          if (!canvas || !ctx) return;
+          try { resize(); } catch {}
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          const dpr=(window.devicePixelRatio||1);
+          const cssH = canvas.height / dpr;
+          const size = Math.floor(Math.max(20, cssH * 0.5));
+          ctx.fillStyle='#000';
+          ctx.textAlign='center';
+          ctx.textBaseline='middle';
+          ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Edwardian Script ITC", "Brush Script MT", "Lucida Handwriting", cursive';
+          const cx=(canvas.width/dpr)/2;
+          const cy=(canvas.height/dpr)/2;
+          ctx.fillText(name, cx, cy);
+          dirty=true;
+          typed=true;
+        }
 
         if (sigApply && sigInput) sigApply.addEventListener('click', function(e){ try{ e.preventDefault(); }catch{} const name = (sigInput instanceof HTMLInputElement ? sigInput.value : '').trim(); if (!name) { try{ alert('Please enter your full name to sign.'); }catch{} return; } placeTypedSignature(name); try{ sigInput.setAttribute('disabled',''); }catch{} try{ sigApply.setAttribute('disabled',''); }catch{} });
 
@@ -883,14 +949,143 @@ function QuoteGeneratorWindow(): JSX.Element {
           } else {
             // Browser: generate a PDF client-side (no print dialog) using html2canvas + jsPDF
             const ensureLib = (src) => new Promise((resolve, reject)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>resolve(true); s.onerror=(e)=>reject(e); document.head.appendChild(s); });
+            const ensureLibAny = async (sources) => {
+              let lastErr = null;
+              for (let i = 0; i < sources.length; i++) {
+                try { await ensureLib(sources[i]); return true; } catch (e) { lastErr = e; }
+              }
+              throw lastErr || new Error('Failed to load scripts');
+            };
             const ensurePdfLibs = async () => {
               const needH2C = !(window).html2canvas;
               const needJspdf = !((window).jspdf && (window).jspdf.jsPDF);
               const tasks = [];
-              if (needH2C) tasks.push(ensureLib('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'));
-              if (needJspdf) tasks.push(ensureLib('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'));
+              if (needH2C) tasks.push(ensureLibAny([
+                'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+                'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+              ]));
+              if (needJspdf) tasks.push(ensureLibAny([
+                'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+                'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+              ]));
               if (tasks.length) await Promise.all(tasks);
             };
+            const SHOP_EMAIL = 'gadgetboysc@gmail.com';
+
+            const showPdfActions = (blob, filename) => {
+              try {
+                const wrap = document.createElement('div');
+                wrap.className = 'no-print';
+                wrap.style.margin = '14px auto 18px auto';
+                wrap.style.maxWidth = '920px';
+                wrap.style.padding = '12px';
+                wrap.style.border = '1px solid #111827';
+                wrap.style.borderRadius = '12px';
+                wrap.style.background = '#ffffff';
+                wrap.style.color = '#000000';
+                wrap.style.textAlign = 'center';
+                wrap.innerHTML =
+                  '<div style="font-weight:800; margin-bottom:6px">PDF Ready</div>' +
+                  '<div style="font-size:11.5pt; margin-bottom:10px">On mobile, use Share to send the PDF back to us.</div>';
+
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.gap = '8px';
+                row.style.justifyContent = 'center';
+                row.style.flexWrap = 'wrap';
+
+                const mkBtn = (label) => {
+                  const b = document.createElement('button');
+                  b.type = 'button';
+                  b.textContent = label;
+                  b.style.padding = '10px 14px';
+                  b.style.borderRadius = '10px';
+                  b.style.border = '2px solid #000';
+                  b.style.background = '#39FF14';
+                  b.style.color = '#000';
+                  b.style.fontWeight = '800';
+                  b.style.cursor = 'pointer';
+                  return b;
+                };
+
+                const downloadBtn = mkBtn('Download PDF');
+                downloadBtn.addEventListener('click', function(){
+                  try {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    // iOS Safari sometimes ignores download; open the PDF in a new tab as fallback.
+                    try {
+                      const ua = String(navigator && navigator.userAgent ? navigator.userAgent : '');
+                      const isIOS = /iP(hone|ad|od)/.test(ua);
+                      if (isIOS) { window.open(url, '_blank'); }
+                    } catch (e) {}
+                    setTimeout(function(){ try { URL.revokeObjectURL(url); } catch {} }, 15000);
+                  } catch(e) {}
+                });
+
+                const shareBtn = mkBtn('Share PDF');
+                shareBtn.addEventListener('click', async function(){
+                  try {
+                    const f = new File([blob], filename, { type: 'application/pdf' });
+                    const canShare = !!(navigator && navigator.share && navigator.canShare && navigator.canShare({ files: [f] }));
+                    if (!canShare) { alert('Sharing is not supported in this browser. Use Download PDF instead.'); return; }
+                    await navigator.share({
+                      files: [f],
+                      title: filename,
+                      text: 'Please send this PDF to ' + SHOP_EMAIL + '. You can add notes to the email if needed.'
+                    });
+                  } catch(e) {
+                    try { alert('Could not open share sheet. Use Download PDF instead.'); } catch {}
+                  }
+                });
+
+                const emailBtn = document.createElement('a');
+                emailBtn.textContent = 'Open Email (prefilled)';
+                emailBtn.href = 'mailto:' + encodeURIComponent(SHOP_EMAIL) +
+                  '?subject=' + encodeURIComponent('Signed Gadgetboy Quote') +
+                  '&body=' + encodeURIComponent('Hi Gadgetboy,\n\nI signed the quote. I am attaching the PDF from this page.\n\nThanks,\n' + (CUSTOMER_NAME || ''));
+                emailBtn.style.display = 'inline-flex';
+                emailBtn.style.alignItems = 'center';
+                emailBtn.style.justifyContent = 'center';
+                emailBtn.style.padding = '10px 14px';
+                emailBtn.style.borderRadius = '10px';
+                emailBtn.style.border = '2px solid #000';
+                emailBtn.style.background = '#111827';
+                emailBtn.style.color = '#fff';
+                emailBtn.style.fontWeight = '800';
+                emailBtn.style.textDecoration = 'none';
+
+                const copyBtn = mkBtn('Copy Email');
+                copyBtn.style.background = '#111827';
+                copyBtn.style.color = '#ffffff';
+                copyBtn.addEventListener('click', async function(){
+                  try {
+                    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                      await navigator.clipboard.writeText(SHOP_EMAIL);
+                      alert('Copied: ' + SHOP_EMAIL);
+                      return;
+                    }
+                  } catch(e) {}
+                  try { prompt('Copy this email address:', SHOP_EMAIL); } catch(e) {}
+                });
+
+                row.appendChild(shareBtn);
+                row.appendChild(downloadBtn);
+                row.appendChild(emailBtn);
+                row.appendChild(copyBtn);
+                wrap.appendChild(row);
+
+                document.body.appendChild(wrap);
+              } catch(e) {}
+            };
+
             const toPdf = async () => {
               try {
                 await ensurePdfLibs();
@@ -921,7 +1116,25 @@ function QuoteGeneratorWindow(): JSX.Element {
                   pdf.addImage(img, 'JPEG', x, y, w, h);
                 }
                 const filename = base + '-' + STAMP_SHORT + '.pdf';
-                pdf.save(filename);
+                const blob = pdf.output('blob');
+                // On mobile browsers, pdf.save() often fails. Prefer Share/Download.
+                const isTouch = !!(navigator && (navigator.maxTouchPoints || 0) > 0);
+                if (blob && (isTouch || (navigator && navigator.share))) {
+                  showPdfActions(blob, filename);
+                  // Best-effort auto-download for browsers that allow it.
+                  try {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(function(){ try { URL.revokeObjectURL(url); } catch {} }, 15000);
+                  } catch {}
+                } else {
+                  pdf.save(filename);
+                }
                 try { document.head.removeChild(style); } catch {}
               } catch (e) {
                 try {
@@ -2096,7 +2309,11 @@ function QuoteGeneratorWindow(): JSX.Element {
       const sanitize = (s: string) => String(s || '').replace(/[^a-z0-9\-\_\+]+/gi, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
       const filename = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}.html`;
       const subject = 'Gadgetboy Quote';
-      const bodyText = 'Attached is the following quote for the product(s) you have requested, feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!';
+      const bodyText =
+        'Attached is the following quote for the product(s) you have requested. ' +
+        'Feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!\n\n' +
+        'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap “Open in Browser” (Safari/Chrome). ' +
+        'After signing, use “Share PDF” to email the signed PDF back to us.';
 
       const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
       if (!sendRes?.ok) {
