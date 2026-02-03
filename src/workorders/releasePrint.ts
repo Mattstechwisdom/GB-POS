@@ -21,6 +21,7 @@ export type WorkOrder = {
   taxRate: number;   // percent, e.g. 8
   taxes: number;
   amountPaid: number;
+  notes?: string;
 };
 
 import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
@@ -89,25 +90,39 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
   const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
-  const itemList = Array.isArray(wo.items) ? wo.items.slice(0, 5) : [];
-  const rowsArr: string[] = itemList.map(li => `
-    <tr>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb;">${htmlEscape(li.description || '')}</td>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${(li.parts ?? 0).toFixed(2)}</td>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${(li.labor ?? 0).toFixed(2)}</td>
-    </tr>
-  `);
-  const fillerCount = Math.max(0, 5 - rowsArr.length);
-  for (let i = 0; i < fillerCount; i++) {
-    rowsArr.push(`
+  const itemList = Array.isArray(wo.items) ? wo.items : [];
+  const sanitizedItems = itemList.map(li => ({
+    description: htmlEscape(li.description || ''),
+    parts: (li.parts ?? 0).toFixed(2),
+    labor: (li.labor ?? 0).toFixed(2),
+  }));
+  const columnCount = sanitizedItems.length > 10 ? 2 : 1;
+  const perCol = columnCount === 2 ? Math.ceil(sanitizedItems.length / 2) : sanitizedItems.length;
+  const columns: string[] = [];
+  for (let c = 0; c < columnCount; c++) {
+    const slice = sanitizedItems.slice(c * perCol, (c + 1) * perCol);
+    const body = slice.map(li => `
       <tr>
-        <td style="padding:12px 8px; border-bottom:1px solid #e5e7eb;">&nbsp;</td>
-        <td style="padding:12px 8px; border-bottom:1px solid #e5e7eb;">&nbsp;</td>
-        <td style="padding:12px 8px; border-bottom:1px solid #e5e7eb;">&nbsp;</td>
+        <td class="item-desc">${li.description}</td>
+        <td class="item-num">${li.parts}</td>
+        <td class="item-num">${li.labor}</td>
       </tr>
+    `).join('');
+    columns.push(`
+      <table class="items" role="table">
+        <thead>
+          <tr>
+            <th scope="col">Repair Service / Description</th>
+            <th scope="col" style="text-align:right;">Parts</th>
+            <th scope="col" style="text-align:right;">Labor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${body || '<tr><td colspan="3" style="padding:6px 8px; color:#777;">No items</td></tr>'}
+        </tbody>
+      </table>
     `);
   }
-  const itemsRows = rowsArr.join('');
   const remaining = (wo.subTotalParts + wo.subTotalLabor - wo.discount + wo.taxes) - wo.amountPaid;
   const seq = Array.isArray(wo.patternSequence) ? wo.patternSequence : [];
   const hasPattern = seq.length > 0;
@@ -137,15 +152,28 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .field { display:flex; gap:6px; align-items:baseline; min-width:0; }
       .label-inline { color:#555; font-size:9.5pt; font-weight:600; }
       .value-inline { font-size:10.5pt; color:#111; min-width:0; overflow-wrap:anywhere; }
-      .items { width:100%; border-collapse:collapse; }
+      .items-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:10px; }
+      .items { width:100%; border-collapse:collapse; font-size:10pt; }
       .items thead th { text-align:left; border-bottom:1px solid #d1d5db; padding:6px 8px; font-size:10pt; color:#222; font-weight:600; background:#f3f4f6; }
       .items tbody tr:nth-child(odd) { background: #fafafa; }
-      .items td:first-child { font-weight:600; color:#111; }
+      .items td { padding:6px 8px; border-bottom:1px solid #e5e7eb; }
+      .items .item-desc { font-weight:600; color:#111; width:65%; }
+      .items .item-num { text-align:right; white-space:nowrap; }
       .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
       .totals .row { display:flex; gap:12px; align-items:center; }
       .totals .label { width:60%; color:#444; }
       .terms { font-size:9pt; text-align:center; color:#222; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
+      .final-block { page-break-inside: avoid; margin-top:12px; }
+      .final-grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap:14px; align-items:start; }
+      .notes-box { min-height:72px; border:1px solid #d1d5db; border-radius:6px; padding:8px; font-size:10pt; background:#f8fafc; }
+      .placeholder { color:#777; font-style:italic; }
+      .checklist { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:6px 10px; font-size:10pt; }
+      .check-item { display:flex; gap:6px; align-items:flex-start; }
+      .check-box { width:12px; height:12px; border:1px solid #111; margin-top:3px; }
+      .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
+      .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
+      .muted-label { color:#444; font-size:10pt; }
     </style>
   </head>
   <body>
@@ -201,20 +229,9 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         </div>
       </div>
 
-      <div class="section muted-bg">
+      <div class="section muted-bg" style="page-break-inside: avoid;">
         <div style="font-weight:600; margin-bottom:6px;">Items</div>
-        <table class="items" role="table">
-          <thead>
-            <tr>
-              <th scope="col">Repair Service / Description</th>
-              <th scope="col" style="text-align:right;">Parts</th>
-              <th scope="col" style="text-align:right;">Labor</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsRows || `<tr><td colspan="3" style="padding:6px 8px; color:#777;">No items</td></tr>`}
-          </tbody>
-        </table>
+        <div class="items-grid">${columns.join('')}</div>
       </div>
 
       <div class="totals" style="margin-bottom:10px;">
@@ -227,13 +244,27 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         <div class="row"><div class="label"><strong>Remaining Balance</strong></div><div style="margin-left:auto;"><strong>${remaining.toFixed(2)}</strong></div></div>
       </div>
 
-      <div class="section" style="margin-top:10px;">
-        <div class="terms">
+      <div class="section final-block">
+        <div class="final-grid">
+          <div>
+            <div style="font-weight:700; margin-bottom:6px;">Notes</div>
+            <div class="notes-box">${wo.notes ? htmlEscape(wo.notes) : '<div class="placeholder">No notes provided.</div>'}</div>
+          </div>
+          <div>
+            <div style="font-weight:700; margin-bottom:6px;">Checklist</div>
+            <div class="checklist">
+              ${sanitizedItems.slice(0, 10).map(li => `<div class="check-item"><div class="check-box"></div><div>${li.description}</div></div>`).join('') || '<div class="placeholder">No checklist items.</div>'}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px;" class="terms">
           By signing this form, you authorize GADGETBOY LLC to diagnose and/or repair your device. Repairs are performed to the best of our ability but are not guaranteed beyond the stated warranty. A diagnostic assessment will be completed prior to repairs, and a non-refundable diagnostic fee of up to $50 may be charged at drop-off. Additional costs will be communicated and must be approved before work continues. You are responsible for backing up all data; GADGETBOY LLC is not liable for data loss or incidental access to personal files. Certain repairs, including liquid or severe board damage, may not restore full functionality, and pre-existing issues may worsen. Customer-supplied or third-party parts are installed at your risk and are not warrantied. All repairs include a 90-day limited warranty from the completion date, covering only the specific repair performed. The warranty does not cover unrelated issues, software problems, physical or liquid damage, or devices tampered with after service. Full payment is due at pickup. Devices must be collected within 7 days of completion or will incur a $25/day storage fee. Any device left unclaimed 45 days after completion becomes the property of GADGETBOY LLC.
         </div>
-        <div style="display:flex; gap:16px; align-items:center; margin-top:24px;">
-          <div style="width:120px; color:#444;">Signature</div>
-          <div style="flex:1; border-bottom:1px solid #000; height:28px;"></div>
+        <div class="sig-row">
+          <div class="muted-label">Signature</div>
+          <div class="sig-line"></div>
+          <div class="muted-label">Date</div>
+          <div class="sig-line" style="max-width:120px;"></div>
         </div>
       </div>
     </div>

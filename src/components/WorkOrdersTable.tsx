@@ -64,8 +64,9 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     refreshTechs();
     refreshCustomers();
     const api = (window as any).api;
-    const unsub = api?.onWorkOrdersChanged?.(() => { load(); refreshCustomers(); });
-    return () => { try { if (unsub) unsub(); } catch {} };
+    const unsubWO = api?.onWorkOrdersChanged?.(() => { load(); refreshCustomers(); });
+    const unsubTech = api?.onTechniciansChanged?.(() => refreshTechs());
+    return () => { try { unsubWO && unsubWO(); } catch {} try { unsubTech && unsubTech(); } catch {} };
   }, [load]);
 
 

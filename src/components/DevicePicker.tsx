@@ -90,7 +90,7 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
-  const selectedLabel = 'Categories';
+  const selectedLabel = value && value.trim() ? value.trim() : 'Categories';
   const TITLE_MENU_WIDTH = 220; // px
 
   return (

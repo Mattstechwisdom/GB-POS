@@ -119,8 +119,10 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
     };
     refreshTechs();
     refreshCustomers();
-    const offCustomers = (window as any).api.onCustomersChanged?.(() => refreshCustomers());
-    return () => { try { offCustomers && offCustomers(); } catch {} };
+    const api = (window as any).api;
+    const offCustomers = api.onCustomersChanged?.(() => refreshCustomers());
+    const offTechs = api.onTechniciansChanged?.(() => refreshTechs());
+    return () => { try { offCustomers && offCustomers(); } catch {} try { offTechs && offTechs(); } catch {} };
   }, []);
 
   const rows = React.useMemo(() => {

@@ -16,16 +16,17 @@ interface Props {
 
 const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions }) => {
   const [techs, setTechs] = useState<any[]>([]);
-
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    const refresh = async () => {
       try {
         const list = await listTechnicians();
         if (mounted) setTechs(list || []);
       } catch (e) { console.error('Failed to load technicians', e); }
-    })();
-    return () => { mounted = false; };
+    };
+    refresh();
+    const off = (window as any).api?.onTechniciansChanged?.(() => refresh());
+    return () => { mounted = false; try { off && off(); } catch {} };
   }, []);
   const selectedTechId = useMemo(() => {
     if (!workOrder.assignedTo) return '';
@@ -166,6 +167,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     taxRate: Number((workOrder as any).taxRate || 0),
                     taxes: Number((workOrder as any).totals?.tax || 0),
                     amountPaid: Number((workOrder as any).amountPaid || 0),
+                    notes: (workOrder as any).internalNotes || '',
                   };
 
                   await printReleaseForm(wo, { autoCloseMs: 0, autoPrint: true });

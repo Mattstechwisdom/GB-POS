@@ -17,7 +17,18 @@ interface Props {
 const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
-  useEffect(() => { (async () => { try { setTechs(await listTechnicians()); } catch (e) { console.error(e); } })(); }, []);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const list = await listTechnicians();
+        if (mounted) setTechs(list || []);
+      } catch (e) { console.error(e); }
+    };
+    refresh();
+    const off = (window as any).api?.onTechniciansChanged?.(() => refresh());
+    return () => { mounted = false; try { off && off(); } catch {} };
+  }, []);
   return (
     <form className="flex flex-col gap-3">
       {/* Admin dropdown moved here and centered; dropdown opens same width below */}
