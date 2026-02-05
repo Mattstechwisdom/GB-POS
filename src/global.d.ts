@@ -36,6 +36,7 @@ declare global {
   openWorkOrderRepairPicker: () => Promise<any>;
   openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;
+  openEod: () => Promise<any>;
     getDeviceCategories: () => Promise<any[]>;
     addDeviceCategory: (c: any) => Promise<any>;
   getProductCategories: () => Promise<any[]>;

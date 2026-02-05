@@ -2226,6 +2226,30 @@ ipcMain.handle('open-device-categories', async (_event: any) => {
   return { ok: true };
 });
 
+ipcMain.handle('open-eod', async (_event: any) => {
+  const child = new BrowserWindow({
+    width: 1220,
+    height: 820,
+    resizable: true,
+    parent: BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('End of Day'),
+  });
+  child.once('ready-to-show', () => child.show());
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?eod=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?eod=true`;
+  child.loadURL(url);
+  return { ok: true };
+});
+
 ipcMain.handle('open-repair-categories', async (_event: any) => {
   const child = new BrowserWindow({
     width: 1000,

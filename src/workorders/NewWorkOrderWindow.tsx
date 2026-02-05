@@ -33,6 +33,14 @@ function parsePayload() {
 const NewWorkOrderWindow: React.FC = () => {
   const payload = parsePayload();
   const isEditingExisting = !!payload?.workOrderId;
+  const isChildWindow = React.useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.has('newWorkOrder');
+    } catch {
+      return false;
+    }
+  }, []);
   const [loaded, setLoaded] = useState(!isEditingExisting);
   const [customerSummary, setCustomerSummary] = useState<{ name: string; phone: string }>({ name: payload?.customerName || '', phone: payload?.customerPhone || '' });
   const [initialCustomerId, setInitialCustomerId] = useState<number>(payload?.customerId || 0);
@@ -315,7 +323,7 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         } catch (e) { console.error('openCustomerReceipt failed', e); }
       }
-      if (result.closeParent) {
+      if (result.closeParent && isChildWindow) {
         window.close();
       }
     } catch (e) {

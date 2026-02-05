@@ -165,12 +165,6 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .terms { font-size:9pt; text-align:center; color:#222; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
       .final-block { page-break-inside: avoid; margin-top:12px; }
-      .final-grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap:14px; align-items:start; }
-      .notes-box { min-height:72px; border:1px solid #d1d5db; border-radius:6px; padding:8px; font-size:10pt; background:#f8fafc; }
-      .placeholder { color:#777; font-style:italic; }
-      .checklist { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:6px 10px; font-size:10pt; }
-      .check-item { display:flex; gap:6px; align-items:flex-start; }
-      .check-box { width:12px; height:12px; border:1px solid #111; margin-top:3px; }
       .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
       .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
       .muted-label { color:#444; font-size:10pt; }
@@ -245,19 +239,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       </div>
 
       <div class="section final-block">
-        <div class="final-grid">
-          <div>
-            <div style="font-weight:700; margin-bottom:6px;">Notes</div>
-            <div class="notes-box">${wo.notes ? htmlEscape(wo.notes) : '<div class="placeholder">No notes provided.</div>'}</div>
-          </div>
-          <div>
-            <div style="font-weight:700; margin-bottom:6px;">Checklist</div>
-            <div class="checklist">
-              ${sanitizedItems.slice(0, 10).map(li => `<div class="check-item"><div class="check-box"></div><div>${li.description}</div></div>`).join('') || '<div class="placeholder">No checklist items.</div>'}
-            </div>
-          </div>
-        </div>
-        <div style="margin-top:14px;" class="terms">
+        <div class="terms" style="margin-bottom:14px;">
           By signing this form, you authorize GADGETBOY LLC to diagnose and/or repair your device. Repairs are performed to the best of our ability but are not guaranteed beyond the stated warranty. A diagnostic assessment will be completed prior to repairs, and a non-refundable diagnostic fee of up to $50 may be charged at drop-off. Additional costs will be communicated and must be approved before work continues. You are responsible for backing up all data; GADGETBOY LLC is not liable for data loss or incidental access to personal files. Certain repairs, including liquid or severe board damage, may not restore full functionality, and pre-existing issues may worsen. Customer-supplied or third-party parts are installed at your risk and are not warrantied. All repairs include a 90-day limited warranty from the completion date, covering only the specific repair performed. The warranty does not cover unrelated issues, software problems, physical or liquid damage, or devices tampered with after service. Full payment is due at pickup. Devices must be collected within 7 days of completion or will incur a $25/day storage fee. Any device left unclaimed 45 days after completion becomes the property of GADGETBOY LLC.
         </div>
         <div class="sig-row">

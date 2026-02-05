@@ -21,6 +21,7 @@ import BackupWindow from './components/BackupWindow';
 import ClearDatabaseWindow from './components/ClearDatabaseWindow';
 import ClockInWindow from './components/ClockInWindow';
 import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
+import EODWindow from './components/EODWindow';
 import UpdateGate from './components/UpdateGate';
 import DataPathGate from './components/DataPathGate';
 import './styles/index.css';
@@ -83,6 +84,7 @@ try {
 	const showCharts = params.get('charts');
 	const showReporting = params.get('reporting');
 	const showQuote = params.get('quote');
+	const showEod = params.get('eod');
 	const showReleaseForm = params.get('releaseForm');
 	const showCustomerReceipt = params.get('customerReceipt');
 	const showProductForm = params.get('productForm');
@@ -96,6 +98,8 @@ try {
 	
 	if (showDeviceCategories) {
 		root.render(<DeviceCategoriesWindow />);
+	} else if (showEod) {
+		root.render(<EODWindow />);
 	} else if (showWorkOrderRepairPicker) {
 		root.render(<WorkOrderRepairPickerWindow />);
 	} else if (showRepairCategories) {

@@ -53,6 +53,15 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  const isCustomerValid = useCallback((c: Partial<Customer> | null | undefined) => {
+    if (!c) return false;
+    const hasFirst = !!c.firstName && !!c.firstName.trim();
+    const hasLast = !!c.lastName && !!c.lastName.trim();
+    const hasContact = !!(c.phone || c.email);
+    const zipOk = !c.zip || /^[0-9]{5}$/.test(c.zip.toString());
+    return hasFirst && hasLast && hasContact && zipOk;
+  }, []);
+
   const validate = useCallback(() => {
     const errs: string[] = [];
     if (!local.firstName || !local.firstName.trim()) errs.push('First name required');
@@ -64,21 +73,32 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   }, [local]);
 
   async function handleSave() {
-    if (!validate()) return;
+    const saved = await ensureCustomerSaved();
+    if (saved && closeOnSave) onClose();
+  }
+
+  async function ensureCustomerSaved(): Promise<Customer | null> {
+    if (!validate()) return null;
+    setAutoSaving(true);
     const payload = { ...local, updatedAt: new Date().toISOString(), createdAt: local.createdAt || new Date().toISOString() } as any;
     try {
-      let saved;
+      let saved: Customer | null = null;
       if ((payload as any).id) {
         saved = await window.api.update('customers', payload);
       } else {
         saved = await window.api.addCustomer(payload);
       }
-      if (onSaved && saved) onSaved(saved);
-      setSavedAt(new Date().toISOString().slice(11,19));
-      if (saved) setLocal(saved);
-      if (closeOnSave) onClose();
+      if (saved) {
+        setSavedAt(new Date().toISOString().slice(11,19));
+        setLocal(saved);
+        if (onSaved) onSaved(saved);
+      }
+      return saved;
     } catch (e) {
       console.error(e);
+      return null;
+    } finally {
+      setAutoSaving(false);
     }
   }
 
@@ -86,32 +106,37 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   useAutosave(local, async (val) => {
     setAutoSaving(true);
     try {
-      const payload = { ...val, updatedAt: new Date().toISOString() } as any;
-      const saved = await window.api.update('customers', payload);
+      const payload = { ...val, updatedAt: new Date().toISOString(), createdAt: (val as any)?.createdAt || new Date().toISOString() } as any;
+      let saved: Customer | null = null;
+      if ((payload as any).id) {
+        saved = await window.api.update('customers', payload);
+      } else {
+        saved = await window.api.addCustomer(payload);
+      }
       if (saved) {
         setSavedAt(new Date().toISOString().slice(11,19));
         setLocal(saved);
+        if (onSaved) onSaved(saved);
       }
     } finally {
       setAutoSaving(false);
     }
   }, {
     debounceMs: 2000,
-    enabled: !!(local && (local as any).id),
-    shouldSave: (v) => !!(v && (v as any).firstName && (v as any).lastName),
+    enabled: isCustomerValid(local) || !!(local as any)?.id,
+    shouldSave: (v) => {
+      if (!v) return false;
+      if ((v as any).id) return !!(v as any).firstName && !!(v as any).lastName;
+      return isCustomerValid(v as any);
+    },
   });
 
   async function makePayloadForCustomer(): Promise<{ customerId?: number; customerName?: string; customerPhone?: string }> {
-    try {
-      const id = (local as any)?.id;
-      if (!id) return {} as any;
-      const found = await (window as any).api.findCustomers({ id });
-      const c = (found && found[0]) || (local as any) || {};
-      const name = (c.name || `${c.firstName || ''} ${c.lastName || ''}`).trim();
-      return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
-    } catch {
-      return {} as any;
-    }
+    const saved = await ensureCustomerSaved();
+    const c = (saved || local || {}) as any;
+    if (!c.id) return {} as any;
+    const name = (c.name || `${c.firstName || ''} ${c.lastName || ''}`).trim();
+    return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
   }
 
   return (
