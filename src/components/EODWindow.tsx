@@ -11,6 +11,8 @@ interface EodSettings {
   includeTaxes: boolean;
   schedule: 'manual' | 'daily' | 'weekly';
   sendTime: string; // HH:mm
+  batchOutTime?: string; // HH:mm
+  autoBackup?: boolean;
   subjectTemplate: string;
   headline?: string;
   notes?: string;
@@ -26,6 +28,8 @@ const defaultSettings: EodSettings = {
   includeTaxes: true,
   schedule: 'daily',
   sendTime: '18:00',
+  batchOutTime: '21:00',
+  autoBackup: true,
   subjectTemplate: 'GadgetBoy EOD - {{date}}',
   headline: 'Daily wrap-up',
   notes: '',
@@ -84,6 +88,7 @@ export default function EODWindow() {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [message, setMessage] = useState('');
+  const [batchInfo, setBatchInfo] = useState<{ lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string }>({});
 
   // Load saved settings
   useEffect(() => {
@@ -120,6 +125,19 @@ export default function EODWindow() {
         console.error('Failed to load data for EOD', e);
       } finally {
         if (mounted) setLoadingData(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const info = await (window as any).api.getBatchOutInfo?.();
+        if (mounted && info) setBatchInfo(info);
+      } catch (e) {
+        console.warn('Failed to load batch-out info', e);
       }
     })();
     return () => { mounted = false; };
@@ -284,6 +302,25 @@ export default function EODWindow() {
     }
   }
 
+  async function handleBatchOutNow() {
+    try {
+      setSending(true);
+      const res = await (window as any).api.runBatchOut?.();
+      if (res?.ok) {
+        const info = await (window as any).api.getBatchOutInfo?.();
+        if (info) setBatchInfo(info);
+        alert('Batch Out complete. Backup saved.');
+      } else {
+        alert(res?.error || 'Batch Out failed.');
+      }
+    } catch (e) {
+      console.error('Batch Out failed', e);
+      alert('Batch Out failed. See console for details.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   const suggestions = [
     'Auto-attach CSV of daily totals',
     'Schedule SMS summary to store phone',
@@ -306,6 +343,11 @@ export default function EODWindow() {
               onClick={() => handleSend()}
               disabled={sending}
             >{sending ? 'Sending…' : 'Send now'}</button>
+            <button
+              className="px-3 py-2 text-sm bg-[#39FF14] text-black border border-[#39FF14] rounded hover:brightness-110"
+              onClick={() => handleBatchOutNow()}
+              disabled={sending}
+            >Batch Out now</button>
             <button
               className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
               onClick={() => window.close()}
@@ -407,6 +449,21 @@ export default function EODWindow() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-2 text-sm items-end">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Batch Out time (auto backup)</label>
+                <input
+                  type="time"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
+                  value={settings.batchOutTime || ''}
+                  onChange={e => setSettings(s => ({ ...s, batchOutTime: e.target.value }))}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={settings.autoBackup !== false} onChange={e => setSettings(s => ({ ...s, autoBackup: e.target.checked }))} />
+                Enable auto Batch Out backup
+              </label>
+            </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Subject template</label>
               <input
@@ -434,6 +491,7 @@ export default function EODWindow() {
               />
             </div>
             <div className="text-xs text-zinc-500">Last sent: {settings.lastSentAt ? formatDate(settings.lastSentAt) : 'Not yet sent'}</div>
+            <div className="text-xs text-zinc-500">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
           </div>
 
           {/* Preview & message */}

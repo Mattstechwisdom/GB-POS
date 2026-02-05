@@ -58,6 +58,8 @@ declare global {
   backupPickAndRead: () => Promise<any>;
   backupExportPayload: (payload: any) => Promise<any>;
   backupExportPayloadNamed: (payload: any, label?: string) => Promise<any>;
+  runBatchOut: () => Promise<any>;
+  getBatchOutInfo: () => Promise<{ ok: boolean; lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string }>;
     backupExport: () => Promise<any>;
     backupImport: () => Promise<any>;
     // backup window & encryption helpers

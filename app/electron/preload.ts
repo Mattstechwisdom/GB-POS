@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('api', {
   backupPickAndRead: (): Promise<any> => ipcRenderer.invoke('backup:pickAndRead'),
   backupExportPayload: (payload: any): Promise<any> => ipcRenderer.invoke('backup:exportPayload', payload),
   backupExportPayloadNamed: (payload: any, label?: string): Promise<any> => ipcRenderer.invoke('backup:exportPayloadNamed', payload, label),
+  runBatchOut: (): Promise<any> => ipcRenderer.invoke('backup:runBatchOut'),
+  getBatchOutInfo: (): Promise<any> => ipcRenderer.invoke('backup:getBatchOutInfo'),
   backupExport: (): Promise<any> => ipcRenderer.invoke('backup:export'),
   backupImport: (): Promise<any> => ipcRenderer.invoke('backup:import'),
   exportHtml: (html: string, filenameBase?: string): Promise<any> => ipcRenderer.invoke('export-html', html, filenameBase),

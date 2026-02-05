@@ -1700,6 +1700,15 @@ ipcMain.handle('backup:import', async () => {
   }
 });
 
+ipcMain.handle('backup:runBatchOut', async () => {
+  return runBatchOutBackup('batchout');
+});
+
+ipcMain.handle('backup:getBatchOutInfo', async () => {
+  const cfg = readBackupConfig();
+  return { ok: true, lastBackupPath: cfg.lastBackupPath, lastBackupDate: cfg.lastBackupDate, lastBatchOutDate: cfg.lastBatchOutDate };
+});
+
 ipcMain.handle('dev:environmentInfo', async () => {
   try {
     return {
@@ -1869,9 +1878,7 @@ ipcMain.handle('backup:exportPayloadNamed', async (_e: any, payload: any, label?
     fs.writeFileSync(result.filePath, JSON.stringify(payload || {}, null, 2), 'utf-8');
     // Persist last backup path for UI convenience
     try {
-      const configPath = path.join(resolveDataRoot(), 'backup-config.json');
-      const config = { lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() };
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      writeBackupConfig({ lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() });
     } catch {}
     return { ok: true, filePath: result.filePath };
   } catch (e: any) {
@@ -2144,6 +2151,7 @@ if (!app.requestSingleInstanceLock()) {
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     setupAutoUpdater();
+    ensureBatchOutScheduler();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -2468,6 +2476,106 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
 
 // Open Backup window
 
+const BACKUP_CONFIG_PATH = () => path.join(resolveDataRoot(), 'backup-config.json');
+
+type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string };
+
+function readBackupConfig(): BackupConfig {
+  try {
+    const p = BACKUP_CONFIG_PATH();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8')) || {};
+  } catch (e) {
+    console.warn('[BACKUP] Failed to read backup config', e);
+  }
+  return {};
+}
+
+function writeBackupConfig(patch: BackupConfig) {
+  try {
+    const current = readBackupConfig();
+    const next = { ...current, ...patch };
+    fs.writeFileSync(BACKUP_CONFIG_PATH(), JSON.stringify(next, null, 2));
+  } catch (e) {
+    console.warn('[BACKUP] Failed to write backup config', e);
+  }
+}
+
+function formatStamp(ts: Date) {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+}
+
+let batchOutTimer: NodeJS.Timeout | null = null;
+let batchOutRunning = false;
+let lastBatchOutDate: string | null = null;
+
+async function runBatchOutBackup(label: string = 'batchout') {
+  if (batchOutRunning) return { ok: false, error: 'Batch out already running' };
+  batchOutRunning = true;
+  try {
+    const dataRoot = resolveDataRoot();
+    const backupsDir = path.join(dataRoot, 'backups');
+    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+    const ts = new Date();
+    const stamp = formatStamp(ts);
+    const backupPath = path.join(backupsDir, `gbpos-${label}-${stamp}.json`);
+    const db = readDb();
+    fs.writeFileSync(backupPath, JSON.stringify(db, null, 2), 'utf-8');
+    const iso = new Date().toISOString();
+    writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso });
+    lastBatchOutDate = iso.slice(0, 10);
+    console.log('[BATCH-OUT] Backup written to', backupPath);
+    return { ok: true, backupPath };
+  } catch (e: any) {
+    console.error('[BATCH-OUT] Failed to write backup', e);
+    return { ok: false, error: e?.message || String(e) };
+  } finally {
+    batchOutRunning = false;
+  }
+}
+
+function parseHhMm(str?: string): { h: number; m: number } {
+  const safe = (str || '').trim();
+  const parts = safe.split(':');
+  const h = Math.min(23, Math.max(0, Number(parts[0] || 0)));
+  const m = Math.min(59, Math.max(0, Number(parts[1] || 0)));
+  return { h: Number.isFinite(h) ? h : 0, m: Number.isFinite(m) ? m : 0 };
+}
+
+async function checkBatchOutSchedule() {
+  try {
+    const cfg = readBackupConfig();
+    if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = (cfg.lastBatchOutDate || '').slice(0, 10) || null;
+    const db = readDb();
+    const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
+    const autoBackup = settings?.autoBackup !== false; // default enabled
+    const batchOutTime = settings?.batchOutTime || settings?.sendTime || '21:00';
+    if (!autoBackup) return;
+
+    const { h, m } = parseHhMm(batchOutTime);
+    const now = new Date();
+    const target = new Date();
+    target.setHours(h, m, 0, 0);
+    const todayKey = target.toISOString().slice(0, 10);
+    if (lastBatchOutDate === todayKey) return;
+    if (now >= target) {
+      const res = await runBatchOutBackup('batchout');
+      if (res.ok) {
+        lastBatchOutDate = todayKey;
+      }
+    }
+  } catch (e) {
+    console.warn('[BATCH-OUT] Scheduler error', e);
+  }
+}
+
+function ensureBatchOutScheduler() {
+  if (batchOutTimer) clearInterval(batchOutTimer);
+  batchOutTimer = setInterval(() => { checkBatchOutSchedule(); }, 60 * 1000);
+  // Run once shortly after startup
+  setTimeout(() => { checkBatchOutSchedule(); }, 5 * 1000);
+}
+
 // Create encrypted backup
 ipcMain.handle('create-encrypted-backup', async (_event: any, backupData: any, password: string) => {
   try {
@@ -2520,9 +2628,7 @@ ipcMain.handle('create-encrypted-backup', async (_event: any, backupData: any, p
     fs.writeFileSync(result.filePath, JSON.stringify(encryptedBackup, null, 2));
 
     // Store last backup path
-    const configPath = path.join(resolveDataRoot(), 'backup-config.json');
-    const config = { lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() };
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    writeBackupConfig({ lastBackupPath: result.filePath, lastBackupDate: new Date().toISOString() });
 
     console.log('[BACKUP] Backup created successfully:', result.filePath);
     return { success: true, filePath: result.filePath };
@@ -2618,13 +2724,8 @@ ipcMain.handle('restore-encrypted-backup', async (_event: any, password: string)
 // Get last backup path
 ipcMain.handle('get-last-backup-path', async () => {
   try {
-    const configPath = path.join(resolveDataRoot(), 'backup-config.json');
-    
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      return config.lastBackupPath || '';
-    }
-    return '';
+    const cfg = readBackupConfig();
+    return cfg.lastBackupPath || '';
   } catch (error) {
     console.warn('[BACKUP] Failed to get last backup path:', error);
     return '';
