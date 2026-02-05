@@ -3,6 +3,7 @@
 ## v0.2.8 (2026-02-05)
 - Batch Out backups: configurable daily time with auto backup to ProgramData/backups plus manual "Batch Out" control in EOD window; backups stored alongside last-run metadata.
 - EOD settings now store batch-out preferences; renderer can see last batch-out timestamp and trigger backups directly.
+- Release form device block condensed to three rows (Device/Description, Model/Serial, Password/Problem) for a tighter layout.
 
 ## v0.2.7 (2026-02-05)
 - New End of Day window with autosaved settings, date-range summaries, and email sending; exposed via IPC/preload and toolbar shortcut.

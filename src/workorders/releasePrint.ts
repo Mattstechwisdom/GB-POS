@@ -148,7 +148,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
       .muted-bg { background: #f8fafc; }
-      .info-grid { display:grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; gap:6px 10px; align-items:start; }
+      .info-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px 12px; align-items:start; }
       .field { display:flex; gap:6px; align-items:baseline; min-width:0; }
       .label-inline { color:#555; font-size:9.5pt; font-weight:600; }
       .value-inline { font-size:10.5pt; color:#111; min-width:0; overflow-wrap:anywhere; }
@@ -215,11 +215,11 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       <div class="section muted-bg">
         <div class="info-grid">
           <div class="field"><span class="label-inline">Device:</span><span class="value-inline">${htmlEscape(wo.device)}</span></div>
+          <div class="field"><span class="label-inline">Description:</span><span class="value-inline"><span class="chip">${htmlEscape(wo.description)}</span></span></div>
           <div class="field"><span class="label-inline">Model:</span><span class="value-inline">${htmlEscape(wo.model)}</span></div>
           <div class="field"><span class="label-inline">Serial #:</span><span class="value-inline">${htmlEscape(wo.serialNumber)}</span></div>
           <div class="field"><span class="label-inline">Password:</span><span class="value-inline">${htmlEscape(wo.password)}</span></div>
-          <div class="field" style="grid-column: 1 / span 4"><span class="label-inline">Description:</span><span class="value-inline"><span class="chip">${htmlEscape(wo.description)}</span></span></div>
-          <div class="field" style="grid-column: 1 / span 4; margin-top:2px;"><span class="label-inline">Problem:</span><span class="value-inline">${htmlEscape(wo.problem)}</span></div>
+          <div class="field"><span class="label-inline">Problem:</span><span class="value-inline">${htmlEscape(wo.problem)}</span></div>
         </div>
       </div>
 
