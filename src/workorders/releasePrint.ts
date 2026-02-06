@@ -152,11 +152,12 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .field { display:flex; gap:6px; align-items:baseline; min-width:0; }
       .label-inline { color:#555; font-size:9.5pt; font-weight:600; }
       .value-inline { font-size:10.5pt; color:#111; min-width:0; overflow-wrap:anywhere; }
-      .items-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:10px; }
+      .value-block { font-size:10.5pt; color:#111; line-height:1.35; white-space:pre-wrap; }
+      .items-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:8px; }
       .items { width:100%; border-collapse:collapse; font-size:10pt; }
-      .items thead th { text-align:left; border-bottom:1px solid #d1d5db; padding:6px 8px; font-size:10pt; color:#222; font-weight:600; background:#f3f4f6; }
+      .items thead th { text-align:left; border-bottom:1px solid #d1d5db; padding:5px 6px; font-size:10pt; color:#222; font-weight:600; background:#f3f4f6; }
       .items tbody tr:nth-child(odd) { background: #fafafa; }
-      .items td { padding:6px 8px; border-bottom:1px solid #e5e7eb; }
+      .items td { padding:5px 6px; border-bottom:1px solid #e5e7eb; }
       .items .item-desc { font-weight:600; color:#111; width:65%; }
       .items .item-num { text-align:right; white-space:nowrap; }
       .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
@@ -219,8 +220,12 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
           <div class="field"><span class="label-inline">Model:</span><span class="value-inline">${htmlEscape(wo.model)}</span></div>
           <div class="field"><span class="label-inline">Serial #:</span><span class="value-inline">${htmlEscape(wo.serialNumber)}</span></div>
           <div class="field"><span class="label-inline">Password:</span><span class="value-inline">${htmlEscape(wo.password)}</span></div>
-          <div class="field"><span class="label-inline">Problem:</span><span class="value-inline">${htmlEscape(wo.problem)}</span></div>
         </div>
+      </div>
+
+      <div class="section muted-bg" style="page-break-inside: avoid;">
+        <div style="font-weight:600; margin-bottom:6px;">Problem</div>
+        <div class="value-block">${htmlEscape(wo.problem)}</div>
       </div>
 
       <div class="section muted-bg" style="page-break-inside: avoid;">
