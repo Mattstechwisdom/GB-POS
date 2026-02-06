@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.9 (2026-02-06)
+- Re-release to ensure CI/CD publishes latest print layout and batch-out backup updates.
+
 ## v0.2.8 (2026-02-05)
 - Batch Out backups: configurable daily time with auto backup to ProgramData/backups plus manual "Batch Out" control in EOD window; backups stored alongside last-run metadata.
 - EOD settings now store batch-out preferences; renderer can see last batch-out timestamp and trigger backups directly.
