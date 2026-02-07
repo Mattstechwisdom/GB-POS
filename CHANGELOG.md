@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.10 (2026-02-07)
+- Sale items now store an optional product URL with a quick "Go to product" action from the items table.
+
 ## v0.2.9 (2026-02-06)
 - Re-release to ensure CI/CD publishes latest print layout and batch-out backup updates.
 

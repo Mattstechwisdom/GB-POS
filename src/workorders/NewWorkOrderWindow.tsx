@@ -10,7 +10,7 @@ export type WorkOrderItemRow = {
   note?: string;
 };
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAutosave } from '../lib/useAutosave';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
@@ -20,6 +20,17 @@ import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
 import { computeTotals } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem } from '../lib/types';
+
+type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
+
+const REQUIRED_LABELS: Record<RequiredKey, string> = {
+  assignedTo: 'Assigned technician',
+  productDescription: 'Device description',
+  problemInfo: 'Problem details',
+  password: 'Device password',
+  model: 'Device model',
+  serial: 'Device serial',
+};
 
 function parsePayload() {
   try {
@@ -33,7 +44,7 @@ function parsePayload() {
 const NewWorkOrderWindow: React.FC = () => {
   const payload = parsePayload();
   const isEditingExisting = !!payload?.workOrderId;
-  const isChildWindow = React.useMemo(() => {
+  const isChildWindow = useMemo(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       return params.has('newWorkOrder');
@@ -77,6 +88,115 @@ const NewWorkOrderWindow: React.FC = () => {
   internalNotes: '',
   internalNotesLog: [],
   });
+  const [validationActive, setValidationActive] = useState<boolean>(false);
+  const [hasShownValidationWarning, setHasShownValidationWarning] = useState<boolean>(false);
+  const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
+  const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
+  const warningHideTimer = useRef<number | undefined>(undefined);
+  const warningRemoveTimer = useRef<number | undefined>(undefined);
+
+  function triggerWarningBanner(message: string, details?: string) {
+    if (warningHideTimer.current !== undefined) {
+      window.clearTimeout(warningHideTimer.current);
+      warningHideTimer.current = undefined;
+    }
+    if (warningRemoveTimer.current !== undefined) {
+      window.clearTimeout(warningRemoveTimer.current);
+      warningRemoveTimer.current = undefined;
+    }
+    setWarningBanner({ message, details });
+    setWarningBannerVisible(true);
+    warningHideTimer.current = window.setTimeout(() => {
+      setWarningBannerVisible(false);
+      warningRemoveTimer.current = window.setTimeout(() => {
+        setWarningBanner(null);
+        warningRemoveTimer.current = undefined;
+      }, 400);
+    }, 6000);
+  }
+
+  const missingRequired = useMemo<RequiredKey[]>(() => {
+    const missing: RequiredKey[] = [];
+    const assigned = (wo.assignedTo ?? '').toString().trim();
+    if (!assigned) missing.push('assignedTo');
+    if (!(wo.productDescription || '').toString().trim()) missing.push('productDescription');
+    if (!(wo.problemInfo || '').toString().trim()) missing.push('problemInfo');
+    if (!(wo.password || '').toString().trim()) missing.push('password');
+    if (!(wo.model || '').toString().trim()) missing.push('model');
+    if (!(wo.serial || '').toString().trim()) missing.push('serial');
+    return missing;
+  }, [wo.assignedTo, wo.productDescription, wo.problemInfo, wo.password, wo.model, wo.serial]);
+
+  const hasMeaningfulInput = useMemo(() => {
+    return Boolean(
+      (wo.productCategory && wo.productCategory.trim()) ||
+      (wo.productDescription && wo.productDescription.trim()) ||
+      (wo.problemInfo && wo.problemInfo.trim()) ||
+      (wo.password && wo.password.trim()) ||
+      (wo.model && wo.model.trim()) ||
+      (wo.serial && wo.serial.trim()) ||
+      (wo.intakeSource && wo.intakeSource.trim()) ||
+      (wo.items && wo.items.length > 0) ||
+      (Number(wo.discount) || 0) !== 0 ||
+      (Number(wo.amountPaid) || 0) !== 0 ||
+      (Number(wo.laborCost) || 0) !== 0 ||
+      (Number(wo.partCosts) || 0) !== 0 ||
+      ((wo.assignedTo ?? '').toString().trim().length > 0)
+    );
+  }, [wo]);
+
+  useEffect(() => {
+    if (validationActive && missingRequired.length === 0) {
+      setValidationActive(false);
+    }
+  }, [validationActive, missingRequired]);
+
+  useEffect(() => () => {
+    if (warningHideTimer.current !== undefined) {
+      window.clearTimeout(warningHideTimer.current);
+      warningHideTimer.current = undefined;
+    }
+    if (warningRemoveTimer.current !== undefined) {
+      window.clearTimeout(warningRemoveTimer.current);
+      warningRemoveTimer.current = undefined;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (missingRequired.length === 0) {
+      if (warningHideTimer.current !== undefined) {
+        window.clearTimeout(warningHideTimer.current);
+        warningHideTimer.current = undefined;
+      }
+      if (warningRemoveTimer.current !== undefined) {
+        window.clearTimeout(warningRemoveTimer.current);
+        warningRemoveTimer.current = undefined;
+      }
+      setWarningBannerVisible(false);
+      setWarningBanner(null);
+      setHasShownValidationWarning(false);
+    }
+  }, [missingRequired.length]);
+
+  const formValidationFlags = useMemo<
+    Partial<Record<'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial', boolean>> | undefined
+  >(() => {
+    if (!validationActive) return undefined;
+    const set = new Set(missingRequired);
+    return {
+      productDescription: set.has('productDescription'),
+      problemInfo: set.has('problemInfo'),
+      password: set.has('password'),
+      model: set.has('model'),
+      serial: set.has('serial'),
+    };
+  }, [validationActive, missingRequired]);
+
+  const sidebarValidationFlags = useMemo<Partial<Record<'assignedTo', boolean>> | undefined>(() => {
+    if (!validationActive) return undefined;
+    const set = new Set(missingRequired);
+    return { assignedTo: set.has('assignedTo') };
+  }, [validationActive, missingRequired]);
 
 
   // Load existing work order if editing
@@ -204,8 +324,33 @@ const NewWorkOrderWindow: React.FC = () => {
     shouldSave: (v) => !!(isEditingExisting || (v.id && v.id !== 0) || v.productCategory || v.productDescription || v.customerId || (v.items && v.items.length)),
   });
 
+  function ensureRequired(actionDescription: string): boolean {
+    if (missingRequired.length === 0) {
+      setValidationActive(false);
+      return true;
+    }
+
+    setValidationActive(true);
+    const bulletList = missingRequired.map(key => `• ${REQUIRED_LABELS[key]}`).join('\n');
+    const detailText = missingRequired.map(key => REQUIRED_LABELS[key]).join(', ');
+
+    if (!hasShownValidationWarning) {
+      const proceed = window.confirm(`Missing required fields before ${actionDescription}:\n\n${bulletList}\n\nContinue anyway?`);
+      if (!proceed) {
+        triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
+        return false;
+      }
+      setHasShownValidationWarning(true);
+    }
+
+    triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
+    return true;
+  }
+
   function onSave() {
-    if (!wo.productCategory || !wo.productDescription || !wo.customerId || !wo.assignedTo) { alert('Category, description, customer, and assigned technician required'); return; }
+    if (!ensureRequired('saving the work order')) return;
+    if (!wo.productCategory || !wo.productCategory.trim()) { alert('Device category required before saving.'); return; }
+    if (!wo.customerId) { alert('Select a customer before saving.'); return; }
     (async () => {
       try {
         const api = (window as any).api || {};
@@ -230,7 +375,14 @@ const NewWorkOrderWindow: React.FC = () => {
       // Keep window open so the Saved timestamp is visible
     })();
   }
-  function onCancel() { window.close(); }
+  function onCancel() {
+    if (!isEditingExisting && !hasMeaningfulInput) {
+      window.close();
+      return;
+    }
+    if (!ensureRequired('closing this work order window')) return;
+    window.close();
+  }
 
   // Removed local onNewItemClick; ItemsTable owns New Item adding via picker
 
@@ -251,6 +403,9 @@ const NewWorkOrderWindow: React.FC = () => {
   }
 
   async function handleCheckout() {
+    if (!ensureRequired('checking out')) return;
+    if (!wo.productCategory || !wo.productCategory.trim()) { alert('Device category required before checkout.'); return; }
+    if (!wo.customerId) { alert('Select a customer before checkout.'); return; }
     try {
       const amountDue = wo.totals?.remaining || 0;
       const result = await (window as any).api.openCheckout({ amountDue });
@@ -338,12 +493,22 @@ const NewWorkOrderWindow: React.FC = () => {
     return <div className="p-4 text-zinc-200">Loading work order...</div>;
   }
 
+  const saveDisabled = !wo.customerId || !(wo.productCategory || '').toString().trim();
+
   return (
     <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
+      {warningBanner && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 ${warningBannerVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
+            <div className="text-sm font-semibold">{warningBanner.message}</div>
+            {warningBanner.details ? <div className="text-xs mt-1 leading-snug opacity-80">{warningBanner.details}</div> : null}
+          </div>
+        </div>
+      )}
       <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-        <WorkOrderSidebar workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} />
+        <WorkOrderSidebar workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} validationFlags={sidebarValidationFlags} />
         <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
-          <WorkOrderForm workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} />
+          <WorkOrderForm workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} validationFlags={formValidationFlags} />
           <ItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
           {/* Parts dates + order URL (under line items) */}
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
@@ -415,8 +580,8 @@ const NewWorkOrderWindow: React.FC = () => {
         <div className="flex gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>
           <button
-            disabled={!wo.productCategory || !wo.productDescription || !wo.customerId || !wo.assignedTo}
-            className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${(!wo.productCategory || !wo.productDescription || !wo.customerId || !wo.assignedTo) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-neon-green text-zinc-900 hover:brightness-110'}`}
+            disabled={saveDisabled}
+            className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${saveDisabled ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-neon-green text-zinc-900 hover:brightness-110'}`}
             onClick={onSave}>Save</button>
         </div>
       </div>

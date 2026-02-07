@@ -8,16 +8,18 @@ export type SaleItemRow = {
   internalCost?: number;
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair';
   inStock?: boolean; // whether this specific item is in stock
+  productUrl?: string;
 };
 
 interface Props {
   items: SaleItemRow[];
   onChange: (items: SaleItemRow[]) => void;
+  showRequiredIndicator?: boolean;
 }
 
 const MAX_ITEMS = 20;
 
-const SaleItemsTable: React.FC<Props> = ({ items, onChange }) => {
+const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicator }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
 
@@ -39,6 +41,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange }) => {
           internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
           condition: picked.condition || 'New',
           inStock: !!picked.inStock,
+          productUrl: picked.productUrl || picked.url || picked.link || '',
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         return;
@@ -63,9 +66,12 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange }) => {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
+    <div className={`bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold text-zinc-200">Items</h4>
+        <h4 className="text-sm font-semibold text-zinc-200">
+          Items
+          {showRequiredIndicator && <span className="ml-1 text-red-500">*</span>}
+        </h4>
         <div className="text-xs text-zinc-400">Add products (max {MAX_ITEMS})</div>
       </div>
       <div className="overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '12rem' }}>
@@ -125,6 +131,16 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange }) => {
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={editSelected} disabled={!selected}>Edit selected</button>
         <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={removeSelected} disabled={!selected}>Remove selected</button>
+        <button
+          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded"
+          onClick={() => {
+            const row = items.find(i => i.id === selected);
+            const url = row?.productUrl;
+            if (!url) return;
+            try { (window as any).api?.openUrl ? (window as any).api.openUrl(url) : window.open(url, '_blank'); } catch { window.open(url, '_blank'); }
+          }}
+          disabled={!selected || !items.find(i => i.id === selected)?.productUrl}
+        >Go to product</button>
       </div>
 
       {editing && (
@@ -155,6 +171,16 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange }) => {
               <label className="block text-xs text-zinc-400">Internal cost</label>
               <input className="w-full bg-yellow-200 text-black rounded px-2 py-1" type="number" step="0.01" min={0} value={typeof editing.internalCost === 'number' ? editing.internalCost : '' as any} onChange={e => setEditing({ ...editing, internalCost: e.target.value === '' ? undefined : Number(e.target.value) })} />
             </div>
+          </div>
+          <div className="mt-2">
+            <label className="block text-xs text-zinc-400">Product URL</label>
+            <input
+              className="w-full bg-zinc-900 rounded px-2 py-1"
+              type="url"
+              placeholder="https://..."
+              value={editing.productUrl || ''}
+              onChange={e => setEditing({ ...editing, productUrl: e.target.value })}
+            />
           </div>
           <div className="flex gap-2 mt-2 justify-end">
             <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setEditing(null)}>Cancel</button>

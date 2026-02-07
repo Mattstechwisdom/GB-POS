@@ -53,15 +53,15 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
               }}>Products</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
-                try { const api = (window as any).api; if (api?.openReporting) await api.openReporting(); else window.open(window.location.origin + '/?reporting=true', '_blank'); }
+                try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); }
                 catch (e) { console.error(e); }
-              }}>Reporting</button>
+              }}>Reports</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
                 try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
                 catch (e) { console.error(e); openRoute(); }
-              }}>Data Mgmt</button>
+              }}>Backup/Restore</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); }

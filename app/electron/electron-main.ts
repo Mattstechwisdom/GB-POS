@@ -2241,6 +2241,7 @@ ipcMain.handle('open-eod', async (_event: any) => {
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
+    center: true,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
     webPreferences: {
@@ -2251,7 +2252,11 @@ ipcMain.handle('open-eod', async (_event: any) => {
     show: false,
     title: windowTitle('End of Day'),
   });
-  child.once('ready-to-show', () => child.show());
+  child.once('ready-to-show', () => {
+    centerWindow(child);
+    if (typeof child.center === 'function') child.center();
+    child.show();
+  });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?eod=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?eod=true`;
   child.loadURL(url);

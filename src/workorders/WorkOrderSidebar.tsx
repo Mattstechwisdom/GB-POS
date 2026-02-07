@@ -12,9 +12,10 @@ interface Props {
   hideDates?: boolean; // optionally hide the date controls entirely (used by Sale window)
   hideOrderDeliveryDates?: boolean; // when true in Sale window, hide Product ordered & Product delivered (keep Client pickup)
   renderActions?: (workOrder: WorkOrderFull) => React.ReactNode; // override default print buttons
+  validationFlags?: Partial<Record<'assignedTo', boolean>>;
 }
 
-const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions }) => {
+const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags }) => {
   const [techs, setTechs] = useState<any[]>([]);
   useEffect(() => {
     let mounted = true;
@@ -51,13 +52,15 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
           </select>
         </>
       )}
-
-          <label className="block text-xs text-zinc-400">Assigned to</label>
+          <label className="block text-xs text-zinc-400">
+            Assigned to
+            {validationFlags?.assignedTo && <span className="ml-1 text-red-500">*</span>}
+          </label>
           {techs.length === 0 ? (
             <select disabled className="w-full mt-1 mb-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-500"><option>— No technicians —</option></select>
           ) : (
             <select
-              className="w-full mt-1 mb-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand"
+              className={`w-full mt-1 mb-2 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand bg-zinc-800 border ${validationFlags?.assignedTo ? 'border-red-500' : 'border-zinc-700'}`}
               value={selectedTechId}
               onChange={e => {
                 const id = e.target.value;

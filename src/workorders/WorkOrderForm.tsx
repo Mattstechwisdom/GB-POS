@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import DevicePicker from '@/components/DevicePicker';
 import PatternLock from '../components/PatternLock';
 import { WorkOrderFull } from '../lib/types';
+
+type WorkOrderValidationFlags = Partial<Record<'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial', boolean>>;
 
 const DeviceCategorySelect: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => (
   <div className="mt-1">
@@ -9,18 +11,27 @@ const DeviceCategorySelect: React.FC<{ value: string; onChange: (val: string) =>
   </div>
 );
 
-interface DeviceCategory { id?: number; name: string }
-
 interface Props {
   workOrder: WorkOrderFull;
   onChange: (patch: Partial<WorkOrderFull>) => void;
+  validationFlags?: WorkOrderValidationFlags;
 }
 
-const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange }) => {
+const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags }) => {
+  const needsProductDescription = !!validationFlags?.productDescription;
+  const needsProblem = !!validationFlags?.problemInfo;
+  const needsPassword = !!validationFlags?.password;
+  const needsModel = !!validationFlags?.model;
+  const needsSerial = !!validationFlags?.serial;
+  const needsAnyItemFields = needsProductDescription || needsProblem || needsPassword || needsModel || needsSerial;
+
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold text-zinc-200">Item / Problem</h3>
+        <h3 className="font-semibold text-zinc-200">
+          Item / Problem
+          {needsAnyItemFields && <span className="ml-1 text-red-500">*</span>}
+        </h3>
         <div className="text-xs text-zinc-400">Product info</div>
       </div>
 
@@ -30,35 +41,70 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange }) => {
           <DeviceCategorySelect value={workOrder.productCategory} onChange={val => onChange({ productCategory: val })} />
         </div>
         <div className="col-span-2">
-          <label className="block text-xs text-zinc-400">Product description</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.productDescription} onChange={e => onChange({ productDescription: e.target.value })} />
+          <label className="block text-xs text-zinc-400">
+            Product description
+            {needsProductDescription && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          <input
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={workOrder.productDescription}
+            onChange={e => onChange({ productDescription: e.target.value })}
+          />
         </div>
       </div>
 
       <div className="mb-2">
-        <label className="block text-xs text-zinc-400">Problem / Additional info</label>
-        <textarea className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 h-16" value={workOrder.problemInfo || ''} onChange={e => onChange({ problemInfo: e.target.value })} />
+        <label className="block text-xs text-zinc-400">
+          Problem / Additional info
+          {needsProblem && <span className="ml-1 text-red-500">*</span>}
+        </label>
+        <textarea
+          className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 h-16"
+          value={workOrder.problemInfo || ''}
+          onChange={e => onChange({ problemInfo: e.target.value })}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="block text-xs text-zinc-400">Password</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.password || ''} onChange={e => onChange({ password: e.target.value })} />
+          <label className="block text-xs text-zinc-400">
+            Password
+            {needsPassword && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          <input
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={workOrder.password || ''}
+            onChange={e => onChange({ password: e.target.value })}
+          />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400">Model</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.model || ''} onChange={e => onChange({ model: e.target.value })} />
+          <label className="block text-xs text-zinc-400">
+            Model
+            {needsModel && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          <input
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={workOrder.model || ''}
+            onChange={e => onChange({ model: e.target.value })}
+          />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400">Serial</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.serial || ''} onChange={e => onChange({ serial: e.target.value })} />
+          <label className="block text-xs text-zinc-400">
+            Serial
+            {needsSerial && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          <input
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={workOrder.serial || ''}
+            onChange={e => onChange({ serial: e.target.value })}
+          />
         </div>
       </div>
 
       <PatternSection workOrder={workOrder} onChange={onChange} />
     </div>
   );
-}
+};
 
 export default WorkOrderForm;
 

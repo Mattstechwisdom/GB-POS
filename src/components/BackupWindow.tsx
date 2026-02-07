@@ -43,6 +43,9 @@ const BackupWindow: React.FC = () => {
   const [lastBackupPath, setLastBackupPath] = useState<string>('');
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
   const [isDataLive, setIsDataLive] = useState(true);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
+  const [autoBackupSaving, setAutoBackupSaving] = useState<boolean>(false);
+  const [autoBackupTime, setAutoBackupTime] = useState<string>('21:00');
   const hasElectron = typeof (window as any).api !== 'undefined';
   const api = hasElectron ? (window as any).api : null;
   type TileDef = {
@@ -135,6 +138,7 @@ const BackupWindow: React.FC = () => {
   useEffect(() => {
     loadDataStats();
     loadLastBackupPath();
+    loadAutoBackup();
     setupDataChangeListeners();
     
     // Show initial message that data is being loaded
@@ -413,6 +417,84 @@ const BackupWindow: React.FC = () => {
     }
   };
 
+  const updateEodSettings = async (patch: Record<string, any>) => {
+    const api = (window as any).api;
+    if (!api?.dbGet || !api?.dbAdd) return null;
+    const rows = await api.dbGet('eodSettings').catch(() => []);
+    const current = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    const fallback = {
+      includeWorkOrders: true,
+      includeSales: true,
+      includeOutstanding: true,
+      includePayments: true,
+      includeCounts: true,
+      includeBatchInfo: true,
+      schedule: 'daily',
+      sendTime: '18:00',
+      batchOutTime: '21:00',
+      subjectTemplate: 'Reports - {{date}}',
+      recipients: '',
+      headline: '',
+      notes: '',
+      emailBody: '',
+      lastSentAt: null,
+      autoBackup: true,
+    };
+    const next = { ...fallback, ...current, ...patch };
+    if (current?.id) {
+      await api.dbUpdate('eodSettings', current.id, next);
+    } else {
+      const created = await api.dbAdd('eodSettings', next);
+      if (created?.id) next.id = created.id;
+    }
+    return next;
+  };
+
+  const loadAutoBackup = async () => {
+    try {
+      const api = (window as any).api;
+      if (!api?.dbGet) return;
+      const rows = await api.dbGet('eodSettings').catch(() => []);
+      const settings = Array.isArray(rows) && rows[0] ? rows[0] : null;
+      const enabled = settings?.autoBackup !== false;
+      const time = settings?.batchOutTime || settings?.sendTime || '21:00';
+      setAutoBackupEnabled(enabled);
+      setAutoBackupTime(time);
+    } catch (e) {
+      console.warn('Auto-backup load failed', e);
+    }
+  };
+
+  const handleToggleAutoBackup = async (enabled: boolean) => {
+    setAutoBackupEnabled(enabled);
+    setAutoBackupSaving(true);
+    try {
+      const next = await updateEodSettings({ autoBackup: enabled });
+      if (next) setAutoBackupTime(next.batchOutTime || next.sendTime || '21:00');
+      setMessage(enabled ? '✅ Auto backup enabled (runs at batch-out time).' : '⚠️ Auto backup disabled.');
+    } catch (e) {
+      console.error('Auto-backup toggle failed', e);
+      setAutoBackupEnabled(!enabled);
+      setMessage('❌ Failed to update auto backup setting');
+    } finally {
+      setAutoBackupSaving(false);
+    }
+  };
+
+  const handleAutoBackupTimeChange = async (val: string) => {
+    setAutoBackupTime(val);
+    setAutoBackupSaving(true);
+    try {
+      await updateEodSettings({ batchOutTime: val });
+      setMessage(`⏰ Auto backup time set to ${val || '21:00'}`);
+    } catch (e) {
+      console.error('Auto-backup time update failed', e);
+      setMessage('❌ Failed to update auto backup time');
+    } finally {
+      setAutoBackupSaving(false);
+    }
+  };
+
   const validatePassword = () => true;
 
   
@@ -600,6 +682,23 @@ const BackupWindow: React.FC = () => {
                 {lastBackupPath && (
                   <p className="truncate">Last backup: <span className="text-[#39FF14]" title={lastBackupPath}>{lastBackupPath}</span></p>
                 )}
+              </div>
+              <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded p-2 flex flex-col gap-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={autoBackupEnabled} onChange={e => handleToggleAutoBackup(e.target.checked)} disabled={autoBackupSaving} />
+                  <span className="font-medium">Auto backup at Batch Out</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <label className="text-[11px] text-gray-400">Backup time</label>
+                  <input
+                    type="time"
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs"
+                    value={autoBackupTime}
+                    onChange={e => handleAutoBackupTimeChange(e.target.value)}
+                    disabled={autoBackupSaving}
+                  />
+                </div>
+                <div className="text-[11px] text-gray-400">Runs at the configured time to create an automatic backup. Adjust here; Reports handles email schedules separately.</div>
               </div>
             </div>
             <div className="shrink-0 w-[380px] flex flex-col gap-2">
