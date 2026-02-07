@@ -49,6 +49,8 @@ type SaleRecord = {
 
 type SaleRequiredKey = 'assignedTo' | 'itemDetails';
 
+type ValidationActionKey = 'save' | 'checkout' | 'close';
+
 const SALE_REQUIRED_LABELS: Record<SaleRequiredKey, string> = {
   assignedTo: 'Assigned technician',
   itemDetails: 'At least one product',
@@ -96,11 +98,15 @@ const SaleWindow: React.FC = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [validationActive, setValidationActive] = useState<boolean>(false);
-  const [hasShownValidationWarning, setHasShownValidationWarning] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
+  const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
+    save: false,
+    checkout: false,
+    close: false,
+  });
 
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
@@ -181,7 +187,7 @@ const SaleWindow: React.FC = () => {
       }
       setWarningBannerVisible(false);
       setWarningBanner(null);
-      setHasShownValidationWarning(false);
+      setArmedValidationActions({ save: false, checkout: false, close: false });
     }
   }, [missingRequired.length]);
 
@@ -248,31 +254,32 @@ const SaleWindow: React.FC = () => {
 
   // Per-item internal cost editing and pricing handled inside SaleItemsTable edit flow.
 
-  function ensureRequired(actionDescription: string): boolean {
+  function ensureRequired(action: ValidationActionKey, actionDescription: string): boolean {
     if (missingRequired.length === 0) {
       setValidationActive(false);
+      setArmedValidationActions(prev => ({ ...prev, [action]: false }));
       return true;
     }
 
     setValidationActive(true);
-    const bulletList = missingRequired.map(key => `• ${SALE_REQUIRED_LABELS[key]}`).join('\n');
     const detailText = missingRequired.map(key => SALE_REQUIRED_LABELS[key]).join(', ');
 
-    if (!hasShownValidationWarning) {
-      const proceed = window.confirm(`Missing required fields before ${actionDescription}:\n\n${bulletList}\n\nContinue anyway?`);
-      if (!proceed) {
-        triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
-        return false;
-      }
-      setHasShownValidationWarning(true);
+    if (!armedValidationActions[action]) {
+      setArmedValidationActions(prev => ({ ...prev, [action]: true }));
+      triggerWarningBanner(
+        `Review required fields before ${actionDescription}`,
+        `${detailText}. Click again to continue.`
+      );
+      return false;
     }
 
-    triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
+    setArmedValidationActions(prev => ({ ...prev, [action]: false }));
+    triggerWarningBanner(`Continuing with missing fields`, detailText);
     return true;
   }
 
   function validate(actionDescription: string): boolean {
-    if (!ensureRequired(actionDescription)) return false;
+    if (!ensureRequired(actionDescription.includes('checking out') ? 'checkout' : 'save', actionDescription)) return false;
     if ((sale as any).id) {
       setErrors([]);
       return true;
@@ -297,8 +304,7 @@ const SaleWindow: React.FC = () => {
 
     setErrors(errs);
     if (errs.length > 0) {
-      const list = errs.map(e => `• ${e}`).join('\n');
-      alert(`Fix the following before ${actionDescription}:\n${list}`);
+      triggerWarningBanner(`Fix fields before ${actionDescription}`, errs.slice(0, 4).join(' · '));
       return false;
     }
     return true;
@@ -363,9 +369,13 @@ const SaleWindow: React.FC = () => {
         try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         // Nudge any opener window (e.g., Customer Overview) to reload sales in fallback scenarios
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
+
+        // After saving, return the user to the main/customer screen.
+        window.close();
       }
     } catch (e) {
       console.error('Save failed', e);
+      triggerWarningBanner('Failed to save sale', 'See console for details.');
     }
   }
 
@@ -531,7 +541,7 @@ const SaleWindow: React.FC = () => {
       window.close();
       return;
     }
-    if (!ensureRequired('closing this sale window')) return;
+    if (!ensureRequired('close', 'closing this sale window')) return;
     window.close();
   }
 
@@ -584,7 +594,7 @@ const SaleWindow: React.FC = () => {
   return (
     <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
       {warningBanner && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 ${warningBannerVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
             <div className="text-sm font-semibold">{warningBanner.message}</div>
             {warningBanner.details ? <div className="text-xs mt-1 leading-snug opacity-80">{warningBanner.details}</div> : null}
@@ -732,9 +742,8 @@ const SaleWindow: React.FC = () => {
         <div className="flex items-center gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>
           <button
-          className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${canSave ? 'bg-neon-green text-zinc-900 hover:brightness-110' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
+          className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${canSave ? 'bg-neon-green text-zinc-900 hover:brightness-110' : 'bg-zinc-800 text-zinc-300 hover:border hover:border-amber-300'}`}
           onClick={handleSave}
-          disabled={!canSave}
         >Save</button>
         </div>
       </div>

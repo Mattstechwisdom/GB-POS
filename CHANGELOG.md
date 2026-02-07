@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.11 (2026-02-07)
+- Sales + work orders: required-field warnings are now non-modal (yellow banner + red markers) and use a 2-click confirm flow (warn on first click, proceed on second).
+- Save now closes the Sale/Work Order window after a successful save.
+- Removed duplicate Reports button from the main toolbar.
+- Product picker windows are now parented to the invoking window (fixes Sales → New item bringing the main window to front).
+
 ## v0.2.10 (2026-02-07)
 - Sale items now store an optional product URL with a quick "Go to product" action from the items table.
 

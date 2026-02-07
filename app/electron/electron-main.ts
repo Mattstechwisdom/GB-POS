@@ -742,13 +742,16 @@ app.on('browser-window-created', (_event: any, win: typeof BrowserWindow.prototy
 });
 
 // IPC handler for promise-based repair picker (returns selected repair)
-ipcMain.handle('pick-repair-item', async (_event: any) => {
+ipcMain.handle('pick-repair-item', async (event: any) => {
   return new Promise((resolve) => {
+    const parentFromSender = (() => {
+      try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+    })();
     const child = new BrowserWindow({
       width: 1000,
       height: 620,
       resizable: true,
-      parent: BrowserWindow.getAllWindows()[0] || undefined,
+      parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
       ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#18181b',
@@ -1528,14 +1531,17 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
 });
 
 // Open Products window
-ipcMain.handle('open-products', async () => {
+ipcMain.handle('open-products', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
   const child = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1100,
     minHeight: 720,
     resizable: true,
-    parent: BrowserWindow.getAllWindows()[0] || undefined,
+    parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
@@ -2315,13 +2321,16 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
 });
 
 // IPC handler for promise-based sale product picker (returns selected product-like payload)
-ipcMain.handle('pick-sale-product', async (_event: any) => {
+ipcMain.handle('pick-sale-product', async (event: any) => {
   return new Promise((resolve) => {
+    const parentFromSender = (() => {
+      try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+    })();
     const child = new BrowserWindow({
       width: 1280,
       height: 800,
       resizable: true,
-      parent: BrowserWindow.getAllWindows()[0] || undefined,
+      parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
       ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
       backgroundColor: '#18181b',

@@ -23,6 +23,8 @@ import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem } from '../lib/types'
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
+type ValidationActionKey = 'save' | 'checkout' | 'close';
+
 const REQUIRED_LABELS: Record<RequiredKey, string> = {
   assignedTo: 'Assigned technician',
   productDescription: 'Device description',
@@ -89,11 +91,15 @@ const NewWorkOrderWindow: React.FC = () => {
   internalNotesLog: [],
   });
   const [validationActive, setValidationActive] = useState<boolean>(false);
-  const [hasShownValidationWarning, setHasShownValidationWarning] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
+  const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
+    save: false,
+    checkout: false,
+    close: false,
+  });
 
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
@@ -174,7 +180,7 @@ const NewWorkOrderWindow: React.FC = () => {
       }
       setWarningBannerVisible(false);
       setWarningBanner(null);
-      setHasShownValidationWarning(false);
+      setArmedValidationActions({ save: false, checkout: false, close: false });
     }
   }, [missingRequired.length]);
 
@@ -324,33 +330,40 @@ const NewWorkOrderWindow: React.FC = () => {
     shouldSave: (v) => !!(isEditingExisting || (v.id && v.id !== 0) || v.productCategory || v.productDescription || v.customerId || (v.items && v.items.length)),
   });
 
-  function ensureRequired(actionDescription: string): boolean {
+  function ensureRequired(action: ValidationActionKey, actionDescription: string): boolean {
     if (missingRequired.length === 0) {
       setValidationActive(false);
+      setArmedValidationActions(prev => ({ ...prev, [action]: false }));
       return true;
     }
 
     setValidationActive(true);
-    const bulletList = missingRequired.map(key => `• ${REQUIRED_LABELS[key]}`).join('\n');
     const detailText = missingRequired.map(key => REQUIRED_LABELS[key]).join(', ');
 
-    if (!hasShownValidationWarning) {
-      const proceed = window.confirm(`Missing required fields before ${actionDescription}:\n\n${bulletList}\n\nContinue anyway?`);
-      if (!proceed) {
-        triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
-        return false;
-      }
-      setHasShownValidationWarning(true);
+    if (!armedValidationActions[action]) {
+      setArmedValidationActions(prev => ({ ...prev, [action]: true }));
+      triggerWarningBanner(
+        `Review required fields before ${actionDescription}`,
+        `${detailText}. Click again to continue.`
+      );
+      return false;
     }
 
-    triggerWarningBanner(`Review required fields before ${actionDescription}`, detailText);
+    setArmedValidationActions(prev => ({ ...prev, [action]: false }));
+    triggerWarningBanner(`Continuing with missing fields`, detailText);
     return true;
   }
 
   function onSave() {
-    if (!ensureRequired('saving the work order')) return;
-    if (!wo.productCategory || !wo.productCategory.trim()) { alert('Device category required before saving.'); return; }
-    if (!wo.customerId) { alert('Select a customer before saving.'); return; }
+    if (!ensureRequired('save', 'saving the work order')) return;
+    if (!wo.productCategory || !wo.productCategory.trim()) {
+      triggerWarningBanner('Device category is missing', 'Select a device category, then click Save again.');
+      return;
+    }
+    if (!wo.customerId) {
+      triggerWarningBanner('Customer is missing', 'Select a customer, then click Save again.');
+      return;
+    }
     (async () => {
       try {
         const api = (window as any).api || {};
@@ -367,12 +380,15 @@ const NewWorkOrderWindow: React.FC = () => {
         }
         try { window.opener?.postMessage({ type: 'workorders:changed', id: wo.id }, '*'); } catch {}
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+
+        // After saving, return the user to the main/customer screen.
+        // Works for child windows opened from the main app.
+        window.close();
       } catch (err) {
         console.error('DB save failed', err);
-        alert('Failed to save work order. See console for details.');
+        triggerWarningBanner('Failed to save work order', 'See console for details.');
         return;
       }
-      // Keep window open so the Saved timestamp is visible
     })();
   }
   function onCancel() {
@@ -380,7 +396,7 @@ const NewWorkOrderWindow: React.FC = () => {
       window.close();
       return;
     }
-    if (!ensureRequired('closing this work order window')) return;
+    if (!ensureRequired('close', 'closing this work order window')) return;
     window.close();
   }
 
@@ -403,9 +419,15 @@ const NewWorkOrderWindow: React.FC = () => {
   }
 
   async function handleCheckout() {
-    if (!ensureRequired('checking out')) return;
-    if (!wo.productCategory || !wo.productCategory.trim()) { alert('Device category required before checkout.'); return; }
-    if (!wo.customerId) { alert('Select a customer before checkout.'); return; }
+    if (!ensureRequired('checkout', 'checking out')) return;
+    if (!wo.productCategory || !wo.productCategory.trim()) {
+      triggerWarningBanner('Device category is missing', 'Select a device category, then click Checkout again.');
+      return;
+    }
+    if (!wo.customerId) {
+      triggerWarningBanner('Customer is missing', 'Select a customer, then click Checkout again.');
+      return;
+    }
     try {
       const amountDue = wo.totals?.remaining || 0;
       const result = await (window as any).api.openCheckout({ amountDue });
@@ -493,12 +515,12 @@ const NewWorkOrderWindow: React.FC = () => {
     return <div className="p-4 text-zinc-200">Loading work order...</div>;
   }
 
-  const saveDisabled = !wo.customerId || !(wo.productCategory || '').toString().trim();
+  const saveDisabled = false;
 
   return (
     <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
       {warningBanner && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 ${warningBannerVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
             <div className="text-sm font-semibold">{warningBanner.message}</div>
             {warningBanner.details ? <div className="text-xs mt-1 leading-snug opacity-80">{warningBanner.details}</div> : null}
@@ -580,8 +602,7 @@ const NewWorkOrderWindow: React.FC = () => {
         <div className="flex gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>
           <button
-            disabled={saveDisabled}
-            className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${saveDisabled ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-neon-green text-zinc-900 hover:brightness-110'}`}
+            className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${saveDisabled ? 'bg-zinc-800 text-zinc-500' : 'bg-neon-green text-zinc-900 hover:brightness-110'}`}
             onClick={onSave}>Save</button>
         </div>
       </div>

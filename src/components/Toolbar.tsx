@@ -50,18 +50,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         <button
           className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
           onClick={async () => {
-            try { await (window as any).api.openEod?.(); }
-            catch {
-              const url = window.location.origin + '/?eod=true';
-              window.open(url, '_blank', 'width=1200,height=820');
-            }
-          }}
-        >
-          Reports
-        </button>
-        <button
-          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={async () => {
             try {
               const api = (window as any).api;
               if (api && typeof api.openCalendar === 'function') await api.openCalendar();
