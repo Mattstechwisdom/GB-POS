@@ -11,6 +11,8 @@ interface WorkOrderRow {
   items?: any[];
 }
 
+const PAGE_SIZE = 25;
+
 const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -20,6 +22,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [page, setPage] = useState(1);
 
 	const ctx = useContextMenu<WorkOrderRow>();
 	const ctxRow = ctx.state.data;
@@ -68,6 +71,56 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     const unsubTech = api?.onTechniciansChanged?.(() => refreshTechs());
     return () => { try { unsubWO && unsubWO(); } catch {} try { unsubTech && unsubTech(); } catch {} };
   }, [load]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [technicianFilter, dateFrom, dateTo]);
+
+  const filteredRows = useMemo(() => {
+    return rows
+      .filter(r => {
+        if (!technicianFilter) return true;
+        const at = r.assignedTo as any;
+        if (technicianFilter === '__unassigned') {
+          return !at;
+        }
+        if (!at) return false;
+        // If assignedTo stored as technician id, compare directly
+        if (typeof at === 'string' && techIndex[at]) {
+          return at === technicianFilter;
+        }
+        // If stored as label (nickname/first name), compare against display label for the selected id
+        const selectedLabel = techIndex[technicianFilter] || '';
+        if (typeof at === 'string') {
+          // accept exact match or first-name match
+          const first = at.split(' ')[0];
+          return at === selectedLabel || first === selectedLabel;
+        }
+        return false;
+      })
+      .filter(r => {
+        // Date range filter: inclusive between dateFrom and dateTo (YYYY-MM-DD). If either missing, skip that bound.
+        if (!dateFrom && !dateTo) return true;
+        const ci = r.checkInAt ? new Date(r.checkInAt) : null;
+        if (!ci) return false;
+        const fromOk = dateFrom ? ci >= new Date(dateFrom + 'T00:00:00') : true;
+        const toOk = dateTo ? ci <= new Date(dateTo + 'T23:59:59.999') : true;
+        return fromOk && toOk;
+      });
+  }, [rows, technicianFilter, dateFrom, dateTo, techIndex]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, filteredRows.length);
+  const pagedRows = filteredRows.slice(startIdx, endIdx);
+
+  // Clamp page when row count changes (e.g., deletions / filters)
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safePage]);
 
 
   const openContextMenu = (e: React.MouseEvent, r: WorkOrderRow) => {
@@ -184,6 +237,26 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
 
   return (
     <div className="overflow-x-auto relative" ref={tableRef}>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="text-xs text-zinc-400">
+          {filteredRows.length === 0
+            ? 'Showing 0'
+            : `Showing ${startIdx + 1}-${endIdx} of ${filteredRows.length}`}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
+            disabled={safePage <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >Prev</button>
+          <div className="text-xs text-zinc-300">Page <span className="font-semibold text-zinc-100">{safePage}</span> / {totalPages}</div>
+          <button
+            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          >Next</button>
+        </div>
+      </div>
       <table className="min-w-full text-sm border-separate border-spacing-0">
         <thead className="bg-zinc-800">
           <tr>
@@ -207,37 +280,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
           {!loading && rows.length === 0 && (
             <tr><td colSpan={11} className="p-6 text-center text-zinc-500">No work orders yet</td></tr>
           )}
-          {!loading && rows
-            .filter(r => {
-              if (!technicianFilter) return true;
-              const at = r.assignedTo as any;
-              if (technicianFilter === '__unassigned') {
-                return !at;
-              }
-              if (!at) return false;
-              // If assignedTo stored as technician id, compare directly
-              if (typeof at === 'string' && techIndex[at]) {
-                return at === technicianFilter;
-              }
-              // If stored as label (nickname/first name), compare against display label for the selected id
-              const selectedLabel = techIndex[technicianFilter] || '';
-              if (typeof at === 'string') {
-                // accept exact match or first-name match
-                const first = at.split(' ')[0];
-                return at === selectedLabel || first === selectedLabel;
-              }
-              return false;
-            })
-            .filter(r => {
-              // Date range filter: inclusive between dateFrom and dateTo (YYYY-MM-DD). If either missing, skip that bound.
-              if (!dateFrom && !dateTo) return true;
-              const ci = r.checkInAt ? new Date(r.checkInAt) : null;
-              if (!ci) return false;
-              const fromOk = dateFrom ? ci >= new Date(dateFrom + 'T00:00:00') : true;
-              const toOk = dateTo ? ci <= new Date(dateTo + 'T23:59:59.999') : true;
-              return fromOk && toOk;
-            })
-            .map(r => {
+          {!loading && pagedRows.map(r => {
             const total = r.totals?.total ?? 0;
             const remaining = r.totals?.remaining ?? Math.max(0, total - (r.amountPaid || 0));
             const computedStatus = remaining <= 0 ? 'closed' : 'open';

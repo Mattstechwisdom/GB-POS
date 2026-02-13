@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.13 (2026-02-13)
+- Main screen work orders list: paginate to 25 rows per page (prevents long scrolling as the list grows).
+
 ## v0.2.12 (2026-02-13)
 - Customer Receipt: embed logo as a data URL for reliable PDF export.
 - Customer Receipt: updated device/details block ordering to match other printouts and reduced layout forcing that could create an extra blank PDF page.
