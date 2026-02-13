@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.12 (2026-02-13)
+- Customer Receipt: embed logo as a data URL for reliable PDF export.
+- Customer Receipt: updated device/details block ordering to match other printouts and reduced layout forcing that could create an extra blank PDF page.
+
 ## v0.2.11 (2026-02-07)
 - Sales + work orders: required-field warnings are now non-modal (yellow banner + red markers) and use a 2-click confirm flow (warn on first click, proceed on second).
 - Save now closes the Sale/Work Order window after a successful save.

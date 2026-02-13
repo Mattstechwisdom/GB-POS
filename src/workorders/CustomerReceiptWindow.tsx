@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { publicAsset } from '../lib/publicAsset';
+import React, { useEffect, useMemo, useState } from 'react';
+import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
 
 function getPayload() {
   try {
@@ -10,25 +10,76 @@ function getPayload() {
   } catch (e) { return null; }
 }
 
+function getReceiptFlags() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const autoPrint = params.get('autoPrint') === '1' || params.get('autoPrint') === 'true';
+    const silent = params.get('silent') === '1' || params.get('silent') === 'true';
+    const autoCloseMsRaw = params.get('autoCloseMs');
+    const autoCloseMs = autoCloseMsRaw ? Number(autoCloseMsRaw) : 0;
+    return { autoPrint, silent, autoCloseMs: Number.isFinite(autoCloseMs) ? autoCloseMs : 0 };
+  } catch {
+    return { autoPrint: false, silent: false, autoCloseMs: 0 };
+  }
+}
+
 const CustomerReceiptWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
+  const flags = useMemo(() => getReceiptFlags(), []);
   const now = new Date();
 
+  const [logoSrc, setLogoSrc] = useState<string>('');
+
   useEffect(() => {
-    setTimeout(() => { try { window.print(); } catch {} }, 300);
+    let alive = true;
+    (async () => {
+      const src = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+      if (!alive) return;
+      setLogoSrc(src);
+    })();
+    return () => { alive = false; };
   }, []);
 
-  const items = Array.isArray(data.items) ? data.items : [];
-  const fullName = data.customerName || data.customer?.name || '';
-  const phone = data.customerPhone || data.customer?.phone || '';
+  useEffect(() => {
+    if (!flags.autoPrint || flags.silent) return;
+    const t = window.setTimeout(() => {
+      try { window.focus(); window.print(); } catch {}
+      if (flags.autoCloseMs && flags.autoCloseMs > 0) {
+        window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
+      }
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent]);
+
+  const items = Array.isArray((data as any).items) ? (data as any).items : [];
+  const fullName = (data as any).customerName || (data as any).customer?.name || '';
+  const phone = (data as any).customerPhone || (data as any).customer?.phone || '';
+
+  const device = (data as any).productCategory || (data as any).device || '';
+  const description = (data as any).productDescription || (data as any).description || device || '';
+  const model = (data as any).model || '';
+  const serial = (data as any).serial || (data as any).serialNumber || '';
+  const password = (data as any).password || '';
+  const problem = (data as any).problemInfo || (data as any).problem || '';
+
+  const partCosts = Number((data as any).partCosts ?? (data as any).subTotalParts ?? 0) || 0;
+  const laborCost = Number((data as any).laborCost ?? (data as any).subTotalLabor ?? 0) || 0;
+  const discount = Number((data as any).discount ?? 0) || 0;
+  const taxRate = Number((data as any).taxRate ?? 0) || 0;
+  const taxes = Number((data as any).totals?.tax ?? (data as any).taxes ?? 0) || 0;
+  const amountPaid = Number((data as any).amountPaid ?? 0) || 0;
+  const remaining = Number((data as any).totals?.remaining ?? 0) || 0;
 
   return (
-    <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
+        <div className="receipt-root" style={{ background: '#f3f4f6', color: '#111', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
       <style>{`
         @page { size: A4; margin: 12mm; }
-        @media print { html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-  .page { width: 210mm; min-height: 297mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
-  .page-inner { display: flex; flex-direction: column; min-height: 0; }
+        @media print {
+          html, body { background: #fff; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .receipt-root { background: #fff !important; padding: 0 !important; }
+        }
+      .page { width: 210mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
+      .page-inner { display: flex; flex-direction: column; min-height: 0; }
         .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
         .brand-left { display:flex; align-items:center; gap:12px; }
         .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
@@ -37,7 +88,7 @@ const CustomerReceiptWindow: React.FC = () => {
   .section { border:1px solid #d1d5db; border-radius:6px; padding:8px; margin-bottom:10px; }
   .muted-bg { background: #f8fafc; }
   .chip { display:inline-block; padding:3px 6px; border-radius:6px; background:#f3f4f6; border:1px solid #e5e7eb; }
-        .info-grid { display:grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; gap:6px 10px; align-items:start; }
+        .info-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px 12px; align-items:start; }
         .field { display:flex; gap:6px; align-items:baseline; min-width:0; }
         .label-inline { color:#555; font-size:9.5pt; font-weight:600; }
         .value-inline { font-size:10.5pt; color:#111; min-width:0; overflow-wrap:anywhere; }
@@ -47,8 +98,8 @@ const CustomerReceiptWindow: React.FC = () => {
         .items td:first-child { font-weight:600; color:#111; }
   .footer { margin-top: 10px; }
   @media print {
-    .page { height: calc(297mm - 24mm); margin: 0 auto; box-shadow: none; padding: 0; }
-    .page-inner { padding: 12mm; }
+        .page { width: auto; margin: 0; box-shadow: none; padding: 0; }
+        .page-inner { padding: 0; }
   }
         .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
         .totals .row { display:flex; gap:12px; align-items:center; }
@@ -82,6 +133,10 @@ const CustomerReceiptWindow: React.FC = () => {
         <div className="page-inner">
         <div className="toolbar">
           <button
+            onClick={() => { try { window.focus(); window.print(); } catch {} }}
+            style={{ background:'#111', color:'#39FF14', border:'1px solid #39FF14', padding:'6px 12px', borderRadius:6, fontSize:'10pt', cursor:'pointer' }}
+          >Print</button>
+          <button
             onClick={async () => {
               try {
                 const html = document.documentElement.outerHTML;
@@ -98,7 +153,11 @@ const CustomerReceiptWindow: React.FC = () => {
         </div>
         <div className="brand">
           <div className="brand-left">
-            <img src={publicAsset('logo.png')} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+            {logoSrc ? (
+              <img src={logoSrc} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+            ) : (
+              <img src={publicAsset('logo.png')} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+            )}
             <div>
               <div className="brand-title">GADGETBOY Repair & Retail</div>
               <div style={{ fontSize: '10pt', color: '#222' }}>2822 Devine Street, Columbia, SC 29205</div>
@@ -116,14 +175,17 @@ const CustomerReceiptWindow: React.FC = () => {
 
         <div className="section muted-bg">
           <div className="info-grid">
-            <div className="field"><span className="label-inline">Device:</span><span className="value-inline">{data.productCategory || ''}</span></div>
-            <div className="field"><span className="label-inline">Model:</span><span className="value-inline">{data.model || ''}</span></div>
-            <div className="field"><span className="label-inline">Serial #:</span><span className="value-inline">{data.serial || ''}</span></div>
-            <div className="field"><span className="label-inline">Password:</span><span className="value-inline">{data.password || ''}</span></div>
-
-            <div className="field" style={{ gridColumn: '1 / span 4' }}><span className="label-inline">Description:</span><span className="value-inline"><span className="chip">{(data.productDescription || data.productCategory || '')}</span></span></div>
-            <div className="field" style={{ gridColumn: '1 / span 4', marginTop: 2 }}><span className="label-inline">Problem:</span><span className="value-inline">{data.problemInfo || ''}</span></div>
+            <div className="field"><span className="label-inline">Device:</span><span className="value-inline">{device}</span></div>
+            <div className="field"><span className="label-inline">Description:</span><span className="value-inline"><span className="chip">{description}</span></span></div>
+            <div className="field"><span className="label-inline">Model:</span><span className="value-inline">{model}</span></div>
+            <div className="field"><span className="label-inline">Serial #:</span><span className="value-inline">{serial}</span></div>
+            <div className="field"><span className="label-inline">Password:</span><span className="value-inline">{password}</span></div>
           </div>
+        </div>
+
+        <div className="section muted-bg" style={{ pageBreakInside: 'avoid' }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Problem</div>
+          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35, fontSize: '10.5pt' }}>{problem}</div>
         </div>
 
         <div className="section muted-bg">
@@ -149,26 +211,19 @@ const CustomerReceiptWindow: React.FC = () => {
                   </tr>
                 );
               })}
-              {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, idx) => (
-                <tr key={`filler-${idx}`}>
-                  <td style={{ padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>&nbsp;</td>
-                  <td style={{ padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>&nbsp;</td>
-                  <td style={{ padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>&nbsp;</td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>
 
         {/* Totals under list, aligned right */}
         <div className="totals" style={{ marginBottom: 10 }}>
-          <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{Number(data.partCosts || 0).toFixed(2)}</div></div>
-          <div className="row"><div className="label">Total Labor</div><div style={{ marginLeft: 'auto' }}>{Number(data.laborCost || 0).toFixed(2)}</div></div>
-          <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{Number(data.discount || 0).toFixed(2)}</div></div>
-          <div className="row"><div className="label">Taxes ({Number(data.taxRate || 0).toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{Number(data.totals?.tax || 0).toFixed(2)}</div></div>
-          <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{Number(data.amountPaid || 0).toFixed(2)}</div></div>
+          <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{partCosts.toFixed(2)}</div></div>
+          <div className="row"><div className="label">Total Labor</div><div style={{ marginLeft: 'auto' }}>{laborCost.toFixed(2)}</div></div>
+          <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{discount.toFixed(2)}</div></div>
+          <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{taxes.toFixed(2)}</div></div>
+          <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{amountPaid.toFixed(2)}</div></div>
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-          <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{Number(data.totals?.remaining || 0).toFixed(2)}</strong></div></div>
+          <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{remaining.toFixed(2)}</strong></div></div>
         </div>
 
         {/* Terms and signature removed per request */}
