@@ -4,14 +4,13 @@ import { listTechnicians } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
+import { usePagination } from '../lib/pagination';
 
 interface WorkOrderRow {
   id: number; status?: string; assignedTo?: string | null; checkInAt?: string; customerId?: number;
   totals?: { total?: number; remaining?: number }; amountPaid?: number; productDescription?: string; productCategory?: string; problemInfo?: string;
   items?: any[];
 }
-
-const PAGE_SIZE = 25;
 
 const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
@@ -22,7 +21,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
-  const [page, setPage] = useState(1);
+  const { page, setPage, pageSize, setTotalItems } = usePagination();
 
 	const ctx = useContextMenu<WorkOrderRow>();
 	const ctxRow = ctx.state.data;
@@ -72,11 +71,6 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     return () => { try { unsubWO && unsubWO(); } catch {} try { unsubTech && unsubTech(); } catch {} };
   }, [load]);
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [technicianFilter, dateFrom, dateTo]);
-
   const filteredRows = useMemo(() => {
     return rows
       .filter(r => {
@@ -110,17 +104,22 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
       });
   }, [rows, technicianFilter, dateFrom, dateTo, techIndex]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  useEffect(() => {
+    setTotalItems(filteredRows.length);
+    return () => {
+      setTotalItems(0);
+    };
+  }, [filteredRows.length, setTotalItems]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
-  const startIdx = (safePage - 1) * PAGE_SIZE;
-  const endIdx = Math.min(startIdx + PAGE_SIZE, filteredRows.length);
+  const startIdx = (safePage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, filteredRows.length);
   const pagedRows = filteredRows.slice(startIdx, endIdx);
 
-  // Clamp page when row count changes (e.g., deletions / filters)
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safePage]);
+  }, [page, safePage, setPage]);
 
 
   const openContextMenu = (e: React.MouseEvent, r: WorkOrderRow) => {
@@ -237,26 +236,6 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
 
   return (
     <div className="overflow-x-auto relative" ref={tableRef}>
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="text-xs text-zinc-400">
-          {filteredRows.length === 0
-            ? 'Showing 0'
-            : `Showing ${startIdx + 1}-${endIdx} of ${filteredRows.length}`}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
-            disabled={safePage <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >Prev</button>
-          <div className="text-xs text-zinc-300">Page <span className="font-semibold text-zinc-100">{safePage}</span> / {totalPages}</div>
-          <button
-            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
-            disabled={safePage >= totalPages}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-          >Next</button>
-        </div>
-      </div>
       <table className="min-w-full text-sm border-separate border-spacing-0">
         <thead className="bg-zinc-800">
           <tr>

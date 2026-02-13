@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '../lib/admin';
 import { formatPhone } from '../lib/format';
+import { usePagination } from '../lib/pagination';
 
 type Props = {
   technicianFilter?: string;
@@ -13,6 +14,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
   const [loading, setLoading] = useState<boolean>(false);
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
   const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string }>>({});
+  const { page, setPage, pageSize, setTotalItems } = usePagination();
 
   async function load() {
     try {
@@ -82,6 +84,23 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
     });
   }, [rows, technicianFilter, dateFrom, dateTo]);
 
+  useEffect(() => {
+    setTotalItems(filtered.length);
+    return () => {
+      setTotalItems(0);
+    };
+  }, [filtered.length, setTotalItems]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, filtered.length);
+  const paged = useMemo(() => filtered.slice(startIdx, endIdx), [filtered, startIdx, endIdx]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage, setPage]);
+
   return (
     <div className="p-2">
       <table className="w-full text-sm">
@@ -107,7 +126,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
           {!loading && filtered.length === 0 && (
             <tr><td colSpan={11} className="p-6 text-center text-zinc-500">No sales yet</td></tr>
           )}
-          {!loading && filtered.map((s: any) => {
+          {!loading && paged.map((s: any) => {
             const date = (s.createdAt || s.checkInAt || '').toString().split('T')[0];
             const desc = (Array.isArray(s.items) && s.items[0]?.description) || s.itemDescription || '';
             const total = Number(s.totals?.total || s.total || 0) || 0;

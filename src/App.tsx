@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SidebarFilters from './components/SidebarFilters';
 import Toolbar from './components/Toolbar';
 import WorkOrdersTable from './components/WorkOrdersTable';
@@ -9,6 +9,7 @@ import CustomerSearchWindow from './components/CustomerSearchWindow';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
+import { PaginationProvider, usePagination } from './lib/pagination';
 
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
@@ -16,6 +17,55 @@ const App: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [mode, setMode] = useState<'workorders'|'sales'|'all'>('all');
+
+  return (
+    <PaginationProvider pageSize={25}>
+      <AppInner
+        showCustomerSearch={showCustomerSearch}
+        setShowCustomerSearch={setShowCustomerSearch}
+        technicianFilter={technicianFilter}
+        setTechnicianFilter={setTechnicianFilter}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+        mode={mode}
+        setMode={setMode}
+      />
+    </PaginationProvider>
+  );
+};
+
+export default App;
+
+const AppInner: React.FC<{
+  showCustomerSearch: boolean;
+  setShowCustomerSearch: (v: boolean) => void;
+  technicianFilter: string;
+  setTechnicianFilter: (v: string) => void;
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
+  mode: 'workorders' | 'sales' | 'all';
+  setMode: (v: 'workorders' | 'sales' | 'all') => void;
+}> = ({
+  showCustomerSearch,
+  setShowCustomerSearch,
+  technicianFilter,
+  setTechnicianFilter,
+  dateFrom,
+  setDateFrom,
+  dateTo,
+  setDateTo,
+  mode,
+  setMode,
+}) => {
+  const { setPage } = usePagination();
+
+  useEffect(() => {
+    setPage(1);
+  }, [mode, technicianFilter, dateFrom, dateTo, setPage]);
 
   return (
     <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
@@ -62,8 +112,6 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
-
 // Unified list of Work Orders and Sales in one table, ordered by id desc
 const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
   const [wo, setWo] = React.useState<any[]>([]);
@@ -71,9 +119,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   const [loading, setLoading] = React.useState<boolean>(false);
   const [techIndex, setTechIndex] = React.useState<Record<string,string>>({});
   const [customerIndex, setCustomerIndex] = React.useState<Record<number, { name: string; phone?: string }>>({});
-  const [page, setPage] = React.useState<number>(1);
-
-  const PAGE_SIZE = 25;
+  const { page, setPage, pageSize, setTotalItems } = usePagination();
 
   const load = React.useCallback(async () => {
     try {
@@ -228,22 +274,23 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       .sort((a, b) => b.id - a.id);
   }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
-  // Reset to page 1 when filters change
   React.useEffect(() => {
-    setPage(1);
-  }, [technicianFilter, dateFrom, dateTo]);
+    setTotalItems(rows.length);
+    return () => {
+      // Clear when switching away from this view
+      setTotalItems(0);
+    };
+  }, [rows.length, setTotalItems]);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
-  const startIdx = (safePage - 1) * PAGE_SIZE;
-  const endIdx = Math.min(startIdx + PAGE_SIZE, rows.length);
+  const startIdx = (safePage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, rows.length);
   const pagedRows = React.useMemo(() => rows.slice(startIdx, endIdx), [rows, startIdx, endIdx]);
 
-  // Clamp page when rows shrink
   React.useEffect(() => {
     if (page !== safePage) setPage(safePage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safePage]);
+  }, [page, safePage, setPage]);
 
   const ctx = useContextMenu<(typeof rows)[number]>();
   const ctxRow = ctx.state.data;
@@ -345,24 +392,6 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
 
   return (
     <div className="p-2">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="text-xs text-zinc-400">
-          {rows.length === 0 ? 'Showing 0' : `Showing ${startIdx + 1}-${endIdx} of ${rows.length}`}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
-            disabled={safePage <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >Prev</button>
-          <div className="text-xs text-zinc-300">Page <span className="font-semibold text-zinc-100">{safePage}</span> / {totalPages}</div>
-          <button
-            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
-            disabled={safePage >= totalPages}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-          >Next</button>
-        </div>
-      </div>
       <table className="w-full text-sm">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
