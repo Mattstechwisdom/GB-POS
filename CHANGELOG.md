@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.14 (2026-02-13)
+- Main screen (All view) unified list: paginate to 25 rows per page so the home list never becomes a long scroll.
+
 ## v0.2.13 (2026-02-13)
 - Main screen work orders list: paginate to 25 rows per page (prevents long scrolling as the list grows).
 

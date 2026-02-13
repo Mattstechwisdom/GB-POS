@@ -71,6 +71,9 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   const [loading, setLoading] = React.useState<boolean>(false);
   const [techIndex, setTechIndex] = React.useState<Record<string,string>>({});
   const [customerIndex, setCustomerIndex] = React.useState<Record<number, { name: string; phone?: string }>>({});
+  const [page, setPage] = React.useState<number>(1);
+
+  const PAGE_SIZE = 25;
 
   const load = React.useCallback(async () => {
     try {
@@ -225,6 +228,23 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       .sort((a, b) => b.id - a.id);
   }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setPage(1);
+  }, [technicianFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, rows.length);
+  const pagedRows = React.useMemo(() => rows.slice(startIdx, endIdx), [rows, startIdx, endIdx]);
+
+  // Clamp page when rows shrink
+  React.useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safePage]);
+
   const ctx = useContextMenu<(typeof rows)[number]>();
   const ctxRow = ctx.state.data;
 
@@ -325,6 +345,24 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
 
   return (
     <div className="p-2">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="text-xs text-zinc-400">
+          {rows.length === 0 ? 'Showing 0' : `Showing ${startIdx + 1}-${endIdx} of ${rows.length}`}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
+            disabled={safePage <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >Prev</button>
+          <div className="text-xs text-zinc-300">Page <span className="font-semibold text-zinc-100">{safePage}</span> / {totalPages}</div>
+          <button
+            className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-40"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          >Next</button>
+        </div>
+      </div>
       <table className="w-full text-sm">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
@@ -343,9 +381,9 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
           </tr>
         </thead>
         <tbody>
-          {loading && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">Loading...</td></tr>)}
-          {!loading && rows.length === 0 && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">No entries yet</td></tr>)}
-          {!loading && rows.map(r => {
+          {loading && (<tr><td colSpan={12} className="p-6 text-center text-zinc-500">Loading...</td></tr>)}
+          {!loading && rows.length === 0 && (<tr><td colSpan={12} className="p-6 text-center text-zinc-500">No entries yet</td></tr>)}
+          {!loading && pagedRows.map(r => {
             const phone = (formatPhone(String(r.phone || '')) || String(r.phone || '')).trim();
             return (
               <tr
