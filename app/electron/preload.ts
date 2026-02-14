@@ -139,6 +139,10 @@ contextBridge.exposeInMainWorld('api', {
   getFullScreen: (): Promise<boolean> => ipcRenderer.invoke('window:getFullScreen'),
   setFullScreen: (flag: boolean): Promise<any> => ipcRenderer.invoke('window:setFullScreen', flag),
   toggleFullScreen: (): Promise<any> => ipcRenderer.invoke('window:toggleFullScreen'),
+
+  // Safe window helpers
+  closeSelfWindow: (opts?: { focusMain?: boolean }): Promise<any> => ipcRenderer.invoke('window:closeSelf', opts),
+  focusMainWindow: (): Promise<any> => ipcRenderer.invoke('window:focusMain'),
   
   // backup & restore
   openBackup: (): Promise<any> => ipcRenderer.invoke('open-backup'),

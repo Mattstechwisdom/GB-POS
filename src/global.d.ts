@@ -81,7 +81,7 @@ declare global {
     openReporting: () => Promise<any>;
   openCharts: () => Promise<any>;
     openReleaseForm: (payload: any) => Promise<any>;
-    openCustomerReceipt: (payload: any) => Promise<any>;
+    openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
   openProductForm: (payload: any) => Promise<any>;
   pickSaleProduct: () => Promise<any>;
   onSalesChanged: (cb: () => void) => () => void;
@@ -97,6 +97,9 @@ declare global {
   getFullScreen: () => Promise<boolean>;
   setFullScreen: (flag: boolean) => Promise<any>;
   toggleFullScreen: () => Promise<any>;
+
+  closeSelfWindow: (opts?: { focusMain?: boolean }) => Promise<any>;
+  focusMainWindow: () => Promise<any>;
     };
   }
 }

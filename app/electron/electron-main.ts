@@ -6,6 +6,9 @@ const { pathToFileURL } = require('url');
 const os = require('os');
 const { spawn } = require('child_process');
 
+// Track the main window so we can avoid accidentally closing it from renderer actions.
+let mainWindow: any | null = null;
+
 // -------------------------------------------------------------
 // App data location (ProgramData default, user-approved)
 // -------------------------------------------------------------
@@ -1040,6 +1043,10 @@ function createWindow() {
     title: windowTitle(),
   });
   win.once('ready-to-show', () => { try { win.maximize(); } catch {} win.show(); });
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
   if (isDev && OPEN_MAIN_DEVTOOLS) win.webContents.openDevTools({ mode: 'detach' });
   let url;
   if (isDev) {
@@ -1063,6 +1070,47 @@ function createWindow() {
     });
   });
 }
+
+// Close the current window safely (never closes the main window)
+ipcMain.handle('window:closeSelf', async (event: any, opts?: { focusMain?: boolean }) => {
+  try {
+    const w = BrowserWindow.fromWebContents(event?.sender);
+    if (!w) return { ok: false, error: 'no-window' };
+    if (mainWindow && w.id === mainWindow.id) {
+      // Refuse to close the main window via renderer request.
+      try {
+        if (opts?.focusMain) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      } catch {}
+      return { ok: false, blocked: true };
+    }
+    try { w.close(); } catch {}
+    try {
+      if (opts?.focusMain && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    } catch {}
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('window:focusMain', async () => {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      return { ok: true };
+    }
+    return { ok: false, error: 'no-main-window' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
 
 // Window fullscreen controls (renderer-triggered)
 ipcMain.handle('window:getFullScreen', async (event: any) => {
@@ -2065,11 +2113,27 @@ ipcMain.handle('open-release-form', async (_event: any, payload: any) => {
 // Customer Receipt print window
 ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
   const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+
+  // Backwards compatible payload:
+  // - old callers pass the receipt data directly
+  // - new callers can pass { data, autoPrint, silent, autoCloseMs, show }
+  const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
+  const autoPrint = !!(payload && typeof payload === 'object' && (payload as any).autoPrint);
+  const silent = !!(payload && typeof payload === 'object' && (payload as any).silent);
+  const autoCloseMs = Number(payload && typeof payload === 'object' ? (payload as any).autoCloseMs : 0) || 0;
+  const showWindow = payload && typeof payload === 'object' && 'show' in payload ? !!(payload as any).show : !silent;
+
+  // If we are silently printing, do not parent to the invoking window.
+  // Closing a parent window on Windows can also close its children, which can cancel printing.
+  const actualParent = (autoPrint && silent)
+    ? (mainWindow || BrowserWindow.getAllWindows()[0] || undefined)
+    : parentWin;
+
   const child = new BrowserWindow({
     width: 850,
     height: 1100,
     resizable: true,
-    parent: parentWin as any,
+    parent: actualParent as any,
     modal: false,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#ffffff',
@@ -2081,12 +2145,40 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     show: false,
     title: windowTitle('Customer Receipt'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  child.once('ready-to-show', () => {
+    if (!showWindow) return;
+    centerWindow(child);
+    child.show();
+    try { child.focus(); } catch {}
+  });
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const encoded = encodeURIComponent(JSON.stringify(payload || {}));
-  const url = isDev ? `${DEV_SERVER_URL}/?customerReceipt=${encoded}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?customerReceipt=${encoded}`;
+  const encoded = encodeURIComponent(JSON.stringify(data || {}));
+  const flags = `${autoPrint ? '&autoPrint=1' : ''}${silent ? '&silent=1' : ''}${autoCloseMs ? `&autoCloseMs=${encodeURIComponent(String(autoCloseMs))}` : ''}`;
+  const url = isDev
+    ? `${DEV_SERVER_URL}/?customerReceipt=${encoded}${flags}`
+    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?customerReceipt=${encoded}${flags}`;
   child.loadURL(url);
+
+  // Silent auto-print to the OS default printer.
+  if (autoPrint && silent) {
+    child.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        try {
+          child.webContents.print({ silent: true, printBackground: true }, (_success: boolean, failureReason: string) => {
+            if (failureReason) {
+              console.warn('[CustomerReceipt] silent print failed:', failureReason);
+            }
+            if (autoCloseMs > 0) {
+              setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
+            }
+          });
+        } catch (e: any) {
+          console.warn('[CustomerReceipt] print threw:', e?.message || String(e));
+        }
+      }, 350);
+    });
+  }
   return { ok: true };
 });
 

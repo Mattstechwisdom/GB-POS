@@ -382,8 +382,17 @@ const NewWorkOrderWindow: React.FC = () => {
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
 
         // After saving, return the user to the main/customer screen.
-        // Works for child windows opened from the main app.
-        window.close();
+        // Use a safe close so we never accidentally close the main window.
+        try {
+          const api = (window as any).api;
+          if (api?.closeSelfWindow) {
+            await api.closeSelfWindow({ focusMain: true });
+          } else {
+            window.close();
+          }
+        } catch {
+          try { window.close(); } catch {}
+        }
       } catch (err) {
         console.error('DB save failed', err);
         triggerWarningBanner('Failed to save work order', 'See console for details.');
@@ -393,11 +402,19 @@ const NewWorkOrderWindow: React.FC = () => {
   }
   function onCancel() {
     if (!isEditingExisting && !hasMeaningfulInput) {
-      window.close();
+      try {
+        const api = (window as any).api;
+        if (api?.closeSelfWindow) api.closeSelfWindow({ focusMain: true });
+        else window.close();
+      } catch { try { window.close(); } catch {} }
       return;
     }
     if (!ensureRequired('close', 'closing this work order window')) return;
-    window.close();
+    try {
+      const api = (window as any).api;
+      if (api?.closeSelfWindow) api.closeSelfWindow({ focusMain: true });
+      else window.close();
+    } catch { try { window.close(); } catch {} }
   }
 
   // Removed local onNewItemClick; ItemsTable owns New Item adding via picker
@@ -492,7 +509,13 @@ const NewWorkOrderWindow: React.FC = () => {
             amountPaid: (wo as any).amountPaid,
           };
           if ((window as any).api?.openCustomerReceipt) {
-            await (window as any).api.openCustomerReceipt(payload);
+            await (window as any).api.openCustomerReceipt({
+              data: payload,
+              autoPrint: true,
+              silent: true,
+              autoCloseMs: 900,
+              show: false,
+            });
           } else {
             const u = new URL(window.location.href);
             u.search = `?customerReceipt=${encodeURIComponent(JSON.stringify(payload))}`;
@@ -500,8 +523,15 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         } catch (e) { console.error('openCustomerReceipt failed', e); }
       }
-      if (result.closeParent && isChildWindow) {
-        window.close();
+      if (result.closeParent) {
+        const delayMs = result.printReceipt ? 1300 : 0;
+        setTimeout(() => {
+          try {
+            const api = (window as any).api;
+            if (api?.closeSelfWindow) api.closeSelfWindow({ focusMain: true });
+            else window.close();
+          } catch { try { window.close(); } catch {} }
+        }, delayMs);
       }
     } catch (e) {
       console.error('Checkout failed', e);

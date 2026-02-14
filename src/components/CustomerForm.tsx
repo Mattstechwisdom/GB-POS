@@ -34,12 +34,12 @@ const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
         <Input value={local.lastName || ''} onChange={e => update('lastName', e.target.value)} />
       </div>
       <div>
-        <label className="block text-[12px] text-zinc-400">Email</label>
-        <Input value={local.email || ''} onChange={e => update('email', e.target.value)} />
-      </div>
-      <div>
         <label className="block text-[12px] text-zinc-400">Phone</label>
         <Input value={local.phone || ''} onChange={e => update('phone', e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-[12px] text-zinc-400">Email</label>
+        <Input value={local.email || ''} onChange={e => update('email', e.target.value)} />
       </div>
       <div>
         <label className="block text-[12px] text-zinc-400">Alt. Phone</label>
