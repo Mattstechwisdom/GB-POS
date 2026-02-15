@@ -114,7 +114,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
         </>
       )}
 
-      <div className="mt-auto">
+      <div className="mt-auto pb-16">
         {renderActions ? (
           <>{renderActions(workOrder)}</>
         ) : (
