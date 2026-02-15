@@ -80,6 +80,8 @@ declare global {
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     openReporting: () => Promise<any>;
   openCharts: () => Promise<any>;
+    openNotifications: () => Promise<any>;
+    openNotificationSettings: () => Promise<any>;
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
   openProductForm: (payload: any) => Promise<any>;
@@ -90,6 +92,8 @@ declare global {
       onPartSourcesChanged: (cb: () => void) => () => void;
   onTechniciansChanged: (cb: () => void) => () => void;
   onCalendarEventsChanged: (cb: () => void) => () => void;
+  onNotificationsChanged: (cb: () => void) => () => void;
+  onNotificationSettingsChanged: (cb: () => void) => () => void;
   onTimeEntriesChanged: (cb: () => void) => () => void;
   onProductCategoriesChanged: (cb: () => void) => () => void;
   onProductsChanged: (cb: () => void) => () => void;

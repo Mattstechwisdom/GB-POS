@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import TechniciansWindow from './TechniciansWindow';
+import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notifications';
 
 const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void }> = ({ mode, onModeChange }) => {
 
@@ -11,6 +12,37 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     })();
   }, []);
   const [showTechs, setShowTechs] = useState(false);
+  const [unread, setUnread] = useState<number>(0);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        await syncNotificationsFromCalendar();
+      } catch {
+        // ignore
+      }
+      try {
+        const c = await getUnreadCount();
+        if (alive) setUnread(c);
+      } catch {
+        // ignore
+      }
+    };
+    refresh();
+    const api: any = (window as any).api;
+    const offCal = api?.onCalendarEventsChanged?.(() => refresh());
+    const offNot = api?.onNotificationsChanged?.(() => refresh());
+    const offTech = api?.onTechniciansChanged?.(() => refresh());
+    const timer = window.setInterval(() => refresh(), 60_000);
+    return () => {
+      alive = false;
+      try { offCal && offCal(); } catch {}
+      try { offNot && offNot(); } catch {}
+      try { offTech && offTech(); } catch {}
+      try { window.clearInterval(timer); } catch {}
+    };
+  }, []);
 
   return (
     <>
@@ -41,6 +73,32 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </button>
       </div>
       <div className="flex items-center gap-3">
+        <button
+          className="relative px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+          onClick={async () => {
+            try {
+              const api = (window as any).api;
+              if (api?.openNotifications) await api.openNotifications();
+              else {
+                const url = window.location.origin + '/?notifications=true';
+                window.open(url, '_blank', 'width=860,height=720');
+              }
+            } catch (e) {
+              console.error('openNotifications failed', e);
+              try {
+                const url = window.location.origin + '/?notifications=true';
+                window.open(url, '_blank', 'width=860,height=720');
+              } catch {}
+            }
+          }}
+        >
+          Notifications
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center border border-zinc-900">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </button>
         <button
           className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
           onClick={() => setShowTechs(true)}

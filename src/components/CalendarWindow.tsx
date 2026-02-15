@@ -20,6 +20,7 @@ type CalendarEvent = {
   workOrderId?: number;
   partName?: string;
   orderUrl?: string;
+  trackingUrl?: string;
   // Optional contact/location details
   customerName?: string;
   customerPhone?: string;
@@ -158,6 +159,9 @@ const CalendarWindow: React.FC = () => {
   const [current, setCurrent] = useState<Date>(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
+  const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
+  const [dailyLookAssignedTo, setDailyLookAssignedTo] = useState<string>('');
   // For adding multiple estimated delivery dates in one go (parts only)
   const [deliveryDates, setDeliveryDates] = useState<string[]>([]);
   const [deliveryDateInput, setDeliveryDateInput] = useState<string>('');
@@ -474,11 +478,57 @@ const CalendarWindow: React.FC = () => {
     }
   });
 
+  const dailyLookData = useMemo(() => {
+    const ymd = String(dailyLookDate || '').slice(0, 10);
+    const dayDate = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? new Date(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)), 0, 0, 0, 0) : new Date();
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+    const dayKey = dayNames[dayDate.getDay()];
+    const assigned = (dailyLookAssignedTo || '').trim();
+
+    const schedules: Array<{ name: string; start?: string; end?: string; off?: boolean }> = [];
+    for (const t of Array.isArray(techs) ? techs : []) {
+      const schedule = t?.schedule || {};
+      const sd = schedule?.[dayKey];
+      if (!sd) continue;
+      const techName = t.nickname || `${t.firstName || ''} ${t.lastName || ''}`.trim() || `Tech ${t.id}`;
+      if (assigned && techName !== assigned) continue;
+      if (sd.off || (sd.start && sd.end)) schedules.push({ name: techName, start: sd.start, end: sd.end, off: !!sd.off });
+    }
+    schedules.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const todays = (Array.isArray(events) ? events : []).filter(e => String(e?.date || '').slice(0, 10) === ymd);
+    const consultations = todays
+      .filter(e => e.category === 'consultation')
+      .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
+      .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+    const eventItems = todays
+      .filter(e => e.category === 'event')
+      .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+    const partsAll = todays
+      .filter(e => e.category === 'parts')
+      .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
+      .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+    const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
+    const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
+
+    return { ymd, assigned, schedules, consultations, eventItems, partsDelivery, partsOrdered };
+  }, [dailyLookDate, dailyLookAssignedTo, events, techs]);
+
   return (
     <div className="p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-semibold">Calendar - Schedule Management</h2>
         <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+            onClick={() => {
+              setDailyLookDate(fmtDate(new Date()));
+              setDailyLookAssignedTo('');
+              setDailyLookOpen(true);
+            }}
+          >
+            Daily Look
+          </button>
           <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={prevMonth}>&lt;</button>
           <div className="text-sm text-zinc-300 w-36 text-center">
             {current.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
@@ -627,6 +677,10 @@ const CalendarWindow: React.FC = () => {
                     <label className="block text-xs text-zinc-400">Order URL (optional)</label>
                     <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.orderUrl || ''} onChange={e => setEditing({ ...editing, orderUrl: e.target.value })} />
                   </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400">Tracking URL (optional)</label>
+                    <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={(editing as any).trackingUrl || ''} onChange={e => setEditing({ ...(editing as any), trackingUrl: e.target.value })} />
+                  </div>
                   <div className="col-span-2">
                     <label className="block text-xs text-zinc-400">Estimated delivery date(s)</label>
                     <div className="flex items-end gap-2 mt-1">
@@ -710,6 +764,169 @@ const CalendarWindow: React.FC = () => {
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
               <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Cancel</button>
               <button className="px-3 py-1 bg-[#39FF14] text-black rounded" onClick={() => saveEvent(editing)}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dailyLookOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
+          <div className="bg-zinc-900 border border-zinc-700 rounded p-4 w-[780px] max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <div className="text-xl font-semibold">Daily Look</div>
+                <div className="text-xs text-zinc-400">Schedules, parts, events, and consultations for the day.</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                  value={dailyLookData.ymd}
+                  onChange={e => setDailyLookDate(e.target.value)}
+                />
+                <select
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm max-w-[220px]"
+                  value={dailyLookAssignedTo}
+                  onChange={e => setDailyLookAssignedTo(e.target.value)}
+                  title="Assigned to"
+                >
+                  <option value="">Assigned: All</option>
+                  {Array.isArray(techs) && techs.map((t: any) => {
+                    const techName = t.nickname || `${t.firstName || ''} ${t.lastName || ''}`.trim() || `Tech ${t.id}`;
+                    return (
+                      <option key={t.id || techName} value={techName}>
+                        {techName}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                  onClick={() => setDailyLookOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto grid grid-cols-2 gap-3">
+              <div className="border border-zinc-800 rounded p-3">
+                <div className="font-semibold mb-2">Schedules</div>
+                {dailyLookData.schedules.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No schedules found{dailyLookData.assigned ? ` for ${dailyLookData.assigned}.` : '.'}</div>
+                ) : (
+                  <div className="space-y-1">
+                    {dailyLookData.schedules.map(s => (
+                      <div key={s.name} className="text-sm text-zinc-200 flex items-center justify-between gap-2">
+                        <div className="truncate">{s.name}</div>
+                        <div className="text-zinc-400 whitespace-nowrap">
+                          {s.off ? 'Off' : `${formatTime12FromHHmm(s.start || '')} - ${formatTime12FromHHmm(s.end || '')}`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-zinc-800 rounded p-3">
+                <div className="font-semibold mb-2">Parts expected (delivery)</div>
+                {dailyLookData.partsDelivery.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No deliveries{dailyLookData.assigned ? ` for ${dailyLookData.assigned}.` : '.'}</div>
+                ) : (
+                  <div className="space-y-2">
+                    {dailyLookData.partsDelivery.map((p, idx) => (
+                      <div key={(p.id ?? idx) as any} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="text-zinc-400 mr-2">{formatTime12FromHHmm(p.time || '')}</span>
+                            <span className="text-zinc-100">{p.partName || p.title || 'Part'}</span>
+                          </div>
+                          <div className="text-xs text-zinc-400 whitespace-nowrap">
+                            {p.workOrderId ? `WO #${p.workOrderId}` : (p.saleId ? `Sale #${p.saleId}` : '')}
+                          </div>
+                        </div>
+                        <div className="mt-1 flex gap-2">
+                          {p.orderUrl ? (
+                            <button className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700" onClick={async () => {
+                              try { await (window as any).api.openUrl(p.orderUrl); } catch {}
+                            }}>Order link</button>
+                          ) : null}
+                          {(p as any).trackingUrl ? (
+                            <button className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700" onClick={async () => {
+                              try { await (window as any).api.openUrl((p as any).trackingUrl); } catch {}
+                            }}>Tracking</button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-zinc-800 rounded p-3">
+                <div className="font-semibold mb-2">Consultations</div>
+                {dailyLookData.consultations.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No consultations{dailyLookData.assigned ? ` for ${dailyLookData.assigned}.` : '.'}</div>
+                ) : (
+                  <div className="space-y-2">
+                    {dailyLookData.consultations.map((c, idx) => (
+                      <div key={(c.id ?? idx) as any} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="text-zinc-400 mr-2">{formatTime12FromHHmm(c.time || '')}</span>
+                            <span className="text-zinc-100">{c.customerName || 'Customer'}</span>
+                            {c.title ? <span className="text-zinc-300"> — {c.title}</span> : null}
+                          </div>
+                          {c.technician ? <div className="text-xs text-zinc-400 whitespace-nowrap">{c.technician}</div> : null}
+                        </div>
+                        {c.customerPhone ? <div className="text-xs text-zinc-500">{c.customerPhone}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-zinc-800 rounded p-3">
+                <div className="font-semibold mb-2">Events</div>
+                {dailyLookData.eventItems.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No events.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {dailyLookData.eventItems.map((e, idx) => (
+                      <div key={(e.id ?? idx) as any} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="text-zinc-400 mr-2">{formatTime12FromHHmm(e.time || '')}</span>
+                            <span className="text-zinc-100">{e.title || 'Event'}</span>
+                          </div>
+                          {e.location ? <div className="text-xs text-zinc-400 whitespace-nowrap">{e.location}</div> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-zinc-800 rounded p-3 col-span-2">
+                <div className="font-semibold mb-2">Parts ordered</div>
+                {dailyLookData.partsOrdered.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No orders{dailyLookData.assigned ? ` for ${dailyLookData.assigned}.` : '.'}</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {dailyLookData.partsOrdered.map((p, idx) => (
+                      <div key={(p.id ?? idx) as any} className="text-sm border border-zinc-800 rounded p-2 bg-zinc-900/50">
+                        <div className="truncate">
+                          <span className="text-zinc-400 mr-2">{formatTime12FromHHmm(p.time || '')}</span>
+                          <span className="text-zinc-100">{p.partName || p.title || 'Part'}</span>
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-0.5">
+                          {p.workOrderId ? `WO #${p.workOrderId}` : (p.saleId ? `Sale #${p.saleId}` : '')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

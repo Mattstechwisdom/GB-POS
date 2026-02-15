@@ -49,6 +49,7 @@ export interface WorkOrderFull {
   partsEstimatedDelivery?: string | null; // ISO date string (YYYY-MM-DD or full ISO)
   partsDates?: string;           // freeform dates/notes string
   partsOrderUrl?: string;        // order link or supplier URL
+  partsTrackingUrl?: string;     // tracking link for shipment
   partsOrderDate?: string | null;   // ISO date (YYYY-MM-DD)
   partsEstDelivery?: string | null; // ISO date (YYYY-MM-DD)
 

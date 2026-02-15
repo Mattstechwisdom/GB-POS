@@ -28,6 +28,8 @@ type SaleRecord = {
   inStock?: boolean; // true when item is available immediately
   orderedDate?: string | null; // YYYY-MM-DD
   estimatedDeliveryDate?: string | null; // YYYY-MM-DD
+  partsOrderUrl?: string;
+  partsTrackingUrl?: string;
   notes?: string;
   total?: number;
   // Fields to align with shared panels
@@ -77,6 +79,8 @@ const SaleWindow: React.FC = () => {
     inStock: false,
     orderedDate: null,
     estimatedDeliveryDate: null,
+    partsOrderUrl: '',
+    partsTrackingUrl: '',
     notes: '',
     // shared-panel fields
     status: 'open',
@@ -337,9 +341,11 @@ const SaleWindow: React.FC = () => {
       itemDescription: sale.items && sale.items[0] ? sale.items[0].description : (sale as any).itemDescription,
       quantity: sale.items && sale.items[0] ? sale.items[0].qty : (sale as any).quantity,
         price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
-      // If inStock, null out order/delivery dates to avoid confusion
+      // If inStock, null out order/delivery fields to avoid confusion
       orderedDate: sale.inStock ? null : sale.orderedDate || null,
       estimatedDeliveryDate: sale.inStock ? null : sale.estimatedDeliveryDate || null,
+      partsOrderUrl: sale.inStock ? '' : (sale.partsOrderUrl || ''),
+      partsTrackingUrl: sale.inStock ? '' : (sale.partsTrackingUrl || ''),
       createdAt: (sale as any).id ? (sale.createdAt || now) : now,
       updatedAt: now,
       total: total,
@@ -399,24 +405,36 @@ const SaleWindow: React.FC = () => {
       technician: saved.assignedTo || undefined,
       source: 'sale',
       saleId: saved.id,
+      orderUrl: (saved as any).partsOrderUrl || undefined,
+      trackingUrl: (saved as any).partsTrackingUrl || undefined,
     } as any;
+
+    async function syncOne(status: 'ordered' | 'delivery', desiredDate: string | null) {
+      const existing = all.filter(e => e.category === 'parts' && e.source === 'sale' && e.saleId === saved.id && e.partsStatus === status);
+      if (!desiredDate) {
+        for (const e of existing) {
+          if (e?.id != null) await (window as any).api.dbDelete('calendarEvents', e.id).catch(() => {});
+        }
+        return;
+      }
+      const sameDate = existing.find(e => e.date === desiredDate);
+      for (const e of existing) {
+        if (sameDate && e === sameDate) continue;
+        if (e?.id != null) await (window as any).api.dbDelete('calendarEvents', e.id).catch(() => {});
+      }
+      if (sameDate?.id != null) {
+        await (window as any).api.dbUpdate('calendarEvents', sameDate.id, { ...sameDate, ...base, date: desiredDate, partsStatus: status }).catch(() => {});
+      } else {
+        await (window as any).api.dbAdd('calendarEvents', { ...base, date: desiredDate, partsStatus: status }).catch(() => {});
+      }
+    }
 
     // Ordered (O)
     const od = saved.inStock ? null : onlyDate(saved.orderedDate || undefined);
-    if (od) {
-      const exists = all.some(e => e.category === 'parts' && e.partsStatus === 'ordered' && e.partName === safeItem && e.date === od);
-      if (!exists) {
-  await (window as any).api.dbAdd('calendarEvents', { ...base, date: od, partsStatus: 'ordered' });
-      }
-    }
     // Estimated Delivery (D)
     const dd = saved.inStock ? null : onlyDate(saved.estimatedDeliveryDate || undefined);
-    if (dd) {
-      const exists = all.some(e => e.category === 'parts' && e.partsStatus === 'delivery' && e.partName === safeItem && e.date === dd);
-      if (!exists) {
-  await (window as any).api.dbAdd('calendarEvents', { ...base, date: dd, partsStatus: 'delivery' });
-      }
-    }
+    await syncOne('ordered', od ? od : null);
+    await syncOne('delivery', dd ? dd : null);
     // Client pickup as regular event with time if provided
     const cpDate = onlyDate((saved as any).clientPickupDate);
     const cpTime = onlyTime((saved as any).clientPickupDate);
@@ -701,6 +719,30 @@ const SaleWindow: React.FC = () => {
                   value={sale.estimatedDeliveryDate || ''}
                   disabled={!!sale.inStock}
                   onChange={e => setSale(s => ({ ...s, estimatedDeliveryDate: e.target.value || null }))}
+                />
+              </div>
+            </div>
+
+            {/* Parts URLs */}
+            <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
+                <input
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  placeholder="https://..."
+                  value={(sale as any).partsOrderUrl || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, partsOrderUrl: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Tracking URL</label>
+                <input
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  placeholder="https://..."
+                  value={(sale as any).partsTrackingUrl || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, partsTrackingUrl: e.target.value }))}
                 />
               </div>
             </div>

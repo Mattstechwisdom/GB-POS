@@ -43,6 +43,10 @@ function parsePayload() {
   } catch (e) { return null; }
 }
 
+function onlyDate(iso?: string | null) {
+  return (iso || '').toString().slice(0, 10);
+}
+
 const NewWorkOrderWindow: React.FC = () => {
   const payload = parsePayload();
   const isEditingExisting = !!payload?.workOrderId;
@@ -78,6 +82,7 @@ const NewWorkOrderWindow: React.FC = () => {
   partsEstimatedDelivery: null,
   partsDates: '',
   partsOrderUrl: '',
+  partsTrackingUrl: '',
   partsOrderDate: null,
   partsEstDelivery: null,
     discount: 0,
@@ -95,6 +100,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
+  const lastPartsCalendarSyncKey = useRef<string>('');
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -230,6 +236,7 @@ const NewWorkOrderWindow: React.FC = () => {
           partsEstimatedDelivery: existing.partsEstimatedDelivery ?? w.partsEstimatedDelivery,
           partsDates: (existing as any).partsDates ?? w.partsDates,
           partsOrderUrl: (existing as any).partsOrderUrl ?? w.partsOrderUrl,
+          partsTrackingUrl: (existing as any).partsTrackingUrl ?? w.partsTrackingUrl,
           partsOrderDate: (existing as any).partsOrderDate ?? w.partsOrderDate,
           partsEstDelivery: (existing as any).partsEstDelivery ?? w.partsEstDelivery,
           items: mappedItems.length ? mappedItems : w.items,
@@ -307,19 +314,39 @@ const NewWorkOrderWindow: React.FC = () => {
   useAutosave(wo, async (val) => {
     try {
       const api = (window as any).api || {};
+      let saved: any = null;
       // Decide add vs update
       if (isEditingExisting || (val.id && val.id !== 0)) {
-        if (typeof api.update === 'function') await api.update('workOrders', { ...val });
-        else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', val.id, { ...val });
+        if (typeof api.update === 'function') saved = await api.update('workOrders', { ...val });
+        else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', val.id, { ...val });
       } else {
         // Only create a new record when some key fields have content
         const hasMeaningful = !!(val.productCategory || val.productDescription || val.customerId || (val.items && val.items.length));
         if (!hasMeaningful) return;
         const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...val }) : await api.dbAdd('workOrders', { ...val });
+        saved = added;
         if (added?.id) setWo(w => ({ ...w, id: added.id }));
       }
       setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
       try { window.opener?.postMessage({ type: 'workorders:changed', id: (val as any).id }, '*'); } catch {}
+
+      // Reflect parts into Calendar only when relevant fields changed
+      try {
+        const id = Number((saved?.id ?? val.id) || 0);
+        const key = [
+          id,
+          onlyDate((saved?.partsOrderDate ?? (val as any).partsOrderDate) || null),
+          onlyDate((saved?.partsEstDelivery ?? (val as any).partsEstDelivery) || null),
+          String((saved?.partsOrderUrl ?? (val as any).partsOrderUrl) || ''),
+          String((saved?.partsTrackingUrl ?? (val as any).partsTrackingUrl) || ''),
+        ].join('|');
+        if (id && key !== lastPartsCalendarSyncKey.current) {
+          lastPartsCalendarSyncKey.current = key;
+          await reflectWorkOrderInCalendar(saved || val);
+        }
+      } catch {
+        // ignore
+      }
     } catch (e) {
       // silent
     }
@@ -354,6 +381,54 @@ const NewWorkOrderWindow: React.FC = () => {
     return true;
   }
 
+  async function reflectWorkOrderInCalendar(saved: any) {
+    const api: any = (window as any).api;
+    if (!api?.dbGet || !api?.dbAdd || !api?.dbDelete) return;
+
+    const all: any[] = await api.dbGet('calendarEvents').catch(() => []);
+    const workOrderId = Number(saved?.id || 0);
+    if (!workOrderId) return;
+
+    const partName = `WO #${workOrderId} ${String(saved?.productDescription || saved?.productCategory || 'Parts').trim()}`.trim();
+    const base = {
+      category: 'parts',
+      partName,
+      title: partName,
+      customerName: saved?.customerName || customerSummary.name,
+      customerPhone: saved?.customerPhone || customerSummary.phone,
+      technician: saved?.assignedTo || undefined,
+      source: 'workorder',
+      workOrderId,
+      orderUrl: saved?.partsOrderUrl || undefined,
+      trackingUrl: saved?.partsTrackingUrl || undefined,
+    } as any;
+
+    async function syncOne(status: 'ordered' | 'delivery', desiredDate: string | null) {
+      const existing = all.filter(e => e.category === 'parts' && e.source === 'workorder' && e.workOrderId === workOrderId && e.partsStatus === status);
+      if (!desiredDate) {
+        for (const e of existing) {
+          if (e?.id != null) await api.dbDelete('calendarEvents', e.id).catch(() => {});
+        }
+        return;
+      }
+      const sameDate = existing.find(e => e.date === desiredDate);
+      for (const e of existing) {
+        if (sameDate && e === sameDate) continue;
+        if (e?.id != null) await api.dbDelete('calendarEvents', e.id).catch(() => {});
+      }
+      if (sameDate?.id != null && api.dbUpdate) {
+        await api.dbUpdate('calendarEvents', sameDate.id, { ...sameDate, ...base, date: desiredDate, partsStatus: status }).catch(() => {});
+      } else {
+        await api.dbAdd('calendarEvents', { ...base, date: desiredDate, partsStatus: status }).catch(() => {});
+      }
+    }
+
+    const orderedDate = onlyDate(saved?.partsOrderDate);
+    const deliveryDate = onlyDate(saved?.partsEstDelivery);
+    await syncOne('ordered', orderedDate ? orderedDate : null);
+    await syncOne('delivery', deliveryDate ? deliveryDate : null);
+  }
+
   function onSave() {
     if (!ensureRequired('save', 'saving the work order')) return;
     if (!wo.productCategory || !wo.productCategory.trim()) {
@@ -367,19 +442,26 @@ const NewWorkOrderWindow: React.FC = () => {
     (async () => {
       try {
         const api = (window as any).api || {};
+        let saved: any = null;
         if (isEditingExisting || (wo.id && wo.id !== 0)) {
-          let updated = null;
-          if (typeof api.update === 'function') updated = await api.update('workOrders', { ...wo });
-          else if (typeof api.dbUpdate === 'function') updated = await api.dbUpdate('workOrders', wo.id, { ...wo });
-          console.log('Work order updated', updated);
+          if (typeof api.update === 'function') saved = await api.update('workOrders', { ...wo });
+          else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', wo.id, { ...wo });
+          console.log('Work order updated', saved);
         } else {
-          let added = null;
-          if (typeof api.addWorkOrder === 'function') added = await api.addWorkOrder({ ...wo });
-          else if (typeof api.dbAdd === 'function') added = await api.dbAdd('workOrders', { ...wo });
-          console.log('Work order added', added);
+          if (typeof api.addWorkOrder === 'function') saved = await api.addWorkOrder({ ...wo });
+          else if (typeof api.dbAdd === 'function') saved = await api.dbAdd('workOrders', { ...wo });
+          console.log('Work order added', saved);
         }
-        try { window.opener?.postMessage({ type: 'workorders:changed', id: wo.id }, '*'); } catch {}
+        const savedId = Number(saved?.id || wo.id || 0);
+        try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+
+        // Reflect parts ordered/delivery dates into Calendar
+        try {
+          await reflectWorkOrderInCalendar(saved || wo);
+        } catch (e) {
+          console.warn('calendar sync failed', e);
+        }
 
         // After saving, return the user to the main/customer screen.
         // Use a safe close so we never accidentally close the main window.
@@ -606,21 +688,30 @@ const NewWorkOrderWindow: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-zinc-400">Dates/notes</label>
-                <input
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  placeholder="e.g. Ordered 10/04, ETA 10/10"
-                  value={(wo as any).partsDates || ''}
-                  onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}
-                />
-              </div>
-              <div>
                 <label className="block text-xs text-zinc-400">Order URL</label>
                 <input
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   placeholder="https://..."
                   value={(wo as any).partsOrderUrl || ''}
                   onChange={e => setWo(w => ({ ...w, partsOrderUrl: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400">Tracking URL</label>
+                <input
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  placeholder="https://..."
+                  value={(wo as any).partsTrackingUrl || ''}
+                  onChange={e => setWo(w => ({ ...w, partsTrackingUrl: e.target.value }))}
+                />
+              </div>
+              <div className="col-span-4">
+                <label className="block text-xs text-zinc-400">Dates/notes</label>
+                <input
+                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  placeholder="e.g. Ordered 10/04, ETA 10/10"
+                  value={(wo as any).partsDates || ''}
+                  onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}
                 />
               </div>
             </div>

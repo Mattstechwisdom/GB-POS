@@ -22,6 +22,8 @@ import ClearDatabaseWindow from './components/ClearDatabaseWindow';
 import ClockInWindow from './components/ClockInWindow';
 import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
 import EODWindow from './components/EODWindow';
+import NotificationsWindow from './components/NotificationsWindow';
+import NotificationSettingsWindow from './components/NotificationSettingsWindow';
 import UpdateGate from './components/UpdateGate';
 import DataPathGate from './components/DataPathGate';
 import './styles/index.css';
@@ -91,6 +93,8 @@ try {
 	const showBackup = params.get('backup');
 	const showClearDb = params.get('clearDb');
 	const showClockIn = params.get('clockIn');
+		const showNotifications = params.get('notifications');
+		const showNotificationSettings = params.get('notificationSettings');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
@@ -124,6 +128,10 @@ try {
 		root.render(<ClearDatabaseWindow />);
 	} else if (showClockIn) {
 		root.render(<ClockInWindow />);
+		} else if (showNotifications) {
+			root.render(<NotificationsWindow />);
+		} else if (showNotificationSettings) {
+			root.render(<NotificationSettingsWindow />);
 	} else if (showQuote) {
 		const hasElectronApi = !!(window as any)?.api;
 		if (!hasElectronApi) {

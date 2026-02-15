@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('api', {
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),
   openReporting: (): Promise<any> => ipcRenderer.invoke('open-reporting'),
   openCharts: (): Promise<any> => ipcRenderer.invoke('open-charts'),
+  openNotifications: (): Promise<any> => ipcRenderer.invoke('open-notifications'),
+  openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
   openReleaseForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-release-form', payload),
   openCustomerReceipt: (payload: any): Promise<any> => ipcRenderer.invoke('open-customer-receipt', payload),
   openProductForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-product-form', payload),
@@ -128,6 +130,16 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('calendarEvents:changed', handler);
     return () => ipcRenderer.removeListener('calendarEvents:changed', handler);
+  },
+  onNotificationsChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('notifications:changed', handler);
+    return () => ipcRenderer.removeListener('notifications:changed', handler);
+  },
+  onNotificationSettingsChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('notificationSettings:changed', handler);
+    return () => ipcRenderer.removeListener('notificationSettings:changed', handler);
   },
   onTimeEntriesChanged: (cb: () => void) => {
     const handler = () => cb();

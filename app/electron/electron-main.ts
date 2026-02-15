@@ -1172,6 +1172,68 @@ ipcMain.handle('open-calendar', async () => {
   return { ok: true };
 });
 
+// Open Notifications window (viewer)
+ipcMain.handle('open-notifications', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 860,
+    height: 720,
+    minWidth: 760,
+    minHeight: 560,
+    resizable: true,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Notifications'),
+  });
+  child.once('ready-to-show', () => { try { centerWindow(child); } catch {} child.show(); try { child.focus(); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?notifications=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notifications=true`;
+  child.loadURL(url).catch((e: any) => console.error('[Notifications] loadURL failed', e));
+  return { ok: true };
+});
+
+// Open Notification Settings window (admin)
+ipcMain.handle('open-notification-settings', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 820,
+    height: 720,
+    minWidth: 760,
+    minHeight: 560,
+    resizable: true,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Notification Settings'),
+  });
+  child.once('ready-to-show', () => { try { centerWindow(child); } catch {} child.show(); try { child.focus(); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?notificationSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notificationSettings=true`;
+  child.loadURL(url).catch((e: any) => console.error('[NotificationSettings] loadURL failed', e));
+  return { ok: true };
+});
+
 // Open Backup (Data Management) window
 ipcMain.handle('open-backup', async () => {
   const child = new BrowserWindow({
@@ -1445,6 +1507,10 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
     } else if (key === 'timeEntries') {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
+    } else if (key === 'notifications') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
+    } else if (key === 'notificationSettings') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
     }
     return item;
   }
@@ -1523,6 +1589,10 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
     } else if (key === 'timeEntries') {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
+    } else if (key === 'notifications') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
+    } else if (key === 'notificationSettings') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
     }
     return db[key][idx];
   }
@@ -1573,6 +1643,10 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
     } else if (key === 'timeEntries') {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
+    } else if (key === 'notifications') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
+    } else if (key === 'notificationSettings') {
+      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
     }
   }
   return ok;
