@@ -5,6 +5,10 @@
 - Customer Receipt: print receipt now auto-prints to the default printer (silent) on checkout.
 - Customer form: swapped Phone and Email field positions.
 
+## v0.2.17 (2026-02-14)
+- Customer Receipt header: client name/phone/email now populate correctly for auto-printed receipts after checkout.
+- Customer Receipt: invoice number now preserves leading zeros (matches work orders).
+
 ## v0.2.15 (2026-02-13)
 - Main screen pagination: bottom Prev/Next controls are now wired to real paging state.
 - Pagination is consistent across All, Work Orders, and Sales lists (25 rows/page).

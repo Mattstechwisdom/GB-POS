@@ -185,6 +185,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                 try {
                   let customerName = (workOrder as any).customerName;
                   let customerPhone = (workOrder as any).customerPhone;
+                  let customerEmail = (workOrder as any).customerEmail;
                   try {
                     const id = (workOrder as any).customerId;
                     if (id && (window as any).api?.findCustomers) {
@@ -194,6 +195,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                         const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
                         customerName = full || customerName;
                         customerPhone = c.phone || customerPhone;
+                        customerEmail = c.email || customerEmail;
                       }
                     }
                   } catch {}
@@ -202,6 +204,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     customerId: (workOrder as any).customerId,
                     customerName,
                     customerPhone,
+                    customerEmail,
                     productCategory: workOrder.productCategory,
                     productDescription: workOrder.productDescription,
                     model: (workOrder as any).model,

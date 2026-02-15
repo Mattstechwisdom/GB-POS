@@ -490,11 +490,29 @@ const NewWorkOrderWindow: React.FC = () => {
 
       if (result.printReceipt) {
         try {
+          let customerName = (wo as any).customerName || '';
+          let customerPhone = (wo as any).customerPhone || '';
+          let customerEmail = (wo as any).customerEmail || '';
+          try {
+            const id = (wo as any).customerId;
+            if (id && (window as any).api?.findCustomers) {
+              const list = await (window as any).api.findCustomers({ id });
+              const c = Array.isArray(list) && list.length ? list[0] : null;
+              if (c) {
+                const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+                customerName = full || customerName;
+                customerPhone = c.phone || customerPhone;
+                customerEmail = c.email || customerEmail;
+              }
+            }
+          } catch {}
+
           const payload = {
             id: (wo as any).id,
             customerId: (wo as any).customerId,
-            customerName: (wo as any).customerName,
-            customerPhone: (wo as any).customerPhone,
+            customerName,
+            customerPhone,
+            customerEmail,
             productCategory: wo.productCategory,
             productDescription: wo.productDescription,
             model: (wo as any).model,

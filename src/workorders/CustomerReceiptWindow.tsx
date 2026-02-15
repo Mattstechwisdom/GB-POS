@@ -54,6 +54,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
   const phone = (data as any).customerPhone || (data as any).customer?.phone || '';
+  const email = (data as any).customerEmail || (data as any).customer?.email || '';
+  const invoiceNo = (data as any).id ? String((data as any).id).padStart(6, '0') : '';
 
   const device = (data as any).productCategory || (data as any).device || '';
   const description = (data as any).productDescription || (data as any).description || device || '';
@@ -166,10 +168,11 @@ const CustomerReceiptWindow: React.FC = () => {
             </div>
           </div>
           <div className="brand-right">
-            <div><strong>Invoice:</strong> {data.id ? String(data.id) : ''}</div>
+            <div><strong>Invoice:</strong> {invoiceNo}</div>
             <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
             <div><strong>Client:</strong> {fullName}</div>
             <div><strong>Phone:</strong> {phone}</div>
+            {email ? <div><strong>Email:</strong> {email}</div> : null}
           </div>
         </div>
 
