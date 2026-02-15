@@ -52,3 +52,7 @@
 - Show selected device category in the picker and feed it through to printouts.
 - Technician lists refresh live (assignment dropdown, filters, tables, unified list) when new techs are added.
 
+## v0.2.18 (2026-02-15)
+- feat: notifications + daily look
+- UI: lift sidebar print buttons
+
