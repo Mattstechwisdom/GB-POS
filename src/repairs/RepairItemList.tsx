@@ -8,6 +8,7 @@ interface RepairItemListProps {
   selectedItem: RepairItem | null;
   onItemSelect: (item: RepairItem) => void;
   onFilteredItemsChange: (items: RepairItem[]) => void;
+  onItemContextMenu?: (e: React.MouseEvent, item: RepairItem) => void;
 }
 
 export default function RepairItemList({ 
@@ -15,7 +16,8 @@ export default function RepairItemList({
   filteredItems, 
   selectedItem, 
   onItemSelect, 
-  onFilteredItemsChange 
+  onFilteredItemsChange,
+  onItemContextMenu,
 }: RepairItemListProps) {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
@@ -175,6 +177,9 @@ export default function RepairItemList({
                   key={item.id}
                   onClick={() => handleRowClick(item, index)}
                   onDoubleClick={() => handleRowDoubleClick(item)}
+                  onContextMenu={(e) => {
+                    onItemContextMenu?.(e, item);
+                  }}
                   className={`
                     cursor-pointer border-l-2 hover:bg-zinc-800/50
                     ${selectedItem?.id === item.id ? 'border-l-[#39FF14] bg-zinc-800/30' : 'border-l-transparent'}

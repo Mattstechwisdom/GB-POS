@@ -4,6 +4,8 @@ import RepairItemList from '../repairs/RepairItemList';
 import RepairItemForm from '../repairs/RepairItemForm';
 import type { RepairItem } from '../lib/types';
 import DeviceForm from '@/repairs/DeviceForm';
+import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
+import { useContextMenu } from '@/lib/useContextMenu';
 
 // No placeholder data for now
 
@@ -37,6 +39,9 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const [paneMode, setPaneMode] = useState<'repair' | 'device'>('repair');
   const [deviceCategories, setDeviceCategories] = useState<Array<{ id: number; name: string; title?: string }>>([]);
 
+  const ctx = useContextMenu<RepairItem>();
+  const ctxRow = ctx.state.data;
+
   // Memoized list of existing sub-category titles for the Device form
   const deviceTitles = useMemo(() => {
     return Array.from(new Set((deviceCategories || []).map(d => (d as any).title).filter(Boolean))) as string[];
@@ -64,6 +69,28 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const handleItemSelect = (item: RepairItem) => {
     setSelectedItem(item);
   };
+
+  const ctxItems = useMemo<ContextMenuItem[]>(() => {
+    if (!ctxRow) return [];
+    const header = `${ctxRow.category || 'Device'} — ${ctxRow.title || 'Repair'}`;
+    const canDelete = mode === 'admin';
+    return [
+      { type: 'header', label: header },
+      { label: 'Edit / Load', onClick: () => handleItemSelect(ctxRow) },
+      { type: 'separator' },
+      {
+        label: 'Delete…',
+        danger: true,
+        disabled: !canDelete,
+        onClick: async () => {
+          if (!canDelete) return;
+          const ok = window.confirm(`Delete "${ctxRow.title || 'this item'}"? This cannot be undone.`);
+          if (!ok) return;
+          await handleDelete((ctxRow as any).id);
+        },
+      },
+    ];
+  }, [ctxRow, mode]);
 
   const handleSave = async (item: RepairItem) => {
     if (mode === 'workorder') {
@@ -130,6 +157,11 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
               selectedItem={selectedItem}
               onItemSelect={handleItemSelect}
               onFilteredItemsChange={setFilteredItems}
+              onItemContextMenu={(e, item) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ctx.openFromEvent(e, item);
+              }}
             />
           </div>
 
@@ -207,6 +239,15 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           </div>
         </div>
       </div>
+
+      <ContextMenu
+        id="repairs-ctx"
+        open={ctx.state.open}
+        x={ctx.state.x}
+        y={ctx.state.y}
+        items={ctxItems}
+        onClose={ctx.close}
+      />
     </ErrorBoundary>
   );
 }

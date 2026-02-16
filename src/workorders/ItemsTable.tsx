@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
+import { useContextMenu } from '@/lib/useContextMenu';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -18,6 +20,41 @@ const MAX_ITEMS = 5;
 const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
+
+  const ctx = useContextMenu<WorkOrderItemRow>();
+  const ctxRow = ctx.state.data;
+
+  const ctxItems = useMemo<ContextMenuItem[]>(() => {
+    if (!ctxRow) return [];
+    return [
+      { type: 'header', label: `${ctxRow.device || 'Device'} — ${ctxRow.repair || 'Item'}` },
+      {
+        label: 'Edit…',
+        onClick: () => {
+          setSelected(ctxRow.id);
+          setEditing(ctxRow);
+        },
+      },
+      {
+        label: 'Duplicate',
+        onClick: () => {
+          const copy: WorkOrderItemRow = { ...ctxRow, id: crypto.randomUUID() };
+          onChange([...items, copy].slice(0, MAX_ITEMS));
+          setSelected(copy.id);
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Remove…',
+        danger: true,
+        onClick: () => {
+          onChange(items.filter(i => i.id !== ctxRow.id));
+          if (selected === ctxRow.id) setSelected(null);
+          if (editing?.id === ctxRow.id) setEditing(null);
+        },
+      },
+    ];
+  }, [ctxRow, items, onChange, selected, editing?.id]);
 
   useEffect(() => { if (items.length === 0) setSelected(null); }, [items]);
 
@@ -96,6 +133,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 <tr
                   key={it.id}
                   onClick={() => setSelected(it.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    ctx.openFromEvent(e, it);
+                  }}
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
                   <td className="px-2 py-1 font-medium">{it.device || ''}</td>
@@ -137,6 +179,15 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
           </div>
         </div>
       )}
+
+      <ContextMenu
+        id="wo-items-ctx"
+        open={ctx.state.open}
+        x={ctx.state.x}
+        y={ctx.state.y}
+        items={ctxItems}
+        onClose={ctx.close}
+      />
     </div>
   );
 }

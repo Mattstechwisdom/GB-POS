@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
+import { useContextMenu } from '@/lib/useContextMenu';
 
 interface DeviceFormProps {
   onCancel: () => void;
@@ -32,6 +34,9 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const [selectedFeeId, setSelectedFeeId] = useState<number | undefined>(undefined);
 
   const [saving, setSaving] = useState(false);
+
+  const deviceCtx = useContextMenu<{ id?: number; name: string; title?: string }>();
+  const feeCtx = useContextMenu<AdditionalFeeRecord>();
 
   async function reloadFees() {
     try {
@@ -161,17 +166,16 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     }
   }
 
-  async function deleteSelectedFee() {
-    if (selectedFeeId == null) return;
-    const f = fees.find(x => Number(x.id) === Number(selectedFeeId));
+  async function deleteFeeById(feeId: number) {
+    const f = fees.find(x => Number(x.id) === Number(feeId));
     const label = `${String(f?.category || '').trim()}: ${String(f?.name || '').trim()}`.trim();
     const ok = window.confirm(`Delete ${label || 'this fee'}? This cannot be undone.`);
     if (!ok) return;
     setSaving(true);
     try {
       const api: any = (window as any).api || {};
-      await api.dbDelete?.('additionalFees', selectedFeeId);
-      await api.dbDelete?.('repairCategories', `fee:${selectedFeeId}`);
+      await api.dbDelete?.('additionalFees', feeId);
+      await api.dbDelete?.('repairCategories', `fee:${feeId}`);
       await reloadFees();
       onSaved();
       setSelectedFeeId(undefined);
@@ -184,6 +188,11 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     } finally {
       setSaving(false);
     }
+  }
+
+  async function deleteSelectedFee() {
+    if (selectedFeeId == null) return;
+    await deleteFeeById(selectedFeeId);
   }
 
   // Seed from initial props (e.g., when a repair is selected on the left)
@@ -208,15 +217,14 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function deleteSelected() {
-    if (selectedDeviceId === undefined) return;
-    const name = (devices || []).find(d => d.id === selectedDeviceId)?.name || deviceNameText || 'this device';
+  async function deleteDeviceById(deviceId: number) {
+    const name = (devices || []).find(d => Number(d.id) === Number(deviceId))?.name || deviceNameText || 'this device';
     const ok = window.confirm(`Delete ${name}? This cannot be undone.`);
     if (!ok) return;
     try {
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
-        const res = await api.dbDelete('deviceCategories', selectedDeviceId);
+        const res = await api.dbDelete('deviceCategories', deviceId);
         if (res) {
           setSelectedDeviceId(undefined);
           setDeviceNameText('');
@@ -224,7 +232,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           return;
         }
       } else if (typeof api.deleteFromCollection === 'function') {
-        const res = await api.deleteFromCollection('deviceCategories', selectedDeviceId);
+        const res = await api.deleteFromCollection('deviceCategories', deviceId);
         if (res) {
           setSelectedDeviceId(undefined);
           setDeviceNameText('');
@@ -239,8 +247,13 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     }
   }
 
-  async function deleteCategory() {
-    const title = (effectiveTitle || '').trim();
+  async function deleteSelected() {
+    if (selectedDeviceId === undefined) return;
+    await deleteDeviceById(selectedDeviceId);
+  }
+
+  async function deleteCategoryByTitle(titleRaw: string) {
+    const title = String(titleRaw || '').trim();
     if (!title) return;
     const ids = (devices || [])
       .filter(d => String((d as any).title || '').trim() === title)
@@ -270,6 +283,10 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     } finally {
       setSaving(false);
     }
+  }
+
+  async function deleteCategory() {
+    await deleteCategoryByTitle(effectiveTitle);
   }
 
   return (
@@ -347,6 +364,11 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                     setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
                     setDeviceNameText(d.name || '');
                     setTitleText(d.title || '');
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deviceCtx.openFromEvent(e, d);
                   }}
                   title="Click to load into fields for editing"
                 >
@@ -512,6 +534,11 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                       setFeeNameText(String((f as any).name || ''));
                       setFeeAmountText(String((f as any).amount ?? ''));
                     }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      feeCtx.openFromEvent(e, f);
+                    }}
                     title="Click to load into fields for editing"
                   >
                     <td className="p-2 border-b border-zinc-800">{String((f as any).category || '')}</td>
@@ -524,6 +551,87 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           </div>
         </div>
       </div>
+
+      <ContextMenu
+        id="device-form-device-ctx"
+        open={deviceCtx.state.open}
+        x={deviceCtx.state.x}
+        y={deviceCtx.state.y}
+        items={((): ContextMenuItem[] => {
+          const d = deviceCtx.state.data;
+          if (!d) return [];
+          const deviceId = typeof d.id === 'number' ? d.id : undefined;
+          const title = String(d.title || '').trim();
+          const name = String(d.name || '').trim();
+          return [
+            { type: 'header', label: `${title || 'Category'} — ${name || 'Device'}` },
+            {
+              label: 'Load into fields',
+              onClick: () => {
+                setSelectedDeviceId(deviceId);
+                setDeviceNameText(d.name || '');
+                setTitleText(d.title || '');
+              },
+            },
+            { type: 'separator' },
+            {
+              label: 'Delete device…',
+              danger: true,
+              disabled: deviceId === undefined || saving,
+              onClick: async () => {
+                if (deviceId === undefined) return;
+                await deleteDeviceById(deviceId);
+              },
+            },
+            {
+              label: 'Delete category…',
+              danger: true,
+              disabled: !title || saving,
+              onClick: async () => {
+                if (!title) return;
+                await deleteCategoryByTitle(title);
+              },
+            },
+          ];
+        })()}
+        onClose={deviceCtx.close}
+      />
+
+      <ContextMenu
+        id="device-form-fee-ctx"
+        open={feeCtx.state.open}
+        x={feeCtx.state.x}
+        y={feeCtx.state.y}
+        items={((): ContextMenuItem[] => {
+          const f = feeCtx.state.data;
+          if (!f) return [];
+          const feeId = f.id != null ? Number(f.id) : undefined;
+          const label = `${String(f.category || '').trim()}: ${String(f.name || '').trim()}`.trim();
+          return [
+            { type: 'header', label: label || 'Fee' },
+            {
+              label: 'Load into fields',
+              onClick: () => {
+                if (feeId != null) setSelectedFeeId(feeId);
+                setFeeCategoryText(String(f.category || ''));
+                setFeeNameText(String(f.name || ''));
+                setFeeAmountText(String((f as any).amount ?? ''));
+              },
+            },
+            { type: 'separator' },
+            {
+              label: 'Delete fee…',
+              danger: true,
+              disabled: feeId == null || saving,
+              onClick: async () => {
+                if (feeId == null) return;
+                await deleteFeeById(feeId);
+              },
+            },
+          ];
+        })()}
+        onClose={feeCtx.close}
+      />
     </div>
   );
 }

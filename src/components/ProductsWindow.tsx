@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ContextMenu, { ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
 
 type Product = {
   id?: number;
@@ -27,6 +29,42 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       return a || null;
     } catch { return null; }
   }, []);
+
+  const ctx = useContextMenu<Product>();
+  const ctxRow = ctx.state.data;
+
+  const ctxItems = useMemo<ContextMenuItem[]>(() => {
+    if (!ctxRow) return [];
+    const label = `${(ctxRow.category || 'Other')} - ${(ctxRow.itemDescription || '')}`.trim();
+    return [
+      { type: 'header', label: label || 'Product' },
+      {
+        label: 'Load / Edit',
+        onClick: () => {
+          if (ctxRow?.id != null) setSelectedId(ctxRow.id);
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Delete…',
+        danger: true,
+        disabled: !ctxRow?.id,
+        onClick: async () => {
+          const id = ctxRow?.id;
+          if (!id) return;
+          if (!confirm('Delete this product?')) return;
+          try {
+            await api?.dbDelete?.('products', id);
+            setList(lst => lst.filter(p => p.id !== id));
+            if (selectedId === id) {
+              setSelectedId(undefined);
+              setEditing(blank);
+            }
+          } catch (e) { console.error('delete product failed', e); }
+        },
+      },
+    ];
+  }, [ctxRow, api, blank, selectedId]);
   const isPicker = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('picker') === 'sale';
@@ -160,7 +198,16 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
             ) : (
               <div className="divide-y divide-zinc-800">
                 {filtered.map((p) => (
-                  <div key={p.id} onClick={() => setSelectedId(p.id)} className={`px-3 py-2 cursor-pointer hover:bg-zinc-800 ${selectedId === p.id ? 'bg-zinc-800' : ''}`}>
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedId(p.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      ctx.openFromEvent(e as any, p);
+                    }}
+                    className={`px-3 py-2 cursor-pointer hover:bg-zinc-800 ${selectedId === p.id ? 'bg-zinc-800' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="truncate">{(p.category || 'Other') + ' - ' + (p.itemDescription || '')}</div>
                       <div className="shrink-0 text-zinc-300">{typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : '—'}</div>
@@ -171,6 +218,15 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
             )}
           </div>
         </div>
+
+        <ContextMenu
+          id="products-ctx"
+          open={ctx.state.open}
+          x={ctx.state.x}
+          y={ctx.state.y}
+          items={ctxItems}
+          onClose={ctx.close}
+        />
 
         {/* Right pane: form */}
         <div className="flex flex-col">
