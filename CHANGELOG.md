@@ -62,3 +62,6 @@
 ## v0.2.20 (2026-02-16)
 - feat: repair categories + additional fees
 
+## v0.2.21 (2026-02-16)
+- fix: devices/repairs edit UI + delete category
+
