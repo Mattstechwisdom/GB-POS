@@ -60,7 +60,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     type: 'service',
     model: '',
   });
-  // Device categories from DB
+  // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
   // Track focus for cost fields
   const [partCostFocused, setPartCostFocused] = useState(false);
@@ -77,7 +77,10 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     (async () => {
       if (window.api?.dbGet) {
         const cats = await window.api.dbGet('deviceCategories');
-        setDeviceCategories(Array.isArray(cats) ? cats.map((c: any) => c.name) : []);
+        const titles = Array.isArray(cats)
+          ? Array.from(new Set(cats.map((c: any) => String(c?.title || '').trim()).filter(Boolean)))
+          : [];
+        setDeviceCategories(titles);
       }
     })();
   }, []);
