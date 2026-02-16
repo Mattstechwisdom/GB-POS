@@ -103,7 +103,7 @@ const ComboInput: React.FC<{ value: string; onChange: (v: string) => void; optio
         className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
         value={filter.length > 0 ? filter : (value || '')}
         onChange={(e) => { setFilter(e.target.value); onChange(e.target.value); setOpen(true); setHighlight(-1); }}
-        placeholder={placeholder || 'Type or selectΓÇª'}
+        placeholder={placeholder || 'Type or select...'}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
         onKeyDown={handleKeyDown}
@@ -220,7 +220,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           <div style="font-weight:800; margin-bottom:10px; font-size:14pt; text-align:center">Notes, Checklist, Terms</div>
 
           <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Notes</div>
-          <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferencesΓÇª" style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
+          <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences..." style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
 
           <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Checklist</div>
           <div style="border:2px solid #f00; border-radius:4px; padding:10px; font-size:11pt; line-height:1.35">
@@ -231,10 +231,10 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
               <ul style="padding-left:1.1rem; margin:0">
                 <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
-                <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90ΓÇæday limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and thirdΓÇæparty accessories.</li>
+                <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
                 <li style="margin-bottom:6px"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
-                <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. SpecialΓÇæorder items may be nonΓÇæreturnable and subject to supplier restocking policies.</li>
-                <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is nonΓÇærefundable.</li>
+                <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special-order items may be non-returnable and subject to supplier restocking policies.</li>
+                <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non-refundable.</li>
                 <li style="margin-bottom:6px"><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
                 <li style="margin-bottom:0"><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
               </ul>
@@ -338,7 +338,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       const parts: Part[] = [];
       const buildDesc = (key: string) => {
         const raw = String(dyn[key] || dyn[`${key}Info`] || '').trim();
-        const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' ΓÇó ');
+        const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' | ');
         switch (key) {
           case 'cpu':
             return combine([raw, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock && `${dyn.cpuClock}`]) || raw;
@@ -374,7 +374,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
 
-      // Peripherals (Custom PC) ΓÇö render as line items directly under OS
+      // Peripherals (Custom PC) - render as line items directly under OS
       const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
       pcExtras.forEach((e: any, i: number) => {
         const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
@@ -417,8 +417,8 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:18pt; font-weight:700; letter-spacing:0.3px">Custom PC Build Quote</div>
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:11pt">2822 Devine Street, Columbia, SC 29205</div>
-            <div style="font-size:11pt">(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} ΓÇó <b>Phone:</b> ${esc(phone)}</div>
+            <div style="font-size:11pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
+            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
             <div style="font-size:11pt; color:#555">Generated: ${esc(nowDate)}</div>
           </div>
         </div>`;
@@ -484,7 +484,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           </div>
         </div>`).join('');
       } else if (promptHtmlBlock) {
-        // No remaining part pages ΓÇö create a dedicated second page for the AI summary
+        // No remaining part pages - create a dedicated second page for the AI summary
         otherPagesHtml = `
         <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
           <div class="page-inner">
@@ -511,7 +511,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <tr><th style="border:1px solid #f00; padding:6px; text-align:left">Component</th><th style="border:1px solid #f00; padding:6px; text-align:right">Price</th></tr>
               </thead>
               <tbody>
-                ${pricedParts.map(p => `<tr><td style=\"border:1px solid #f00; padding:6px\"><b>${esc(p.label)}</b>${p.desc ? ` ΓÇö ${esc(p.desc)}` : ''}</td><td style=\"border:1px solid #f00; padding:6px; text-align:right\">$${(p.priceMarked || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan=\"2\" style=\"border:1px solid #f00; padding:8px; text-align:center; color:#666\">No components listed.</td></tr>'}
+                ${pricedParts.map(p => `<tr><td style=\"border:1px solid #f00; padding:6px\"><b>${esc(p.label)}</b>${p.desc ? ` - ${esc(p.desc)}` : ''}</td><td style=\"border:1px solid #f00; padding:6px; text-align:right\">$${(p.priceMarked || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan=\"2\" style=\"border:1px solid #f00; padding:8px; text-align:center; color:#666\">No components listed.</td></tr>'}
               </tbody>
               <tfoot>
                 <tr><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:600">Parts Subtotal</td><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:600">$${partsSubtotal.toFixed(2)}</td></tr>
@@ -526,7 +526,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
       // Final page: Client notes + approval checklist + terms + optional signature/date + download button
       const checklistHtml = (parts || []).map((p, i) => {
-        const line = `<b>${esc(p.label || '')}</b>${p.desc ? ` ΓÇö ${esc(p.desc)}` : ''}`;
+        const line = `<b>${esc(p.label || '')}</b>${p.desc ? ` - ${esc(p.desc)}` : ''}`;
         return `
           <label style="display:block; break-inside:avoid; margin:0 0 6px 0; font-size:10.5pt; line-height:1.25">
             <input type="checkbox" class="approve-box" data-approve-index="${i}" style="width:14px; height:14px; vertical-align:middle; margin-right:8px" />
@@ -539,7 +539,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-weight:700; font-size:13pt; margin-bottom:10px; text-align:center">Client Notes & Parts Approval</div>
 
             <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Client Notes</div>
-            <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferencesΓÇª" style="width:100%; min-height:60mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
+            <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences..." style="width:100%; min-height:60mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
 
             <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Parts Approval Checklist</div>
             <div style="border:2px solid #f00; border-radius:4px; padding:10px">
@@ -550,9 +550,9 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
             <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
               <ul style="padding-left:1.1rem; margin:0">
-                <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability, and is subject to change prior to purchase. SpecialΓÇæorder items may require a deposit and may be nonΓÇæreturnable.</li>
-                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Limitation of Liability:</b> We provide a 90ΓÇæday limited warranty covering defects in parts and workmanship under normal use. At our discretion, warranty remedies may include repair, replacement with an equivalent part, or refund. This warranty does not cover physical/impact damage, liquid exposure, cosmetic wear, loss or theft, abuse or neglect, unauthorized repairs/modifications, or damage caused by thirdΓÇæparty accessories. Damage or conditions outside warranty may result in additional diagnostic and/or repair charges, subject to client approval. To the maximum extent permitted by law, our total liability is limited to the amount paid for the applicable device or service, and we are not liable for incidental, indirect, special, or consequential damages.</li>
-                <li style="margin-bottom:0"><b>Data & Software:</b> The client is responsible for backing up all data prior to service. Service may require software updates, configuration changes, operating system reinstall, and/or factory reset, which may result in partial or total data loss. We do not guarantee data retention or recovery and are not responsible for data loss. The client is responsible for software licensing, activation, account credentials, and access to thirdΓÇæparty services.</li>
+                <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability, and is subject to change prior to purchase. Special-order items may require a deposit and may be non-returnable.</li>
+                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Limitation of Liability:</b> We provide a 90-day limited warranty covering defects in parts and workmanship under normal use. At our discretion, warranty remedies may include repair, replacement with an equivalent part, or refund. This warranty does not cover physical/impact damage, liquid exposure, cosmetic wear, loss or theft, abuse or neglect, unauthorized repairs/modifications, or damage caused by third-party accessories. Damage or conditions outside warranty may result in additional diagnostic and/or repair charges, subject to client approval. To the maximum extent permitted by law, our total liability is limited to the amount paid for the applicable device or service, and we are not liable for incidental, indirect, special, or consequential damages.</li>
+                <li style="margin-bottom:0"><b>Data & Software:</b> The client is responsible for backing up all data prior to service. Service may require software updates, configuration changes, operating system reinstall, and/or factory reset, which may result in partial or total data loss. We do not guarantee data retention or recovery and are not responsible for data loss. The client is responsible for software licensing, activation, account credentials, and access to third-party services.</li>
               </ul>
             </div>
 
@@ -579,7 +579,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div class="no-print" style="display:flex; justify-content:center; margin-top:14px">
               <button id="finalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Preview / Download</button>
             </div>
-            <div class="no-print" style="text-align:center; margin-top:6px; color:#333; font-size:10.5pt">Tip: Signature is optional. Use ΓÇ£Preview / DownloadΓÇ¥ to print or save as PDF.</div>
+            <div class="no-print" style="text-align:center; margin-top:6px; color:#333; font-size:10.5pt">Tip: Signature is optional. Use "Preview / Download" to print or save as PDF.</div>
           </div>
         </div>`;
 
@@ -628,7 +628,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 } catch(_) {}
 
                 // If switching back to draw mode, the canvas may have been hidden
-                // (0x0 rect) ΓÇö re-measure after layout.
+                // (0x0 rect) - re-measure after layout.
                 if (!typeMode) {
                   try { setTimeout(resize, 0); } catch(_) {}
                 }
@@ -764,8 +764,8 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div style=\"font-size:20pt; font-weight:700; letter-spacing:0.2px\">Gadgetboy Quote</div>
               <div style=\"font-size:13pt; font-weight:700\">GADGETBOY Repair & Retail</div>
               <div style=\"font-size:12pt\">2822 Devine Street, Columbia, SC 29205</div>
-              <div style=\"font-size:12pt\">(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-              <div style=\"margin-top:8px; font-size:12pt\"><b>Customer:</b> ${esc(cust || '-')} ΓÇó <b>Phone:</b> ${esc(phone)}</div>
+              <div style=\"font-size:12pt\">(803) 708-0101 | gadgetboysc@gmail.com</div>
+              <div style=\"margin-top:8px; font-size:12pt\"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
               <div style=\"font-size:12pt; color:#666\">Generated: ${esc(nowDate)}</div>
             </div>
           </div>
@@ -808,11 +808,11 @@ function QuoteGeneratorWindow(): JSX.Element {
     <body>
       <noscript>
         <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
-          This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app preview, tap ΓÇ£Open in BrowserΓÇ¥ (Safari/Chrome), then try again.
+          This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app preview, tap "Open in Browser" (Safari/Chrome), then try again.
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> If the signature box doesnΓÇÖt let you draw, tap ΓÇ£Open in BrowserΓÇ¥ (Safari/Chrome). After you sign, tap <b>Finalize</b>, then use <b>Share PDF</b> to send it back to <b>gadgetboysc@gmail.com</b>.
+        <b>On mobile:</b> If the signature box doesn't let you draw, tap "Open in Browser" (Safari/Chrome). After you sign, tap <b>Finalize</b>, then use <b>Share PDF</b> to send it back to <b>gadgetboysc@gmail.com</b>.
       </div>
       ${pages.join('\n')}
       <script>
@@ -1208,7 +1208,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       const parts: Part[] = [];
       const buildDesc2 = (key: string) => {
         const raw = String(dyn[key] || dyn[`${key}Info`] || '').trim();
-        const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' ΓÇó ');
+        const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' | ');
         switch (key) {
           case 'cpu':
             return combine([raw, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock && `${dyn.cpuClock}`]) || raw;
@@ -1307,8 +1307,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
                 <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
                 <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
-                <div style="font-size:12pt">(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-                <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} ΓÇó <b>Phone:</b> ${esc(phone)}</div>
+                <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
+                <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
                 <div style="font-size:12pt; color:#666">Generated: ${esc(now)}</div>
               </div>
             </div>
@@ -1384,10 +1384,10 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
                 <ul style="padding-left:1.1rem; margin:0">
                   <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
-                  <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90ΓÇæday limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and thirdΓÇæparty accessories.</li>
+                  <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
                   <li style="margin-bottom:6px"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
-                  <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. SpecialΓÇæorder items may be nonΓÇæreturnable and subject to supplier restocking policies.</li>
-                  <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is nonΓÇærefundable.</li>
+                  <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special-order items may be non-returnable and subject to supplier restocking policies.</li>
+                  <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non-refundable.</li>
                   <li style="margin-bottom:6px"><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
                   <li style="margin-bottom:0"><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
                 </ul>
@@ -1593,8 +1593,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
                   <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
                   <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
-                  <div style="font-size:12pt">(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-                  <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} ΓÇó <b>Phone:</b> ${esc(phone)}</div>
+                  <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
+                  <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
                   <div style="font-size:12pt; color:#666">Generated: ${esc(now)}</div>
                 </div>
               </div>
@@ -1651,14 +1651,14 @@ function QuoteGeneratorWindow(): JSX.Element {
               const raw = Number((first.dynamic || ({} as any))[`${p.key}Price`] || 0) || 0;
               const price = raw * 1.05;
               if (!desc && !raw) return '';
-              return `<tr><td class=\"border p-2\"><b>${esc(name)}</b>${desc ? ` ΓÇö ${esc(desc)}` : ''}</td><td class=\"border p-2\" style=\"text-align:right\">$${price.toFixed(2)}</td></tr>`;
+              return `<tr><td class=\"border p-2\"><b>${esc(name)}</b>${desc ? ` - ${esc(desc)}` : ''}</td><td class=\"border p-2\" style=\"text-align:right\">$${price.toFixed(2)}</td></tr>`;
             }).join('');
             const cbExtraLines = cbExtras.map((e: any) => {
               const name = String(e?.name || 'Extra');
               const desc = String(e?.desc || '');
               const raw = Number(e?.price || 0) || 0; const price = raw * 1.05;
               if (!name && !raw) return '';
-              return `<tr><td class=\"border p-2\"><b>${esc(name)}</b>${desc ? ` ΓÇö ${esc(desc)}` : ''}</td><td class=\"border p-2\" style=\"text-align:right\">$${price.toFixed(2)}</td></tr>`;
+              return `<tr><td class=\"border p-2\"><b>${esc(name)}</b>${desc ? ` - ${esc(desc)}` : ''}</td><td class=\"border p-2\" style=\"text-align:right\">$${price.toFixed(2)}</td></tr>`;
             }).join('');
             const cbPartsSum = cbParts.reduce((acc, p) => acc + ((Number((first.dynamic || ({} as any))[`${p.key}Price`] || 0) || 0) * 1.05), 0) + cbExtras.reduce((acc, e) => acc + ((Number(e?.price || 0) || 0) * 1.05), 0);
             const cbTotal = cbPartsSum + cbLabor;
@@ -1679,8 +1679,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:12pt; line-height:1.45">
                     <p style="margin:0 0 8px">By signing, the client agrees to the following:</p>
                     <ul style="padding-left:1.1rem; margin:0">
-                      <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Prices are valid at issue and subject to availability; special orders may be nonΓÇæreturnable.</li>
-                      <li style="margin-bottom:6px"><b>Warranty:</b> 90ΓÇæday limited hardware warranty for defects under normal use; exclusions apply.</li>
+                      <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Prices are valid at issue and subject to availability; special orders may be non-returnable.</li>
+                      <li style="margin-bottom:6px"><b>Warranty:</b> 90-day limited hardware warranty for defects under normal use; exclusions apply.</li>
                       <li style="margin-bottom:6px"><b>Data & Software:</b> Client responsible for backups and licensing; we are not liable for data loss.</li>
                       <li style="margin-bottom:6px"><b>Liability:</b> Liability limited to amount paid; incidental or consequential damages are excluded.</li>
                     </ul>
@@ -1762,8 +1762,8 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Repairs Quote</div>
             <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
-            <div style="font-size:12pt">(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} ΓÇó <b>Phone:</b> ${esc(repairs.customerPhone || '')}</div>
+            <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
+            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} | <b>Phone:</b> ${esc(repairs.customerPhone || '')}</div>
           </div>
         </div>
         <table>
@@ -1957,7 +1957,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     }));
   }
 
-  // Custom Build: perΓÇæpart image helpers
+  // Custom Build: per-part image helpers
   async function addImageForPart(idx: number, partKey: string, fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
@@ -2312,8 +2312,8 @@ function QuoteGeneratorWindow(): JSX.Element {
       const bodyText =
         'Attached is the following quote for the product(s) you have requested. ' +
         'Feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!\n\n' +
-        'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap ΓÇ£Open in BrowserΓÇ¥ (Safari/Chrome). ' +
-        'After signing, use ΓÇ£Share PDFΓÇ¥ to email the signed PDF back to us.';
+        'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap "Open in Browser" (Safari/Chrome). ' +
+        'After signing, use "Share PDF" to email the signed PDF back to us.';
 
       const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
       if (!sendRes?.ok) {
@@ -2441,7 +2441,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     const sanitizeVal = (v: any) => (isImageLike(v) || isPriceLike(v) ? '' : String(v ?? '').trim());
     // Custom Build: create a sectioned, fact-first prompt using only provided fields
     if (it.deviceType === 'Custom Build') {
-      lines.push('Produce a concise, professional single paragraph (5ΓÇô7 sentences) that summarizes the provided Custom PC components and explains how they work together as a balanced system.');
+      lines.push('Produce a concise, professional single paragraph (5-7 sentences) that summarizes the provided Custom PC components and explains how they work together as a balanced system.');
       lines.push('Use only the exact specifications supplied; do not infer or invent additional numbers, model details, or availability.');
       lines.push('Structure facts by component so the model can reference them clearly. For example: "CPU: <value>, Gen <value>, <cores> cores"; "GPU: <model>, <VRAM>"; "RAM: <size>, <speed>"; "Storage: <type>, <size>".');
       lines.push('Address real-world performance implications (speed, responsiveness, multitasking, workload throughput, and expected gaming frame-rates where applicable) and state whether the build favors gaming, content creation, or general productivity.');
@@ -2471,7 +2471,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         });
       }
 
-      lines.push('Output: exactly one paragraph (5ΓÇô7 sentences), no bullets or lists.');
+      lines.push('Output: exactly one paragraph (5-7 sentences), no bullets or lists.');
       return lines.join('\n');
     }
     const titleParts = [it.brand, it.model].filter(Boolean);
@@ -2481,7 +2481,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   // Objective & constraints
   lines.push(`Write a professional, neutral, more detailed summary of the device (${deviceLabel}).`);
-  lines.push('Output exactly one paragraph with 5ΓÇô7 sentences (do not exceed 7). Use plain, precise language.');
+  lines.push('Output exactly one paragraph with 5-7 sentences (do not exceed 7). Use plain, precise language.');
   lines.push('Use every provided specification as-is and do not invent or infer any specifications, numbers, or version details that are not explicitly provided. If a spec is unknown, omit it.');
   lines.push('Keep the description universal and model-agnostic: do not list features that are commonly associated with a specific brand, family, or device type unless they explicitly appear in the provided facts. Do not name proprietary technologies or hallmark features unless provided.');
   lines.push('You may describe general qualities applicable to any device (e.g., build, portability, display size/clarity, performance, battery condition) only when those qualities are supported by the provided facts.');
@@ -2514,7 +2514,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     });
 
   // Style & format
-  lines.push('Style: comprehensive yet concise; work all relevant facts naturally into the 5ΓÇô7 sentence paragraph without extrapolation.');
+  lines.push('Style: comprehensive yet concise; work all relevant facts naturally into the 5-7 sentence paragraph without extrapolation.');
   lines.push('Output format: exactly one paragraph (max 7 sentences), no title/heading, no bullets or numbered lists, no emojis, no calls to action.');
 
     return lines.join('\n');
@@ -2573,7 +2573,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Allow 'Other' deviceType even when there's no definition in deviceTypes
   if (!dt && it.deviceType !== 'Other') return null;
 
-  // Special-case: Custom Build per-part UI (single-column rows: image ΓÇó select ΓÇó more info ΓÇó price)
+  // Special-case: Custom Build per-part UI (single-column rows: image | select | more info | price)
     if (dt?.type === 'Custom Build') {
       const parts: Array<{ key: string; label: string; options?: string[] }> = [
         { key: 'case', label: 'Case', options: ['NZXT H5','NZXT H7','Lian Li O11','Fractal North','Corsair 4000D','Corsair 5000D','Phanteks P400A'] },
@@ -2622,7 +2622,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   value={(it.dynamic || ({} as any))[p.key] || ''}
                   onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [p.key]: v } } : x)) }))}
                   options={p.options || []}
-                  placeholder={`Select ${p.label.toLowerCase()}ΓÇª`}
+                    placeholder={`Select ${p.label.toLowerCase()}...`}
                 />
               </div>
               {/* More info */}
@@ -2701,7 +2701,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                 </div>
                 <div className="col-span-1 flex items-end justify-end">
-                  <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSales((s)=>({ ...s, items: s.items.map((x,ii)=>{ if(ii!==idx) return x; const list = Array.isArray((x.dynamic as any)?.extraParts)?[...(x.dynamic as any).extraParts]:[]; list.splice(i,1); return { ...x, dynamic: { ...(x.dynamic||{}), extraParts: list } }; }) }))}>Γ£ò</button>
+                  <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => setSales((s)=>({ ...s, items: s.items.map((x,ii)=>{ if(ii!==idx) return x; const list = Array.isArray((x.dynamic as any)?.extraParts)?[...(x.dynamic as any).extraParts]:[]; list.splice(i,1); return { ...x, dynamic: { ...(x.dynamic||{}), extraParts: list } }; }) }))}>Remove</button>
                 </div>
               </div>
             </div>
@@ -2778,14 +2778,14 @@ function QuoteGeneratorWindow(): JSX.Element {
                     return opts.map((o) => {
                       let s = String(o || '');
                       // remove trailing price patterns like " - $123.45" or " ($123.45)"
-                      s = s.replace(/\s*(?:[-ΓÇôΓÇö:])\s*\$?\d+(?:[.,]\d{2})?$/, '');
+                      s = s.replace(/\s*(?:[-:])\s*\$?\d+(?:[.,]\d{2})?$/, '');
                       s = s.replace(/\s*\([^\)]*\$\d+[\d.,]*[^\)]*\)\s*$/, '');
                       return s.trim();
                     });
                   }
                   return opts;
                 })()}
-                placeholder={`Select ${(def.label || titleCase(fk)).toLowerCase()}ΓÇª`}
+                placeholder={`Select ${(def.label || titleCase(fk)).toLowerCase()}...`}
               />
             </div>
           );
@@ -2819,7 +2819,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   onClick={() => toggleCat(cat.key)}
                 >
                   <span className="text-sm font-semibold text-zinc-200">{cat.label}</span>
-                  <span className="text-zinc-400 text-xs">{isOpen ? 'Γû┤' : 'Γû╛'}</span>
+                  <span className="text-zinc-400 text-xs">{isOpen ? 'v' : '>'}</span>
                 </button>
                 {isOpen && (
                   <div className="mt-2 border border-zinc-700 rounded p-2 bg-zinc-900 relative isolate z-10">
@@ -2904,7 +2904,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                         }),
                                       }))}
                                       options={PERIPHERAL_TYPE_OPTIONS}
-                                      placeholder="Select or type a peripheralΓÇª"
+                                      placeholder="Select or type a peripheral..."
                                     />
                                     <div className="mt-2">
                                       <label className="block text-xs text-zinc-400 mb-1">Description</label>
@@ -2917,7 +2917,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                     <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                                   </div>
                                   <div>
-                                    <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removePcExtra(idx, iExtra)}>Γ£ò</button>
+                                    <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removePcExtra(idx, iExtra)}>Remove</button>
                                   </div>
                                 </div>
                               </div>
@@ -2966,7 +2966,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         </>
       );
     }
-  // Special-case: 'Other' device type ΓÇö allow adding arbitrary spec rows (description/value)
+  // Special-case: 'Other' device type - allow adding arbitrary spec rows (description/value)
   if (it.deviceType === 'Other') {
     const specs: Array<{ desc?: string; value?: string }> = Array.isArray((it.dynamic as any)?.otherSpecs) ? (it.dynamic as any).otherSpecs : [];
       return (
@@ -2983,7 +2983,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div key={`other-spec-${si}`} className="flex items-center gap-2">
                       <input className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Spec Description" value={s?.desc || ''} onChange={(e) => updateOtherSpecField(idx, si, 'desc', (e.target as HTMLInputElement).value)} />
                       <input className="w-48 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Spec Value" value={s?.value || ''} onChange={(e) => updateOtherSpecField(idx, si, 'value', (e.target as HTMLInputElement).value)} />
-                      <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeOtherSpec(idx, si)}>Γ£ò</button>
+                      <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeOtherSpec(idx, si)}>Remove</button>
                     </div>
                   ))}
                 </div>
@@ -3097,7 +3097,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (isAppleAudioContext) {
         effectiveFields = effectiveFields.filter((f: any) => f.key !== 'audioType');
       }
-      // For AirPods (nonΓÇæMax), remove Color field entirely
+      // For AirPods (non-Max), remove Color field entirely
       if (isAirPodsNonMaxContext) {
         effectiveFields = effectiveFields.filter((f: any) => f.key !== 'color');
       }
@@ -3121,7 +3121,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const fieldNodes = effectiveFields.map((f: any) => {
       const value = (it.dynamic || ({} as any))[f.key] || '';
       const colClass = (f.key === 'ports' || f.key === 'accessories') ? 'col-span-12' : (f.type === 'text' || wideKeys.has(f.key) ? 'col-span-4' : 'col-span-2');
-      // If this is a CPU field in a MacBook/iMac/Mac mini context, override options to familyΓÇæappropriate CPUs
+      // If this is a CPU field in a MacBook/iMac/Mac mini context, override options to family-appropriate CPUs
       let overriddenOptions: string[] | undefined = undefined;
       // Override Color for specific Apple families
       if (f.key === 'color') {
@@ -3162,7 +3162,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           const applePro = ['M2 Ultra'];
           overriddenOptions = [...xeonPro, ...applePro, 'Other'];
         } else {
-          // MacBook: Intel i5/i7 and Apple M1ΓÇôM4 (no Ultra)
+          // MacBook: Intel i5/i7 and Apple M1-M4 (no Ultra)
           const intelMacBook = ['Intel Core i5', 'Intel Core i7'];
           const appleMacBook = ['M1','M1 Pro','M1 Max','M2','M2 Pro','M2 Max','M3','M3 Pro','M3 Max','M4','M4 Pro','M4 Max'];
           overriddenOptions = [...intelMacBook, ...appleMacBook, 'Other'];
@@ -3184,7 +3184,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           value={value}
           onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [f.key]: v } } : x)) }))}
           options={optionsToUse}
-          placeholder={`Select ${String(f.label || titleCase(f.key)).toLowerCase()}ΓÇª`}
+          placeholder={`Select ${String(f.label || titleCase(f.key)).toLowerCase()}...`}
         />
       ) : (
         <input
@@ -3238,7 +3238,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           (
             <div key="screenSize" className={wideKeys.has('screenSize') ? 'col-span-4' : 'col-span-2'}>
               <label className="block text-xs text-zinc-400 mb-1">Screen Size</label>
-              <ComboInput value={screenSizeVal} onChange={(v) => setField('screenSize', v)} options={screenSizes} placeholder="Select screen sizeΓÇª" />
+              <ComboInput value={screenSizeVal} onChange={(v) => setField('screenSize', v)} options={screenSizes} placeholder="Select screen size..." />
             </div>
           )
         );
@@ -3271,7 +3271,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         fieldNodes.push(
           <div key="cpu-macbook" className={wideKeys.has('cpu') ? 'col-span-4' : 'col-span-2'}>
             <label className="block text-xs text-zinc-400 mb-1">CPU</label>
-            <ComboInput value={cpuVal} onChange={(v) => setField('cpu', v)} options={cpuOptions} placeholder="Select CPUΓÇª" />
+            <ComboInput value={cpuVal} onChange={(v) => setField('cpu', v)} options={cpuOptions} placeholder="Select CPU..." />
           </div>
         );
       }
@@ -3295,7 +3295,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       const sizeNode = (
         <div key="watchSize" className={wideKeys.has('screen') ? 'col-span-4' : 'col-span-2'}>
           <label className="block text-xs text-zinc-400 mb-1">Size (mm)</label>
-          <ComboInput value={sizeVal} onChange={(v) => setField('watchSize', v)} options={watchSizes} placeholder="Select sizeΓÇª" />
+          <ComboInput value={sizeVal} onChange={(v) => setField('watchSize', v)} options={watchSizes} placeholder="Select size..." />
         </div>
       );
       fieldNodes.splice(Math.max(0, insertAfter + 1), 0, sizeNode);
@@ -3303,7 +3303,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       const bandNode = (
         <div key="bandColor" className={wideKeys.has('screen') ? 'col-span-4' : 'col-span-2'}>
           <label className="block text-xs text-zinc-400 mb-1">Band Color</label>
-          <ComboInput value={bandColorVal} onChange={(v) => setField('bandColor', v)} options={bandColors} placeholder="Select band colorΓÇª" />
+          <ComboInput value={bandColorVal} onChange={(v) => setField('bandColor', v)} options={bandColors} placeholder="Select band color..." />
         </div>
       );
       // Recompute insertion point: after the just-inserted size
@@ -3378,7 +3378,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   value={s1}
                   onChange={(v) => setField('bootDriveType', v)}
                   options={driveTypeOptions}
-                  placeholder="Select drive typeΓÇª"
+                  placeholder="Select drive type..."
                 />
               </div>
               <div className="col-span-8">
@@ -3387,7 +3387,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   value={s2}
                   onChange={(v) => setField('bootDriveStorage', v)}
                   options={storageSizeOptions}
-                  placeholder="Select storage sizeΓÇª"
+                  placeholder="Select storage size..."
                 />
               </div>
             </div>
@@ -3422,7 +3422,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     value={s2t}
                     onChange={(v) => setSecond('secondaryStorage1Type', v)}
                     options={driveTypeOptions}
-                    placeholder="Select drive typeΓÇª"
+                    placeholder="Select drive type..."
                   />
                 </div>
                 <div className="col-span-8">
@@ -3431,7 +3431,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     value={s2s}
                     onChange={(v) => setSecond('secondaryStorage1Storage', v)}
                     options={storageSizeOptions}
-                    placeholder="Select storage sizeΓÇª"
+                    placeholder="Select storage size..."
                   />
                 </div>
               </div>
@@ -3465,7 +3465,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div key={`drone-spec-${si}`} className="flex items-center gap-2">
                     <input className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Spec Description" value={s?.desc || ''} onChange={(e) => updateDroneSpecField(idx, si, 'desc', (e.target as HTMLInputElement).value)} />
                     <input className="w-48 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Spec Value" value={s?.value || ''} onChange={(e) => updateDroneSpecField(idx, si, 'value', (e.target as HTMLInputElement).value)} />
-                    <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeDroneSpec(idx, si)}>Γ£ò</button>
+                    <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeDroneSpec(idx, si)}>Remove</button>
                   </div>
                 ))}
               </div>
@@ -3509,8 +3509,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-zinc-300">{(String(((it.model ?? (it as any).dynamic?.model) || '')).trim()) || it.description || `Item ${idx + 1}`}</div>
                       <div className="flex justify-end gap-1">
-                        <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title={it.expanded ? 'Hide details' : 'Show details'} onClick={() => toggleSaleItemExpanded(idx)}>{it.expanded ? 'Γû┤' : 'Γû╛'}</button>
-                        <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeSaleItem(idx)}>Γ£ò</button>
+                        <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title={it.expanded ? 'Hide details' : 'Show details'} onClick={() => toggleSaleItemExpanded(idx)}>{it.expanded ? 'v' : '>'}</button>
+                        <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeSaleItem(idx)}>Remove</button>
                       </div>
                     </div>
                     {it.expanded && (
@@ -3534,7 +3534,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                               it.images.map((src, i) => (
                                 <div key={i} className="relative w-20 h-20 flex-none border border-zinc-700 rounded overflow-hidden">
                                   <img src={src} alt={`Item ${idx + 1} Image ${i + 1}`} className="w-full h-full object-cover" />
-                                  <button className="absolute top-0 right-0 m-0.5 bg-black/70 text-white text-[10px] leading-none px-1 rounded" onClick={() => removeImageFromItem(idx, i)} title="Remove">Γ£ò</button>
+                                  <button className="absolute top-0 right-0 m-0.5 bg-black/70 text-white text-[10px] leading-none px-1 rounded" onClick={() => removeImageFromItem(idx, i)} title="Remove">X</button>
                                 </div>
                               ))
                             ) : (
@@ -3549,7 +3549,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                             value={it.deviceType || ''}
                             onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, deviceType: v || undefined, dynamic: {} } : x)) }))}
                             options={deviceTypeOptions}
-                            placeholder="Type or selectΓÇª"
+                            placeholder="Type or select..."
                           />
                           {/* If Apple Devices, render the Apple family selector inline beneath Device Type to preserve a single row for Device Type/Model/Condition */}
                           {it.deviceType === 'Apple Devices' && (() => {
@@ -3570,7 +3570,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                     }))
                                   }
                                   options={appleDeviceOptions}
-                                  placeholder="Apple familyΓÇª"
+                                  placeholder="Apple family..."
                                 />
                               </div>
                             );
@@ -3594,8 +3594,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                                     'Apple TV 4K (2017) - 64 GB',
                                     'Apple TV 4K (2021) - 32 GB',
                                     'Apple TV 4K (2021) - 64 GB',
-                                    'Apple TV 4K (2022) - 64 GB (WiΓÇæFi)',
-                                    'Apple TV 4K (2022) - 128 GB (WiΓÇæFi + Ethernet)',
+                                    'Apple TV 4K (2022) - 64 GB (Wi-Fi)',
+                                    'Apple TV 4K (2022) - 128 GB (Wi-Fi + Ethernet)',
                                     'Other'
                                   ];
                                   return (
@@ -3603,7 +3603,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                       value={it.model || ''}
                                       onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, model: v } : x)) }))}
                                       options={appleTvModels}
-                                      placeholder="Select modelΓÇª"
+                                      placeholder="Select model..."
                                     />
                                   );
                                 } else if (isHomePod) {
@@ -3618,7 +3618,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                       value={it.model || ''}
                                       onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, model: v } : x)) }))}
                                       options={homePodModels}
-                                      placeholder="Select modelΓÇª"
+                                      placeholder="Select model..."
                                     />
                                   );
                                 }
@@ -3639,7 +3639,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 value={it.condition || ''}
                                 onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, condition: v } : x)) }))}
                                 options={['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor', 'For Parts']}
-                                placeholder="Type or selectΓÇª"
+                                placeholder="Type or select..."
                               />
                             </div>
                           </>
@@ -3755,7 +3755,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div className="col-span-6">
                 <label className="block text-xs text-zinc-400 mb-1">Repair</label>
                 <select className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={repairs.selectedRepairId} onChange={(e) => setRepairs((s) => ({ ...s, selectedRepairId: e.target.value }))} onFocus={(e) => (e.target as HTMLSelectElement).showPicker?.()}>
-                  <option value="">SelectΓÇª</option>
+                  <option value="">Select...</option>
                 </select>
               </div>
               <div className="col-span-2 flex items-end"><button className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-sm disabled:opacity-50" disabled={!repairs.selectedRepairId} onClick={addSelectedRepairLine}>Add</button></div>
@@ -3770,7 +3770,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div className="col-span-7"><Field label="Description" value={ln.description} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, description: v } : x)) }))} /></div>
                   <div className="col-span-2"><Field label="Part Price" value={ln.partPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, partPrice: v } : x)) }))} /></div>
                   <div className="col-span-2"><Field label="Labor Price" value={ln.laborPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, laborPrice: v } : x)) }))} /></div>
-                  <div className="col-span-1 flex justify-end"><button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeRepairLine(idx)}>Γ£ò</button></div>
+                  <div className="col-span-1 flex justify-end"><button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeRepairLine(idx)}>Remove</button></div>
                 </div>
               ))}
             </div>
@@ -3788,7 +3788,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-zinc-400 h-6 flex items-center">{saveMsg}</div>
           <div className="flex flex-wrap items-center gap-1">
-            <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'SavingΓÇª' : 'Save Quote'}</button>
+            <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'Saving...' : 'Save Quote'}</button>
             <button
               className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
               onClick={openHtmlPreview}
@@ -3855,7 +3855,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                         <div className="col-span-12">
                           <div className="text-xs text-zinc-400 mb-1">Gmail App Password (for gadgetboysc@gmail.com)</div>
                           <input value={emailAppPassword} onChange={(e) => setEmailAppPassword(e.target.value)} placeholder="xxxx xxxx xxxx xxxx" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
-                          <div className="text-[11px] text-zinc-400 mt-1">This is an App Password from Google (not your normal password). It is stored encrypted in the appΓÇÖs userData.</div>
+                          <div className="text-[11px] text-zinc-400 mt-1">This is an App Password from Google (not your normal password). It is stored encrypted in the app's userData.</div>
                         </div>
                       )}
                     </div>
@@ -3863,7 +3863,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="mt-4 flex items-center justify-end gap-2">
                       <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSending} onClick={() => setShowEmailModal(false)}>Cancel</button>
                       <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSending} onClick={openEmailSettings}>Email Settings</button>
-                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSending} onClick={doSendEmail}>{emailSending ? 'SendingΓÇª' : 'Send'}</button>
+                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSending} onClick={doSendEmail}>{emailSending ? 'Sending...' : 'Send'}</button>
                     </div>
                   </div>
                 </div>
@@ -3905,7 +3905,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                     <div className="mt-4 flex items-center justify-end gap-2">
                       <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving} onClick={() => setShowEmailSettings(false)}>Cancel</button>
-                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSettingsSaving} onClick={saveEmailSettings}>{emailSettingsSaving ? 'SavingΓÇª' : 'Save Settings'}</button>
+                      <button className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded" disabled={emailSettingsSaving} onClick={saveEmailSettings}>{emailSettingsSaving ? 'Saving...' : 'Save Settings'}</button>
                     </div>
                   </div>
                 </div>
@@ -3920,7 +3920,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
                   />
                 ) : (
-                  <div className="p-6 text-sm">LoadingΓÇª</div>
+                  <div className="p-6 text-sm">Loading...</div>
                 )}
               </div>
             </div>
@@ -3989,7 +3989,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                         const parts: Part[] = [];
                         const buildDesc3 = (key: string) => {
                           const raw = String(dyn[key] || dyn[`${key}Info`] || '').trim();
-                          const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' ΓÇó ');
+                          const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' | ');
                           switch (key) {
                             case 'cpu':
                               return combine([raw, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock && `${dyn.cpuClock}`]) || raw;
@@ -4025,7 +4025,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                           parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
                         });
 
-                        // Peripherals (Custom PC) ΓÇö render as line items directly under OS
+                        // Peripherals (Custom PC) - render as line items directly under OS
                         const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
                         pcExtras.forEach((e: any, i: number) => {
                           const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
@@ -4112,8 +4112,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   <div style={{ fontSize: '20pt', fontWeight: 700, letterSpacing: 0.2 }}>Gadgetboy Quote</div>
                                   <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                   <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
-                                  <div style={{ fontSize: '12pt' }}>(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} ΓÇó <strong>Phone:</strong> {sales.customerPhone || ''}</div>
+                                  <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
+                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}</div>
                                 </div>
                               </div>
                               <div className="mt-2">
@@ -4144,7 +4144,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   </thead>
                                   <tbody>
                                     {pricedParts.length ? pricedParts.map((p, i) => (
-                                      <tr key={`sum-${i}`}><td style={{ border: '1px solid #FF0000', padding: 6 }}><b>{p.label}</b>{p.desc ? ` ΓÇö ${p.desc}` : ''}</td><td style={{ border: '1px solid #FF0000', padding: 6, textAlign: 'right' }}>${(p.priceMarked || 0).toFixed(2)}</td></tr>
+                                      <tr key={`sum-${i}`}><td style={{ border: '1px solid #FF0000', padding: 6 }}><b>{p.label}</b>{p.desc ? ` - ${p.desc}` : ''}</td><td style={{ border: '1px solid #FF0000', padding: 6, textAlign: 'right' }}>${(p.priceMarked || 0).toFixed(2)}</td></tr>
                                     )) : (<tr><td colSpan={2} style={{ border: '1px solid #FF0000', padding: 8, textAlign: 'center', color: '#666' }}>No components listed.</td></tr>)}
                                   </tbody>
                                   <tfoot>
@@ -4171,8 +4171,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 <div style={{ fontSize: '20pt', fontWeight: 700, letterSpacing: 0.2 }}>Gadgetboy Quote</div>
                                 <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                 <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
-                                <div style={{ fontSize: '12pt' }}>(803) 708-0101 ΓÇó gadgetboysc@gmail.com</div>
-                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} ΓÇó <strong>Phone:</strong> {sales.customerPhone || ''}</div>
+                                <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
+                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}</div>
                               </div>
                             </div>
                             {sales.items.length > 0 && (() => {
@@ -4511,10 +4511,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                               <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, fontSize: '11pt', lineHeight: 1.45 }}>
                                 <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
                                   <li style={{ marginBottom: 6 }}><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
-                                  <li style={{ marginBottom: 6 }}><b>Warranty & Exclusions:</b> 90ΓÇæday limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and thirdΓÇæparty accessories.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
                                   <li style={{ marginBottom: 6 }}><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
-                                  <li style={{ marginBottom: 6 }}><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. SpecialΓÇæorder items may be nonΓÇæreturnable and subject to supplier restocking policies.</li>
-                                  <li style={{ marginBottom: 6 }}><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is nonΓÇærefundable.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special-order items may be non-returnable and subject to supplier restocking policies.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non-refundable.</li>
                                   <li style={{ marginBottom: 6 }}><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
                                   <li style={{ marginBottom: 0 }}><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
                                 </ul>
@@ -4544,7 +4544,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   </div>
                 ) : (
                   <div>
-                    <div className="text-sm">Customer: <b>{repairs.customerName || '-'}</b> ΓÇó {repairs.customerPhone || ''}</div>
+                    <div className="text-sm">Customer: <b>{repairs.customerName || '-'}</b> | {repairs.customerPhone || ''}</div>
                     <table className="w-full text-sm mt-3 border-collapse">
                       <thead><tr><th className="border p-2 text-left">Description</th><th className="border p-2 text-right">Parts</th><th className="border p-2 text-right">Labor</th><th className="border p-2 text-right">Line</th></tr></thead>
                       <tbody>
