@@ -40,6 +40,11 @@ export type NotificationSettings = {
   dailyLookOnOpen: boolean;
   dailyLookTimeLocal: string; // HH:mm
 
+  // Rules
+  quietHoursEnabled: boolean;
+  quietHoursStartLocal: string; // HH:mm
+  quietHoursEndLocal: string; // HH:mm
+
   // housekeeping
   keepUnreadDays: number;
   purgeReadAfterDays: number;
@@ -60,9 +65,27 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   dailyLookOnOpen: true,
   dailyLookTimeLocal: '10:00',
 
+  quietHoursEnabled: false,
+  quietHoursStartLocal: '20:00',
+  quietHoursEndLocal: '08:00',
+
   keepUnreadDays: 30,
   purgeReadAfterDays: 14,
 };
+
+function isValidHHmm(v: any): v is string {
+  return /^\d{2}:\d{2}$/.test(String(v || ''));
+}
+
+function isWithinQuietHoursLocal(now: Date, startHHmm: string, endHHmm: string) {
+  if (!isValidHHmm(startHHmm) || !isValidHHmm(endHHmm)) return false;
+  const start = minutesFromHHmm(startHHmm);
+  const end = minutesFromHHmm(endHHmm);
+  if (start === end) return false;
+  const cur = now.getHours() * 60 + now.getMinutes();
+  if (start < end) return cur >= start && cur < end;
+  return cur >= start || cur < end; // spans midnight
+}
 
 function api() {
   return (window as any).api as any;
@@ -165,7 +188,12 @@ export async function loadNotificationSettings(): Promise<NotificationSettings> 
       enabledTechScheduleChanges: !!first.enabledTechScheduleChanges,
       enabledDailyLook: !!first.enabledDailyLook,
       dailyLookOnOpen: first.dailyLookOnOpen !== false,
-      dailyLookTimeLocal: /^\d{2}:\d{2}$/.test(String(first.dailyLookTimeLocal || '')) ? String(first.dailyLookTimeLocal) : DEFAULT_SETTINGS.dailyLookTimeLocal,
+      dailyLookTimeLocal: isValidHHmm(first.dailyLookTimeLocal) ? String(first.dailyLookTimeLocal) : DEFAULT_SETTINGS.dailyLookTimeLocal,
+
+      quietHoursEnabled: !!first.quietHoursEnabled,
+      quietHoursStartLocal: isValidHHmm(first.quietHoursStartLocal) ? String(first.quietHoursStartLocal) : DEFAULT_SETTINGS.quietHoursStartLocal,
+      quietHoursEndLocal: isValidHHmm(first.quietHoursEndLocal) ? String(first.quietHoursEndLocal) : DEFAULT_SETTINGS.quietHoursEndLocal,
+
       keepUnreadDays: clamp(asNumber(first.keepUnreadDays, DEFAULT_SETTINGS.keepUnreadDays), 1, 365),
       purgeReadAfterDays: clamp(asNumber(first.purgeReadAfterDays, DEFAULT_SETTINGS.purgeReadAfterDays), 0, 365),
     };
@@ -189,7 +217,12 @@ export async function saveNotificationSettings(next: NotificationSettings): Prom
     enabledTechScheduleChanges: !!next.enabledTechScheduleChanges,
     enabledDailyLook: !!next.enabledDailyLook,
     dailyLookOnOpen: next.dailyLookOnOpen !== false,
-    dailyLookTimeLocal: /^\d{2}:\d{2}$/.test(String(next.dailyLookTimeLocal || '')) ? String(next.dailyLookTimeLocal) : DEFAULT_SETTINGS.dailyLookTimeLocal,
+    dailyLookTimeLocal: isValidHHmm(next.dailyLookTimeLocal) ? String(next.dailyLookTimeLocal) : DEFAULT_SETTINGS.dailyLookTimeLocal,
+
+    quietHoursEnabled: !!next.quietHoursEnabled,
+    quietHoursStartLocal: isValidHHmm(next.quietHoursStartLocal) ? String(next.quietHoursStartLocal) : DEFAULT_SETTINGS.quietHoursStartLocal,
+    quietHoursEndLocal: isValidHHmm(next.quietHoursEndLocal) ? String(next.quietHoursEndLocal) : DEFAULT_SETTINGS.quietHoursEndLocal,
+
     keepUnreadDays: clamp(asNumber(next.keepUnreadDays, DEFAULT_SETTINGS.keepUnreadDays), 1, 365),
     purgeReadAfterDays: clamp(asNumber(next.purgeReadAfterDays, DEFAULT_SETTINGS.purgeReadAfterDays), 0, 365),
   };
@@ -295,6 +328,8 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
   const existingNotifications: NotificationRecord[] = await listNotifications();
   const now = new Date();
 
+  const quietNow = settings.quietHoursEnabled && isWithinQuietHoursLocal(now, settings.quietHoursStartLocal, settings.quietHoursEndLocal);
+
   const desiredKeys = new Set<string>();
 
   const consultLeadMs = settings.consultationLeadMinutes * 60 * 1000;
@@ -304,7 +339,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
   const todayYmd = fmtLocalYmd(todayStart);
 
   // Daily Look digest (once per day)
-  if (settings.enabledDailyLook) {
+  if (settings.enabledDailyLook && !quietNow) {
     try {
       const triggerAt = parseHHmmToLocalDate(todayYmd, settings.dailyLookTimeLocal) || todayStart;
       const shouldSend = (settings.dailyLookOnOpen || now.getTime() >= triggerAt.getTime());
@@ -408,6 +443,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
   }
 
   for (const ev of Array.isArray(calendar) ? calendar : []) {
+    if (quietNow) continue;
     const cat = ev?.category;
 
     // Consultations
@@ -495,7 +531,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
   }
 
   // Technician schedule changes (detected locally; settings editable in admin only)
-  if (settings.enabledTechScheduleChanges) {
+  if (settings.enabledTechScheduleChanges && !quietNow) {
     try {
       const techs: any[] = await a.dbGet('technicians').catch(() => []);
       for (const t of Array.isArray(techs) ? techs : []) {

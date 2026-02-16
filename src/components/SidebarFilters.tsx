@@ -48,6 +48,11 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
               }}>Devices/Repairs</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
+                try { await (window as any).api.openProducts?.(); }
+                catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
+              }}>Products</button>
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+                setShowAdmin(false);
                 try {
                   const api = (window as any).api;
                   if (api?.openNotificationSettings) await api.openNotificationSettings();
@@ -63,11 +68,6 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
                   } catch {}
                 }
               }}>Notifications</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { await (window as any).api.openProducts?.(); }
-                catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
-              }}>Products</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); }

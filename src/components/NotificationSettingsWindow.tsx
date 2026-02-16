@@ -184,6 +184,38 @@ const NotificationSettingsWindow: React.FC = () => {
         </div>
 
         <div className="border border-zinc-800 rounded p-3">
+          <div className="font-semibold mb-2">Rules</div>
+          <div className="text-xs text-zinc-400 mb-2">Control when reminders can be generated.</div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={settings.quietHoursEnabled} onChange={e => setSettings(s => ({ ...(s as any), quietHoursEnabled: e.target.checked }))} />
+            Enable quiet hours
+          </label>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-zinc-400">Quiet starts</label>
+              <input
+                type="time"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={settings.quietHoursStartLocal || '20:00'}
+                onChange={e => setSettings(s => ({ ...(s as any), quietHoursStartLocal: e.target.value }))}
+                disabled={!settings.quietHoursEnabled}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Quiet ends</label>
+              <input
+                type="time"
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={settings.quietHoursEndLocal || '08:00'}
+                onChange={e => setSettings(s => ({ ...(s as any), quietHoursEndLocal: e.target.value }))}
+                disabled={!settings.quietHoursEnabled}
+              />
+            </div>
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-2">During quiet hours, the app won’t generate new notifications (consultations, events, parts, Daily Look, or schedule changes).</div>
+        </div>
+
+        <div className="border border-zinc-800 rounded p-3">
           <div className="font-semibold mb-2">Cleanup</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
