@@ -56,3 +56,6 @@
 - feat: notifications + daily look
 - UI: lift sidebar print buttons
 
+## v0.2.19 (2026-02-16)
+- feat: quiet hours notification rules
+
