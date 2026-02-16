@@ -150,7 +150,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                   className={`px-4 py-2 rounded text-sm border ${paneMode === 'device' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
                   onClick={() => setPaneMode('device')}
                 >
-                  Repair Categories
+                  Edit Devices
                 </button>
               </div>
             )}

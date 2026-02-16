@@ -43,14 +43,32 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
             <div className="absolute left-0 top-full mt-2 w-full bg-zinc-900 border border-zinc-700 rounded shadow-lg z-50">
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
-                try { await (window as any).api.openRepairCategories?.(); }
-                catch { const mod = await import('../repair-category/openRepairCategoriesWindow'); mod.default(); }
+                const openRoute = () => {
+                  const url = window.location.origin + '/?repairCategories=true&mode=admin';
+                  window.open(url, '_blank', 'width=900,height=600');
+                };
+                try {
+                  const api = (window as any).api;
+                  if (api?.openRepairCategories) await api.openRepairCategories();
+                  else openRoute();
+                } catch { openRoute(); }
               }}>Devices/Repairs</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { await (window as any).api.openProducts?.(); }
                 catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
               }}>Products</button>
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+                setShowAdmin(false);
+                try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); }
+                catch (e) { console.error(e); }
+              }}>Reports</button>
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+                setShowAdmin(false);
+                const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
+                try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
+                catch (e) { console.error(e); openRoute(); }
+              }}>Backup/Restore</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try {
@@ -68,17 +86,6 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
                   } catch {}
                 }
               }}>Notifications</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); }
-                catch (e) { console.error(e); }
-              }}>Reports</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
-                try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
-                catch (e) { console.error(e); openRoute(); }
-              }}>Backup/Restore</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); }

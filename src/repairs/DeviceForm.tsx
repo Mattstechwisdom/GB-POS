@@ -239,6 +239,39 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     }
   }
 
+  async function deleteCategory() {
+    const title = (effectiveTitle || '').trim();
+    if (!title) return;
+    const ids = (devices || [])
+      .filter(d => String((d as any).title || '').trim() === title)
+      .map(d => (d as any).id)
+      .filter((id: any) => id != null);
+    if (ids.length === 0) {
+      alert('No devices found under this category.');
+      return;
+    }
+    const ok = window.confirm(`Delete category "${title}" and all ${ids.length} devices under it? This cannot be undone.`);
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const api: any = (window as any).api || {};
+      if (typeof api.dbDelete === 'function') {
+        for (const id of ids) {
+          try { await api.dbDelete('deviceCategories', id); } catch {}
+        }
+      }
+      setSelectedDeviceId(undefined);
+      setDeviceNameText('');
+      // keep titleText so user sees what was deleted; clear if they start typing
+      onSaved();
+    } catch (e) {
+      console.error('delete category failed', e);
+      alert('Failed to delete category');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="mb-4">
@@ -335,6 +368,14 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
             title={selectedDeviceId === undefined ? 'Select a device to delete' : 'Delete selected device'}
           >
             Delete
+          </button>
+          <button
+            onClick={deleteCategory}
+            disabled={!effectiveTitle || saving}
+            className="ml-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
+            title={!effectiveTitle ? 'Select or type a category (device type) first' : 'Delete the entire category (all devices under it)'}
+          >
+            Delete Category
           </button>
         </div>
         <button
