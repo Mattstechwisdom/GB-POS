@@ -59,3 +59,6 @@
 ## v0.2.19 (2026-02-16)
 - feat: quiet hours notification rules
 
+## v0.2.20 (2026-02-16)
+- feat: repair categories + additional fees
+
