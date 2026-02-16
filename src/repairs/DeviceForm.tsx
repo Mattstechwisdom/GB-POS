@@ -359,38 +359,41 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         </div>
       </div>
 
-      <div className="mt-auto flex justify-between gap-2 pt-4">
-        <div>
+      <div className="mt-auto pt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={deleteSelected}
             disabled={selectedDeviceId === undefined || saving}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
+            className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
             title={selectedDeviceId === undefined ? 'Select a device to delete' : 'Delete selected device'}
           >
-            Delete
+            Delete Device
           </button>
           <button
             onClick={deleteCategory}
             disabled={!effectiveTitle || saving}
-            className="ml-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
+            className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
             title={!effectiveTitle ? 'Select or type a category (device type) first' : 'Delete the entire category (all devices under it)'}
           >
             Delete Category
           </button>
         </div>
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={save}
-          disabled={!canSave || saving}
-          className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : (selectedDeviceId !== undefined ? 'Update Device Title' : 'Save New Device')}
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <button
+            onClick={onCancel}
+            className="h-9 px-3 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!canSave || saving}
+            className="h-9 px-3 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : (selectedDeviceId !== undefined ? 'Update Device' : 'Save Device')}
+          </button>
+        </div>
       </div>
 
       {/* Additional Fees */}
