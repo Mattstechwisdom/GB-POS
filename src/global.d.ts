@@ -73,9 +73,10 @@ declare global {
     openInteractiveHtml: (html: string, title?: string) => Promise<any>;
     openUrl: (url: string) => Promise<any>;
     // email
-    emailGetConfig: () => Promise<{ ok: boolean; fromEmail?: string; fromName?: string; hasAppPassword?: boolean; error?: string }>;
+    emailGetConfig: () => Promise<{ ok: boolean; fromEmail?: string; fromName?: string; bodyTemplate?: string | null; hasAppPassword?: boolean; error?: string }>;
     emailSetGmailAppPassword: (appPassword: string, fromName?: string) => Promise<{ ok: boolean; error?: string }>;
     emailSetFromName: (fromName: string) => Promise<{ ok: boolean; error?: string }>;
+    emailSetBodyTemplate: (bodyTemplate: string) => Promise<{ ok: boolean; error?: string }>;
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     openReporting: () => Promise<any>;

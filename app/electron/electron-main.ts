@@ -409,18 +409,19 @@ function emailConfigPath(): string {
 function readEmailConfig(): any {
   try {
     const p = emailConfigPath();
-    if (!fs.existsSync(p)) return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+    if (!fs.existsSync(p)) return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail', bodyTemplate: null };
     const raw = fs.readFileSync(p, 'utf-8');
     const json = JSON.parse(raw);
-    if (!json || typeof json !== 'object') return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+    if (!json || typeof json !== 'object') return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail', bodyTemplate: null };
     return {
       fromEmail: json.fromEmail || 'gadgetboysc@gmail.com',
       fromName: json.fromName || 'GadgetBoy Repair & Retail',
+      bodyTemplate: typeof json.bodyTemplate === 'string' ? json.bodyTemplate : null,
       // Stored encrypted (base64)
       gmailAppPasswordEnc: json.gmailAppPasswordEnc || null,
     };
   } catch {
-    return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail' };
+    return { fromEmail: 'gadgetboysc@gmail.com', fromName: 'GadgetBoy Repair & Retail', bodyTemplate: null };
   }
 }
 
@@ -834,6 +835,7 @@ ipcMain.handle('email:getConfig', async () => {
       ok: true,
       fromEmail: cfg.fromEmail || 'gadgetboysc@gmail.com',
       fromName: cfg.fromName || 'GadgetBoy Repair & Retail',
+      bodyTemplate: typeof cfg.bodyTemplate === 'string' ? cfg.bodyTemplate : null,
       hasAppPassword: !!decryptAppPassword(cfg),
     };
   } catch (e: any) {
@@ -865,6 +867,19 @@ ipcMain.handle('email:setFromName', async (_e: any, fromName: string) => {
     const cfg = readEmailConfig();
     cfg.fromEmail = 'gadgetboysc@gmail.com';
     cfg.fromName = String(fromName || '').trim() || 'GadgetBoy Repair & Retail';
+    writeEmailConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:setBodyTemplate', async (_e: any, bodyTemplate: string) => {
+  try {
+    const cfg = readEmailConfig();
+    const raw = String(bodyTemplate ?? '');
+    const normalized = raw.replace(/\r\n/g, '\n').trim();
+    cfg.bodyTemplate = normalized ? normalized : null;
     writeEmailConfig(cfg);
     return { ok: true };
   } catch (e: any) {

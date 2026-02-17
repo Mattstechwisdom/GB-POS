@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.25 (2026-02-16)
+- Email Settings: you can now edit and save the default email body text used when sending quotes.
+
 ## v0.2.24 (2026-02-17)
 - Custom PC interactive HTML: "Preview / Download" now generates a PDF download instead of opening the print dialog.
 

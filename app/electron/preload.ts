@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('api', {
   emailGetConfig: (): Promise<any> => ipcRenderer.invoke('email:getConfig'),
   emailSetGmailAppPassword: (appPassword: string, fromName?: string): Promise<any> => ipcRenderer.invoke('email:setGmailAppPassword', appPassword, fromName),
   emailSetFromName: (fromName: string): Promise<any> => ipcRenderer.invoke('email:setFromName', fromName),
+  emailSetBodyTemplate: (bodyTemplate: string): Promise<any> => ipcRenderer.invoke('email:setBodyTemplate', bodyTemplate),
   emailClearGmailAppPassword: (): Promise<any> => ipcRenderer.invoke('email:clearGmailAppPassword'),
   emailSendQuoteHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuoteHtml', payload),
   // OS helpers

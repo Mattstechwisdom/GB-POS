@@ -149,6 +149,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [showEmailSettings, setShowEmailSettings] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailFromName, setEmailFromName] = useState('GadgetBoy Repair & Retail');
+  const [emailBodyTemplate, setEmailBodyTemplate] = useState('');
   const [emailAppPassword, setEmailAppPassword] = useState('');
   const [emailHasPassword, setEmailHasPassword] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
@@ -2580,6 +2581,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (cfg?.ok) {
         setEmailFromName(String(cfg.fromName || 'GadgetBoy Repair & Retail'));
         setEmailHasPassword(!!cfg.hasAppPassword);
+        setEmailBodyTemplate(String(cfg.bodyTemplate || ''));
       }
       setShowEmailModal(true);
     } catch {
@@ -2595,6 +2597,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (cfg?.ok) {
         setEmailFromName(String(cfg.fromName || 'GadgetBoy Repair & Retail'));
         setEmailHasPassword(!!cfg.hasAppPassword);
+        setEmailBodyTemplate(String(cfg.bodyTemplate || ''));
       }
       setEmailAppPassword('');
       setShowEmailSettings(true);
@@ -2623,6 +2626,15 @@ function QuoteGeneratorWindow(): JSX.Element {
         const res = await window.api.emailSetFromName(name);
         if (!res?.ok) {
           setEmailSettingsErr(String(res?.error || 'Could not save sender name'));
+          return;
+        }
+      }
+
+      // Save body template (empty string means: use built-in default)
+      {
+        const res = await window.api.emailSetBodyTemplate(emailBodyTemplate || '');
+        if (!res?.ok) {
+          setEmailSettingsErr(String(res?.error || 'Could not save email body'));
           return;
         }
       }
@@ -2689,11 +2701,13 @@ function QuoteGeneratorWindow(): JSX.Element {
       const sanitize = (s: string) => String(s || '').replace(/[^a-z0-9\-\_\+]+/gi, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
       const filename = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}.html`;
       const subject = 'Gadgetboy Quote';
-      const bodyText =
+      const defaultBodyText =
         'Attached is the following quote for the product(s) you have requested. ' +
         'Feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!\n\n' +
         'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap "Open in Browser" (Safari/Chrome). ' +
         'After signing, use "Share PDF" to email the signed PDF back to us.';
+
+      const bodyText = (emailBodyTemplate || '').trim() ? emailBodyTemplate : defaultBodyText;
 
       const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
       if (!sendRes?.ok) {
@@ -4387,6 +4401,28 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="mt-3">
                       <div className="text-xs text-zinc-400 mb-1">Sender Display Name</div>
                       <input value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="flex items-end justify-between gap-2">
+                        <div>
+                          <div className="text-xs text-zinc-400 mb-1">Default Email Body (optional)</div>
+                          <div className="text-[11px] text-zinc-400">If blank, the app uses the built-in default body.</div>
+                        </div>
+                        <button
+                          className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                          type="button"
+                          disabled={emailSettingsSaving}
+                          onClick={() => setEmailBodyTemplate('')}
+                        >Reset to default</button>
+                      </div>
+                      <textarea
+                        value={emailBodyTemplate}
+                        onChange={(e) => setEmailBodyTemplate(e.target.value)}
+                        rows={6}
+                        placeholder="(leave blank to use the built-in default)"
+                        className="mt-2 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                      />
                     </div>
 
                     <div className="mt-3">
