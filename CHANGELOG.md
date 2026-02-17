@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.24 (2026-02-17)
+- Custom PC interactive HTML: "Preview / Download" now generates a PDF download instead of opening the print dialog.
+
 ## v0.2.23 (2026-02-16)
 - Custom PC quote builder: support multiple images per part category.
 - Storage UX: optional secondary storage section + multiple secondary drives.

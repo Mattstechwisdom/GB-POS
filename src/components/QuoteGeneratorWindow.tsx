@@ -621,6 +621,8 @@ function QuoteGeneratorWindow(): JSX.Element {
               var sigClear = document.getElementById('sigClear');
               var dateBox = document.getElementById('dateBox');
               var finalizeBtn = document.getElementById('finalize');
+              var CUSTOMER_NAME = ${JSON.stringify(cust)};
+              var STAMP_SHORT = ${JSON.stringify(stampShort)};
               var drawing=false, last=[0,0], dirty=false;
               var typeMode=false;
 
@@ -734,13 +736,201 @@ function QuoteGeneratorWindow(): JSX.Element {
                 }
               });
 
-              // Preview/Download (print dialog). Signature is optional.
+              // Preview/Download PDF (no printer dialog). Signature is optional.
               if(finalizeBtn) finalizeBtn.addEventListener('click', function(){
                 try {
                   // If user drew or typed but didn't hit Apply, set a date anyway.
                   if ((dirty || typeMode) && (!dateBox || !dateBox.textContent)) { try{ setDate(); }catch(_){} }
                 } catch(_) {}
-                try { window.print(); } catch(_) {}
+
+                var sanitize = function(s){ return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,''); };
+                var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
+                var SHOP_EMAIL = 'gadgetboysc@gmail.com';
+
+                var ensureLib = function(src){
+                  return new Promise(function(resolve, reject){
+                    try {
+                      var s = document.createElement('script');
+                      s.src = src;
+                      s.onload = function(){ resolve(true); };
+                      s.onerror = function(e){ reject(e); };
+                      document.head.appendChild(s);
+                    } catch (e) { reject(e); }
+                  });
+                };
+
+                var ensureLibAny = async function(sources){
+                  var lastErr = null;
+                  for (var i = 0; i < sources.length; i++) {
+                    try { await ensureLib(sources[i]); return true; } catch (e) { lastErr = e; }
+                  }
+                  throw lastErr || new Error('Failed to load scripts');
+                };
+
+                var ensurePdfLibs = async function(){
+                  var needH2C = !(window).html2canvas;
+                  var needJspdf = !((window).jspdf && (window).jspdf.jsPDF);
+                  var tasks = [];
+                  if (needH2C) tasks.push(ensureLibAny([
+                    'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+                    'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+                  ]));
+                  if (needJspdf) tasks.push(ensureLibAny([
+                    'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+                    'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+                  ]));
+                  if (tasks.length) await Promise.all(tasks);
+                };
+
+                var showPdfActions = function(blob, filename){
+                  try {
+                    var wrap = document.createElement('div');
+                    wrap.className = 'no-print';
+                    wrap.style.margin = '14px auto 18px auto';
+                    wrap.style.maxWidth = '920px';
+                    wrap.style.padding = '12px';
+                    wrap.style.border = '1px solid #111827';
+                    wrap.style.borderRadius = '12px';
+                    wrap.style.background = '#ffffff';
+                    wrap.style.color = '#000000';
+                    wrap.style.textAlign = 'center';
+                    wrap.innerHTML =
+                      '<div style="font-weight:800; margin-bottom:6px">PDF Ready</div>' +
+                      '<div style="font-size:11.5pt; margin-bottom:10px">Download the PDF, then email it back to <b>' + SHOP_EMAIL + '</b>.</div>';
+
+                    var row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.gap = '8px';
+                    row.style.justifyContent = 'center';
+                    row.style.flexWrap = 'wrap';
+
+                    var mkBtn = function(label){
+                      var b = document.createElement('button');
+                      b.type = 'button';
+                      b.textContent = label;
+                      b.style.padding = '10px 14px';
+                      b.style.borderRadius = '10px';
+                      b.style.border = '2px solid #000';
+                      b.style.background = '#39FF14';
+                      b.style.color = '#000';
+                      b.style.fontWeight = '800';
+                      b.style.cursor = 'pointer';
+                      return b;
+                    };
+
+                    var downloadBtn = mkBtn('Download PDF');
+                    downloadBtn.addEventListener('click', function(){
+                      try {
+                        var url = URL.createObjectURL(blob);
+                        try { window.open(url, '_blank'); } catch (_) {}
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_) {} }, 15000);
+                      } catch(e) {}
+                    });
+
+                    var shareBtn = mkBtn('Share PDF');
+                    shareBtn.addEventListener('click', async function(){
+                      try {
+                        var f = new File([blob], filename, { type: 'application/pdf' });
+                        var canShare = !!(navigator && navigator.share && navigator.canShare && navigator.canShare({ files: [f] }));
+                        if (!canShare) { alert('Sharing is not supported in this browser. Use Download PDF instead.'); return; }
+                        await navigator.share({ files: [f], title: filename, text: 'Please send this PDF to ' + SHOP_EMAIL + '.' });
+                      } catch(e) { try { alert('Could not open share sheet. Use Download PDF instead.'); } catch(_) {} }
+                    });
+
+                    var emailBtn = document.createElement('a');
+                    emailBtn.textContent = 'Open Email (prefilled)';
+                    emailBtn.href = 'mailto:' + encodeURIComponent(SHOP_EMAIL) +
+                      '?subject=' + encodeURIComponent('Signed Gadgetboy Quote') +
+                      '&body=' + encodeURIComponent('Hi Gadgetboy,\n\nI signed the quote. I am attaching the PDF from this page.\n\nThanks,\n' + (CUSTOMER_NAME || ''));
+                    emailBtn.style.display = 'inline-flex';
+                    emailBtn.style.alignItems = 'center';
+                    emailBtn.style.justifyContent = 'center';
+                    emailBtn.style.padding = '10px 14px';
+                    emailBtn.style.borderRadius = '10px';
+                    emailBtn.style.border = '2px solid #000';
+                    emailBtn.style.background = '#111827';
+                    emailBtn.style.color = '#fff';
+                    emailBtn.style.fontWeight = '800';
+                    emailBtn.style.textDecoration = 'none';
+
+                    row.appendChild(shareBtn);
+                    row.appendChild(downloadBtn);
+                    row.appendChild(emailBtn);
+                    wrap.appendChild(row);
+
+                    document.body.appendChild(wrap);
+                  } catch(e) {}
+                };
+
+                var toPdf = async function(){
+                  try {
+                    await ensurePdfLibs();
+                    var h2c = (window).html2canvas;
+                    var jsPDF = (window).jspdf.jsPDF;
+
+                    var style = document.createElement('style');
+                    style.setAttribute('data-pdf-style','1');
+                    style.textContent = 'html, body { background: #ffffff !important; color: #000000 !important; } ' +
+                                      '.print-page { background: #ffffff !important; color: #000000 !important; } ' +
+                                      '.page-inner { color: #000000 !important; } ' +
+                                      '* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }';
+                    document.head.appendChild(style);
+
+                    var pageEls = Array.prototype.slice.call(document.querySelectorAll('.print-page'));
+                    var a4 = { w: 210, h: 297 }; // mm
+                    var pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+                    for (var i = 0; i < pageEls.length; i++) {
+                      var el = pageEls[i];
+                      var canvas2 = await h2c(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                      var img = canvas2.toDataURL('image/jpeg', 0.95);
+                      var pw = a4.w, ph = a4.h;
+                      var ratio = canvas2.width / canvas2.height;
+                      var w = pw, h = w / ratio;
+                      if (h > ph) { h = ph; w = h * ratio; }
+                      var x = (pw - w) / 2, y = (ph - h) / 2;
+                      if (i > 0) pdf.addPage('a4', 'portrait');
+                      pdf.addImage(img, 'JPEG', x, y, w, h);
+                    }
+
+                    var filename = base + '-' + STAMP_SHORT + '.pdf';
+                    var blob = pdf.output('blob');
+
+                    showPdfActions(blob, filename);
+
+                    // Best-effort: trigger download immediately
+                    try {
+                      var url = URL.createObjectURL(blob);
+                      try { window.open(url, '_blank'); } catch (_) {}
+                      var a = document.createElement('a');
+                      a.href = url;
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(_) {} }, 15000);
+                    } catch(e) {}
+
+                    try { document.head.removeChild(style); } catch(_) {}
+                  } catch (e) {
+                    try {
+                      var prev = document.querySelector('style[data-pdf-style="1"]');
+                      if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
+                    } catch(_) {}
+                    try { alert('Could not generate PDF automatically. Your browser will open the print dialog, choose "Save as PDF".'); } catch(_) {}
+                    try { window.print(); } catch(_) {}
+                  }
+                };
+
+                toPdf();
               });
             });
           })();
