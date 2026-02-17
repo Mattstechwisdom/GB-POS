@@ -1369,26 +1369,75 @@ function dbFilePath(): string {
   return path.join(resolveDataRoot(), 'gbpos-db.json');
 }
 
+const DB_DEBUG = isDev && process.env.GBPOS_DB_DEBUG === '1';
+function dbLog(...args: any[]) {
+  try { if (DB_DEBUG) console.log(...args); } catch {}
+}
+
+let dbCache: any | null = null;
+
+function defaultDb() {
+  return { customers: [], workOrders: [] };
+}
+
 function readDb() {
   try {
+    if (dbCache) return dbCache;
     const p = dbFilePath();
     if (!fs.existsSync(p)) return { customers: [], workOrders: [] };
     const raw = fs.readFileSync(p, 'utf-8');
-    return JSON.parse(raw || '{}');
+    const parsed = JSON.parse(raw || '{}');
+    dbCache = (parsed && typeof parsed === 'object') ? parsed : defaultDb();
+    if (!Array.isArray((dbCache as any).customers)) (dbCache as any).customers = [];
+    if (!Array.isArray((dbCache as any).workOrders)) (dbCache as any).workOrders = [];
+    return dbCache;
   } catch (e) {
-    return { customers: [], workOrders: [] };
+    dbCache = defaultDb();
+    return dbCache;
   }
 }
 
 // Simple atomic write with a tiny in-process queue to serialize writes
 let writeQueue: Promise<void> = Promise.resolve();
+let writeTimer: NodeJS.Timeout | null = null;
+let writePending = false;
+function flushWriteDb() {
+  if (!writePending) return;
+  writePending = false;
+  const snapshot = dbCache || defaultDb();
+  writeQueue = writeQueue
+    .then(async () => {
+      const p = dbFilePath();
+      const tmp = p + '.tmp';
+      await (fs.promises as any).writeFile(tmp, JSON.stringify(snapshot, null, 2), 'utf-8');
+      await (fs.promises as any).rename(tmp, p);
+    })
+    .catch(() => {
+      /* swallow to keep queue moving */
+    });
+}
+async function drainDbWrites() {
+  try {
+    if (writeTimer) {
+      try { clearTimeout(writeTimer); } catch {}
+      writeTimer = null;
+    }
+    flushWriteDb();
+    await writeQueue;
+  } catch {
+    // ignore
+  }
+}
 function writeDb(db: any) {
-  writeQueue = writeQueue.then(() => {
-    const p = dbFilePath();
-    const tmp = p + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf-8');
-    fs.renameSync(tmp, p);
-  }).catch(() => { /* swallow to keep queue moving */ });
+  // Keep an in-memory copy so reads don't re-parse a potentially huge file on every IPC call.
+  dbCache = db;
+  writePending = true;
+  if (writeTimer) return true;
+  // Coalesce rapid updates (autosave, typing) into fewer disk writes.
+  writeTimer = setTimeout(() => {
+    writeTimer = null;
+    flushWriteDb();
+  }, 300);
   return true;
 }
 
@@ -1398,11 +1447,12 @@ ipcMain.handle('db-reset-all', async () => {
 
   // Ensure any pending writes finish before we remove files.
   try {
-    await writeQueue;
+    await drainDbWrites();
   } catch {
     // ignore
   }
   writeQueue = Promise.resolve();
+  dbCache = null;
 
   function tryUnlink(p: string) {
     try {
@@ -1475,7 +1525,6 @@ ipcMain.handle('db-get', async (_e: any, key: string) => {
 });
 
 ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
-  console.log('[DB-ADD] Key:', key, 'Incoming item:', item);
   const db = readDb();
   db[key] = db[key] || [];
   // Assign global invoice id sequence (strictly increasing by entry time) for workOrders and sales
@@ -1495,11 +1544,11 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
     if (!item.id) {
       const max = db[key].reduce((m: number, it: any) => Math.max(m, it.id || 0), 0);
       item.id = max + 1;
-      console.log('[DB-ADD] Assigned new ID:', item.id, 'for', key);
+      dbLog('[DB-ADD] Assigned new ID:', item.id, 'for', key);
     }
   }
   db[key].push(item);
-  console.log('[DB-ADD] Final item being added:', item);
+  dbLog('[DB-ADD] Added', key, 'id=', item?.id);
   const ok = writeDb(db);
   if (ok) {
     if (key === 'workOrders') {
@@ -1550,18 +1599,11 @@ ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
 ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   // Support both forms: (key, item) and (key, id, item)
   const incomingItem = (typeof b !== 'undefined') ? b : a;
-  console.log('[DB-UPDATE] Key:', key, 'ID:', (typeof b !== 'undefined') ? a : (incomingItem?.id), 'Data:', incomingItem);
   const db = readDb();
   db[key] = db[key] || [];
   const targetId = (typeof b !== 'undefined') ? a : (incomingItem?.id);
   
-  // Handle both string and numeric IDs properly
-  console.log('[DB-UPDATE] Target ID:', targetId, 'Type:', typeof targetId);
-  
   const idx = db[key].findIndex((it: any) => {
-    console.log('[DB-UPDATE] Comparing item ID:', it.id, 'type:', typeof it.id, 'with target:', targetId, 'type:', typeof targetId);
-    console.log('[DB-UPDATE] Direct comparison:', it.id === targetId);
-    
     // First try exact string/value comparison
     if (it.id === targetId) return true;
     // Then try numeric comparison for numeric IDs
@@ -1576,13 +1618,11 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
     }
     return false;
   });
-  console.log('[DB-UPDATE] Found index:', idx, 'for ID:', targetId);
   if (idx === -1) return null;
   const updatedItem = { ...db[key][idx], ...incomingItem, id: targetId, updatedAt: new Date().toISOString() };
-  console.log('[DB-UPDATE] Updated item:', updatedItem);
   db[key][idx] = updatedItem;
   const ok = writeDb(db);
-  console.log('[DB-UPDATE] Write success:', ok);
+  dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     if (key === 'workOrders') {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('workorders:changed'));
@@ -1616,10 +1656,8 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
 
 
 ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
-  console.log('[DB-DELETE] Key:', key, 'ID:', id, 'Type:', typeof id);
   const db = readDb();
   db[key] = db[key] || [];
-  console.log('[DB-DELETE] Available items in', key, ':', db[key].map((item: any) => ({ id: item.id, type: typeof item.id })));
   // Try exact match first (handles string IDs)
   let idx = db[key].findIndex((it: any) => it.id === id);
   if (idx === -1) {
@@ -1632,11 +1670,10 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
       });
     }
   }
-  console.log('[DB-DELETE] Found index:', idx);
   if (idx === -1) return false;
   db[key].splice(idx, 1);
   const ok = writeDb(db);
-  console.log('[DB-DELETE] Write success:', ok);
+  dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
     if (key === 'workOrders') {
       BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('workorders:changed'));

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.28 (2026-02-17)
+- Performance hotfix: main-process JSON DB now uses an in-memory cache to avoid repeated synchronous read/parse.
+- Performance hotfix: DB writes are coalesced and written asynchronously to reduce UI lag during frequent saves.
+- Performance hotfix: DB debug logging is now gated (prevents massive base64 image payloads from stalling the app).
+
 ## v0.2.27 (2026-02-17)
 - Custom PC Storage UI: renamed Storage to Primary Storage and updated labels to match other dropdowns.
 - Primary/Secondary/Additional storage: one "Add Image" button (up to 2 images) + consistent card layout.
