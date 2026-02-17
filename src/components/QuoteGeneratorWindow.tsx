@@ -2324,8 +2324,8 @@ function QuoteGeneratorWindow(): JSX.Element {
     }));
   }
 
-  // Custom PC: Secondary storage drives helpers (array of {type,size,specs,image})
-  async function addImageForPcSecondaryStorage(idx: number, driveIdx: number, fileList: FileList | null) {
+  // Custom PC: Secondary storage drives helpers (array of {type,size,specs,image,image2})
+  async function addImageForPcSecondaryStorage(idx: number, driveIdx: number, fileList: FileList | null, which?: 1 | 2) {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
     const dataUrl: string = await new Promise((resolve, reject) => {
@@ -2340,7 +2340,10 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (i !== idx) return x;
         const dyn = { ...(x.dynamic || {}) } as any;
         const list = Array.isArray(dyn.pcSecondaryStorage) ? [ ...dyn.pcSecondaryStorage ] : [];
-        list[driveIdx] = { ...(list[driveIdx] || {}), image: dataUrl };
+        const cur = { ...(list[driveIdx] || {}) };
+        if ((which || 1) === 2) cur.image2 = dataUrl;
+        else cur.image = dataUrl;
+        list[driveIdx] = cur;
         dyn.pcSecondaryStorage = list;
         // Legacy sync for first secondary drive
         if (driveIdx === 0) {
@@ -2351,14 +2354,23 @@ function QuoteGeneratorWindow(): JSX.Element {
       })
     }));
   }
-  function removeImageForPcSecondaryStorage(idx: number, driveIdx: number) {
+  function removeImageForPcSecondaryStorage(idx: number, driveIdx: number, which?: 1 | 2) {
     setSales((prev) => ({
       ...prev,
       items: prev.items.map((x, i) => {
         if (i !== idx) return x;
         const dyn = { ...(x.dynamic || {}) } as any;
         const list = Array.isArray(dyn.pcSecondaryStorage) ? [ ...dyn.pcSecondaryStorage ] : [];
-        if (list[driveIdx]) delete (list[driveIdx] as any).image;
+        if (list[driveIdx]) {
+          if (!which) {
+            delete (list[driveIdx] as any).image;
+            delete (list[driveIdx] as any).image2;
+          } else if (which === 1) {
+            delete (list[driveIdx] as any).image;
+          } else {
+            delete (list[driveIdx] as any).image2;
+          }
+        }
         dyn.pcSecondaryStorage = list;
         return { ...x, dynamic: dyn };
       })
@@ -3255,6 +3267,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                             const storageSizeOptions = ['128 GB','256 GB','500 GB','512 GB','1 TB','2 TB','4 TB','8 TB','Other'];
                             const enabled = Boolean(dyn.pcSecondaryStorageEnabled);
                             const secondaryList: any[] = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+                            const storageImg1 = String(dyn.storageImage || '').trim();
+                            const storageImg2 = String(dyn.storageImage2 || '').trim();
                             const setDyn = (key: string, v: any) => setSales((s) => ({
                               ...s,
                               items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [key]: v } } : x)),
@@ -3285,7 +3299,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 setDyn('pcSecondaryStorageEnabled', true);
                                 return;
                               }
-                              setSecondaryList([{ type: '', size: '', specs: '', image: '' }]);
+                              setSecondaryList([{ type: '', size: '', specs: '', image: '', image2: '' }]);
                             };
                             const updateSecondaryField = (driveIdx: number, key: 'type' | 'size' | 'specs', value: string) => {
                               const next = [ ...secondaryList ];
@@ -3315,25 +3329,112 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   </label>
                                 </div>
 
+                                <div className="col-span-12">
+                                  <label className="block text-xs text-zinc-400 mb-1">Storage Images (Primary)</label>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                      onClick={() => {
+                                        const input = document.createElement('input');
+                                        input.type = 'file';
+                                        input.accept = 'image/*';
+                                        input.onchange = (ev: any) => addImageForPart(idx, 'storage', (ev.target as HTMLInputElement).files, 1);
+                                        input.click();
+                                      }}
+                                    >Image 1</button>
+                                    <button
+                                      type="button"
+                                      className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                      onClick={() => {
+                                        const input = document.createElement('input');
+                                        input.type = 'file';
+                                        input.accept = 'image/*';
+                                        input.onchange = (ev: any) => addImageForPart(idx, 'storage', (ev.target as HTMLInputElement).files, 2);
+                                        input.click();
+                                      }}
+                                    >Image 2</button>
+                                    {(storageImg1 || storageImg2) && (
+                                      <button
+                                        type="button"
+                                        className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                        onClick={() => removeImageForPart(idx, 'storage')}
+                                      >Remove</button>
+                                    )}
+                                    <div className="ml-2 flex items-center gap-2">
+                                      <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden bg-zinc-900 flex items-center justify-center">
+                                        {storageImg1 ? (<img src={storageImg1} alt="Storage Image 1" className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                      </div>
+                                      <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden bg-zinc-900 flex items-center justify-center">
+                                        {storageImg2 ? (<img src={storageImg2} alt="Storage Image 2" className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="col-span-4">
+                                  <label className="block text-xs text-zinc-400 mb-1">Price</label>
+                                  <input
+                                    type="number" step="0.01" min="0"
+                                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                    value={String(dyn.storagePrice || '')}
+                                    onChange={(e) => setDyn('storagePrice', (e.target as HTMLInputElement).value)}
+                                    placeholder="0.00"
+                                  />
+                                  <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
+                                </div>
+
                                 {enabled && (
                                   <div className="col-span-16">
                                     <div className="mt-2 flex items-center justify-between">
                                       <div className="text-xs text-zinc-400">Secondary storage drives</div>
-                                      <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSecondaryList([ ...secondaryList, { type: '', size: '', specs: '', image: '' } ])}>+ Add additional storage</button>
+                                      <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSecondaryList([ ...secondaryList, { type: '', size: '', specs: '', image: '', image2: '' } ])}>+ Add additional storage</button>
                                     </div>
                                     <div className="mt-2 flex flex-col gap-3">
                                       {secondaryList.map((d, di) => (
                                         <div key={`pc-sec-drive-${di}`} className="border border-zinc-800 rounded p-2 bg-zinc-900">
                                           <div className="grid grid-cols-16 gap-3 items-start">
                                             <div className="col-span-4">
-                                              <label className="block text-xs text-zinc-400 mb-1">Image</label>
-                                              <div className="flex items-center gap-2">
-                                                <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
-                                                  {d?.image ? (<img src={String(d.image)} alt={`Secondary drive ${di + 1}`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                              <label className="block text-xs text-zinc-400 mb-1">Images</label>
+                                              <div className="flex items-start gap-2">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                                    {d?.image ? (<img src={String(d.image)} alt={`Secondary drive ${di + 1} Image 1`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                  </div>
+                                                  <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                                    {d?.image2 ? (<img src={String(d.image2)} alt={`Secondary drive ${di + 1} Image 2`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                  </div>
                                                 </div>
                                                 <div className="flex flex-col gap-1">
-                                                  <button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files); input.click(); }}>Add Image</button>
-                                                  {d?.image && (<button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeImageForPcSecondaryStorage(idx, di)}>Remove</button>)}
+                                                  <button
+                                                    type="button"
+                                                    className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                                    onClick={() => {
+                                                      const input = document.createElement('input');
+                                                      input.type = 'file';
+                                                      input.accept = 'image/*';
+                                                      input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files, 1);
+                                                      input.click();
+                                                    }}
+                                                  >Image 1</button>
+                                                  <button
+                                                    type="button"
+                                                    className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                                    onClick={() => {
+                                                      const input = document.createElement('input');
+                                                      input.type = 'file';
+                                                      input.accept = 'image/*';
+                                                      input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files, 2);
+                                                      input.click();
+                                                    }}
+                                                  >Image 2</button>
+                                                  {(d?.image || d?.image2) && (
+                                                    <button
+                                                      type="button"
+                                                      className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                                      onClick={() => removeImageForPcSecondaryStorage(idx, di)}
+                                                    >Remove</button>
+                                                  )}
                                                 </div>
                                               </div>
                                             </div>

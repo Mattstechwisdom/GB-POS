@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.26 (2026-02-16)
+- Custom PC Storage: added the missing Storage price field.
+- Custom PC Storage: primary storage now supports 2 images (and the image controls no longer disappear when enabling secondary storage).
+
 ## v0.2.25 (2026-02-16)
 - Email Settings: you can now edit and save the default email body text used when sending quotes.
 
