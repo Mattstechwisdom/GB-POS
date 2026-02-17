@@ -71,6 +71,28 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         >
           Generate Quote
         </button>
+
+        <button
+          className="px-4 py-2 bg-zinc-800 text-zinc-100 font-semibold rounded shadow-sm border border-zinc-700 hover:border-[#39FF14] hover:text-white text-sm"
+          onClick={async () => {
+            try {
+              const api = (window as any).api;
+              if (api && typeof api.openQuickSale === 'function') await api.openQuickSale();
+              else {
+                const url = window.location.origin + '/?quickSale=1';
+                window.open(url, '_blank', 'width=920,height=640');
+              }
+            } catch (e) {
+              console.error('openQuickSale failed, falling back to window.open', e);
+              try {
+                const url = window.location.origin + '/?quickSale=1';
+                window.open(url, '_blank', 'width=920,height=640');
+              } catch {}
+            }
+          }}
+        >
+          Quick Sale
+        </button>
       </div>
       <div className="flex items-center gap-3">
         <button

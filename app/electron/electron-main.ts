@@ -2653,6 +2653,39 @@ ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
   return { ok: true };
 });
 
+// IPC handler for opening a Quick Sale window (no customer required)
+ipcMain.handle('open-quick-sale', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 920,
+    height: 640,
+    minWidth: 820,
+    minHeight: 560,
+    resizable: true,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Quick Sale'),
+  });
+  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev
+    ? `${DEV_SERVER_URL}/?quickSale=1&t=${Date.now()}`
+    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?quickSale=1`;
+  child.loadURL(url).catch((e: any) => console.error('[QuickSale] loadURL failed', e));
+  return { ok: true };
+});
+
 // Checkout window handler
 ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue: number }) => {
   return new Promise(resolve => {

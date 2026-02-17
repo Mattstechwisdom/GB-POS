@@ -21,6 +21,7 @@ import BackupWindow from './components/BackupWindow';
 import ClearDatabaseWindow from './components/ClearDatabaseWindow';
 import ClockInWindow from './components/ClockInWindow';
 import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
+import QuickSaleWindow from './components/QuickSaleWindow';
 import EODWindow from './components/EODWindow';
 import NotificationsWindow from './components/NotificationsWindow';
 import NotificationSettingsWindow from './components/NotificationSettingsWindow';
@@ -86,6 +87,7 @@ try {
 	const showCharts = params.get('charts');
 	const showReporting = params.get('reporting');
 	const showQuote = params.get('quote');
+		const showQuickSale = params.get('quickSale');
 	const showEod = params.get('eod');
 	const showReleaseForm = params.get('releaseForm');
 	const showCustomerReceipt = params.get('customerReceipt');
@@ -160,6 +162,8 @@ try {
 		root.render(<ProductsWindow />);
 	} else if (showNewSale) {
 		root.render(<SaleWindow />);
+	} else if (showQuickSale) {
+		root.render(<QuickSaleWindow />);
 	} else if (payload) {
 		root.render(<NewWorkOrderWindow />);
 	} else {
