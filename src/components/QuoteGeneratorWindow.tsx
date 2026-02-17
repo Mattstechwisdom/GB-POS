@@ -189,7 +189,6 @@ function QuoteGeneratorWindow(): JSX.Element {
   }, [repairs]);
 
   function buildInteractiveSalesHtml(logoDataUrl?: string): string {
-      const fallbackLogo = publicAsset('logo-spin.gif');
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const cust = `${sales.customerName || ''}`.trim();
     const phone = `${sales.customerPhone || ''}`.trim();
@@ -200,6 +199,13 @@ function QuoteGeneratorWindow(): JSX.Element {
   const nowDate = `${mm}/${dd}/${yy}`;
   const stampTitle = `${mm}${dd}${yy} ${hh}${mi}${ss}`; // full timestamp for document title
   const stampShort = `${mm}${dd}${yy} ${hh}${mi}`; // for filenames (no seconds)
+
+    const logoBlock = (heightMm: number) => {
+      // When this HTML is emailed/saved as a standalone attachment, relative public assets won't be present.
+      // Prefer embedded data URLs; otherwise render a clean text fallback.
+      if (logoDataUrl) return `<img src="${logoDataUrl}" alt="GadgetBoy" style="height:${heightMm}mm; width:auto" />`;
+      return `<div style="height:${heightMm}mm; width:${heightMm}mm; display:flex; align-items:center; justify-content:center; border:2px solid #111; border-radius:10px; font-weight:800; font-size:12pt; letter-spacing:0.5px">GB</div>`;
+    };
 
     // Final page for non-custom devices: Notes box + checklist + terms + signature/date (single page)
     const finalPageInteractive = () => {
@@ -230,8 +236,8 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
             <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
               <ul style="padding-left:1.1rem; margin:0">
-                <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
-                <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
+                <li style="margin-bottom:6px"><b>Quote Validity, Price Changes & Availability:</b> Pricing is provided as of the date issued, is subject to parts availability and vendor/distributor price changes, and may change prior to purchase. Any substitutions must be approved by the client before purchase.</li>
+                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Client-Caused Damage:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, misuse/accidents, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories. Damage occurring after delivery/pickup is the client’s responsibility and is not covered.</li>
                 <li style="margin-bottom:6px"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
                 <li style="margin-bottom:6px"><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special-order items may be non-returnable and subject to supplier restocking policies.</li>
                 <li style="margin-bottom:6px"><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non-refundable.</li>
@@ -347,7 +353,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           case 'gpu':
             return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
           case 'storage':
-            return combine([raw, dyn.storageType || dyn.bootDriveType, dyn.storageSize || dyn.bootDriveStorage]) || raw;
+            return combine([raw, formatStorageSummary(dyn)]) || raw;
           case 'motherboard':
             return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
           case 'psu':
@@ -412,7 +418,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
       const headerBlock = () => `
         <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px">
-           <img src="${logoDataUrl || fallbackLogo}" alt="GadgetBoy" style="height:30mm; width:auto" />
+          ${logoBlock(30)}
           <div style="line-height:1.15; flex:1">
             <div style="font-size:18pt; font-weight:700; letter-spacing:0.3px">Custom PC Build Quote</div>
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -551,7 +557,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
               <ul style="padding-left:1.1rem; margin:0">
                 <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability, and is subject to change prior to purchase. Special-order items may require a deposit and may be non-returnable.</li>
-                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Limitation of Liability:</b> We provide a 90-day limited warranty covering defects in parts and workmanship under normal use. At our discretion, warranty remedies may include repair, replacement with an equivalent part, or refund. This warranty does not cover physical/impact damage, liquid exposure, cosmetic wear, loss or theft, abuse or neglect, unauthorized repairs/modifications, or damage caused by third-party accessories. Damage or conditions outside warranty may result in additional diagnostic and/or repair charges, subject to client approval. To the maximum extent permitted by law, our total liability is limited to the amount paid for the applicable device or service, and we are not liable for incidental, indirect, special, or consequential damages.</li>
+                <li style="margin-bottom:6px"><b>Warranty, Exclusions & Client-Caused Damage:</b> We provide a 90-day limited warranty covering defects in parts and workmanship under normal use. At our discretion, warranty remedies may include repair, replacement with an equivalent part, or refund. This warranty does not cover physical/impact damage, liquid exposure, cosmetic wear, misuse/accidents, loss or theft, abuse or neglect, unauthorized repairs/modifications, or damage caused by third-party accessories. Damage occurring after delivery/pickup is the client’s responsibility and is not covered. Damage or conditions outside warranty may result in additional diagnostic and/or repair charges, subject to client approval. To the maximum extent permitted by law, our total liability is limited to the amount paid for the applicable device or service, and we are not liable for incidental, indirect, special, or consequential damages.</li>
                 <li style="margin-bottom:0"><b>Data & Software:</b> The client is responsible for backing up all data prior to service. Service may require software updates, configuration changes, operating system reinstall, and/or factory reset, which may result in partial or total data loss. We do not guarantee data retention or recovery and are not responsible for data loss. The client is responsible for software licensing, activation, account credentials, and access to third-party services.</li>
               </ul>
             </div>
@@ -759,7 +765,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       <div class=\"print-page\" style=\"width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm\">
         <div class=\"page-inner\">
           <div style=\"display:flex; gap:12px; align-items:flex-start; margin-bottom:8px\">
-            <img src=\"${logoDataUrl || publicAsset('logo-spin.gif')}\" alt=\"GadgetBoy\" style=\"height:35mm; width:auto\" />
+            ${logoBlock(35)}
             <div style=\"line-height:1.2; flex:1\">
               <div style=\"font-size:20pt; font-weight:700; letter-spacing:0.2px\">Gadgetboy Quote</div>
               <div style=\"font-size:13pt; font-weight:700\">GADGETBOY Repair & Retail</div>
@@ -1206,9 +1212,9 @@ function QuoteGeneratorWindow(): JSX.Element {
         { key: 'os', label: 'Operating System' },
       ];
       const parts: Part[] = [];
+      const combine = (arr: (string | undefined)[]) => arr.filter(Boolean).map(String).map((s) => s.trim()).filter(Boolean).join(' | ');
       const buildDesc2 = (key: string) => {
         const raw = String(dyn[key] || dyn[`${key}Info`] || '').trim();
-        const combine = (parts: (string|undefined)[]) => parts.filter(Boolean).map(String).map(s=>s.trim()).filter(Boolean).join(' | ');
         switch (key) {
           case 'cpu':
             return combine([raw, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock && `${dyn.cpuClock}`]) || raw;
@@ -1217,7 +1223,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           case 'gpu':
             return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
           case 'storage':
-            return combine([raw, dyn.storageType || dyn.bootDriveType, dyn.storageSize || dyn.bootDriveStorage]) || raw;
+            return combine([raw, formatStorageSummary(dyn)]) || raw;
           case 'motherboard':
             return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
           case 'psu':
@@ -1232,7 +1238,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             return raw;
         }
       };
-      baseParts.forEach(p => {
+      baseParts.forEach((p) => {
         const desc = buildDesc2(p.key);
         const priceRaw = Number(dyn[`${p.key}Price`] || 0) || 0;
         const imagesArr = Array.isArray(dyn[`${p.key}Images`]) ? dyn[`${p.key}Images`] : [];
@@ -1242,6 +1248,19 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
         if (!desc && !priceRaw && !image && !image2) return;
         parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+      });
+      const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
+      pcExtras.forEach((e: any, i: number) => {
+        const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
+        const desc = String(e?.desc || '').trim();
+        const priceRaw = Number(e?.price || 0) || 0;
+        const imagesArr = Array.isArray(e?.images) ? e.images : [];
+        let image: string | undefined = e?.image ? String(e.image) : undefined;
+        let image2: string | undefined = e?.image2 ? String(e.image2) : undefined;
+        if (!image && imagesArr[0]) image = String(imagesArr[0]);
+        if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
+        if (!desc && !priceRaw && !image && !image2) return;
+        parts.push({ label, key: `pc-extra-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
       const extras = Array.isArray(dyn.extraParts) ? dyn.extraParts : [];
       extras.forEach((e: any) => {
@@ -1257,106 +1276,168 @@ function QuoteGeneratorWindow(): JSX.Element {
         parts.push({ label, key: `extra-${label}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
       const laborRaw = Number(dyn.buildLabor || 0) || 0;
-
       const chunk = <T,>(arr: T[], size: number) => { const out: T[][] = []; for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size)); return out; };
+
+      const headerBlock = () => `
+        <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px">
+          <img src="${publicAsset('logo-spin.gif')}" alt="GadgetBoy" style="height:30mm; width:auto" />
+          <div style="line-height:1.15; flex:1">
+            <div style="font-size:18pt; font-weight:700; letter-spacing:0.3px">Custom PC Build Quote</div>
+            <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
+            <div style="font-size:11pt">2822 Devine Street, Columbia, SC 29205</div>
+            <div style="font-size:11pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
+            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
+            <div style="font-size:11pt; color:#555">Generated: ${esc(now)}</div>
+          </div>
+        </div>`;
 
       const partBox = (p: Part) => {
         if (String(p.key).toLowerCase() === 'os' || String(p.label).toLowerCase().includes('operating system')) {
           return `
-        <div style=\"display:grid; grid-template-columns:42mm 1fr; column-gap:10px; align-items:stretch; margin-bottom:8px\">
-          <div></div>
-          <div style=\"border:2px solid #f00; border-radius:6px; padding:8px; min-height:22mm\">
-            <div style=\"font-weight:700; margin-bottom:2px\">${esc(p.label)}</div>
-            <div style=\"font-size:10.5pt; line-height:1.35\">${esc(p.desc || '-') }</div>
-          </div>
-        </div>`;
+          <div style="display:grid; grid-template-columns:42mm 1fr; column-gap:10px; align-items:stretch; margin-bottom:8px">
+            <div></div>
+            <div style="border:2px solid #f00; border-radius:6px; padding:8px; min-height:22mm">
+              <div style="font-weight:700; margin-bottom:2px">${esc(p.label)}</div>
+              <div style="font-size:10.5pt; line-height:1.35">${esc(p.desc || '-') }</div>
+            </div>
+          </div>`;
         }
         const imgs = [p.image, p.image2].filter(Boolean) as string[];
         const leftCol = imgs.length >= 2
           ? `
-            <div style=\"width:56mm; height:44mm; display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; padding:4px; box-sizing:border-box\">
-              <div style=\"flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden\"><img src=\"${imgs[0]}\" style=\"max-width:100%; max-height:100%; object-fit:contain; display:block\" /></div>
-              <div style=\"flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden\"><img src=\"${imgs[1]}\" style=\"max-width:100%; max-height:100%; object-fit:contain; display:block\" /></div>
+            <div style="width:44mm; height:34mm; display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; padding:4px; box-sizing:border-box">
+              <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden"><img src="${imgs[0]}" style="max-width:100%; max-height:100%; object-fit:contain; display:block" /></div>
+              <div style="flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden"><img src="${imgs[1]}" style="max-width:100%; max-height:100%; object-fit:contain; display:block" /></div>
             </div>`
           : (imgs.length === 1
-            ? `<div style=\"width:56mm; height:44mm; display:flex; align-items:center; justify-content:center; background:#fff; border:1px solid #e5e7eb; border-radius:4px; overflow:hidden\"><img src=\"${imgs[0]}\" style=\"max-width:100%; max-height:100%; object-fit:contain; display:block\" /></div>`
-            : `<div style=\"width:56mm; height:44mm; display:flex; align-items:center; justify-content:center; background:#fff; border:1px solid #e5e7eb; border-radius:4px; overflow:hidden\"><div style=\\\"font-size:9pt; color:#888\\\">No Image</div></div>`);
+            ? `<div style="width:44mm; height:34mm; display:flex; align-items:center; justify-content:center; background:#fff; border:1px solid #e5e7eb; border-radius:4px; overflow:hidden"><img src="${imgs[0]}" style="max-width:100%; max-height:100%; object-fit:contain; display:block" /></div>`
+            : `<div style="width:44mm; height:34mm; display:flex; align-items:center; justify-content:center; background:#fff; border:1px solid #e5e7eb; border-radius:4px; overflow:hidden"><div style="font-size:9pt; color:#888">No Image</div></div>`);
         return `
-        <div style=\"display:grid; grid-template-columns:56mm 1fr; column-gap:10px; align-items:stretch; margin-bottom:8px\">
-          ${leftCol}
-          <div style=\"border:2px solid #f00; border-radius:6px; padding:8px; min-height:18mm; display:flex; align-items:center; justify-content:center; text-align:center; flex-direction:column\">
-            <div style=\"font-weight:700; margin-bottom:4px\">${esc(p.label)}</div>
-            <div style=\"font-size:10.5pt; line-height:1.35; margin-bottom:4px\">${esc(p.desc || '-') }</div>
-            <div style=\"font-weight:700; font-size:11pt\">$${(p.priceMarked || 0).toFixed(2)}</div>
-          </div>
-        </div>`;
+          <div style="display:grid; grid-template-columns:44mm 1fr; column-gap:8px; align-items:stretch; margin-bottom:6px">
+            ${leftCol}
+            <div style="border:2px solid #f00; border-radius:6px; padding:6px; min-height:14mm; display:flex; align-items:center; justify-content:center; text-align:center; flex-direction:column">
+              <div style="font-weight:700; margin-bottom:4px">${esc(p.label)}</div>
+              <div style="font-size:10.5pt; line-height:1.35; margin-bottom:4px">${esc(p.desc || '-') }</div>
+              <div style="font-weight:700; font-size:11pt">$${(p.priceMarked || 0).toFixed(2)}</div>
+            </div>
+          </div>`;
       };
 
-      const firstPageParts = parts.slice(0, 3);
-      const remainingParts = parts.slice(3);
-      const remainingChunks = chunk(remainingParts, 4);
+      const firstPageParts = parts.slice(0, 6);
+      const remainingChunks = chunk(parts.slice(6), 6);
+      const promptHtmlBlock = first && first.prompt && String(first.prompt).trim().length > 0
+        ? `\n            <div style="text-align:center; font-size:12.5pt; line-height:1.45; max-width:180mm; margin:12px auto 0 auto; border:2px solid #f00; border-radius:4px; padding:10px 12px">${esc(first.prompt || '')}</div>`
+        : '';
 
-      // Simplified non-custom assembly: Page 1 = header + first item,
-      // each subsequent page = single item, final page = notes/terms/signature.
-      const firstPage = `
-        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
+      const firstPageHtml = `
+        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
           <div class="page-inner">
-            <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-              <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
-              <div style="line-height:1.2; flex:1">
-                <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
-                <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
-                <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
-                <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-                <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
-                <div style="font-size:12pt; color:#666">Generated: ${esc(now)}</div>
-              </div>
-            </div>
-            ${first ? devicePage(first, firstTitle, false) : ''}
+            ${headerBlock()}
+            ${firstPageParts.length ? firstPageParts.map(partBox).join('') : `<div style="border:1px dashed #f00; padding:10px; text-align:center; color:#666">No parts listed.</div>`}
           </div>
         </div>`;
 
-      
+      const otherPagesHtml = remainingChunks.map((group, i) => `
+        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
+          <div class="page-inner">
+            ${group.map(partBox).join('')}${i === 0 ? promptHtmlBlock : ''}
+          </div>
+        </div>`).join('');
 
-      // Build pages deterministically: one page per additional item
-      const pagesArr: string[] = [];
-      pagesArr.push(firstPage);
-      sales.items.slice(1).forEach((item, idx) => {
-        const model = String(((item.model ?? (item as any).dynamic?.model) || '')).trim();
-        const title = model ? [item.brand, model].filter(Boolean).join(' ').trim() : `Device ${idx + 2}`;
-        pagesArr.push(devicePage(item, title, true));
-      });
+      const pricedParts = parts.filter((p) => !(String(p.key).toLowerCase() === 'os' || String(p.label).toLowerCase().includes('operating system')));
+      const partsSubtotal = pricedParts.reduce((acc, p) => acc + (p.priceMarked || 0), 0);
+      const taxAmount = partsSubtotal * TAX_RATE;
+      const totalAfterTax = partsSubtotal + taxAmount + laborRaw;
+      const summaryPage = `
+        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
+          <div class="page-inner">
+            <div style="font-weight:700; font-size:13pt; margin-bottom:6px; text-align:center">Itemized Summary</div>
+            <table style="border-collapse:collapse; width:100%; font-size:10pt">
+              <thead>
+                <tr><th style="border:1px solid #f00; padding:6px; text-align:left">Component</th><th style="border:1px solid #f00; padding:6px; text-align:right">Price</th></tr>
+              </thead>
+              <tbody>
+                ${pricedParts.map((p) => `<tr><td style=\"border:1px solid #f00; padding:6px\"><b>${esc(p.label)}</b>${p.desc ? ` - ${esc(p.desc)}` : ''}</td><td style=\"border:1px solid #f00; padding:6px; text-align:right\">$${(p.priceMarked || 0).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="2" style="border:1px solid #f00; padding:8px; text-align:center; color:#666">No components listed.</td></tr>'}
+              </tbody>
+              <tfoot>
+                <tr><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:600">Parts Subtotal</td><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:600">$${partsSubtotal.toFixed(2)}</td></tr>
+                <tr><td style="border:1px solid #f00; padding:6px; text-align:right">Build Labor (not taxed)</td><td style="border:1px solid #f00; padding:6px; text-align:right">$${laborRaw.toFixed(2)}</td></tr>
+                <tr><td style="border:1px solid #f00; padding:6px; text-align:right">Tax on Parts (${(TAX_RATE*100).toFixed(0)}%)</td><td style="border:1px solid #f00; padding:6px; text-align:right">$${taxAmount.toFixed(2)}</td></tr>
+                <tr><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:700">Total (after tax)</td><td style="border:1px solid #f00; padding:6px; text-align:right; font-weight:700">$${totalAfterTax.toFixed(2)}</td></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>`;
 
-      // Keep Custom PC/Build pipeline as-is (no shared final page appended here).
+      const checklistHtml = (parts || []).map((p, i) => {
+        const line = `<b>${esc(p.label || '')}</b>${p.desc ? ` - ${esc(p.desc)}` : ''}`;
+        return `
+          <label style="display:block; break-inside:avoid; margin:0 0 6px 0; font-size:10.5pt; line-height:1.25">
+            <input type="checkbox" style="width:14px; height:14px; vertical-align:middle; margin-right:8px" />
+            <span style="vertical-align:middle">${line}</span>
+          </label>`;
+      }).join('');
+
+      const approvalPage = `
+        <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:11mm">
+          <div class="page-inner" style="display:flex; flex-direction:column; min-height:273mm; padding-top:8px">
+            <div style="font-weight:700; font-size:13pt; margin-bottom:10px; text-align:center">Client Notes & Parts Approval</div>
+
+            <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Client Notes</div>
+            <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences..." style="width:100%; min-height:60mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
+
+            <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Parts Approval Checklist</div>
+            <div style="border:2px solid #f00; border-radius:4px; padding:10px">
+              <div style="font-size:10.5pt; color:#444; margin-bottom:8px">Check the components you approve. Leave items unchecked if you do not approve them yet or require changes.</div>
+              <div style="columns:2; column-gap:16px">${checklistHtml || '<div style="color:#666">No parts listed.</div>'}</div>
+            </div>
+
+            <div style="margin-top:auto">
+              <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Terms and Conditions</div>
+              <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:11pt; line-height:1.45">
+                <ul style="padding-left:1.1rem; margin:0">
+                  <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability, and may change prior to purchase.</li>
+                  <li style="margin-bottom:6px"><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
+                  <li style="margin-bottom:0"><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
+                </ul>
+              </div>
+
+              <div style="margin-top:16px">
+                <div style="display:flex; gap:24px; align-items:center">
+                  <div style="flex:1">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <div style="font-weight:400; font-size:12pt; white-space:nowrap">Signature</div>
+                      <div style="border-bottom:2px solid #000; height:24px; flex:1"></div>
+                    </div>
+                  </div>
+                  <div style="width:220px">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <div style="font-weight:400; font-size:12pt; white-space:nowrap">Date</div>
+                      <div style="border-bottom:2px solid #000; height:24px; flex:1"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
 
       const html = `<!doctype html>
       <html>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Gadgetboy Quote</title>
+        <title>Custom Build Quote</title>
         <base href="${(typeof window !== 'undefined' && (window as any).location) ? ((window as any).location.origin + '/') : '/'}">
         <style>
-          @media print {
-            @page { size: A4; margin: 12mm; }
-            .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
-            .print-page:last-of-type { page-break-after: auto; }
-          }
-          html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
-          .page-inner { transform-origin: top center; }
+          @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } }
+          html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
         </style>
-        </head>
+      </head>
       <body>
-        ${pagesArr.join('\n')}
+        ${firstPageHtml + otherPagesHtml + summaryPage + approvalPage}
       </body>
       </html>`;
-      // Debug: attempt to save generated print HTML into the app DB for inspection
-      try {
-        const api = (window as any).api;
-        if (api && typeof api.dbAdd === 'function') {
-          try { api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), title: 'debug-print-html', customerName: cust || null, html: html }); } catch (e) { /* ignore */ }
-        }
-      } catch {}
       return html;
     }
 
@@ -1372,7 +1453,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
           <div class="page-inner" style="display:flex; flex-direction:column; min-height:273mm; padding-top:8px">
             <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Notes</div>
-            <div style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; box-sizing:border-box"></div>
+            <textarea id="clientNotes" placeholder="Notes, requested changes, questions, or preferences..." style="width:100%; height:52mm; border:2px solid #f00; border-radius:4px; padding:10px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; box-sizing:border-box; resize:vertical"></textarea>
 
             <div style="font-weight:700; margin-top:14px; margin-bottom:6px; font-size:12pt">Checklist</div>
             <div style="border:2px solid #f00; border-radius:4px; padding:10px; font-size:11pt; line-height:1.35">
@@ -1679,8 +1760,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div style="border:2px solid #f00; border-radius:4px; padding:12px; font-size:12pt; line-height:1.45">
                     <p style="margin:0 0 8px">By signing, the client agrees to the following:</p>
                     <ul style="padding-left:1.1rem; margin:0">
-                      <li style="margin-bottom:6px"><b>Quote Validity & Availability:</b> Prices are valid at issue and subject to availability; special orders may be non-returnable.</li>
-                      <li style="margin-bottom:6px"><b>Warranty:</b> 90-day limited hardware warranty for defects under normal use; exclusions apply.</li>
+                        <li style="margin-bottom:6px"><b>Quote Validity, Price Changes & Availability:</b> Prices are provided as of the date issued, are subject to availability and vendor/distributor price changes, and may change prior to purchase. Any substitutions must be approved by the client. Special orders may require a deposit and may be non-returnable.</li>
+                        <li style="margin-bottom:6px"><b>Warranty & Client-Caused Damage:</b> 90-day limited hardware warranty for defects under normal use; exclusions apply including physical/impact damage, liquid exposure, misuse/accidents, and unauthorized modifications. Damage occurring after delivery/pickup is the client’s responsibility and is not covered.</li>
                       <li style="margin-bottom:6px"><b>Data & Software:</b> Client responsible for backups and licensing; we are not liable for data loss.</li>
                       <li style="margin-bottom:6px"><b>Liability:</b> Liability limited to amount paid; incidental or consequential damages are excluded.</li>
                     </ul>
@@ -1957,8 +2038,53 @@ function QuoteGeneratorWindow(): JSX.Element {
     }));
   }
 
-  // Custom Build: per-part image helpers
-  async function addImageForPart(idx: number, partKey: string, fileList: FileList | null) {
+  function formatStorageSummary(dyn: any): string {
+    try {
+      const parts: string[] = [];
+      const fmtDrive = (typeVal: any, sizeVal: any, specsVal?: any) => {
+        const type = String(typeVal || '').trim();
+        const size = String(sizeVal || '').trim();
+        const specs = String(specsVal || '').trim();
+
+        // Avoid printing placeholder rows (e.g., type chosen but no size/specs)
+        if (!size && !specs) return '';
+
+        const base = [type, size].filter(Boolean).join(' ').trim();
+        if (!base && !specs) return '';
+        if (!base) return specs;
+        return specs ? `${base} (${specs})` : base;
+      };
+
+      const primary = fmtDrive(dyn.storageType || dyn.bootDriveType, dyn.storageSize || dyn.bootDriveStorage, dyn.storageSpecs || dyn.bootDriveSpecs);
+      if (primary) parts.push(primary);
+
+      const secondaryList = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+      const secondaryFromList = secondaryList
+        .filter((d: any) => {
+          const type = String(d?.type || '').trim();
+          const size = String(d?.size || '').trim();
+          const specs = String(d?.specs || '').trim();
+          // Type alone is not considered “entered”
+          return Boolean(size || (type && specs));
+        })
+        .map((d: any) => fmtDrive(d?.type, d?.size, d?.specs))
+        .filter(Boolean);
+
+      if (secondaryFromList.length) {
+        parts.push(...secondaryFromList);
+      } else {
+        const legacySecond = fmtDrive(dyn.secondaryStorage1Type, dyn.secondaryStorage1Storage, dyn.secondaryStorage1Specs);
+        if (legacySecond) parts.push(legacySecond);
+      }
+
+      return parts.filter(Boolean).join(' + ');
+    } catch {
+      return '';
+    }
+  }
+
+  // Custom Build / Custom PC category images: support up to 2 images (Image + Image2)
+  async function addImageForPart(idx: number, partKey: string, fileList: FileList | null, which?: 1 | 2) {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
     const dataUrl: string = await new Promise((resolve, reject) => {
@@ -1969,18 +2095,82 @@ function QuoteGeneratorWindow(): JSX.Element {
     });
     setSales((prev) => ({
       ...prev,
-      items: prev.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [`${partKey}Image`]: dataUrl } } : x)),
+      items: prev.items.map((x, i) => {
+        if (i !== idx) return x;
+        const dyn = { ...(x.dynamic || {}) } as any;
+        const k1 = `${partKey}Image`;
+        const k2 = `${partKey}Image2`;
+        const cur1 = String(dyn[k1] || '').trim();
+        const cur2 = String(dyn[k2] || '').trim();
+        const target: 1 | 2 = which || (!cur1 ? 1 : (!cur2 ? 2 : 2));
+        if (target === 1) dyn[k1] = dataUrl;
+        else dyn[k2] = dataUrl;
+        dyn[`${partKey}Images`] = [dyn[k1], dyn[k2]].filter(Boolean);
+        return { ...x, dynamic: dyn };
+      }),
     }));
   }
-  function removeImageForPart(idx: number, partKey: string) {
+  function removeImageForPart(idx: number, partKey: string, which?: 1 | 2) {
     setSales((prev) => ({
       ...prev,
       items: prev.items.map((x, i) => {
         if (i !== idx) return x;
         const dyn = { ...(x.dynamic || {}) } as any;
-        delete (dyn as any)[`${partKey}Image`];
+        const k1 = `${partKey}Image`;
+        const k2 = `${partKey}Image2`;
+        if (!which) {
+          delete dyn[k1];
+          delete dyn[k2];
+          delete dyn[`${partKey}Images`];
+          return { ...x, dynamic: dyn };
+        }
+        if (which === 1) delete dyn[k1];
+        if (which === 2) delete dyn[k2];
+        dyn[`${partKey}Images`] = [dyn[k1], dyn[k2]].filter(Boolean);
+        if (!(dyn[`${partKey}Images`] || []).length) delete dyn[`${partKey}Images`];
         return { ...x, dynamic: dyn };
       }),
+    }));
+  }
+
+  // Custom PC: Secondary storage drives helpers (array of {type,size,specs,image})
+  async function addImageForPcSecondaryStorage(idx: number, driveIdx: number, fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const file = fileList[0];
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ''));
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(file);
+    });
+    setSales((prev) => ({
+      ...prev,
+      items: prev.items.map((x, i) => {
+        if (i !== idx) return x;
+        const dyn = { ...(x.dynamic || {}) } as any;
+        const list = Array.isArray(dyn.pcSecondaryStorage) ? [ ...dyn.pcSecondaryStorage ] : [];
+        list[driveIdx] = { ...(list[driveIdx] || {}), image: dataUrl };
+        dyn.pcSecondaryStorage = list;
+        // Legacy sync for first secondary drive
+        if (driveIdx === 0) {
+          dyn.secondaryStorage1Type = String(list[0]?.type || '');
+          dyn.secondaryStorage1Storage = String(list[0]?.size || '');
+        }
+        return { ...x, dynamic: dyn };
+      })
+    }));
+  }
+  function removeImageForPcSecondaryStorage(idx: number, driveIdx: number) {
+    setSales((prev) => ({
+      ...prev,
+      items: prev.items.map((x, i) => {
+        if (i !== idx) return x;
+        const dyn = { ...(x.dynamic || {}) } as any;
+        const list = Array.isArray(dyn.pcSecondaryStorage) ? [ ...dyn.pcSecondaryStorage ] : [];
+        if (list[driveIdx]) delete (list[driveIdx] as any).image;
+        dyn.pcSecondaryStorage = list;
+        return { ...x, dynamic: dyn };
+      })
     }));
   }
 
@@ -2458,7 +2648,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       pushIf('CPU', [dyn.cpu, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock]);
       pushIf('RAM', [dyn.ram, dyn.ramSize && `${dyn.ramSize}`, dyn.ramSpeed && `${dyn.ramSpeed}`, dyn.ramType]);
       pushIf('GPU', [dyn.gpuModel || dyn.gpu || dyn.gpuBrand, dyn.gpuVram && `${dyn.gpuVram}`]);
-      pushIf('Storage', [dyn.storageType || dyn.bootDriveType, dyn.storageSize || dyn.bootDriveStorage]);
+      pushIf('Storage', [formatStorageSummary(dyn)]);
       pushIf('PSU', [dyn.psu, dyn.psuWatt && `${dyn.psuWatt}W`]);
       pushIf('Cooling', [dyn.cooling || dyn.coolingType]);
       pushIf('OS', [dyn.os]);
@@ -2811,6 +3001,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           {categories.map((cat) => {
             const imageKey = `${cat.key}Image`;
             const img = (it.dynamic || ({} as any))[imageKey] as string | undefined;
+            const img2 = (it.dynamic || ({} as any))[`${cat.key}Image2`] as string | undefined;
             const isOpen = (openCats[idxKey] && openCats[idxKey][cat.key]) ?? (cat.key === 'case');
             return (
               <div key={`cat-${cat.key}`}>
@@ -2824,17 +3015,26 @@ function QuoteGeneratorWindow(): JSX.Element {
                 {isOpen && (
                   <div className="mt-2 border border-zinc-700 rounded p-2 bg-zinc-900 relative isolate z-10">
                     {/* Image controls and preview (skip for Build Labor, Peripherals, and OS) */}
-                    {cat.key !== 'buildLabor' && cat.key !== 'peripherals' && cat.key !== 'os' && (
+                    {cat.key !== 'buildLabor' && cat.key !== 'peripherals' && cat.key !== 'os' && cat.key !== 'storage' && (
                       <div className="flex items-center gap-2 mb-2">
                         <button className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
                           onClick={() => { const input = document.createElement('input'); input.type='file'; input.accept='image/*'; input.onchange = (ev: any) => addImageForPart(idx, cat.key, (ev.target as HTMLInputElement).files); input.click(); }}
                         >Add Image</button>
-                        {img && (
+                        {(img || img2) && (
                           <button className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeImageForPart(idx, cat.key)}>Remove</button>
                         )}
-                        {img ? (
-                          <div className="ml-2 w-16 h-16 border border-zinc-700 rounded overflow-hidden bg-zinc-900 flex items-center justify-center">
-                            <img src={img} alt={`${cat.label}`} className="w-full h-full object-cover" />
+                        {(img || img2) ? (
+                          <div className="ml-2 flex items-center gap-2">
+                            {img && (
+                              <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden bg-zinc-900 flex items-center justify-center">
+                                <img src={img} alt={`${cat.label} Image 1`} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            {img2 && (
+                              <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden bg-zinc-900 flex items-center justify-center">
+                                <img src={img2} alt={`${cat.label} Image 2`} className="w-full h-full object-cover" />
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="ml-2 text-[10px] text-zinc-500">No image</div>
@@ -2844,102 +3044,214 @@ function QuoteGeneratorWindow(): JSX.Element {
                     {/* Category fields */}
                     {cat.key !== 'buildLabor' ? (
                       <div className="grid grid-cols-16 gap-3">
-                        {/* For Peripherals: render stacked line items (Description + Price) with add/remove */}
-                        {cat.key === 'peripherals' ? (
-                          <>
-                            <div className="col-span-16 flex justify-between items-center">
-                              <div className="text-xs text-zinc-400">Add peripherals as individual line items.</div>
-                              <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => addPcExtra(idx)}>+ Add item</button>
-                            </div>
-                            {(Array.isArray((it.dynamic as any)?.pcExtras) ? (it.dynamic as any).pcExtras : []).map((e: any, iExtra: number) => (
-                              <div key={`pc-extra-${iExtra}`} className="col-span-16">
-                                <div className="flex items-end gap-2">
-                                  <div className="w-[220px]">
-                                    <label className="block text-xs text-zinc-400 mb-1">Image</label>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
-                                        {e?.image ? (
-                                          <img src={String(e.image)} alt={String(e?.label || e?.type || 'Peripheral')} className="w-full h-full object-cover" />
-                                        ) : (
-                                          <span className="text-[10px] text-zinc-500">No image</span>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col gap-1">
-                                        <button
-                                          type="button"
-                                          className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                          onClick={() => {
-                                            const input = document.createElement('input');
-                                            input.type = 'file';
-                                            input.accept = 'image/*';
-                                            input.onchange = (ev: any) => addImageForPcExtra(idx, iExtra, (ev.target as HTMLInputElement).files);
-                                            input.click();
-                                          }}
-                                        >
-                                          Add Image
-                                        </button>
-                                        {e?.image && (
-                                          <button
-                                            type="button"
-                                            className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                            onClick={() => removeImageForPcExtra(idx, iExtra)}
-                                          >
-                                            Remove
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <label className="block text-xs text-zinc-400 mb-1">Peripheral</label>
-                                    <ComboInput
-                                      value={String(e?.label || '')}
-                                      onChange={(v) => setSales((s) => ({
-                                        ...s,
-                                        items: s.items.map((x, i2) => {
-                                          if (i2 !== idx) return x;
-                                          const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : [];
-                                          list[iExtra] = { ...(list[iExtra] || {}), label: v };
-                                          return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } };
-                                        }),
-                                      }))}
-                                      options={PERIPHERAL_TYPE_OPTIONS}
-                                      placeholder="Select or type a peripheral..."
-                                    />
-                                    <div className="mt-2">
-                                      <label className="block text-xs text-zinc-400 mb-1">Description</label>
-                                      <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="Optional notes (brand/model, color, etc.)" value={e?.desc || ''} onChange={(ev) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => { if (i2 !== idx) return x; const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : []; list[iExtra] = { ...(list[iExtra] || {}), desc: ev.target.value }; return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } }; }) }))} />
-                                    </div>
-                                  </div>
-                                  <div className="w-32">
-                                    <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                                    <input type="number" step="0.01" min="0" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" placeholder="0.00" value={e?.price || ''} onChange={(ev) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => { if (i2 !== idx) return x; const list = Array.isArray((x.dynamic as any)?.pcExtras) ? [ ...(x.dynamic as any).pcExtras ] : []; list[iExtra] = { ...(list[iExtra] || {}), price: (ev.target as HTMLInputElement).value }; return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } }; }) }))} />
-                                    <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
-                                  </div>
-                                  <div>
-                                    <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removePcExtra(idx, iExtra)}>Remove</button>
-                                  </div>
+                        {(() => {
+                          if (cat.key === 'storage') {
+                            const dyn: any = it.dynamic || {};
+                            const driveTypeOptions = ['M.2 NVMe','SATA SSD','HDD','NVMe (SATA)','eMMC','Integrated','External','Other'];
+                            const storageSizeOptions = ['128 GB','256 GB','500 GB','512 GB','1 TB','2 TB','4 TB','8 TB','Other'];
+                            const enabled = Boolean(dyn.pcSecondaryStorageEnabled);
+                            const secondaryList: any[] = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+                            const setDyn = (key: string, v: any) => setSales((s) => ({
+                              ...s,
+                              items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [key]: v } } : x)),
+                            }));
+                            const setSecondaryList = (nextList: any[]) => setSales((s) => ({
+                              ...s,
+                              items: s.items.map((x, i2) => {
+                                if (i2 !== idx) return x;
+                                const nextDyn: any = { ...(x.dynamic || {}) };
+                                nextDyn.pcSecondaryStorage = nextList;
+                                nextDyn.pcSecondaryStorageEnabled = nextList.length > 0;
+                                nextDyn.secondaryStorage1Type = String(nextList[0]?.type || '');
+                                nextDyn.secondaryStorage1Storage = String(nextList[0]?.size || '');
+                                if (!nextList.length) {
+                                  delete nextDyn.secondaryStorage1Type;
+                                  delete nextDyn.secondaryStorage1Storage;
+                                }
+                                return { ...x, dynamic: nextDyn };
+                              }),
+                            }));
+                            const toggleEnabled = (checked: boolean) => {
+                              if (!checked) {
+                                setSecondaryList([]);
+                                setDyn('pcSecondaryStorageEnabled', false);
+                                return;
+                              }
+                              if (secondaryList.length) {
+                                setDyn('pcSecondaryStorageEnabled', true);
+                                return;
+                              }
+                              setSecondaryList([{ type: '', size: '', specs: '', image: '' }]);
+                            };
+                            const updateSecondaryField = (driveIdx: number, key: 'type' | 'size' | 'specs', value: string) => {
+                              const next = [ ...secondaryList ];
+                              next[driveIdx] = { ...(next[driveIdx] || {}), [key]: value };
+                              setSecondaryList(next);
+                            };
+                            const removeSecondaryDrive = (driveIdx: number) => {
+                              const next = [ ...secondaryList ];
+                              next.splice(driveIdx, 1);
+                              setSecondaryList(next);
+                            };
+
+                            return (
+                              <>
+                                <div className="col-span-8">
+                                  <label className="block text-xs text-zinc-400 mb-1">Primary Drive Type</label>
+                                  <ComboInput value={String(dyn.bootDriveType || dyn.storageType || '')} onChange={(v) => setDyn('bootDriveType', v)} options={driveTypeOptions} placeholder="Select drive type..." />
                                 </div>
+                                <div className="col-span-6">
+                                  <label className="block text-xs text-zinc-400 mb-1">Primary Drive Size</label>
+                                  <ComboInput value={String(dyn.bootDriveStorage || dyn.storageSize || '')} onChange={(v) => setDyn('bootDriveStorage', v)} options={storageSizeOptions} placeholder="Select storage size..." />
+                                </div>
+                                <div className="col-span-2 flex items-end">
+                                  <label className="flex items-center gap-2 text-xs text-zinc-300 select-none">
+                                    <input type="checkbox" className="accent-[#39FF14]" checked={enabled} onChange={(e) => toggleEnabled((e.target as HTMLInputElement).checked)} />
+                                    2nd
+                                  </label>
+                                </div>
+
+                                {enabled && (
+                                  <div className="col-span-16">
+                                    <div className="mt-2 flex items-center justify-between">
+                                      <div className="text-xs text-zinc-400">Secondary storage drives</div>
+                                      <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSecondaryList([ ...secondaryList, { type: '', size: '', specs: '', image: '' } ])}>+ Add additional storage</button>
+                                    </div>
+                                    <div className="mt-2 flex flex-col gap-3">
+                                      {secondaryList.map((d, di) => (
+                                        <div key={`pc-sec-drive-${di}`} className="border border-zinc-800 rounded p-2 bg-zinc-900">
+                                          <div className="grid grid-cols-16 gap-3 items-start">
+                                            <div className="col-span-4">
+                                              <label className="block text-xs text-zinc-400 mb-1">Image</label>
+                                              <div className="flex items-center gap-2">
+                                                <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                                  {d?.image ? (<img src={String(d.image)} alt={`Secondary drive ${di + 1}`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                  <button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files); input.click(); }}>Add Image</button>
+                                                  {d?.image && (<button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeImageForPcSecondaryStorage(idx, di)}>Remove</button>)}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="col-span-6">
+                                              <label className="block text-xs text-zinc-400 mb-1">Drive Type</label>
+                                              <ComboInput value={String(d?.type || '')} onChange={(v) => updateSecondaryField(di, 'type', v)} options={driveTypeOptions} placeholder="Select drive type..." />
+                                            </div>
+                                            <div className="col-span-6">
+                                              <label className="block text-xs text-zinc-400 mb-1">Drive Size</label>
+                                              <ComboInput value={String(d?.size || '')} onChange={(v) => updateSecondaryField(di, 'size', v)} options={storageSizeOptions} placeholder="Select storage size..." />
+                                            </div>
+                                            <div className="col-span-14">
+                                              <label className="block text-xs text-zinc-400 mb-1">Specs / Notes</label>
+                                              <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={String(d?.specs || '')} onChange={(e) => updateSecondaryField(di, 'specs', (e.target as HTMLInputElement).value)} placeholder="Optional: brand/model, read/write, heatsink, etc." />
+                                            </div>
+                                            <div className="col-span-2 flex items-end justify-end">
+                                              <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeSecondaryDrive(di)}>Remove</button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          }
+
+                          if (cat.key === 'peripherals') {
+                            const pcExtras: any[] = Array.isArray((it.dynamic as any)?.pcExtras)
+                              ? (it.dynamic as any).pcExtras
+                              : [];
+                            const updatePcExtra = (extraIdx: number, patch: any) =>
+                              setSales((s) => ({
+                                ...s,
+                                items: s.items.map((x, i2) => {
+                                  if (i2 !== idx) return x;
+                                  const list = Array.isArray((x.dynamic as any)?.pcExtras)
+                                    ? [ ...(x.dynamic as any).pcExtras ]
+                                    : [];
+                                  list[extraIdx] = { ...(list[extraIdx] || {}), ...(patch || {}) };
+                                  return { ...x, dynamic: { ...(x.dynamic || {}), pcExtras: list } };
+                                }),
+                              }));
+                            return (
+                              <>
+                                <div className="col-span-16 flex justify-between items-center">
+                                  <div className="text-xs text-zinc-400">Add peripherals as individual line items.</div>
+                                  <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => addPcExtra(idx)}>+ Add item</button>
+                                </div>
+                                {pcExtras.map((e: any, iExtra: number) => (
+                                  <div key={`pc-extra-${iExtra}`} className="col-span-16">
+                                    <div className="flex items-end gap-2">
+                                      <div className="w-[220px]">
+                                        <label className="block text-xs text-zinc-400 mb-1">Image</label>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                            {e?.image ? (<img src={String(e.image)} alt={String(e?.label || e?.type || 'Peripheral')} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                          </div>
+                                          <div className="flex flex-col gap-1">
+                                            <button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = (ev: any) => addImageForPcExtra(idx, iExtra, (ev.target as HTMLInputElement).files); input.click(); }}>Add Image</button>
+                                            {e?.image && (<button type="button" className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => removeImageForPcExtra(idx, iExtra)}>Remove</button>)}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <label className="block text-xs text-zinc-400 mb-1">Peripheral</label>
+                                        <ComboInput
+                                          value={String(e?.label || '')}
+                                          onChange={(v) => updatePcExtra(iExtra, { label: v })}
+                                          options={PERIPHERAL_TYPE_OPTIONS}
+                                          placeholder="Select or type a peripheral..."
+                                        />
+                                        <div className="mt-2">
+                                          <label className="block text-xs text-zinc-400 mb-1">Description</label>
+                                          <input
+                                            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                            placeholder="Optional notes (brand/model, color, etc.)"
+                                            value={e?.desc || ''}
+                                            onChange={(ev) => updatePcExtra(iExtra, { desc: (ev.target as HTMLInputElement).value })}
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="w-32">
+                                        <label className="block text-xs text-zinc-400 mb-1">Price</label>
+                                        <input
+                                          type="number" step="0.01" min="0"
+                                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                          placeholder="0.00"
+                                          value={e?.price || ''}
+                                          onChange={(ev) => updatePcExtra(iExtra, { price: (ev.target as HTMLInputElement).value })}
+                                        />
+                                        <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
+                                      </div>
+                                      <div>
+                                        <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removePcExtra(idx, iExtra)}>Remove</button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          }
+
+                          return (
+                            <>
+                              {cat.fieldKeys.map(renderField)}
+                              {/* Price field per category */}
+                              <div className="col-span-4">
+                                <label className="block text-xs text-zinc-400 mb-1">Price</label>
+                                <input
+                                  type="number" step="0.01" min="0"
+                                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                  value={(it.dynamic || ({} as any))[`${cat.key}Price`] || ''}
+                                  onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [`${cat.key}Price`]: (e.target as HTMLInputElement).value } } : x)) }))}
+                                  placeholder="0.00"
+                                />
+                                <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                               </div>
-                            ))}
-                          </>
-                        ) : (
-                          <>
-                            {cat.fieldKeys.map(renderField)}
-                            {/* Price field per category */}
-                            <div className="col-span-4">
-                              <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                              <input
-                                type="number" step="0.01" min="0"
-                                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                value={(it.dynamic || ({} as any))[`${cat.key}Price`] || ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [`${cat.key}Price`]: (e.target as HTMLInputElement).value } } : x)) }))}
-                                placeholder="0.00"
-                              />
-                              <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
-                            </div>
-                          </>
-                        )}
+                            </>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div className="grid grid-cols-16 gap-3">
@@ -3998,7 +4310,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                             case 'gpu':
                               return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
                             case 'storage':
-                              return combine([raw, dyn.storageType || dyn.bootDriveType, dyn.storageSize || dyn.bootDriveStorage]) || raw;
+                              return combine([raw, formatStorageSummary(dyn)]) || raw;
                             case 'motherboard':
                               return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
                             case 'psu':
@@ -4376,132 +4688,152 @@ function QuoteGeneratorWindow(): JSX.Element {
                         </>
                       );
                     })()}
-                    {/* Additional device pages: one per remaining device */}
-                    {sales.items.slice(1).map((item, idx) => (
-                      <React.Fragment key={idx}>
-                        <div className="page-break" style={{ height: 1 }} />
-                        <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
-                          {(() => {
-                            const modelForTitle = String(((item.model ?? item.dynamic?.model) || '')).trim();
-                            const title = modelForTitle ? [item.brand, modelForTitle].filter(Boolean).join(' ').trim() : `Device ${idx + 2}`;
-                            const hasSpecs = !!(
-                              (item.dynamic && Object.keys(item.dynamic || {}).length > 0) ||
-                              item.deviceType || (item.dynamic && (item.dynamic as any).device) || item.model || item.condition || item.accessories
-                            );
-                            return (
-                              <div>
-                                <div className="text-base font-semibold mb-2 text-center">{title}</div>
-                                {item.images && item.images.length > 0 && (
-                                  <div className="mb-3 flex gap-3 flex-wrap justify-center items-center">
-                                    {item.images.slice(0, 3).map((src, i) => (
-                                      <img key={i} src={src} alt={`Device ${i + 1}`} style={{ maxHeight: '55mm', maxWidth: '55mm', objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 4, padding: 2 }} />
-                                    ))}
-                                  </div>
-                                )}
-                                {hasSpecs && (
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'end', columnGap: 12 }}>
-                                    <div style={{ gridColumn: 2, textAlign: 'center', justifySelf: 'center' }}>
-                                      <div className="rounded" style={{ fontSize: '12pt', border: '2px solid #FF0000', display: 'inline-block', padding: '12px 14px' }}>
-                                        <div className="font-semibold mb-2" style={{ textAlign: 'center' }}>Specifications</div>
-                                        <table style={{ borderCollapse: 'collapse', display: 'inline-table', width: 'auto', tableLayout: 'auto' }}>
-                                          <tbody>
-                                            {(() => {
-                                              const rows: Array<[string, string]> = [];
-                                              if (item.deviceType) rows.push(['Device Type', item.deviceType]);
-                                              const appleFamily = (item.dynamic || ({} as any)).device as string | undefined;
-                                              if (appleFamily) rows.push(['Apple Family', appleFamily]);
-                                              if (item.model) rows.push(['Model', item.model]);
-                                              if (item.condition) rows.push(['Condition', item.condition]);
-                                              if (item.accessories) rows.push(['Accessories', item.accessories]);
-                                              Object.entries(item.dynamic || {}).forEach(([k, v]) => {
-                                                if (k === 'device') return;
-                                                rows.push([k, String(v ?? '')]);
-                                              });
-                                              const titleCase = (s: string) => {
-                                                return s
-                                                  .replace(/[_-]+/g, ' ')
-                                                  .split(' ')
-                                                  .filter(Boolean)
-                                                  .map((w) => {
-                                                    const up = w.toUpperCase();
-                                                    if (w.length <= 3 && w === up) return up;
-                                                    return w.charAt(0).toUpperCase() + w.slice(1);
-                                                  })
-                                                  .join(' ');
-                                              };
-                                              return rows.map(([k, v]) => (
-                                                <tr key={k}>
-                                                  <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{titleCase(k)}</td>
-                                                  <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{v}</td>
-                                                </tr>
-                                              ));
-                                            })()}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                    {(() => {
-                                      const base = parseFloat((item.price || '').toString());
-                                      if (!isFinite(base) || base <= 0) return null;
-                                      const shown = base * 1.15;
-                                      return (
-                                        <div style={{ gridColumn: 3, justifySelf: 'end' }}>
-                                          <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
-                                            Total (before tax): ${shown.toFixed(2)}
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
-                                )}
-                                {!hasSpecs && (() => {
-                                  const base = parseFloat((item.price || '').toString());
-                                  if (!isFinite(base) || base <= 0) return null;
-                                  const shown = base * 1.15;
-                                  return (
-                                    <div style={{ textAlign: 'right', marginTop: 8 }}>
-                                      <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
-                                        Total (before tax): ${shown.toFixed(2)}
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                                {item.prompt && String(item.prompt).trim().length > 0 && (
-                                  <div style={{ textAlign: 'center', fontSize: '13pt', lineHeight: 1.45, maxWidth: '180mm', marginLeft: 'auto', marginRight: 'auto', marginTop: 18, border: '2px solid #FF0000', borderRadius: 4, padding: '10px 12px' }}>
-                                    {item.prompt}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </React.Fragment>
-                    ))}
-                    {/* Final page: Items Listed + Notes + Terms + Signature */}
+                    {/* Final page: Notes + Checklist + Terms + Signature */}
                     <div className="page-break" style={{ height: 1 }} />
                     {(() => {
-                      // Items Listed page: one checkbox per device model in the quote
+                      const first = sales.items[0];
+                      const isCustom = !!first && /custom/i.test(String(first?.deviceType || (first as any)?.deviceCategory || (first as any)?.category || ''));
+
+                      if (isCustom) {
+                        const dyn: any = first?.dynamic || {};
+                        type Part = { label: string; key: string; desc: string };
+                        const baseParts: Array<{ key: string; label: string }> = [
+                          { key: 'case', label: 'Case' },
+                          { key: 'motherboard', label: 'Motherboard' },
+                          { key: 'cpu', label: 'Processor' },
+                          { key: 'cooling', label: 'Cooling' },
+                          { key: 'ram', label: 'Memory' },
+                          { key: 'gpu', label: 'Graphics Card' },
+                          { key: 'storage', label: 'Storage' },
+                          { key: 'psu', label: 'PSU' },
+                          { key: 'os', label: 'Operating System' },
+                        ];
+                        const combine = (arr: (string | undefined)[]) => arr.filter(Boolean).map(String).map((s) => s.trim()).filter(Boolean).join(' | ');
+                        const buildDesc = (key: string) => {
+                          const raw = String(dyn[key] || dyn[`${key}Info`] || '').trim();
+                          switch (key) {
+                            case 'cpu':
+                              return combine([raw, dyn.cpuGen && `Gen ${dyn.cpuGen}`, dyn.cpuCores && `${dyn.cpuCores} cores`, dyn.cpuClock && `${dyn.cpuClock}`]) || raw;
+                            case 'ram':
+                              return combine([raw, dyn.ramSize && `${dyn.ramSize}`, dyn.ramSpeed && `${dyn.ramSpeed}`, dyn.ramType && `${dyn.ramType}`]) || raw;
+                            case 'gpu':
+                              return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
+                            case 'storage':
+                              return combine([raw, formatStorageSummary(dyn)]) || raw;
+                            case 'motherboard':
+                              return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
+                            case 'psu':
+                              return combine([raw, dyn.psuWatt && `${dyn.psuWatt}W`]) || raw;
+                            case 'cooling':
+                              return combine([raw, dyn.coolingType]) || raw;
+                            case 'case':
+                              return combine([raw, dyn.caseFormFactor && `${dyn.caseFormFactor}`]) || raw;
+                            case 'os':
+                              return raw || dyn.os || '';
+                            default:
+                              return raw;
+                          }
+                        };
+                        const parts: Part[] = [];
+                        baseParts.forEach((p) => {
+                          const desc = buildDesc(p.key);
+                          const priceRaw = Number(dyn[`${p.key}Price`] || 0) || 0;
+                          const img1 = dyn[`${p.key}Image`] || dyn[`${p.key}Image2`];
+                          if (!desc && !priceRaw && !img1) return;
+                          parts.push({ label: p.label, key: p.key, desc });
+                        });
+                        const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
+                        pcExtras.forEach((e: any, i: number) => {
+                          const label = String(e?.label || e?.type || e?.name || '').trim() || 'Peripheral';
+                          const desc = String(e?.desc || '').trim();
+                          const priceRaw = Number(e?.price || 0) || 0;
+                          const img1 = e?.image || e?.image2;
+                          if (!desc && !priceRaw && !img1) return;
+                          parts.push({ label, key: `pc-extra-${i}`, desc });
+                        });
+                        const extras = Array.isArray(dyn.extraParts) ? dyn.extraParts : [];
+                        extras.forEach((e: any) => {
+                          const label = String(e?.name || 'Extra');
+                          const desc = String(e?.desc || '').trim();
+                          const priceRaw = Number(e?.price || 0) || 0;
+                          const img1 = e?.image || e?.image2;
+                          if (!label && !desc && !priceRaw && !img1) return;
+                          parts.push({ label, key: `extra-${label}`, desc });
+                        });
+
+                        return (
+                          <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
+                            <div style={{ paddingTop: 8, minHeight: '273mm', display: 'flex', flexDirection: 'column' }}>
+                              <div style={{ fontWeight: 700, fontSize: '13pt', marginBottom: 10, textAlign: 'center' }}>Client Notes & Parts Approval</div>
+
+                              <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '12pt' }}>Client Notes</div>
+                              <textarea placeholder="Notes, requested changes, questions, or preferences..." style={{ width: '100%', minHeight: '60mm', border: '2px solid #FF0000', borderRadius: 4, padding: 10, fontSize: '11pt', resize: 'vertical' } as any} />
+
+                              <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Parts Approval Checklist</div>
+                              <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 10 }}>
+                                <div style={{ fontSize: '10.5pt', color: '#444', marginBottom: 8 }}>Check the components you approve. Leave items unchecked if you do not approve them yet or require changes.</div>
+                                <div style={{ columns: 2, columnGap: 16 } as any}>
+                                  {parts.length ? parts.map((p, i) => (
+                                    <label key={p.key + ':' + i} style={{ display: 'block', breakInside: 'avoid', marginBottom: 6, fontSize: '10.5pt', lineHeight: 1.25 } as any}>
+                                      <input type="checkbox" style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 8 }} />
+                                      <span style={{ verticalAlign: 'middle' }}><b>{p.label}</b>{p.desc ? ` - ${p.desc}` : ''}</span>
+                                    </label>
+                                  )) : (<div style={{ color: '#666' }}>No parts listed.</div>)}
+                                </div>
+                              </div>
+
+                              <div style={{ marginTop: 'auto' }}>
+                                <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Terms and Conditions</div>
+                                <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, fontSize: '11pt', lineHeight: 1.45 }}>
+                                  <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
+                                    <li style={{ marginBottom: 6 }}><b>Quote Validity, Price Changes & Availability:</b> Quoted pricing is provided as of the date issued, is subject to parts availability and vendor/distributor price changes, and may change prior to purchase. Any substitutions must be approved by the client before purchase.</li>
+                                    <li style={{ marginBottom: 6 }}><b>Warranty, Exclusions & Client-Caused Damage:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, misuse/accidents, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories. Damage occurring after delivery/pickup is the client’s responsibility and is not covered.</li>
+                                    <li style={{ marginBottom: 0 }}><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
+                                  </ul>
+                                </div>
+
+                                <div style={{ marginTop: 16 }}>
+                                  <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <div style={{ fontWeight: 400, fontSize: '12pt', whiteSpace: 'nowrap' }}>Signature</div>
+                                        <div style={{ borderBottom: '2px solid #000', height: 24, flex: 1 }} />
+                                      </div>
+                                    </div>
+                                    <div style={{ width: 220 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <div style={{ fontWeight: 400, fontSize: '12pt', whiteSpace: 'nowrap' }}>Date</div>
+                                        <div style={{ borderBottom: '2px solid #000', height: 24, flex: 1 }} />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       const labels = sales.items.map((it, idx) => {
                         const modelForItem = String(((it.model ?? it.dynamic?.model) || '')).trim();
                         const label = (modelForItem ? [it.brand, modelForItem].filter(Boolean).join(' ').trim() : '') || `Item ${idx + 1}`;
                         return label;
                       });
+
                       return (
                         <div className="print-page" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', border: '3px solid #FF0000', borderRadius: 8, padding: '12mm' }}>
                           <div style={{ paddingTop: 8, minHeight: '273mm', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '12pt' }}>Notes</div>
-                            <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 10, height: 200 }}>
-                              <div style={{ height: 180 }} />
-                            </div>
+                            <textarea placeholder="Notes, requested changes, questions, or preferences..." style={{ width: '100%', height: '52mm', border: '2px solid #FF0000', borderRadius: 4, padding: 10, fontSize: '11pt', resize: 'vertical' } as any} />
 
                             <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Checklist</div>
                             <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 10, fontSize: '11pt', lineHeight: 1.35 }}>
                               <div style={{ columns: 2, columnGap: 16 } as any}>
                                 {labels.map((l, i) => (
-                                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                                    <div style={{ width: 14, height: 14, border: '1px solid #000', marginTop: 2, borderRadius: 2 }} />
+                                  <label key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6, breakInside: 'avoid' } as any}>
+                                    <input type="checkbox" style={{ width: 14, height: 14, marginTop: 2 }} />
                                     <span>{l || `Item ${i + 1}`}</span>
-                                  </div>
+                                  </label>
                                 ))}
                               </div>
                             </div>
@@ -4510,11 +4842,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                               <div style={{ fontWeight: 700, marginTop: 14, marginBottom: 6, fontSize: '12pt' }}>Terms and Conditions</div>
                               <div style={{ border: '2px solid #FF0000', borderRadius: 4, padding: 12, fontSize: '11pt', lineHeight: 1.45 }}>
                                 <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
-                                  <li style={{ marginBottom: 6 }}><b>Quote Validity & Availability:</b> Pricing is provided as of the date issued and may change prior to purchase.</li>
-                                  <li style={{ marginBottom: 6 }}><b>Warranty & Exclusions:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Quote Validity, Price Changes & Availability:</b> Pricing is provided as of the date issued, is subject to parts availability and vendor/distributor price changes, and may change prior to purchase. Any substitutions must be approved by the client before purchase.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Warranty, Exclusions & Client-Caused Damage:</b> 90-day limited hardware warranty for defects under normal use; exclusions include physical/impact damage, liquid exposure, misuse/accidents, unauthorized repairs/modifications, abuse/neglect, loss/theft, and third-party accessories. Damage occurring after delivery/pickup is the client’s responsibility and is not covered.</li>
                                   <li style={{ marginBottom: 6 }}><b>Data & Software:</b> Client is responsible for backups and licensing. Service may require updates/reinstall/reset; we are not responsible for data loss.</li>
                                   <li style={{ marginBottom: 6 }}><b>Deposits & Special Orders:</b> Deposits may be required to order parts/products. Special-order items may be non-returnable and subject to supplier restocking policies.</li>
-                                  <li style={{ marginBottom: 6 }}><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies and may incur restocking/processing fees. Labor and time spent is non-refundable.</li>
+                                  <li style={{ marginBottom: 6 }}><b>Returns & Cancellations:</b> Returns/cancellations are subject to manufacturer/vendor policies. Labor and time spent is non-refundable.</li>
                                   <li style={{ marginBottom: 6 }}><b>Taxes & Fees:</b> Sales tax and applicable fees may apply at checkout; printed totals may be shown before tax.</li>
                                   <li style={{ marginBottom: 0 }}><b>Limitation of Liability:</b> Liability is limited to amounts paid; incidental or consequential damages are excluded where permitted by law.</li>
                                 </ul>

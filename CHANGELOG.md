@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.23 (2026-02-16)
+- Custom PC quote builder: support multiple images per part category.
+- Storage UX: optional secondary storage section + multiple secondary drives.
+- Print Preview + HTML: Custom PC parts checklist now mirrors the entered parts list and includes a client notes area.
+- Terms and Conditions: expanded slightly for parts availability/price changes and client-caused damage.
+- Email/HTML sending: interactive HTML no longer depends on local logo files (safer when emailed as an attachment).
+
 ## v0.2.16 (2026-02-14)
 - Work order checkout: "Close window" now closes only non-main windows (prevents the whole app from exiting).
 - Customer Receipt: print receipt now auto-prints to the default printer (silent) on checkout.
