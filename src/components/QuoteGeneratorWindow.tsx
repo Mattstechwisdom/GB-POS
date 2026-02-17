@@ -338,7 +338,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         { key: 'cooling', label: 'Cooling' },
         { key: 'ram', label: 'Memory' },
         { key: 'gpu', label: 'Graphics Card' },
-        { key: 'storage', label: 'Storage' },
+        { key: 'storage', label: 'Primary Storage' },
         { key: 'psu', label: 'PSU' },
         { key: 'os', label: 'Operating System' },
       ];
@@ -354,7 +354,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           case 'gpu':
             return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
           case 'storage':
-            return combine([raw, formatStorageSummary(dyn)]) || raw;
+            return combine([raw, formatPrimaryStorageSummary(dyn)]) || raw;
           case 'motherboard':
             return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
           case 'psu':
@@ -379,6 +379,20 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
         if (!desc && !priceRaw && !image && !image2) return; // skip completely empty
         parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+      });
+
+      // Secondary + Additional Storage as separate priced parts
+      const secList = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+      secList.forEach((d: any, i: number) => {
+        const type = String(d?.type || '').trim();
+        const size = String(d?.size || '').trim();
+        const desc = [type, size].filter(Boolean).join(' ').trim();
+        const priceRaw = Number(d?.price || 0) || 0;
+        const image = d?.image ? String(d.image) : undefined;
+        const image2 = d?.image2 ? String(d.image2) : undefined;
+        if (!desc && !priceRaw && !image && !image2) return;
+        const label = i === 0 ? 'Secondary Storage' : 'Additional Storage';
+        parts.push({ label, key: `pc-storage-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
 
       // Peripherals (Custom PC) - render as line items directly under OS
@@ -1398,7 +1412,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         { key: 'cooling', label: 'Cooling' },
         { key: 'ram', label: 'Memory' },
         { key: 'gpu', label: 'Graphics Card' },
-        { key: 'storage', label: 'Storage' },
+        { key: 'storage', label: 'Primary Storage' },
         { key: 'psu', label: 'PSU' },
         { key: 'os', label: 'Operating System' },
       ];
@@ -1414,7 +1428,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           case 'gpu':
             return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
           case 'storage':
-            return combine([raw, formatStorageSummary(dyn)]) || raw;
+            return combine([raw, formatPrimaryStorageSummary(dyn)]) || raw;
           case 'motherboard':
             return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
           case 'psu':
@@ -1439,6 +1453,20 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
         if (!desc && !priceRaw && !image && !image2) return;
         parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+      });
+
+      // Secondary + Additional Storage as separate priced parts
+      const secList2 = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+      secList2.forEach((d: any, i: number) => {
+        const type = String(d?.type || '').trim();
+        const size = String(d?.size || '').trim();
+        const desc = [type, size].filter(Boolean).join(' ').trim();
+        const priceRaw = Number(d?.price || 0) || 0;
+        const image = d?.image ? String(d.image) : undefined;
+        const image2 = d?.image2 ? String(d.image2) : undefined;
+        if (!desc && !priceRaw && !image && !image2) return;
+        const label = i === 0 ? 'Secondary Storage' : 'Additional Storage';
+        parts.push({ label, key: `pc-storage-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
       });
       const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
       pcExtras.forEach((e: any, i: number) => {
@@ -2274,6 +2302,24 @@ function QuoteGeneratorWindow(): JSX.Element {
     }
   }
 
+  function formatPrimaryStorageSummary(dyn: any): string {
+    try {
+      const type = String(dyn.storageType || dyn.bootDriveType || '').trim();
+      const size = String(dyn.storageSize || dyn.bootDriveStorage || '').trim();
+      const specs = String(dyn.storageSpecs || dyn.bootDriveSpecs || '').trim();
+
+      // Avoid printing placeholder rows
+      if (!size && !specs) return '';
+
+      const base = [type, size].filter(Boolean).join(' ').trim();
+      if (!base && !specs) return '';
+      if (!base) return specs;
+      return specs ? `${base} (${specs})` : base;
+    } catch {
+      return '';
+    }
+  }
+
   // Custom Build / Custom PC category images: support up to 2 images (Image + Image2)
   async function addImageForPart(idx: number, partKey: string, fileList: FileList | null, which?: 1 | 2) {
     if (!fileList || fileList.length === 0) return;
@@ -2341,7 +2387,10 @@ function QuoteGeneratorWindow(): JSX.Element {
         const dyn = { ...(x.dynamic || {}) } as any;
         const list = Array.isArray(dyn.pcSecondaryStorage) ? [ ...dyn.pcSecondaryStorage ] : [];
         const cur = { ...(list[driveIdx] || {}) };
-        if ((which || 1) === 2) cur.image2 = dataUrl;
+        const cur1 = String(cur.image || '').trim();
+        const cur2 = String(cur.image2 || '').trim();
+        const target: 1 | 2 = which || (!cur1 ? 1 : (!cur2 ? 2 : 2));
+        if (target === 2) cur.image2 = dataUrl;
         else cur.image = dataUrl;
         list[driveIdx] = cur;
         dyn.pcSecondaryStorage = list;
@@ -3149,7 +3198,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         { key: 'cooling', label: 'Cooling', fieldKeys: ['cooling'] },
         { key: 'ram', label: 'Memory', fieldKeys: ['ram','ramSpeed'] },
         { key: 'gpu', label: 'Graphics Card', fieldKeys: ['gpuBrand','gpuModel','gpuVram'] },
-        { key: 'storage', label: 'Storage', fieldKeys: ['bootDriveType','bootDriveStorage','secondaryStorage1Type','secondaryStorage1Storage'] },
+        { key: 'storage', label: 'Primary Storage', fieldKeys: ['bootDriveType','bootDriveStorage','secondaryStorage1Type','secondaryStorage1Storage'] },
         { key: 'psu', label: 'PSU', fieldKeys: ['psu'] },
         { key: 'os', label: 'Operating System', fieldKeys: ['os'] },
         // Peripherals: now a simple text field
@@ -3299,9 +3348,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 setDyn('pcSecondaryStorageEnabled', true);
                                 return;
                               }
-                              setSecondaryList([{ type: '', size: '', specs: '', image: '', image2: '' }]);
+                              setSecondaryList([{ type: '', size: '', price: '', image: '', image2: '' }]);
                             };
-                            const updateSecondaryField = (driveIdx: number, key: 'type' | 'size' | 'specs', value: string) => {
+                            const updateSecondaryField = (driveIdx: number, key: 'type' | 'size' | 'price', value: string) => {
                               const next = [ ...secondaryList ];
                               next[driveIdx] = { ...(next[driveIdx] || {}), [key]: value };
                               setSecondaryList(next);
@@ -3315,22 +3364,22 @@ function QuoteGeneratorWindow(): JSX.Element {
                             return (
                               <>
                                 <div className="col-span-8">
-                                  <label className="block text-xs text-zinc-400 mb-1">Primary Drive Type</label>
+                                  <label className="block text-xs text-zinc-400 mb-1">Description / Type</label>
                                   <ComboInput value={String(dyn.bootDriveType || dyn.storageType || '')} onChange={(v) => setDyn('bootDriveType', v)} options={driveTypeOptions} placeholder="Select drive type..." />
                                 </div>
                                 <div className="col-span-6">
-                                  <label className="block text-xs text-zinc-400 mb-1">Primary Drive Size</label>
+                                  <label className="block text-xs text-zinc-400 mb-1">Amount</label>
                                   <ComboInput value={String(dyn.bootDriveStorage || dyn.storageSize || '')} onChange={(v) => setDyn('bootDriveStorage', v)} options={storageSizeOptions} placeholder="Select storage size..." />
                                 </div>
                                 <div className="col-span-2 flex items-end">
                                   <label className="flex items-center gap-2 text-xs text-zinc-300 select-none">
                                     <input type="checkbox" className="accent-[#39FF14]" checked={enabled} onChange={(e) => toggleEnabled((e.target as HTMLInputElement).checked)} />
-                                    2nd
+                                    Secondary
                                   </label>
                                 </div>
 
                                 <div className="col-span-12">
-                                  <label className="block text-xs text-zinc-400 mb-1">Storage Images (Primary)</label>
+                                  <label className="block text-xs text-zinc-400 mb-1">Images</label>
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
@@ -3339,21 +3388,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                         const input = document.createElement('input');
                                         input.type = 'file';
                                         input.accept = 'image/*';
-                                        input.onchange = (ev: any) => addImageForPart(idx, 'storage', (ev.target as HTMLInputElement).files, 1);
+                                        input.onchange = (ev: any) => addImageForPart(idx, 'storage', (ev.target as HTMLInputElement).files);
                                         input.click();
                                       }}
-                                    >Image 1</button>
-                                    <button
-                                      type="button"
-                                      className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                      onClick={() => {
-                                        const input = document.createElement('input');
-                                        input.type = 'file';
-                                        input.accept = 'image/*';
-                                        input.onchange = (ev: any) => addImageForPart(idx, 'storage', (ev.target as HTMLInputElement).files, 2);
-                                        input.click();
-                                      }}
-                                    >Image 2</button>
+                                    >Add Image</button>
                                     {(storageImg1 || storageImg2) && (
                                       <button
                                         type="button"
@@ -3386,76 +3424,87 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                                 {enabled && (
                                   <div className="col-span-16">
-                                    <div className="mt-2 flex items-center justify-between">
-                                      <div className="text-xs text-zinc-400">Secondary storage drives</div>
-                                      <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSecondaryList([ ...secondaryList, { type: '', size: '', specs: '', image: '', image2: '' } ])}>+ Add additional storage</button>
+                                    <div className="mt-3 flex items-center justify-end">
+                                      <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={() => setSecondaryList([ ...secondaryList, { type: '', size: '', price: '', image: '', image2: '' } ])}>+ Add additional storage</button>
                                     </div>
-                                    <div className="mt-2 flex flex-col gap-3">
-                                      {secondaryList.map((d, di) => (
-                                        <div key={`pc-sec-drive-${di}`} className="border border-zinc-800 rounded p-2 bg-zinc-900">
-                                          <div className="grid grid-cols-16 gap-3 items-start">
-                                            <div className="col-span-4">
-                                              <label className="block text-xs text-zinc-400 mb-1">Images</label>
-                                              <div className="flex items-start gap-2">
-                                                <div className="flex items-center gap-2">
-                                                  <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
-                                                    {d?.image ? (<img src={String(d.image)} alt={`Secondary drive ${di + 1} Image 1`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+
+                                    <div className="mt-2 flex flex-col gap-2">
+                                      {secondaryList.map((d, di) => {
+                                        const cardKey = `storage-drive-${di}`;
+                                        const cardOpen = (openCats[idxKey] && (openCats as any)[idxKey]?.[cardKey]) ?? true;
+                                        const title = di === 0 ? 'Secondary Storage' : 'Additional Storage';
+                                        return (
+                                          <div key={`pc-sec-drive-${di}`}>
+                                            <button
+                                              type="button"
+                                              className="w-full flex items-center justify-between bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-left"
+                                              onClick={() => toggleCat(cardKey)}
+                                            >
+                                              <span className="text-sm font-semibold text-zinc-200">{title}</span>
+                                              <span className="text-zinc-400 text-xs">{cardOpen ? 'v' : '>'}</span>
+                                            </button>
+                                            {cardOpen && (
+                                              <div className="mt-2 border border-zinc-700 rounded p-2 bg-zinc-900">
+                                                <div className="grid grid-cols-16 gap-3 items-start">
+                                                  <div className="col-span-12">
+                                                    <label className="block text-xs text-zinc-400 mb-1">Images</label>
+                                                    <div className="flex items-center gap-2">
+                                                      <button
+                                                        type="button"
+                                                        className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                                        onClick={() => {
+                                                          const input = document.createElement('input');
+                                                          input.type = 'file';
+                                                          input.accept = 'image/*';
+                                                          input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files);
+                                                          input.click();
+                                                        }}
+                                                      >Add Image</button>
+                                                      {(d?.image || d?.image2) && (
+                                                        <button
+                                                          type="button"
+                                                          className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
+                                                          onClick={() => removeImageForPcSecondaryStorage(idx, di)}
+                                                        >Remove</button>
+                                                      )}
+                                                      <div className="ml-2 flex items-center gap-2">
+                                                        <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                                          {d?.image ? (<img src={String(d.image)} alt={`${title} Image 1`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                        </div>
+                                                        <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
+                                                          {d?.image2 ? (<img src={String(d.image2)} alt={`${title} Image 2`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                        </div>
+                                                      </div>
+                                                    </div>
                                                   </div>
-                                                  <div className="w-16 h-16 border border-zinc-700 rounded overflow-hidden flex items-center justify-center bg-zinc-900">
-                                                    {d?.image2 ? (<img src={String(d.image2)} alt={`Secondary drive ${di + 1} Image 2`} className="w-full h-full object-cover" />) : (<span className="text-[10px] text-zinc-500">No image</span>)}
+                                                  <div className="col-span-8">
+                                                    <label className="block text-xs text-zinc-400 mb-1">Description / Type</label>
+                                                    <ComboInput value={String(d?.type || '')} onChange={(v) => updateSecondaryField(di, 'type', v)} options={driveTypeOptions} placeholder="Select drive type..." />
                                                   </div>
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                  <button
-                                                    type="button"
-                                                    className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                                    onClick={() => {
-                                                      const input = document.createElement('input');
-                                                      input.type = 'file';
-                                                      input.accept = 'image/*';
-                                                      input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files, 1);
-                                                      input.click();
-                                                    }}
-                                                  >Image 1</button>
-                                                  <button
-                                                    type="button"
-                                                    className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                                    onClick={() => {
-                                                      const input = document.createElement('input');
-                                                      input.type = 'file';
-                                                      input.accept = 'image/*';
-                                                      input.onchange = (ev: any) => addImageForPcSecondaryStorage(idx, di, (ev.target as HTMLInputElement).files, 2);
-                                                      input.click();
-                                                    }}
-                                                  >Image 2</button>
-                                                  {(d?.image || d?.image2) && (
-                                                    <button
-                                                      type="button"
-                                                      className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded"
-                                                      onClick={() => removeImageForPcSecondaryStorage(idx, di)}
-                                                    >Remove</button>
-                                                  )}
+                                                  <div className="col-span-6">
+                                                    <label className="block text-xs text-zinc-400 mb-1">Amount</label>
+                                                    <ComboInput value={String(d?.size || '')} onChange={(v) => updateSecondaryField(di, 'size', v)} options={storageSizeOptions} placeholder="Select storage size..." />
+                                                  </div>
+                                                  <div className="col-span-2">
+                                                    <label className="block text-xs text-zinc-400 mb-1">Price</label>
+                                                    <input
+                                                      type="number" step="0.01" min="0"
+                                                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                                      value={String(d?.price || '')}
+                                                      onChange={(e) => updateSecondaryField(di, 'price', (e.target as HTMLInputElement).value)}
+                                                      placeholder="0.00"
+                                                    />
+                                                    <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
+                                                  </div>
+                                                  <div className="col-span-16 flex justify-end">
+                                                    <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeSecondaryDrive(di)}>Remove</button>
+                                                  </div>
                                                 </div>
                                               </div>
-                                            </div>
-                                            <div className="col-span-6">
-                                              <label className="block text-xs text-zinc-400 mb-1">Drive Type</label>
-                                              <ComboInput value={String(d?.type || '')} onChange={(v) => updateSecondaryField(di, 'type', v)} options={driveTypeOptions} placeholder="Select drive type..." />
-                                            </div>
-                                            <div className="col-span-6">
-                                              <label className="block text-xs text-zinc-400 mb-1">Drive Size</label>
-                                              <ComboInput value={String(d?.size || '')} onChange={(v) => updateSecondaryField(di, 'size', v)} options={storageSizeOptions} placeholder="Select storage size..." />
-                                            </div>
-                                            <div className="col-span-14">
-                                              <label className="block text-xs text-zinc-400 mb-1">Specs / Notes</label>
-                                              <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={String(d?.specs || '')} onChange={(e) => updateSecondaryField(di, 'specs', (e.target as HTMLInputElement).value)} placeholder="Optional: brand/model, read/write, heatsink, etc." />
-                                            </div>
-                                            <div className="col-span-2 flex items-end justify-end">
-                                              <button type="button" className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeSecondaryDrive(di)}>Remove</button>
-                                            </div>
+                                            )}
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}
@@ -4621,7 +4670,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                           { key: 'cooling', label: 'Cooling' },
                           { key: 'ram', label: 'Memory' },
                           { key: 'gpu', label: 'Graphics Card' },
-                          { key: 'storage', label: 'Storage' },
+                          { key: 'storage', label: 'Primary Storage' },
                           { key: 'psu', label: 'PSU' },
                           { key: 'os', label: 'Operating System' },
                         ];
@@ -4637,7 +4686,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                             case 'gpu':
                               return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
                             case 'storage':
-                              return combine([raw, formatStorageSummary(dyn)]) || raw;
+                              return combine([raw, formatPrimaryStorageSummary(dyn)]) || raw;
                             case 'motherboard':
                               return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
                             case 'psu':
@@ -4662,6 +4711,20 @@ function QuoteGeneratorWindow(): JSX.Element {
                           if (!image2 && imagesArr[1]) image2 = String(imagesArr[1]);
                           if (!desc && !priceRaw && !image && !image2) return;
                           parts.push({ label: p.label, key: p.key, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
+                        });
+
+                        // Secondary + Additional Storage as separate priced parts
+                        const secList3 = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+                        secList3.forEach((d: any, i: number) => {
+                          const type = String(d?.type || '').trim();
+                          const size = String(d?.size || '').trim();
+                          const desc = [type, size].filter(Boolean).join(' ').trim();
+                          const priceRaw = Number(d?.price || 0) || 0;
+                          const image = d?.image ? String(d.image) : undefined;
+                          const image2 = d?.image2 ? String(d.image2) : undefined;
+                          if (!desc && !priceRaw && !image && !image2) return;
+                          const label = i === 0 ? 'Secondary Storage' : 'Additional Storage';
+                          parts.push({ label, key: `pc-storage-${i}`, desc, priceRaw, priceMarked: priceRaw * 1.05, image, image2 });
                         });
 
                         // Peripherals (Custom PC) - render as line items directly under OS
@@ -5031,7 +5094,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                           { key: 'cooling', label: 'Cooling' },
                           { key: 'ram', label: 'Memory' },
                           { key: 'gpu', label: 'Graphics Card' },
-                          { key: 'storage', label: 'Storage' },
+                          { key: 'storage', label: 'Primary Storage' },
                           { key: 'psu', label: 'PSU' },
                           { key: 'os', label: 'Operating System' },
                         ];
@@ -5046,7 +5109,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                             case 'gpu':
                               return combine([raw, dyn.gpuModel || dyn.gpu, dyn.gpuVram && `${dyn.gpuVram}`]) || raw;
                             case 'storage':
-                              return combine([raw, formatStorageSummary(dyn)]) || raw;
+                              return combine([raw, formatPrimaryStorageSummary(dyn)]) || raw;
                             case 'motherboard':
                               return combine([raw, dyn.moboChipset && `Chipset: ${dyn.moboChipset}`, dyn.formFactor && `${dyn.formFactor}`]) || raw;
                             case 'psu':
@@ -5068,6 +5131,19 @@ function QuoteGeneratorWindow(): JSX.Element {
                           const img1 = dyn[`${p.key}Image`] || dyn[`${p.key}Image2`];
                           if (!desc && !priceRaw && !img1) return;
                           parts.push({ label: p.label, key: p.key, desc });
+                        });
+
+                        // Secondary + Additional Storage checklist items
+                        const secList4 = Array.isArray(dyn.pcSecondaryStorage) ? dyn.pcSecondaryStorage : [];
+                        secList4.forEach((d: any, i: number) => {
+                          const type = String(d?.type || '').trim();
+                          const size = String(d?.size || '').trim();
+                          const desc = [type, size].filter(Boolean).join(' ').trim();
+                          const priceRaw = Number(d?.price || 0) || 0;
+                          const img1 = d?.image || d?.image2;
+                          if (!desc && !priceRaw && !img1) return;
+                          const label = i === 0 ? 'Secondary Storage' : 'Additional Storage';
+                          parts.push({ label, key: `pc-storage-${i}`, desc });
                         });
                         const pcExtras = Array.isArray(dyn.pcExtras) ? dyn.pcExtras : [];
                         pcExtras.forEach((e: any, i: number) => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.27 (2026-02-17)
+- Custom PC Storage UI: renamed Storage to Primary Storage and updated labels to match other dropdowns.
+- Primary/Secondary/Additional storage: one "Add Image" button (up to 2 images) + consistent card layout.
+- Secondary/Additional storage: now supports pricing and prints as separate line items.
+
 ## v0.2.26 (2026-02-16)
 - Custom PC Storage: added the missing Storage price field.
 - Custom PC Storage: primary storage now supports 2 images (and the image controls no longer disappear when enabling secondary storage).
