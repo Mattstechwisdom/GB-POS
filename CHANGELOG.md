@@ -65,3 +65,9 @@
 ## v0.2.21 (2026-02-16)
 - fix: devices/repairs edit UI + delete category
 
+## v0.2.22 (2026-02-17)
+- fix: clean up quote generator labels
+- feat: right-click context menus for lists
+- ui: tidy device category actions
+- fix: stack source + url fields
+
