@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.29 (2026-02-18)
+- Added Quick Sale button next to Generate Quote.
+- Quick Sale: enter description + amount, optionally apply 8% tax, then checkout using the standard Cash/Card checkout modal.
+- Quick Sale saves into Sales list as "Quick Sale" with the amount collected.
+
 ## v0.2.28 (2026-02-17)
 - Performance hotfix: main-process JSON DB now uses an in-memory cache to avoid repeated synchronous read/parse.
 - Performance hotfix: DB writes are coalesced and written asynchronously to reduce UI lag during frequent saves.
