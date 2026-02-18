@@ -17,6 +17,7 @@ function asMoney(raw: string): number {
 }
 
 const QuickSaleWindow: React.FC = () => {
+  const api = (window as any)?.api as any;
   const [description, setDescription] = useState<string>('');
   const [amountStr, setAmountStr] = useState<string>('0.00');
   const [taxed, setTaxed] = useState<boolean>(true);
@@ -33,7 +34,6 @@ const QuickSaleWindow: React.FC = () => {
 
   async function closeSelf() {
     try {
-      const api = (window as any).api;
       if (api?.closeSelfWindow) await api.closeSelfWindow({ focusMain: true });
       else window.close();
     } catch {
@@ -45,7 +45,10 @@ const QuickSaleWindow: React.FC = () => {
     if (!canCheckout) return;
     setBusy(true);
     try {
-      const api = (window as any).api;
+      if (!api?.openCheckout) {
+        alert('Quick Sale requires the desktop app (window.api unavailable).');
+        return;
+      }
       const amountDue = totals.total || 0;
       const result = await api.openCheckout({ amountDue });
       if (!result) return;
@@ -71,7 +74,7 @@ const QuickSaleWindow: React.FC = () => {
         createdAt: now,
         updatedAt: now,
         customerId: 0,
-        customerName: '',
+        customerName: 'Quick Sale',
         customerPhone: '',
         itemDescription: description.trim(),
         quantity: 1,
@@ -135,10 +138,23 @@ const QuickSaleWindow: React.FC = () => {
       }
     } catch (e) {
       console.error('QuickSale checkout failed', e);
-      alert('Checkout failed. See console.');
+      alert('Checkout failed. See console.\n\nTip: if this window was opened outside the desktop app, it will not have checkout support.');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!api) {
+    return (
+      <div className="min-h-screen bg-zinc-900 text-zinc-100 font-sans p-6">
+        <div className="max-w-xl mx-auto bg-zinc-950/40 border border-zinc-800 rounded p-5">
+          <div className="text-xl font-bold text-[#39FF14]">Quick Sale</div>
+          <div className="text-sm text-zinc-300 mt-2">
+            Quick Sale requires the Electron desktop app (missing <code>window.api</code> bridge).
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

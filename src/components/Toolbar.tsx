@@ -77,17 +77,14 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
           onClick={async () => {
             try {
               const api = (window as any).api;
-              if (api && typeof api.openQuickSale === 'function') await api.openQuickSale();
-              else {
-                const url = window.location.origin + '/?quickSale=1';
-                window.open(url, '_blank', 'width=920,height=640');
+              if (api && typeof api.openQuickSale === 'function') {
+                await api.openQuickSale();
+                return;
               }
+              alert('Quick Sale requires the desktop app (update needed).');
             } catch (e) {
               console.error('openQuickSale failed, falling back to window.open', e);
-              try {
-                const url = window.location.origin + '/?quickSale=1';
-                window.open(url, '_blank', 'width=920,height=640');
-              } catch {}
+              try { alert('Quick Sale failed to open. See console.'); } catch {}
             }
           }}
         >
