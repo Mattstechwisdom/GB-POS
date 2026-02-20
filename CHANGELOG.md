@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.30 (2026-02-20)
+- Quote Generator: added Customer Email field to client info.
+- Send Quote Email: email body is edited/saved from the Send Email window; Email Settings is now focused on Gmail app password + sender name.
+- Send Quote Email: recipient auto-prefills from Customer Email when available.
+
 ## v0.2.29 (2026-02-18)
 - Added Quick Sale button next to Generate Quote.
 - Quick Sale: enter description + amount, optionally apply 8% tax, then checkout using the standard Cash/Card checkout modal.

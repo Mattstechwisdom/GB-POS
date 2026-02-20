@@ -23,6 +23,7 @@ type SaleItem = {
 type SalesState = {
   customerName?: string;
   customerPhone?: string;
+  customerEmail?: string;
   notes?: string;
   items: SaleItem[];
 };
@@ -31,6 +32,7 @@ type RepairLine = { description: string; partPrice?: string | number; laborPrice
 type RepairsState = {
   customerName?: string;
   customerPhone?: string;
+  customerEmail?: string;
   notes?: string;
   lines: RepairLine[];
   selectedCategoryId?: string;
@@ -150,6 +152,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [emailTo, setEmailTo] = useState('');
   const [emailFromName, setEmailFromName] = useState('GadgetBoy Repair & Retail');
   const [emailBodyTemplate, setEmailBodyTemplate] = useState('');
+  const [emailBodyDraft, setEmailBodyDraft] = useState('');
+  const [emailBodySavingDefault, setEmailBodySavingDefault] = useState(false);
   const [emailAppPassword, setEmailAppPassword] = useState('');
   const [emailHasPassword, setEmailHasPassword] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
@@ -189,10 +193,20 @@ function QuoteGeneratorWindow(): JSX.Element {
     } catch { return { parts: 0, labor: 0, total: 0 } as any; }
   }, [repairs]);
 
+  function getBuiltInQuoteEmailBody(): string {
+    return (
+      'Attached is the following quote for the product(s) you have requested. ' +
+      'Feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!\n\n' +
+      'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap "Open in Browser" (Safari/Chrome). ' +
+      'After signing, use "Share PDF" to email the signed PDF back to us.'
+    );
+  }
+
   function buildInteractiveSalesHtml(logoDataUrl?: string): string {
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const cust = `${sales.customerName || ''}`.trim();
     const phone = `${sales.customerPhone || ''}`.trim();
+    const email = `${sales.customerEmail || ''}`.trim();
     const ts = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const mm = pad(ts.getMonth() + 1), dd = pad(ts.getDate()), yy = String(ts.getFullYear()).slice(-2);
@@ -439,7 +453,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:11pt">2822 Devine Street, Columbia, SC 29205</div>
             <div style="font-size:11pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
+            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}${email ? ` | <b>Email:</b> ${esc(email)}` : ''}</div>
             <div style="font-size:11pt; color:#555">Generated: ${esc(nowDate)}</div>
           </div>
         </div>`;
@@ -976,7 +990,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div style=\"font-size:13pt; font-weight:700\">GADGETBOY Repair & Retail</div>
               <div style=\"font-size:12pt\">2822 Devine Street, Columbia, SC 29205</div>
               <div style=\"font-size:12pt\">(803) 708-0101 | gadgetboysc@gmail.com</div>
-              <div style=\"margin-top:8px; font-size:12pt\"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
+              <div style=\"margin-top:8px; font-size:12pt\"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}${email ? ` | <b>Email:</b> ${esc(email)}` : ''}</div>
               <div style=\"font-size:12pt; color:#666\">Generated: ${esc(nowDate)}</div>
             </div>
           </div>
@@ -1505,7 +1519,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:11pt">2822 Devine Street, Columbia, SC 29205</div>
             <div style="font-size:11pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
+            <div style="margin-top:6px; font-size:11pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}${email ? ` | <b>Email:</b> ${esc(email)}` : ''}</div>
             <div style="font-size:11pt; color:#555">Generated: ${esc(now)}</div>
           </div>
         </div>`;
@@ -1894,7 +1908,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
                   <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
                   <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-                  <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}</div>
+                  <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(cust || '-')} | <b>Phone:</b> ${esc(phone)}${email ? ` | <b>Email:</b> ${esc(email)}` : ''}</div>
                   <div style="font-size:12pt; color:#666">Generated: ${esc(now)}</div>
                 </div>
               </div>
@@ -2063,7 +2077,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
             <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} | <b>Phone:</b> ${esc(repairs.customerPhone || '')}</div>
+            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} | <b>Phone:</b> ${esc(repairs.customerPhone || '')}${repairs.customerEmail ? ` | <b>Email:</b> ${esc(repairs.customerEmail)}` : ''}</div>
           </div>
         </div>
         <table>
@@ -2642,7 +2656,13 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (cfg?.ok) {
         setEmailFromName(String(cfg.fromName || 'GadgetBoy Repair & Retail'));
         setEmailHasPassword(!!cfg.hasAppPassword);
-        setEmailBodyTemplate(String(cfg.bodyTemplate || ''));
+        const savedTemplate = String(cfg.bodyTemplate || '');
+        setEmailBodyTemplate(savedTemplate);
+        setEmailBodyDraft(savedTemplate.trim() ? savedTemplate : getBuiltInQuoteEmailBody());
+      }
+      // Prefill recipient from the quote's client info if available
+      if (!(emailTo || '').trim()) {
+        setEmailTo(String(sales.customerEmail || '').trim());
       }
       setShowEmailModal(true);
     } catch {
@@ -2691,15 +2711,6 @@ function QuoteGeneratorWindow(): JSX.Element {
         }
       }
 
-      // Save body template (empty string means: use built-in default)
-      {
-        const res = await window.api.emailSetBodyTemplate(emailBodyTemplate || '');
-        if (!res?.ok) {
-          setEmailSettingsErr(String(res?.error || 'Could not save email body'));
-          return;
-        }
-      }
-
       setSaveMsg('Email settings saved');
       setTimeout(() => setSaveMsg(null), 1800);
       setShowEmailSettings(false);
@@ -2741,20 +2752,10 @@ function QuoteGeneratorWindow(): JSX.Element {
       }
 
       setEmailSending(true);
-      // Ensure password exists (if user pasted one in this modal, save it first)
+      // Password is configured only via Email Settings
       if (!emailHasPassword) {
-        const pass = emailAppPassword.trim();
-        if (!pass) {
-          setEmailErr('Paste the Gmail App Password for gadgetboysc@gmail.com');
-          return;
-        }
-        const res = await window.api.emailSetGmailAppPassword(pass, emailFromName.trim());
-        if (!res?.ok) {
-          setEmailErr(String(res?.error || 'Could not save email credentials'));
-          return;
-        }
-        setEmailHasPassword(true);
-        setEmailAppPassword('');
+        setEmailErr('Configure the Gmail App Password in Email Settings first');
+        return;
       }
 
       const html = await generateInteractiveSalesHtml();
@@ -2762,13 +2763,8 @@ function QuoteGeneratorWindow(): JSX.Element {
       const sanitize = (s: string) => String(s || '').replace(/[^a-z0-9\-\_\+]+/gi, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
       const filename = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}.html`;
       const subject = 'Gadgetboy Quote';
-      const defaultBodyText =
-        'Attached is the following quote for the product(s) you have requested. ' +
-        'Feel free to email us back or call our shop if you want to finalize, ask questions, or have any concerns!\n\n' +
-        'Mobile tip: If the signature box or PDF buttons don\'t work in your mail app preview, tap "Open in Browser" (Safari/Chrome). ' +
-        'After signing, use "Share PDF" to email the signed PDF back to us.';
 
-      const bodyText = (emailBodyTemplate || '').trim() ? emailBodyTemplate : defaultBodyText;
+      const bodyText = (emailBodyDraft || '').trim() ? emailBodyDraft : getBuiltInQuoteEmailBody();
 
       const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
       if (!sendRes?.ok) {
@@ -2797,6 +2793,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               createdAt: new Date().toISOString(),
               customerName: sales.customerName,
               customerPhone: sales.customerPhone,
+              customerEmail: sales.customerEmail,
               notes: sales.notes,
               items: sales.items,
               totals: { ...salesTotals },
@@ -2806,6 +2803,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               createdAt: new Date().toISOString(),
               customerName: repairs.customerName,
               customerPhone: repairs.customerPhone,
+              customerEmail: repairs.customerEmail,
               lines: repairs.lines,
               notes: repairs.notes,
               totals: { ...repairTotals },
@@ -2826,8 +2824,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   // Autosave quote after 2s of inactivity
   useAutosave({ mode, sales, repairs }, async () => {
-    const hasSalesData = !!(sales.customerName || sales.customerPhone || (sales.items && sales.items.length));
-    const hasRepairsData = !!(repairs.customerName || repairs.customerPhone || (repairs.lines && repairs.lines.length));
+    const hasSalesData = !!(sales.customerName || sales.customerPhone || sales.customerEmail || (sales.items && sales.items.length));
+    const hasRepairsData = !!(repairs.customerName || repairs.customerPhone || repairs.customerEmail || (repairs.lines && repairs.lines.length));
     if (mode === 'sales' && !hasSalesData) return;
     if (mode === 'repairs' && !hasRepairsData) return;
     const payload =
@@ -2838,6 +2836,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             createdAt: new Date().toISOString(),
             customerName: sales.customerName,
             customerPhone: sales.customerPhone,
+            customerEmail: sales.customerEmail,
             notes: sales.notes,
             items: sales.items,
             totals: { ...salesTotals },
@@ -2848,6 +2847,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             createdAt: new Date().toISOString(),
             customerName: repairs.customerName,
             customerPhone: repairs.customerPhone,
+            customerEmail: repairs.customerEmail,
             lines: repairs.lines,
             notes: repairs.notes,
             totals: { ...repairTotals },
@@ -4160,9 +4160,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         {mode === 'sales' && (
           <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <Field label="Customer Name" value={sales.customerName} onChange={(v) => setSales((s) => ({ ...s, customerName: v }))} />
               <Field label="Customer Phone" value={sales.customerPhone} onChange={(v) => setSales((s) => ({ ...s, customerPhone: v }))} />
+              <Field label="Customer Email" value={sales.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setSales((s) => ({ ...s, customerEmail: v }))} />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -4407,9 +4408,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         {mode === 'repairs' && (
           <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <Field label="Customer Name" value={repairs.customerName} onChange={(v) => setRepairs((s) => ({ ...s, customerName: v }))} />
               <Field label="Customer Phone" value={repairs.customerPhone} onChange={(v) => setRepairs((s) => ({ ...s, customerPhone: v }))} />
+              <Field label="Customer Email" value={repairs.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setRepairs((s) => ({ ...s, customerEmail: v }))} />
             </div>
             <div className="grid grid-cols-12 gap-3">
               <div className="col-span-4">
@@ -4514,14 +4516,100 @@ function QuoteGeneratorWindow(): JSX.Element {
                         <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@email.com" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
                       </div>
                       <div className="col-span-12">
-                        <div className="text-xs text-zinc-400 mb-1">From Name (shows as sender name)</div>
-                        <input value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} placeholder="GadgetBoy Repair & Retail" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs text-zinc-400 mb-1">From</div>
+                            <div className="text-sm text-zinc-200">gadgetboysc@gmail.com</div>
+                            <div className="text-[11px] text-zinc-400">Sender name: {emailFromName || 'GadgetBoy Repair & Retail'}</div>
+                          </div>
+                          <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm" disabled={emailSending} onClick={openEmailSettings}>Edit Email Settings</button>
+                        </div>
                       </div>
+
+                      <div className="col-span-12">
+                        <div className="flex items-end justify-between gap-2">
+                          <div>
+                            <div className="text-xs text-zinc-400 mb-1">Email Body</div>
+                            <div className="text-[11px] text-zinc-400">Edit for this email, or save as the default for future emails.</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                              disabled={emailSending || emailBodySavingDefault}
+                              onClick={() => setEmailBodyDraft(getBuiltInQuoteEmailBody())}
+                              title="Use the built-in default body for this send"
+                            >Use built-in default</button>
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                              disabled={emailSending || emailBodySavingDefault}
+                              onClick={async () => {
+                                try {
+                                  setEmailErr(null);
+                                  setEmailBodySavingDefault(true);
+                                  const res = await window.api.emailSetBodyTemplate(emailBodyDraft || '');
+                                  if (!res?.ok) {
+                                    setEmailErr(String(res?.error || 'Could not save default body'));
+                                    return;
+                                  }
+                                  setEmailBodyTemplate(emailBodyDraft || '');
+                                  setSaveMsg('Default email body saved');
+                                  setTimeout(() => setSaveMsg(null), 1800);
+                                } catch (e: any) {
+                                  setEmailErr(String(e?.message || e || 'Could not save default body'));
+                                } finally {
+                                  setEmailBodySavingDefault(false);
+                                }
+                              }}
+                              title="Save this body as the default for future emails"
+                            >Save as default</button>
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                              disabled={emailSending || emailBodySavingDefault}
+                              onClick={async () => {
+                                try {
+                                  setEmailErr(null);
+                                  setEmailBodySavingDefault(true);
+                                  const res = await window.api.emailSetBodyTemplate('');
+                                  if (!res?.ok) {
+                                    setEmailErr(String(res?.error || 'Could not clear saved default'));
+                                    return;
+                                  }
+                                  setEmailBodyTemplate('');
+                                  setEmailBodyDraft(getBuiltInQuoteEmailBody());
+                                  setSaveMsg('Saved default body cleared');
+                                  setTimeout(() => setSaveMsg(null), 1800);
+                                } catch (e: any) {
+                                  setEmailErr(String(e?.message || e || 'Could not clear saved default'));
+                                } finally {
+                                  setEmailBodySavingDefault(false);
+                                }
+                              }}
+                              title="Clear the saved default and go back to the built-in body"
+                            >Clear saved</button>
+                          </div>
+                        </div>
+                        <textarea
+                          value={emailBodyDraft}
+                          onChange={(e) => setEmailBodyDraft(e.target.value)}
+                          rows={6}
+                          placeholder={getBuiltInQuoteEmailBody()}
+                          className="mt-2 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                        />
+                        {!!emailBodyTemplate.trim() && (
+                          <div className="mt-1 text-[11px] text-zinc-400">Using saved default body (edit above to override).</div>
+                        )}
+                        {!emailBodyTemplate.trim() && (
+                          <div className="mt-1 text-[11px] text-zinc-400">No saved default body; using built-in default (edit above to override).</div>
+                        )}
+                      </div>
+
                       {!emailHasPassword && (
                         <div className="col-span-12">
-                          <div className="text-xs text-zinc-400 mb-1">Gmail App Password (for gadgetboysc@gmail.com)</div>
-                          <input value={emailAppPassword} onChange={(e) => setEmailAppPassword(e.target.value)} placeholder="xxxx xxxx xxxx xxxx" className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
-                          <div className="text-[11px] text-zinc-400 mt-1">This is an App Password from Google (not your normal password). It is stored encrypted in the app's userData.</div>
+                          <div className="text-sm text-yellow-200">Gmail App Password is not configured.</div>
+                          <div className="text-[11px] text-zinc-400">Open Email Settings to paste the App Password for gadgetboysc@gmail.com.</div>
                         </div>
                       )}
                     </div>
@@ -4551,28 +4639,6 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="mt-3">
                       <div className="text-xs text-zinc-400 mb-1">Sender Display Name</div>
                       <input value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="flex items-end justify-between gap-2">
-                        <div>
-                          <div className="text-xs text-zinc-400 mb-1">Default Email Body (optional)</div>
-                          <div className="text-[11px] text-zinc-400">If blank, the app uses the built-in default body.</div>
-                        </div>
-                        <button
-                          className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
-                          type="button"
-                          disabled={emailSettingsSaving}
-                          onClick={() => setEmailBodyTemplate('')}
-                        >Reset to default</button>
-                      </div>
-                      <textarea
-                        value={emailBodyTemplate}
-                        onChange={(e) => setEmailBodyTemplate(e.target.value)}
-                        rows={6}
-                        placeholder="(leave blank to use the built-in default)"
-                        className="mt-2 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
-                      />
                     </div>
 
                     <div className="mt-3">
@@ -4815,7 +4881,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                   <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
                                   <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
-                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}</div>
+                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
                                 </div>
                               </div>
                               <div className="mt-2">
@@ -4874,7 +4940,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                 <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
                                 <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
-                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}</div>
+                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
                               </div>
                             </div>
                             {sales.items.length > 0 && (() => {
