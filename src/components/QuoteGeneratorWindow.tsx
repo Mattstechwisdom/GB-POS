@@ -1399,9 +1399,27 @@ function QuoteGeneratorWindow(): JSX.Element {
     }
   }
 
+  async function tryGetLogoDataUrl(): Promise<string | undefined> {
+    try {
+      const res = await fetch(publicAsset('logo-spin.gif'));
+      if (!res.ok) return undefined;
+      const blob = await res.blob();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ''));
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(blob);
+      });
+      return dataUrl || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   // Build a dedicated, print-only HTML document for Sales quotes.
-  function buildSalesPrintHtml() {
+  function buildSalesPrintHtml(logoDataUrl?: string) {
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const escAttr = (s: string) => esc(String(s || '')).replace(/"/g, '&quot;');
     const labels = sales.items.map((it, idx) => {
       const model = String(((it.model ?? (it as any).dynamic?.model) || '')).trim();
       return (model ? [it.brand, model].filter(Boolean).join(' ').trim() : '') || `Item ${idx + 1}`;
@@ -1410,6 +1428,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     const phone = `${sales.customerPhone || ''}`.trim();
     const email = `${(sales as any).customerEmail || ''}`.trim();
     const now = new Date().toLocaleDateString();
+    const logoSrc = logoDataUrl || publicAsset('logo-spin.gif');
 
     const first = sales.items[0];
     const firstTitleModel = first ? String(((first.model ?? (first as any).dynamic?.model) || '')).trim() : '';
@@ -1514,7 +1533,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
       const headerBlock = () => `
         <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px">
-          <img src="${publicAsset('logo-spin.gif')}" alt="GadgetBoy" style="height:30mm; width:auto" />
+          <img src="${escAttr(logoSrc)}" alt="GadgetBoy" style="height:30mm; width:auto" />
           <div style="line-height:1.15; flex:1">
             <div style="font-size:18pt; font-weight:700; letter-spacing:0.3px">Custom PC Build Quote</div>
             <div style="font-size:12pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -1903,7 +1922,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; border:3px solid #f00; border-radius:8px; padding:12mm">
               <div class="page-inner">
               <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-                <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
+                <img src="${escAttr(logoSrc)}" alt="GadgetBoy" style="height:35mm; width:auto" />
                 <div style="line-height:1.2; flex:1">
                   <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Quote</div>
                   <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -2043,8 +2062,10 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
 
   // Build a simple print HTML for Repairs quotes.
-  function buildRepairsPrintHtml() {
+  function buildRepairsPrintHtml(logoDataUrl?: string) {
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const escAttr = (s: string) => esc(String(s || '')).replace(/"/g, '&quot;');
+    const logoSrc = logoDataUrl || publicAsset('logo-spin.gif');
     const rows = (repairs.lines || []).map((ln) => {
       const pp = Number(ln.partPrice || 0);
       const lp = Number(ln.laborPrice || 0);
@@ -2072,7 +2093,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; padding:12mm;">
         <div class="page-inner">
         <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:8px">
-          <img src={publicAsset('logo-spin.gif')} alt="GadgetBoy" style={{ height: '35mm', width: 'auto' }} />
+          <img src="${escAttr(logoSrc)}" alt="GadgetBoy" style="height:35mm; width:auto" />
           <div style="line-height:1.2; flex:1">
             <div style="font-size:20pt; font-weight:700; letter-spacing:0.2px">Gadgetboy Repairs Quote</div>
             <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
@@ -2109,8 +2130,9 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
 
   // Print using a dedicated HTML document with auto-print
-  function printDocument() {
-    const html = mode === 'sales' ? buildSalesPrintHtml() : buildRepairsPrintHtml();
+  async function printDocument() {
+    const logoDataUrl = await tryGetLogoDataUrl();
+    const html = mode === 'sales' ? buildSalesPrintHtml(logoDataUrl) : buildRepairsPrintHtml(logoDataUrl);
     // Use a hidden iframe to trigger the OS print dialog without opening a new visible window
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -4691,11 +4713,12 @@ function QuoteGeneratorWindow(): JSX.Element {
               >Print</button>
               <button
                 className="px-4 py-2 bg-blue-600 text-white rounded-md text-base font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
-                onClick={() => {
+                onClick={async () => {
                   try {
                     if (mode !== 'sales') return;
                     const cust = (sales.customerName || '').trim() || 'Customer';
-                    const html = buildSalesPrintHtml();
+                    const logoDataUrl = await tryGetLogoDataUrl();
+                    const html = buildSalesPrintHtml(logoDataUrl);
                     // Word can open HTML when saved with .doc extension
                     downloadTextFile(`Quote-${cust}-print.doc`, html, 'application/msword');
                   } catch {
