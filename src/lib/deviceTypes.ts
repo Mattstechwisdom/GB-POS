@@ -61,6 +61,20 @@ export const deviceTypes: DeviceTypeDef[] = [
     ],
   },
   {
+    type: 'Desktop Computer',
+    label: 'Desktop Computer',
+    // Intentionally mirrors Laptop, but without screen fields.
+    fields: [
+      { key: 'cpu', label: 'Processor', type: 'select', options: ['Intel i5','Intel i7','Intel i9','AMD Ryzen 5','AMD Ryzen 7','AMD Ryzen 9'] },
+      { key: 'cpuGen', label: 'Processor Gen', type: 'text' },
+      { key: 'ram', label: 'Memory', type: 'select', options: ['4 GB','8 GB','16 GB','32 GB','64 GB'] },
+      { key: 'storage', label: 'Storage', type: 'select', options: ['64 GB','128 GB','256 GB','512 GB','1 TB','2 TB','4 TB'] },
+      { key: 'os', label: 'OS', type: 'select', options: ['Windows 10','Windows 11','Linux','Other'] },
+      { key: 'ports', label: 'Ports', type: 'text' },
+      { key: 'accessories', label: 'Accessories', type: 'text' },
+    ],
+  },
+  {
     type: 'Gaming Laptop',
     label: 'Gaming Laptop',
     fields: [
