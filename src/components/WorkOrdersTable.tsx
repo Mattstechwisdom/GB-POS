@@ -236,20 +236,20 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
 
   return (
     <div className="overflow-x-auto relative" ref={tableRef}>
-      <table className="min-w-full text-sm border-separate border-spacing-0">
+      <table className="min-w-full text-[13px] leading-tight border-separate border-spacing-0">
         <thead className="bg-zinc-800">
           <tr>
-            <th className="px-2 py-2 text-left">Invoice #</th>
-            <th className="px-2 py-2 text-left">Status</th>
-            <th className="px-2 py-2 text-left">Tech</th>
-            <th className="px-2 py-2 text-left">Client</th>
-            <th className="px-2 py-2 text-left">Phone</th>
-            <th className="px-2 py-2 text-left">Date</th>
-            <th className="px-2 py-2 text-left">Description</th>
-            <th className="px-2 py-2 text-left">Items</th>
-            <th className="px-2 py-2 text-left">Problem</th>
-            <th className="px-2 py-2 text-left">Total</th>
-            <th className="px-2 py-2 text-left">Remaining</th>
+            <th className="px-2 py-1 text-left">Invoice #</th>
+            <th className="px-2 py-1 text-left">Status</th>
+            <th className="px-2 py-1 text-left">Tech</th>
+            <th className="px-2 py-1 text-left">Client</th>
+            <th className="px-2 py-1 text-left">Phone</th>
+            <th className="px-2 py-1 text-left">Date</th>
+            <th className="px-2 py-1 text-left">Description</th>
+            <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-left">Problem</th>
+            <th className="px-2 py-1 text-left">Total</th>
+            <th className="px-2 py-1 text-left">Remaining</th>
           </tr>
         </thead>
         <tbody>

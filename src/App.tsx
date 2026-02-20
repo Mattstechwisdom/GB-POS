@@ -88,7 +88,7 @@ const AppInner: React.FC<{
         </aside>
         <main className="flex-1 flex flex-col">
           <Toolbar mode={mode} onModeChange={setMode} />
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
               <WorkOrdersTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
             )}
@@ -391,22 +391,22 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   }, [ctxRow, computeWOTotals]);
 
   return (
-    <div className="p-2">
-      <table className="w-full text-sm">
+    <div className="p-2 overflow-x-auto">
+      <table className="min-w-full text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
-            <th className="px-2 py-2 text-left">Invoice #</th>
-            <th className="px-2 py-2 text-left">Type</th>
-            <th className="px-2 py-2 text-left">Status</th>
-            <th className="px-2 py-2 text-left">Tech</th>
-            <th className="px-2 py-2 text-left">Customer</th>
-            <th className="px-2 py-2 text-left">Phone</th>
-            <th className="px-2 py-2 text-left">Date</th>
-            <th className="px-2 py-2 text-left">Description</th>
-            <th className="px-2 py-2 text-left">Items</th>
-            <th className="px-2 py-2 text-left">Problem</th>
-            <th className="px-2 py-2 text-right">Total</th>
-            <th className="px-2 py-2 text-right">Remaining</th>
+            <th className="px-2 py-1 text-left">Invoice #</th>
+            <th className="px-2 py-1 text-left">Type</th>
+            <th className="px-2 py-1 text-left">Status</th>
+            <th className="px-2 py-1 text-left">Tech</th>
+            <th className="px-2 py-1 text-left">Customer</th>
+            <th className="px-2 py-1 text-left">Phone</th>
+            <th className="px-2 py-1 text-left">Date</th>
+            <th className="px-2 py-1 text-left">Description</th>
+            <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-left">Problem</th>
+            <th className="px-2 py-1 text-right">Total</th>
+            <th className="px-2 py-1 text-right">Remaining</th>
           </tr>
         </thead>
         <tbody>
