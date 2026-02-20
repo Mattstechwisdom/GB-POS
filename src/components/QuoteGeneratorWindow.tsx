@@ -1408,6 +1408,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     });
     const cust = `${sales.customerName || ''}`.trim();
     const phone = `${sales.customerPhone || ''}`.trim();
+    const email = `${(sales as any).customerEmail || ''}`.trim();
     const now = new Date().toLocaleDateString();
 
     const first = sales.items[0];

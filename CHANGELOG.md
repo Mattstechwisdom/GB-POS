@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.2.31 (2026-02-20)
+- Fix: Quote Generator print/PDF build now compiles cleanly after adding Customer Email.
+
 ## v0.2.30 (2026-02-20)
 - Quote Generator: added Customer Email field to client info.
 - Send Quote Email: email body is edited/saved from the Send Email window; Email Settings is now focused on Gmail app password + sender name.
