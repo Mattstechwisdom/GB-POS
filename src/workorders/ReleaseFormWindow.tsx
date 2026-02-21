@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
-import { publicAsset } from '../lib/publicAsset';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
+import { formatPhone } from '../lib/format';
 
 function getPayload() {
   try {
@@ -20,15 +21,45 @@ const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => (
 const ReleaseFormWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
 
+  const [logoSrc, setLogoSrc] = useState<string>('');
+  const didAutoPrintRef = useRef(false);
+
   useEffect(() => {
-    setTimeout(() => {
-      try { window.print(); } catch {}
-    }, 300);
+    let alive = true;
+    (async () => {
+      const src = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+      if (!alive) return;
+      setLogoSrc(src);
+    })();
+    return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    // Give the logo a chance to resolve before printing, to avoid the broken-image icon.
+    if (didAutoPrintRef.current) return;
+
+    const fallback = window.setTimeout(() => {
+      if (didAutoPrintRef.current) return;
+      didAutoPrintRef.current = true;
+      try { window.print(); } catch {}
+    }, 900);
+
+    if (logoSrc) {
+      window.clearTimeout(fallback);
+      didAutoPrintRef.current = true;
+      const immediate = window.setTimeout(() => {
+        try { window.print(); } catch {}
+      }, 150);
+      return () => window.clearTimeout(immediate);
+    }
+
+    return () => window.clearTimeout(fallback);
+  }, [logoSrc]);
 
   const items = Array.isArray(data.items) ? data.items : [];
   const fullName = data.customerName || data.customer?.name || '';
-  const phone = data.customerPhone || data.customer?.phone || '';
+  const phoneRaw = data.customerPhone || data.customer?.phone || '';
+  const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
 
   return (
     <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -49,7 +80,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div className="page-inner">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <img src={publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
+          <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR</div>
             <div style={{ fontSize: 11, color: '#666' }}>Work Order Release Form</div>

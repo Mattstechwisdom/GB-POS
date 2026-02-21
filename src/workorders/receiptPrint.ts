@@ -1,5 +1,6 @@
 import type { WorkOrder } from './releasePrint';
 import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
+import { formatPhone } from '../lib/format';
 
 function htmlEscape(s: string): string {
   return s
@@ -16,6 +17,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
   const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+  const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
 
   const logoBlock = logoSrc
     ? `<img src="${logoSrc}" alt="GADGETBOY" style="height:72px; width:auto;" />`
@@ -130,7 +132,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
             <div><strong>Invoice:</strong> ${htmlEscape(wo.invoiceId)}</div>
             <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
             <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>
-            <div><strong>Phone:</strong> ${htmlEscape(wo.phone)}</div>
+            <div><strong>Phone:</strong> ${htmlEscape(displayPhone)}</div>
             ${wo.email ? `<div><strong>Email:</strong> ${htmlEscape(wo.email)}</div>` : ''}
           </div>
         </div>

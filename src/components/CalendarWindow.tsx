@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatPhone } from '../lib/format';
 import { useAutosave } from '@/lib/useAutosave';
 import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians } from '@/lib/admin';
@@ -879,7 +880,7 @@ const CalendarWindow: React.FC = () => {
                           </div>
                           {c.technician ? <div className="text-xs text-zinc-400 whitespace-nowrap">{c.technician}</div> : null}
                         </div>
-                        {c.customerPhone ? <div className="text-xs text-zinc-500">{c.customerPhone}</div> : null}
+                        {c.customerPhone ? <div className="text-xs text-zinc-500">{formatPhone(String(c.customerPhone || '')) || c.customerPhone}</div> : null}
                       </div>
                     ))}
                   </div>

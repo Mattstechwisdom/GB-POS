@@ -1,6 +1,6 @@
 import React from 'react';
 import { Customer } from '../lib/types';
-import { formatDate } from '../lib/format';
+import { formatDate, formatPhone } from '../lib/format';
 
 interface Props {
   customers: Customer[];
@@ -43,9 +43,9 @@ const CustomerTable: React.FC<Props> = ({ customers, selectedId, onSelect, onAct
                 <td className={`px-2 py-1 border-l-4 ${selected ? 'border-neon-green' : 'border-transparent'}`}>{c.createdAt ? formatDate(c.createdAt) : ''}</td>
                 <td className="px-2 py-1">{c.firstName}</td>
                 <td className="px-2 py-1">{c.lastName}</td>
-                <td className="px-2 py-1">{c.phone}</td>
+                <td className="px-2 py-1">{formatPhone(c.phone || '') || c.phone}</td>
                 <td className="px-2 py-1 truncate max-w-[180px]">{c.email}</td>
-                <td className="px-2 py-1">{c.phoneAlt}</td>
+                <td className="px-2 py-1">{formatPhone((c as any).phoneAlt || '') || (c as any).phoneAlt}</td>
               </tr>
             );
           })}

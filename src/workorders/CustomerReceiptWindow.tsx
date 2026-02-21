@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
+import { formatPhone } from '../lib/format';
 
 function getPayload() {
   try {
@@ -29,6 +30,7 @@ const CustomerReceiptWindow: React.FC = () => {
   const now = new Date();
 
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const didAutoPrintRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -42,18 +44,37 @@ const CustomerReceiptWindow: React.FC = () => {
 
   useEffect(() => {
     if (!flags.autoPrint || flags.silent) return;
-    const t = window.setTimeout(() => {
+
+    if (didAutoPrintRef.current) return;
+
+    const fallback = window.setTimeout(() => {
+      if (didAutoPrintRef.current) return;
+      didAutoPrintRef.current = true;
       try { window.focus(); window.print(); } catch {}
       if (flags.autoCloseMs && flags.autoCloseMs > 0) {
         window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
       }
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent]);
+    }, 900);
+
+    if (logoSrc) {
+      window.clearTimeout(fallback);
+      didAutoPrintRef.current = true;
+      const immediate = window.setTimeout(() => {
+        try { window.focus(); window.print(); } catch {}
+        if (flags.autoCloseMs && flags.autoCloseMs > 0) {
+          window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
+        }
+      }, 150);
+      return () => window.clearTimeout(immediate);
+    }
+
+    return () => window.clearTimeout(fallback);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
-  const phone = (data as any).customerPhone || (data as any).customer?.phone || '';
+  const phoneRaw = (data as any).customerPhone || (data as any).customer?.phone || '';
+  const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
   const email = (data as any).customerEmail || (data as any).customer?.email || '';
   const invoiceNo = (data as any).id ? String((data as any).id).padStart(6, '0') : '';
 
@@ -141,7 +162,17 @@ const CustomerReceiptWindow: React.FC = () => {
           <button
             onClick={async () => {
               try {
-                const html = document.documentElement.outerHTML;
+                const embeddedLogo =
+                  logoSrc ||
+                  (await fetchPublicAssetAsDataUrl('logo.png')) ||
+                  (await fetchPublicAssetAsDataUrl('logo-spin.gif')) ||
+                  '';
+
+                let html = document.documentElement.outerHTML;
+                if (embeddedLogo) {
+                  html = html.replace(/src=\"[^\"]*logo\.png\"/gi, `src=\"${embeddedLogo}\"`);
+                  html = html.replace(/src=\"[^\"]*logo-spin\.gif\"/gi, `src=\"${embeddedLogo}\"`);
+                }
                 const base = `workorder-receipt-${data.id || 'draft'}`;
                 const res = await (window as any).api.exportPdf(html, base);
                 if (!res?.ok && res?.canceled) return;

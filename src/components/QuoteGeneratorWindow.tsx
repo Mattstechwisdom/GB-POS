@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
+import { formatPhone } from '../lib/format';
 
 // Minimal types to satisfy this component
 type SaleItem = {
@@ -205,7 +206,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   function buildInteractiveSalesHtml(logoDataUrl?: string): string {
     const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const cust = `${sales.customerName || ''}`.trim();
-    const phone = `${sales.customerPhone || ''}`.trim();
+    const phoneRaw = `${sales.customerPhone || ''}`.trim();
+    const phone = (formatPhone(phoneRaw) || phoneRaw).trim();
     const email = `${sales.customerEmail || ''}`.trim();
     const ts = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -1425,7 +1427,8 @@ function QuoteGeneratorWindow(): JSX.Element {
       return (model ? [it.brand, model].filter(Boolean).join(' ').trim() : '') || `Item ${idx + 1}`;
     });
     const cust = `${sales.customerName || ''}`.trim();
-    const phone = `${sales.customerPhone || ''}`.trim();
+    const phoneRaw = `${sales.customerPhone || ''}`.trim();
+    const phone = (formatPhone(phoneRaw) || phoneRaw).trim();
     const email = `${(sales as any).customerEmail || ''}`.trim();
     const now = new Date().toLocaleDateString();
     const logoSrc = logoDataUrl || publicAsset('logo-spin.gif');
@@ -2099,7 +2102,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="font-size:13pt; font-weight:700">GADGETBOY Repair & Retail</div>
             <div style="font-size:12pt">2822 Devine Street, Columbia, SC 29205</div>
             <div style="font-size:12pt">(803) 708-0101 | gadgetboysc@gmail.com</div>
-            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} | <b>Phone:</b> ${esc(repairs.customerPhone || '')}${repairs.customerEmail ? ` | <b>Email:</b> ${esc(repairs.customerEmail)}` : ''}</div>
+            <div style="margin-top:8px; font-size:12pt"><b>Customer:</b> ${esc(repairs.customerName || '-')} | <b>Phone:</b> ${esc(formatPhone(String(repairs.customerPhone || '')) || String(repairs.customerPhone || ''))}${repairs.customerEmail ? ` | <b>Email:</b> ${esc(repairs.customerEmail)}` : ''}</div>
           </div>
         </div>
         <table>
@@ -4905,7 +4908,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                   <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
                                   <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
-                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
+                                  <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {formatPhone(sales.customerPhone || '') || (sales.customerPhone || '')}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
                                 </div>
                               </div>
                               <div className="mt-2">
@@ -4964,7 +4967,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 <div style={{ fontSize: '13pt', fontWeight: 700 }}>GADGETBOY Repair & Retail</div>
                                 <div style={{ fontSize: '12pt' }}>2822 Devine Street, Columbia, SC 29205</div>
                                 <div style={{ fontSize: '12pt' }}>(803) 708-0101 | gadgetboysc@gmail.com</div>
-                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {sales.customerPhone || ''}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
+                                <div style={{ marginTop: 8, fontSize: '12pt' }}><strong>Customer:</strong> {sales.customerName || '-'} | <strong>Phone:</strong> {formatPhone(sales.customerPhone || '') || (sales.customerPhone || '')}{sales.customerEmail ? (<> | <strong>Email:</strong> {sales.customerEmail}</>) : null}</div>
                               </div>
                             </div>
                             {sales.items.length > 0 && (() => {
@@ -5369,7 +5372,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   </div>
                 ) : (
                   <div>
-                    <div className="text-sm">Customer: <b>{repairs.customerName || '-'}</b> | {repairs.customerPhone || ''}</div>
+                    <div className="text-sm">Customer: <b>{repairs.customerName || '-'}</b> | {formatPhone(repairs.customerPhone || '') || (repairs.customerPhone || '')}</div>
                     <table className="w-full text-sm mt-3 border-collapse">
                       <thead><tr><th className="border p-2 text-left">Description</th><th className="border p-2 text-right">Parts</th><th className="border p-2 text-right">Labor</th><th className="border p-2 text-right">Line</th></tr></thead>
                       <tbody>

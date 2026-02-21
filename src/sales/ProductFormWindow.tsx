@@ -1,6 +1,7 @@
 // @ts-nocheck
-import React, { useEffect, useMemo } from 'react';
-import { publicAsset } from '../lib/publicAsset';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
+import { formatPhone } from '../lib/format';
 
 function getPayload() {
   try {
@@ -21,10 +22,43 @@ const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => (
 const ProductFormWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
 
-  useEffect(() => { setTimeout(() => { try { window.print(); } catch {} }, 300); }, []);
+  const [logoSrc, setLogoSrc] = useState('');
+  const didAutoPrintRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const src = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+      if (!alive) return;
+      setLogoSrc(src);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (didAutoPrintRef.current) return;
+
+    const fallback = window.setTimeout(() => {
+      if (didAutoPrintRef.current) return;
+      didAutoPrintRef.current = true;
+      try { window.print(); } catch {}
+    }, 900);
+
+    if (logoSrc) {
+      window.clearTimeout(fallback);
+      didAutoPrintRef.current = true;
+      const immediate = window.setTimeout(() => {
+        try { window.print(); } catch {}
+      }, 150);
+      return () => window.clearTimeout(immediate);
+    }
+
+    return () => window.clearTimeout(fallback);
+  }, [logoSrc]);
 
   const fullName = data.customerName || '';
-  const phone = data.customerPhone || '';
+  const phoneRaw = data.customerPhone || '';
+  const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
   const item = data.itemDescription || data.productDescription || '';
   const qty = Number(data.quantity || 1);
   const price = Number(data.price || data.total || 0);
@@ -56,7 +90,7 @@ const ProductFormWindow: React.FC = () => {
         <div className="page-inner">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
+              <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR & RETAIL</div>
                 <div style={{ fontSize: 11, color: '#666' }}>Product Sales Form</div>
@@ -115,7 +149,17 @@ const ProductFormWindow: React.FC = () => {
             <button
               onClick={async () => {
                 try {
-                  const html = document.documentElement.outerHTML;
+                  let html = document.documentElement.outerHTML;
+                  if (!logoSrc) {
+                    const embeddedLogo =
+                      (await fetchPublicAssetAsDataUrl('logo.png')) ||
+                      (await fetchPublicAssetAsDataUrl('logo-spin.gif')) ||
+                      '';
+                    if (embeddedLogo) {
+                      html = html.replace(/src=\"[^\"]*logo\.png\"/gi, `src=\"${embeddedLogo}\"`);
+                      html = html.replace(/src=\"[^\"]*logo-spin\.gif\"/gi, `src=\"${embeddedLogo}\"`);
+                    }
+                  }
                   const base = `product-form-${data.id || 'draft'}`;
                   const res = await (window as any).api.exportPdf(html, base);
                   if (!res?.ok && res?.canceled) return;

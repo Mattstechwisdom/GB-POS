@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { WorkOrderFull, Customer } from '../lib/types';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
+import { formatPhone } from '../lib/format';
 
 interface Props { workOrder: WorkOrderFull; onChange: (p: Partial<WorkOrderFull>) => void; customerSummary?: { name?: string; phone?: string } }
 
@@ -28,7 +29,8 @@ const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary }) 
   const displayName = fullCustomer
     ? [fullCustomer.firstName, fullCustomer.lastName].filter(Boolean).join(' ')
     : (customerSummary?.name || 'Selected Customer');
-  const displayPhone = fullCustomer?.phone || customerSummary?.phone || '—';
+  const displayPhoneRaw = fullCustomer?.phone || customerSummary?.phone || '';
+  const displayPhone = (formatPhone(String(displayPhoneRaw || '')) || String(displayPhoneRaw || '') || '—');
   const displayEmail = fullCustomer?.email || '';
 
   const isKnownSource = !!(workOrder.intakeSource) && INTAKE_SOURCES.includes(workOrder.intakeSource as string);

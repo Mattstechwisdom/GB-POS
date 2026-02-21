@@ -25,6 +25,7 @@ export type WorkOrder = {
 };
 
 import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
+import { formatPhone } from '../lib/format';
 
 function buildPatternSvg(seq: number[], size: number = 140): string {
   const padding = 12;
@@ -90,6 +91,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
   const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+  const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
   const sanitizedItems = itemList.map(li => ({
     description: htmlEscape(li.description || ''),
@@ -208,7 +210,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
           <div><strong>Invoice:</strong> ${htmlEscape(invoiceDisplay)}</div>
           <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
           <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>
-          <div><strong>Phone:</strong> ${htmlEscape(wo.phone)}</div>
+          <div><strong>Phone:</strong> ${htmlEscape(displayPhone)}</div>
           <div><strong>Email:</strong> ${htmlEscape(wo.email)}</div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, addTechnician, removeTechnician, updateTechnician } from '../lib/admin';
+import { formatPhone } from '../lib/format';
 
 const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void }> = ({ onClose, onSaved }) => {
   const [local, setLocal] = useState<any>({ firstName: '', lastName: '', nickname: '', phone: '', email: '', passcode: '' });
@@ -212,7 +213,7 @@ const TechniciansWindow: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                       )}
                     </td>
                     <td className="px-3 py-2 align-top">
-                      <div className="text-sm">{t.phone || '-'}</div>
+                      <div className="text-sm">{formatPhone(t.phone || '') || t.phone || '-'}</div>
                     </td>
                     <td className="px-3 py-2 align-top">
                       <div className="text-sm">{t.email || '-'}</div>
