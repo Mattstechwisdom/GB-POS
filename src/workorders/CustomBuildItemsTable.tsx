@@ -123,9 +123,9 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
         <table className="w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
-              <th className="px-2 py-1 text-left">Description</th>
-              <th className="px-2 py-1 text-right">Parts</th>
-              <th className="px-2 py-1 text-right">Labor</th>
+              <th className="px-2 py-1 text-left font-semibold">Description</th>
+              <th className="px-2 py-1 text-right font-semibold">Parts</th>
+              <th className="px-2 py-1 text-right font-semibold">Labor</th>
             </tr>
           </thead>
           <tbody>
@@ -148,8 +148,8 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
                   }`}
                 >
                   <td className="px-2 py-1 font-medium overflow-hidden text-ellipsis">{it.repair}</td>
-                  <td className="px-2 py-1 text-right">{money(it.parts)}</td>
-                  <td className="px-2 py-1 text-right">{money(it.labor)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{money(it.parts)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{money(it.labor)}</td>
                 </tr>
               );
             })}

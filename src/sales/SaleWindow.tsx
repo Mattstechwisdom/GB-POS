@@ -793,7 +793,7 @@ const SaleWindow: React.FC = () => {
         </div>
       </div>
       <div className="fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
-        <div className="text-xs text-neon-green min-h-[1.2rem]">{savedAt ? `Saved at ${savedAt}` : ''}</div>
+        <div className="text-xs text-zinc-500 min-h-[1.2rem]">Auto-save enabled</div>
         <div className="flex items-center gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>
           <button

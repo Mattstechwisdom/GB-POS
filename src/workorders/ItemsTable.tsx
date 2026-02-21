@@ -120,10 +120,10 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
         <table className="w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
-              <th className="px-2 py-1">Device</th>
-              <th className="px-2 py-1">Repair</th>
-              <th className="px-2 py-1">Parts</th>
-              <th className="px-2 py-1">Labor</th>
+              <th className="px-2 py-1 text-left font-semibold">Device</th>
+              <th className="px-2 py-1 text-left font-semibold">Repair</th>
+              <th className="px-2 py-1 text-right font-semibold">Parts</th>
+              <th className="px-2 py-1 text-right font-semibold">Labor</th>
             </tr>
           </thead>
           <tbody>
@@ -140,19 +140,19 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                   }}
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
-                  <td className="px-2 py-1 font-medium">{it.device || ''}</td>
-                  <td className="px-2 py-1">{it.repair}</td>
-                  <td className="px-2 py-1">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
-                  <td className="px-2 py-1">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
+                  <td className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
+                  <td className="px-2 py-1 text-left">{it.repair}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
                 </tr>
               );
             })}
             {Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }).map((_, idx) => (
               <tr key={`filler-${idx}`} className="opacity-60">
-                <td className="px-2 py-1">&nbsp;</td>
-                <td className="px-2 py-1">&nbsp;</td>
-                <td className="px-2 py-1">&nbsp;</td>
-                <td className="px-2 py-1">&nbsp;</td>
+                <td className="px-2 py-1 text-left">&nbsp;</td>
+                <td className="px-2 py-1 text-left">&nbsp;</td>
+                <td className="px-2 py-1 text-right">&nbsp;</td>
+                <td className="px-2 py-1 text-right">&nbsp;</td>
               </tr>
             ))}
           </tbody>

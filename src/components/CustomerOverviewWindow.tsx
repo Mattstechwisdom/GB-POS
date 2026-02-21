@@ -8,14 +8,13 @@ interface Props {
   customer?: Customer | null;
   onClose: () => void;
   onSaved?: (c: Customer) => void;
-  closeOnSave?: boolean; // new flag to control window closing behavior
+  closeAfterSave?: boolean; // default: save closes the window
 }
 
-const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeOnSave = false }) => {
+const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true }) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer || {});
   const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [autoSaving, setAutoSaving] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
@@ -74,7 +73,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   async function handleSave() {
     const saved = await ensureCustomerSaved();
-    if (saved && closeOnSave) onClose();
+    if (saved && closeAfterSave) onClose();
   }
 
   async function ensureCustomerSaved(): Promise<Customer | null> {
@@ -89,7 +88,6 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         saved = await window.api.addCustomer(payload);
       }
       if (saved) {
-        setSavedAt(new Date().toISOString().slice(11,19));
         setLocal(saved);
         if (onSaved) onSaved(saved);
       }
@@ -114,7 +112,6 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         saved = await window.api.addCustomer(payload);
       }
       if (saved) {
-        setSavedAt(new Date().toISOString().slice(11,19));
         setLocal(saved);
         if (onSaved) onSaved(saved);
       }
@@ -203,7 +200,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
           <div className="flex flex-col gap-1">
             {!!errors.length && <div className="text-sm text-red-400">{errors.join(' · ')}</div>}
             {autoSaving && <div className="text-xs text-zinc-400 animate-pulse">Auto-saving…</div>}
-            {savedAt && !errors.length && !autoSaving && <div className="text-xs text-neon-green">Saved at {savedAt}</div>}
+            {!autoSaving && !errors.length && <div className="text-xs text-zinc-500">Auto-save enabled</div>}
           </div>
           <div />
         </div>
@@ -417,7 +414,7 @@ const PageBlockControls: React.FC<{ totalPages: number; currentPage: number; onC
 
 // Panel listing completed quote PDFs associated with this customer
 const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({ customer }) => {
-  const [rows, setRows] = useState<any[]>([]);
+  const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const nameNorm = useMemo(() => {
@@ -426,27 +423,30 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
   }, [customer]);
   const phoneNorm = useMemo(() => String(customer?.phone || '').replace(/\D+/g,'').slice(-10), [customer]);
 
-  const load = useCallback(async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const list = await (window as any).api.dbGet('quoteFiles').catch(() => []);
-      const arr = Array.isArray(list) ? list : [];
-      // Match either by customerId when present, or by name+phone normalization
-      const cid = (customer as any)?.id;
-      const filtered = arr.filter((q: any) => {
-        if (cid && q.customerId === cid) return true;
-        const qName = String(q.customerName || '').trim().toLowerCase();
-        const qPhone = String(q.customerPhone || '').replace(/\D+/g,'').slice(-10);
-        return (!!nameNorm && qName === nameNorm) && (!!phoneNorm ? qPhone === phoneNorm : true);
-      });
-      filtered.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      setRows(filtered);
+      setAllRows(Array.isArray(list) ? list : []);
     } finally {
       setLoading(false);
     }
-  }, [customer, nameNorm, phoneNorm]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const rows = useMemo(() => {
+    const arr = Array.isArray(allRows) ? allRows : [];
+    const cid = (customer as any)?.id;
+    const filtered = arr.filter((q: any) => {
+      if (cid && q.customerId === cid) return true;
+      const qName = String(q.customerName || '').trim().toLowerCase();
+      const qPhone = String(q.customerPhone || '').replace(/\D+/g,'').slice(-10);
+      return (!!nameNorm && qName === nameNorm) && (!!phoneNorm ? qPhone === phoneNorm : true);
+    });
+    filtered.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return filtered;
+  }, [allRows, customer, nameNorm, phoneNorm]);
 
   const handleOpen = async (r: any) => {
     if (!r?.filePath) return;
@@ -456,7 +456,7 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
     if (!r?.id) return;
     const ok = window.confirm('Delete this quote file record?');
     if (!ok) return;
-    try { await (window as any).api.dbDelete('quoteFiles', r.id); await load(); } catch {}
+    try { await (window as any).api.dbDelete('quoteFiles', r.id); await refresh(); } catch {}
   };
 
   return (
@@ -464,7 +464,7 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
       <div className="flex items-center justify-between px-2 py-1 bg-zinc-800">
         <div className="text-sm text-zinc-200">Completed Quotes</div>
         <div className="flex items-center gap-2">
-          <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+          <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={refresh} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
         </div>
       </div>
       <div className="max-h-56 overflow-y-auto">

@@ -119,7 +119,7 @@ try {
 	} else if (showCheckout) {
 		root.render(<CheckoutWindow />);
 	} else if (showCustomerOverview) {
-		root.render(<CustomerOverviewWindow onClose={() => window.close()} closeOnSave={false} />);
+		root.render(<CustomerOverviewWindow onClose={() => window.close()} />);
 	} else if (showDevMenu) {
 		root.render(<DevMenuWindow />);
 	} else if (showDataTools) {
