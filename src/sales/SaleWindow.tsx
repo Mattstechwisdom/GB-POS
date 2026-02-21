@@ -496,9 +496,22 @@ const SaleWindow: React.FC = () => {
       if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = sale.amountPaid || 0;
 
       const prevPayments = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
-      const payments = (additionalPaid > 0)
-        ? [...prevPayments, { amount: additionalPaid, paymentType: String(result.paymentType || ''), at: new Date().toISOString() }]
-        : prevPayments;
+      const payments = (() => {
+        if (!(additionalPaid > 0)) return prevPayments;
+        const now = new Date().toISOString();
+        const pt = String(result.paymentType || '');
+        const isCash = pt.toLowerCase().includes('cash');
+        const tendered = Number(result.tendered ?? additionalPaid);
+        const change = Number(result.changeDue || 0);
+        const entry: any = {
+          amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
+          applied: additionalPaid,
+          paymentType: pt,
+          at: now,
+        };
+        if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+        return [...prevPayments, entry];
+      })();
       let status = sale.status;
       let checkoutDate = sale.checkoutDate as string | null;
       if ((sale.totals?.remaining || 0) - additionalPaid <= 0 || result.markClosed) {

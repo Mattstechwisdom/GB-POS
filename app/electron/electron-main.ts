@@ -945,6 +945,52 @@ ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
   }
 });
 
+ipcMain.handle('email:sendReportCsv', async (_e: any, payload: any) => {
+  try {
+    const cfg = readEmailConfig();
+    const appPass = decryptAppPassword(cfg);
+    if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
+
+    const to = String(payload?.to || '').trim();
+    if (!to) return { ok: false, error: 'Missing recipient email' };
+    const subject = String(payload?.subject || 'GadgetBoy Report');
+    const bodyText = String(payload?.bodyText || '');
+    const csvAttachment = String(payload?.csv || '');
+    if (!csvAttachment.trim()) return { ok: false, error: 'Missing report CSV content' };
+    const filename = String(payload?.filename || 'gadgetboy-report.csv').trim() || 'gadgetboy-report.csv';
+
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'gadgetboysc@gmail.com',
+        pass: appPass,
+      },
+    });
+
+    const fromName = String(cfg.fromName || 'GadgetBoy Repair & Retail').trim() || 'GadgetBoy Repair & Retail';
+    const from = `${fromName} <gadgetboysc@gmail.com>`;
+
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text: bodyText,
+      attachments: [
+        {
+          filename,
+          content: csvAttachment,
+          contentType: 'text/csv; charset=utf-8',
+        },
+      ],
+    });
+
+    return { ok: true, messageId: info?.messageId || null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 // App info (used for update/version gating)
 ipcMain.handle('app:getInfo', async () => {
   try {
@@ -2361,6 +2407,33 @@ ipcMain.handle('open-reporting', async () => {
   return { ok: true };
 });
 
+// Report Email window (Reporting -> Send Email)
+ipcMain.handle('open-report-email', async (event: any, payload: any) => {
+  const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+  const child = new BrowserWindow({
+    width: 900,
+    height: 760,
+    resizable: true,
+    parent: parentWin as any,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Send Report Email'),
+  });
+  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const encoded = encodeURIComponent(JSON.stringify(payload || {}));
+  const url = isDev ? `${DEV_SERVER_URL}/?reportEmail=${encoded}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?reportEmail=${encoded}`;
+  child.loadURL(url);
+  return { ok: true };
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -2732,6 +2805,82 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
     ipcMain.on('workorder:checkout:save', saveHandler);
     ipcMain.on('workorder:checkout:cancel', cancelHandler);
     child.on('closed', () => resolve(null));
+  });
+});
+
+// Custom PC Build item editor window handler
+ipcMain.handle('customBuild:openItem', async (event: any, payload: any) => {
+  return new Promise((resolve) => {
+    const parentWin = (() => {
+      try {
+        return BrowserWindow.fromWebContents(event?.sender);
+      } catch {
+        return null;
+      }
+    })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+
+    const child = new BrowserWindow({
+      width: 620,
+      height: 360,
+      minWidth: 560,
+      minHeight: 340,
+      resizable: true,
+      parent: parentWin as any,
+      modal: true,
+      ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+      backgroundColor: '#18181b',
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+      },
+      show: false,
+      title: 'Line Item',
+      alwaysOnTop: false,
+    });
+
+    child.once('ready-to-show', () => {
+      try { centerWindow(child); } catch {}
+      child.show();
+      try { child.focus(); } catch {}
+    });
+    if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+
+    const encoded = encodeURIComponent(JSON.stringify(payload || {}));
+    const url = isDev
+      ? `${DEV_SERVER_URL}/?customBuildItem=${encoded}`
+      : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?customBuildItem=${encoded}`;
+    child.loadURL(url).catch((e: any) => console.error('[CustomBuildItem] loadURL failed', e));
+
+    const saveHandler = (_e: any, result: any) => {
+      resolve(result);
+      cleanup();
+    };
+    const cancelHandler = () => {
+      resolve(null);
+      cleanup();
+    };
+
+    function cleanup() {
+      ipcMain.off('customBuild:item:save', saveHandler);
+      ipcMain.off('customBuild:item:cancel', cancelHandler);
+      try {
+        if (!child.isDestroyed()) child.close();
+      } catch {}
+      try {
+        (parentWin as any)?.show?.();
+        (parentWin as any)?.focus?.();
+      } catch {}
+    }
+
+    ipcMain.on('customBuild:item:save', saveHandler);
+    ipcMain.on('customBuild:item:cancel', cancelHandler);
+
+    child.on('closed', () => {
+      resolve(null);
+      cleanup();
+    });
   });
 });
 

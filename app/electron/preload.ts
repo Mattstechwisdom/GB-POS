@@ -64,10 +64,13 @@ contextBridge.exposeInMainWorld('api', {
   emailSetBodyTemplate: (bodyTemplate: string): Promise<any> => ipcRenderer.invoke('email:setBodyTemplate', bodyTemplate),
   emailClearGmailAppPassword: (): Promise<any> => ipcRenderer.invoke('email:clearGmailAppPassword'),
   emailSendQuoteHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuoteHtml', payload),
+  emailSendReportCsv: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportCsv', payload),
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),
   openReporting: (): Promise<any> => ipcRenderer.invoke('open-reporting'),
+  openReportEmail: (payload: any): Promise<any> => ipcRenderer.invoke('open-report-email', payload),
+  openCustomBuildItem: (payload: any): Promise<any> => ipcRenderer.invoke('customBuild:openItem', payload),
   openCharts: (): Promise<any> => ipcRenderer.invoke('open-charts'),
   openNotifications: (): Promise<any> => ipcRenderer.invoke('open-notifications'),
   openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
@@ -88,6 +91,8 @@ contextBridge.exposeInMainWorld('api', {
   sendRepairSelected: (repair: any) => ipcRenderer.send('repair-selected', repair),
   _emitCheckoutSave: (result: any) => ipcRenderer.send('workorder:checkout:save', result),
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),
+  _emitCustomBuildItemSave: (result: any) => ipcRenderer.send('customBuild:item:save', result),
+  _emitCustomBuildItemCancel: () => ipcRenderer.send('customBuild:item:cancel'),
   onWorkOrdersChanged: (cb: () => void) => {
     const handler = () => cb();
     ipcRenderer.on('workorders:changed', handler);

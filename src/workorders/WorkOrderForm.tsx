@@ -15,9 +15,10 @@ interface Props {
   workOrder: WorkOrderFull;
   onChange: (patch: Partial<WorkOrderFull>) => void;
   validationFlags?: WorkOrderValidationFlags;
+  mode?: 'standard' | 'customBuild';
 }
 
-const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags }) => {
+const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, mode = 'standard' }) => {
   const needsProductDescription = !!validationFlags?.productDescription;
   const needsProblem = !!validationFlags?.problemInfo;
   const needsPassword = !!validationFlags?.password;
@@ -25,24 +26,31 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags }
   const needsSerial = !!validationFlags?.serial;
   const needsAnyItemFields = needsProductDescription || needsProblem || needsPassword || needsModel || needsSerial;
 
+  const isCustomBuild = mode === 'customBuild';
+  const headerLabel = isCustomBuild ? 'Custom PC Build' : 'Item / Problem';
+  const descriptionLabel = isCustomBuild ? 'Build summary' : 'Product description';
+  const problemLabel = isCustomBuild ? 'Requirements / Additional info' : 'Problem / Additional info';
+
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-zinc-200">
-          Item / Problem
+          {headerLabel}
           {needsAnyItemFields && <span className="ml-1 text-red-500">*</span>}
         </h3>
-        <div className="text-xs text-zinc-400">Product info</div>
+        <div className="text-xs text-zinc-400">{isCustomBuild ? 'Build info' : 'Product info'}</div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mb-2">
-        <div>
-          <label className="block text-xs text-zinc-400">Device Category</label>
-          <DeviceCategorySelect value={workOrder.productCategory} onChange={val => onChange({ productCategory: val })} />
-        </div>
-        <div className="col-span-2">
+        {!isCustomBuild && (
+          <div>
+            <label className="block text-xs text-zinc-400">Device Category</label>
+            <DeviceCategorySelect value={workOrder.productCategory} onChange={val => onChange({ productCategory: val })} />
+          </div>
+        )}
+        <div className={isCustomBuild ? 'col-span-3' : 'col-span-2'}>
           <label className="block text-xs text-zinc-400">
-            Product description
+            {descriptionLabel}
             {needsProductDescription && <span className="ml-1 text-red-500">*</span>}
           </label>
           <input
@@ -55,7 +63,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags }
 
       <div className="mb-2">
         <label className="block text-xs text-zinc-400">
-          Problem / Additional info
+          {problemLabel}
           {needsProblem && <span className="ml-1 text-red-500">*</span>}
         </label>
         <textarea
@@ -65,43 +73,47 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags }
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label className="block text-xs text-zinc-400">
-            Password
-            {needsPassword && <span className="ml-1 text-red-500">*</span>}
-          </label>
-          <input
-            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-            value={workOrder.password || ''}
-            onChange={e => onChange({ password: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-400">
-            Model
-            {needsModel && <span className="ml-1 text-red-500">*</span>}
-          </label>
-          <input
-            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-            value={workOrder.model || ''}
-            onChange={e => onChange({ model: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-zinc-400">
-            Serial
-            {needsSerial && <span className="ml-1 text-red-500">*</span>}
-          </label>
-          <input
-            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-            value={workOrder.serial || ''}
-            onChange={e => onChange({ serial: e.target.value })}
-          />
-        </div>
-      </div>
+      {!isCustomBuild && (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs text-zinc-400">
+                Password
+                {needsPassword && <span className="ml-1 text-red-500">*</span>}
+              </label>
+              <input
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={workOrder.password || ''}
+                onChange={e => onChange({ password: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">
+                Model
+                {needsModel && <span className="ml-1 text-red-500">*</span>}
+              </label>
+              <input
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={workOrder.model || ''}
+                onChange={e => onChange({ model: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">
+                Serial
+                {needsSerial && <span className="ml-1 text-red-500">*</span>}
+              </label>
+              <input
+                className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={workOrder.serial || ''}
+                onChange={e => onChange({ serial: e.target.value })}
+              />
+            </div>
+          </div>
 
-      <PatternSection workOrder={workOrder} onChange={onChange} />
+          <PatternSection workOrder={workOrder} onChange={onChange} />
+        </>
+      )}
     </div>
   );
 };

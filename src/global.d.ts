@@ -80,7 +80,10 @@ declare global {
     emailSetBodyTemplate: (bodyTemplate: string) => Promise<{ ok: boolean; error?: string }>;
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
+    emailSendReportCsv: (payload: { to: string; subject: string; bodyText: string; filename: string; csv: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     openReporting: () => Promise<any>;
+    openReportEmail: (payload: any) => Promise<any>;
+    openCustomBuildItem: (payload: any) => Promise<any>;
   openCharts: () => Promise<any>;
     openNotifications: () => Promise<any>;
     openNotificationSettings: () => Promise<any>;
@@ -106,6 +109,9 @@ declare global {
 
   closeSelfWindow: (opts?: { focusMain?: boolean }) => Promise<any>;
   focusMainWindow: () => Promise<any>;
+
+  _emitCustomBuildItemSave: (result: any) => void;
+  _emitCustomBuildItemCancel: () => void;
     };
   }
 }

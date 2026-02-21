@@ -1761,6 +1761,31 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (item.accessories) rows.push(['Accessories', item.accessories]);
       Object.entries(item.dynamic || {}).forEach(([k, v]) => {
         if (k === 'device') return;
+
+        // 'Other' / 'Drone' ad-hoc spec rows are arrays of {desc,value}.
+        if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
+          (v as any[]).forEach((s: any, i: number) => {
+            const desc = String(s?.desc || '').trim();
+            const val = String(s?.value ?? '').trim();
+            if (!desc && !val) return;
+            rows.push([desc || `Spec ${i + 1}`, val]);
+          });
+          return;
+        }
+
+        if (Array.isArray(v)) {
+          const primitiveList = (v as any[])
+            .map((x) => (typeof x === 'string' || typeof x === 'number' ? String(x).trim() : ''))
+            .filter(Boolean);
+          rows.push([k, primitiveList.length ? primitiveList.join(', ') : `${v.length} item(s)`]);
+          return;
+        }
+
+        if (v && typeof v === 'object') {
+          // Avoid printing "[object Object]" into customer-facing printouts.
+          return;
+        }
+
         rows.push([k, String(v ?? '')]);
       });
       const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').split(' ').filter(Boolean).map((w) => {

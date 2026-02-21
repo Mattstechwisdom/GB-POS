@@ -67,7 +67,20 @@ const QuickSaleWindow: React.FC = () => {
       };
 
       const payments = (amountPaid > 0)
-        ? [{ amount: amountPaid, paymentType: String(paymentType || ''), at: now }]
+        ? (() => {
+            const pt = String(paymentType || '');
+            const isCash = pt.toLowerCase().includes('cash');
+            const tendered = Number(result.tendered ?? amountPaid);
+            const change = Number(result.changeDue || 0);
+            const entry: any = {
+              amount: isCash ? (Number.isFinite(tendered) ? tendered : amountPaid) : amountPaid,
+              applied: amountPaid,
+              paymentType: pt,
+              at: now,
+            };
+            if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+            return [entry];
+          })()
         : [];
 
       const saleRecord: any = {

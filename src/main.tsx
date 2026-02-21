@@ -25,6 +25,8 @@ import QuickSaleWindow from './components/QuickSaleWindow';
 import EODWindow from './components/EODWindow';
 import NotificationsWindow from './components/NotificationsWindow';
 import NotificationSettingsWindow from './components/NotificationSettingsWindow';
+import ReportEmailWindow from './components/ReportEmailWindow';
+import CustomBuildItemWindow from './workorders/CustomBuildItemWindow';
 import UpdateGate from './components/UpdateGate';
 import DataPathGate from './components/DataPathGate';
 import './styles/index.css';
@@ -86,6 +88,7 @@ try {
 	const showProducts = params.get('products');
 	const showCharts = params.get('charts');
 	const showReporting = params.get('reporting');
+	const showReportEmail = params.get('reportEmail');
 	const showQuote = params.get('quote');
 		const showQuickSale = params.get('quickSale');
 	const showEod = params.get('eod');
@@ -97,6 +100,7 @@ try {
 	const showClockIn = params.get('clockIn');
 		const showNotifications = params.get('notifications');
 		const showNotificationSettings = params.get('notificationSettings');
+		const showCustomBuildItem = params.get('customBuildItem');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
@@ -122,6 +126,8 @@ try {
 		root.render(<DataToolsWindow />);
 	} else if (showReporting) {
 		root.render(<ReportingWindow />);
+	} else if (showReportEmail) {
+		root.render(<ReportEmailWindow />);
 	} else if (showCharts) {
 		root.render(<ChartsWindow />);
 	} else if (showBackup) {
@@ -134,6 +140,8 @@ try {
 			root.render(<NotificationsWindow />);
 		} else if (showNotificationSettings) {
 			root.render(<NotificationSettingsWindow />);
+		} else if (showCustomBuildItem) {
+			root.render(<CustomBuildItemWindow />);
 	} else if (showQuote) {
 		const hasElectronApi = !!(window as any)?.api;
 		if (!hasElectronApi) {

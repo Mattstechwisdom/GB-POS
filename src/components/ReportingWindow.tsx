@@ -268,7 +268,8 @@ const ReportingWindow: React.FC = () => {
   }, [grouped]);
 
   const paymentTotals = useMemo(() => {
-    let cash = 0;
+    let cashTender = 0;
+    let cashChange = 0;
     let card = 0;
 
     for (const w of filtered) {
@@ -277,8 +278,12 @@ const ReportingWindow: React.FC = () => {
         for (const p of payments) {
           const pt = String((p && (p.paymentType ?? p.type)) || '').toLowerCase();
           const amt = Number(p?.amount || 0);
+          const change = Number(p?.change || p?.changeDue || 0);
           if (!Number.isFinite(amt) || amt <= 0) continue;
-          if (pt === 'cash') cash += amt;
+          if (pt === 'cash') {
+            cashTender += amt;
+            if (Number.isFinite(change) && change > 0) cashChange += change;
+          }
           if (pt === 'card') card += amt;
         }
         continue;
@@ -287,11 +292,12 @@ const ReportingWindow: React.FC = () => {
       const pt = String((w as any).paymentType || '').toLowerCase();
       const amt = Number((w as any).amountPaid || 0);
       if (!Number.isFinite(amt) || amt <= 0) continue;
-      if (pt === 'cash') cash += amt;
+      if (pt === 'cash') cashTender += amt;
       if (pt === 'card') card += amt;
     }
 
-    return { cash, card };
+    const cashNet = cashTender - cashChange;
+    return { cashTender, cashChange, cashNet, card };
   }, [filtered]);
 
   async function downloadSummary() {
@@ -308,8 +314,10 @@ const ReportingWindow: React.FC = () => {
       },
       totals: {
         grandTotal: Number(summary.revenue || 0),
-        cashTotal: Number(paymentTotals.cash || 0),
+        cashTotal: Number(paymentTotals.cashTender || 0),
         cardTotal: Number(paymentTotals.card || 0),
+        changeGiven: Number(paymentTotals.cashChange || 0),
+        cashToDeposit: Number(paymentTotals.cashNet || 0),
       },
       popular: {
         repairs: topRepairs,
@@ -346,6 +354,61 @@ const ReportingWindow: React.FC = () => {
       const start = startOfPeriod(now, 'year'); const end = new Date(start.getFullYear(), 11, 31);
       setFrom(start.toISOString().slice(0,10)); setTo(end.toISOString().slice(0,10)); setPeriod('year');
     }
+  }
+
+  async function openReportEmail() {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      title: 'GadgetBoy Report',
+      filters: {
+        period,
+        from: from || null,
+        to: to || null,
+        technician: tech || null,
+        excludeTax,
+        includeRepairs,
+        includeSales,
+      },
+      totals: {
+        grandTotal: Number(summary.revenue || 0),
+        cashTotal: Number(paymentTotals.cashTender || 0),
+        cardTotal: Number(paymentTotals.card || 0),
+        changeGiven: Number(paymentTotals.cashChange || 0),
+        cashToDeposit: Number(paymentTotals.cashNet || 0),
+        orders: Number(summary.orders || 0),
+        labor: Number(summary.labor || 0),
+        parts: Number(summary.parts || 0),
+        subtotal: Number(summary.subtotal || 0),
+        tax: Number(summary.tax || 0),
+        cost: Number(summary.cost || 0),
+        profit: Number(summary.profit || 0),
+        marginPct: Number((summary.margin || 0) * 100),
+        avgTicket: Number(summary.avgTicket || 0),
+      },
+      grouped: (grouped || []).map((g: any) => ({
+        date: g.date,
+        orders: Number(g.orders || 0),
+        labor: Number(g.labor || 0),
+        parts: Number(g.parts || 0),
+        subtotal: Number(g.subtotal || 0),
+        tax: Number(g.tax || 0),
+        total: Number(g.total || 0),
+        cost: Number(g.cost || 0),
+        profit: Number(g.profit || 0),
+        marginPct: Number(((g.subtotal ? (g.profit / g.subtotal) : 0) * 100) || 0),
+      })),
+      csv: String(csv || ''),
+    };
+
+    const api = (window as any).api;
+    if (api && typeof api.openReportEmail === 'function') {
+      await api.openReportEmail(payload);
+      return;
+    }
+
+    // Fallback for non-electron contexts
+    const url = window.location.origin + '/?reportEmail=' + encodeURIComponent(JSON.stringify(payload));
+    window.open(url, '_blank', 'width=1000,height=720');
   }
 
   return (
@@ -424,13 +487,35 @@ const ReportingWindow: React.FC = () => {
           <div className="mt-2 text-3xl font-bold text-neon-green">${summary.revenue.toFixed(2)}</div>
         </div>
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
-          <div className="text-sm text-zinc-400">Cash Total</div>
-          <div className="mt-2 text-2xl font-bold text-zinc-100">${paymentTotals.cash.toFixed(2)}</div>
+          <div className="text-sm text-zinc-400">Cash Intake</div>
+          <div className="mt-2 text-2xl font-bold text-zinc-100">${paymentTotals.cashTender.toFixed(2)}</div>
+        </div>
+        <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+          <div className="text-sm text-zinc-400">Change Given</div>
+          <div className="mt-2 text-2xl font-bold text-zinc-100">-${paymentTotals.cashChange.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+          <div className="text-sm text-zinc-400">Cash to Deposit</div>
+          <div className="mt-2 text-2xl font-bold text-neon-green">${paymentTotals.cashNet.toFixed(2)}</div>
         </div>
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Card Total</div>
           <div className="mt-2 text-2xl font-bold text-zinc-100">${paymentTotals.card.toFixed(2)}</div>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          className="px-4 py-2 bg-[#39FF14] text-black rounded font-semibold disabled:opacity-50"
+          onClick={openReportEmail}
+          disabled={!filtered.length}
+          title={!filtered.length ? 'No data in range' : 'Open email window'}
+        >
+          Send Email
+        </button>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

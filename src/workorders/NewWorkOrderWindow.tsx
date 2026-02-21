@@ -15,6 +15,7 @@ import { useAutosave } from '../lib/useAutosave';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
 import ItemsTable from './ItemsTable';
+import CustomBuildItemsTable from './CustomBuildItemsTable';
 import IntakePanel from './IntakePanel';
 import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
@@ -63,7 +64,11 @@ const NewWorkOrderWindow: React.FC = () => {
   const [initialCustomerId, setInitialCustomerId] = useState<number>(payload?.customerId || 0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const now = new Date().toISOString();
-  type WOState = Omit<WorkOrderFull, 'items'> & { items: WorkOrderItemRow[]; internalNotesLog?: { id: number; text: string; createdAt?: string }[] };
+  type WOState = Omit<WorkOrderFull, 'items'> & {
+    items: WorkOrderItemRow[];
+    internalNotesLog?: { id: number; text: string; createdAt?: string }[];
+    workOrderType?: 'standard' | 'customBuild';
+  };
   const [wo, setWo] = useState<WOState>({
     id: 0,
     customerId: initialCustomerId,
@@ -78,6 +83,7 @@ const NewWorkOrderWindow: React.FC = () => {
     model: '',
     serial: '',
     intakeSource: '',
+    workOrderType: (payload as any)?.workOrderType === 'customBuild' || (payload as any)?.isCustomBuild ? 'customBuild' : 'standard',
   partsOrdered: false,
   partsEstimatedDelivery: null,
   partsDates: '',
@@ -107,6 +113,8 @@ const NewWorkOrderWindow: React.FC = () => {
     close: false,
   });
 
+  const isCustomBuild = wo.workOrderType === 'customBuild';
+
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
       window.clearTimeout(warningHideTimer.current);
@@ -133,11 +141,13 @@ const NewWorkOrderWindow: React.FC = () => {
     if (!assigned) missing.push('assignedTo');
     if (!(wo.productDescription || '').toString().trim()) missing.push('productDescription');
     if (!(wo.problemInfo || '').toString().trim()) missing.push('problemInfo');
-    if (!(wo.password || '').toString().trim()) missing.push('password');
-    if (!(wo.model || '').toString().trim()) missing.push('model');
-    if (!(wo.serial || '').toString().trim()) missing.push('serial');
+    if (!isCustomBuild) {
+      if (!(wo.password || '').toString().trim()) missing.push('password');
+      if (!(wo.model || '').toString().trim()) missing.push('model');
+      if (!(wo.serial || '').toString().trim()) missing.push('serial');
+    }
     return missing;
-  }, [wo.assignedTo, wo.productDescription, wo.problemInfo, wo.password, wo.model, wo.serial]);
+  }, [wo.assignedTo, wo.productDescription, wo.problemInfo, wo.password, wo.model, wo.serial, isCustomBuild]);
 
   const hasMeaningfulInput = useMemo(() => {
     return Boolean(
@@ -232,6 +242,7 @@ const NewWorkOrderWindow: React.FC = () => {
         setWo(w => ({
           ...w,
           ...existing,
+          workOrderType: ((existing as any).workOrderType === 'customBuild' || (existing as any).isCustomBuild) ? 'customBuild' : (w.workOrderType || 'standard'),
           partsOrdered: existing.partsOrdered ?? w.partsOrdered,
           partsEstimatedDelivery: existing.partsEstimatedDelivery ?? w.partsEstimatedDelivery,
           partsDates: (existing as any).partsDates ?? w.partsDates,
@@ -519,7 +530,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
   async function handleCheckout() {
     if (!ensureRequired('checkout', 'checking out')) return;
-    if (!wo.productCategory || !wo.productCategory.trim()) {
+    if (!isCustomBuild && (!wo.productCategory || !wo.productCategory.trim())) {
       triggerWarningBanner('Device category is missing', 'Select a device category, then click Checkout again.');
       return;
     }
@@ -529,7 +540,21 @@ const NewWorkOrderWindow: React.FC = () => {
     }
     try {
       const amountDue = wo.totals?.remaining || 0;
-      const result = await (window as any).api.openCheckout({ amountDue });
+
+      // Provide parts/labor breakdown so checkout can accept partial payments.
+      const partCosts = Number(wo.partCosts || 0) || 0;
+      const laborCost = Number(wo.laborCost || 0) || 0;
+      const discount = Number(wo.discount || 0) || 0;
+      const taxRate = Number(wo.taxRate || 0) || 0;
+      const laborAfterDiscount = Math.max(0, laborCost - discount);
+      const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
+
+      const result = await (window as any).api.openCheckout({
+        amountDue,
+        partsDue: Math.min(partsWithTax, amountDue),
+        laborDue: Math.min(laborAfterDiscount, amountDue),
+        title: isCustomBuild ? 'Custom Build Checkout' : 'Work Order Checkout',
+      });
       if (!result) return; // user cancelled
       const additionalPaid = Number(result.amountPaid || 0);
       // Add to existing amountPaid to allow partial payments accumulation
@@ -547,9 +572,25 @@ const NewWorkOrderWindow: React.FC = () => {
       }
 
       const prevPayments = Array.isArray((wo as any).payments) ? (wo as any).payments : [];
-      const payments = (additionalPaid > 0)
-        ? [...prevPayments, { amount: additionalPaid, paymentType: String(result.paymentType || ''), at: new Date().toISOString() }]
-        : prevPayments;
+      const payments = (() => {
+        if (!(additionalPaid > 0)) return prevPayments;
+        const now = new Date().toISOString();
+        const pt = String(result.paymentType || '');
+        const isCash = pt.toLowerCase().includes('cash');
+        const tendered = Number(result.tendered ?? additionalPaid);
+        const change = Number(result.changeDue || 0);
+        const entry: any = {
+          amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
+          applied: additionalPaid,
+          paymentType: pt,
+          at: now,
+        };
+        if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+        if (result?.payFor) entry.payFor = result.payFor;
+        if (typeof result?.appliedParts === 'number') entry.appliedParts = result.appliedParts;
+        if (typeof result?.appliedLabor === 'number') entry.appliedLabor = result.appliedLabor;
+        return [...prevPayments, entry];
+      })();
 
       setWo(w => ({
         ...w,
@@ -660,8 +701,61 @@ const NewWorkOrderWindow: React.FC = () => {
       <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
         <WorkOrderSidebar workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} validationFlags={sidebarValidationFlags} />
         <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
-          <WorkOrderForm workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} validationFlags={formValidationFlags} />
-          <ItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
+          <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-zinc-200">Work Order Type</div>
+              <div className="text-xs text-zinc-500">Switching types can clear fields</div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button
+                className={`px-3 py-1.5 rounded border text-sm ${!isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                onClick={() => {
+                  if (!isCustomBuild) return;
+                  const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial));
+                  if (hasData && !confirm('Switch to Standard Work Order? This will clear custom-build-only fields and may clear some device fields.')) return;
+                  setWo((w) => ({
+                    ...w,
+                    workOrderType: 'standard',
+                    productCategory: w.productCategory || '',
+                  }));
+                }}
+              >
+                Standard
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded border text-sm ${isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                onClick={() => {
+                  if (isCustomBuild) return;
+                  const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));
+                  if (hasData && !confirm('Switch to Custom PC Build? This will clear device fields (password/model/serial/category).')) return;
+                  setWo((w) => ({
+                    ...w,
+                    workOrderType: 'customBuild',
+                    productCategory: 'Custom PC Build',
+                    password: '',
+                    model: '',
+                    serial: '',
+                    patternSequence: [] as any,
+                  }));
+                }}
+              >
+                Custom PC Build
+              </button>
+            </div>
+          </div>
+
+          <WorkOrderForm
+            workOrder={toWorkOrderFull()}
+            onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))}
+            validationFlags={formValidationFlags}
+            mode={isCustomBuild ? 'customBuild' : 'standard'}
+          />
+
+          {isCustomBuild ? (
+            <CustomBuildItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
+          ) : (
+            <ItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
+          )}
           {/* Parts dates + order URL (under line items) */}
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="flex items-center justify-between mb-1">
