@@ -538,18 +538,21 @@ const SaleWindow: React.FC = () => {
       if (result.printReceipt) {
         // Reuse customer receipt for now, mapping fields
         try {
+          const rows = (sale.items || []) as SaleItemRow[];
+          const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
+            id: r.id,
+            description: r.description,
+            qty: Number(r.qty) || 1,
+            price: Number(r.price) || 0,
+          }));
+
           const payload = {
+            receiptType: 'sale',
             id: currentId || (sale as any).id,
             customerId: sale.customerId,
             customerName: sale.customerName,
             customerPhone: sale.customerPhone,
-            productCategory: 'Retail',
-            productDescription: sale.itemDescription,
-            items: [
-              { description: sale.itemDescription, parts: total, labor: 0, qty: sale.quantity || 1 },
-            ],
-            partCosts: total,
-            laborCost: 0,
+            items: receiptItems,
             discount: sale.discount || 0,
             taxRate: sale.taxRate || 0,
             totals: sale.totals,
@@ -647,48 +650,22 @@ const SaleWindow: React.FC = () => {
       renderActions={() => (
         <>
           <button
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-2"
-            onClick={async () => {
-              const first = (sale.items && sale.items[0]) as SaleItemRow | undefined;
-              const payload = {
-                id: (sale as any).id,
-                customerName: sale.customerName,
-                customerPhone: sale.customerPhone,
-                itemDescription: first?.description || sale.itemDescription,
-                condition: first?.condition || sale.condition,
-                quantity: first?.qty || sale.quantity,
-                price: first?.price ?? sale.price,
-                notes: sale.notes,
-                discount: sale.discount,
-                taxRate: sale.taxRate,
-                totals: sale.totals,
-                amountPaid: sale.amountPaid,
-              };
-              await (window as any).api.openProductForm(payload);
-            }}
-          >
-            Print Product Form
-          </button>
-          <button
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
             onClick={async () => {
               const rows = (sale.items || []) as SaleItemRow[];
               const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
+                id: r.id,
                 description: r.description,
-                parts: (Number(r.qty) || 0) * (Number(r.price) || 0),
-                labor: 0,
-                qty: r.qty || 1,
+                qty: Number(r.qty) || 1,
+                price: Number(r.price) || 0,
               }));
               const payload = {
+                receiptType: 'sale',
                 id: (sale as any).id,
                 customerId: sale.customerId,
                 customerName: sale.customerName,
                 customerPhone: sale.customerPhone,
-                productCategory: 'Retail',
-                productDescription: rows[0]?.description || sale.itemDescription,
                 items: receiptItems,
-                partCosts: receiptItems.reduce((s, r) => s + (r.parts || 0), 0),
-                laborCost: 0,
                 discount: sale.discount || 0,
                 taxRate: sale.taxRate || 0,
                 totals: sale.totals,

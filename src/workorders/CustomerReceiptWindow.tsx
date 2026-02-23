@@ -29,6 +29,9 @@ const CustomerReceiptWindow: React.FC = () => {
   const flags = useMemo(() => getReceiptFlags(), []);
   const now = new Date();
 
+  const receiptType = String((data as any).receiptType || (data as any).type || '').toLowerCase();
+  const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
+
   const [logoSrc, setLogoSrc] = useState<string>('');
   const didAutoPrintRef = useRef(false);
 
@@ -92,6 +95,20 @@ const CustomerReceiptWindow: React.FC = () => {
   const taxes = Number((data as any).totals?.tax ?? (data as any).taxes ?? 0) || 0;
   const amountPaid = Number((data as any).amountPaid ?? 0) || 0;
   const remaining = Number((data as any).totals?.remaining ?? 0) || 0;
+
+  const subTotal = Number((data as any).totals?.subTotal ?? (partCosts + laborCost)) || 0;
+  const totalDue = Number((data as any).totals?.total ?? (subTotal - discount + taxes)) || 0;
+
+  const saleItems: Array<{ id: string; description: string; qty: number; price: number; total: number }> = useMemo(() => {
+    if (!isSaleReceipt) return [];
+    return (items || []).map((it: any, idx: number) => {
+      const qty = Number(it.qty ?? it.quantity ?? 1) || 1;
+      const price = Number(it.price ?? it.unitPrice ?? it.unit_cost ?? 0) || 0;
+      const description = String(it.description || it.itemDescription || it.title || it.name || 'Item');
+      const total = qty * price;
+      return { id: String(it.id || idx), description, qty, price, total };
+    });
+  }, [isSaleReceipt, items]);
 
   return (
         <div className="receipt-root" style={{ background: '#f3f4f6', color: '#111', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -173,7 +190,7 @@ const CustomerReceiptWindow: React.FC = () => {
                   html = html.replace(/src=\"[^\"]*logo\.png\"/gi, `src=\"${embeddedLogo}\"`);
                   html = html.replace(/src=\"[^\"]*logo-spin\.gif\"/gi, `src=\"${embeddedLogo}\"`);
                 }
-                const base = `workorder-receipt-${data.id || 'draft'}`;
+                const base = `${isSaleReceipt ? 'sale' : 'workorder'}-receipt-${data.id || 'draft'}`;
                 const res = await (window as any).api.exportPdf(html, base);
                 if (!res?.ok && res?.canceled) return;
                 if (!res?.ok) alert('Export failed: ' + (res?.error || 'Unknown error'));
@@ -207,60 +224,121 @@ const CustomerReceiptWindow: React.FC = () => {
           </div>
         </div>
 
-        <div className="section muted-bg">
-          <div className="info-grid">
-            <div className="field"><span className="label-inline">Device:</span><span className="value-inline">{device}</span></div>
-            <div className="field"><span className="label-inline">Description:</span><span className="value-inline"><span className="chip">{description}</span></span></div>
-            <div className="field"><span className="label-inline">Model:</span><span className="value-inline">{model}</span></div>
-            <div className="field"><span className="label-inline">Serial #:</span><span className="value-inline">{serial}</span></div>
-            <div className="field"><span className="label-inline">Password:</span><span className="value-inline">{password}</span></div>
-          </div>
-        </div>
+        {!isSaleReceipt ? (
+          <>
+            <div className="section muted-bg">
+              <div className="info-grid">
+                <div className="field"><span className="label-inline">Device:</span><span className="value-inline">{device}</span></div>
+                <div className="field"><span className="label-inline">Description:</span><span className="value-inline"><span className="chip">{description}</span></span></div>
+                <div className="field"><span className="label-inline">Model:</span><span className="value-inline">{model}</span></div>
+                <div className="field"><span className="label-inline">Serial #:</span><span className="value-inline">{serial}</span></div>
+                <div className="field"><span className="label-inline">Password:</span><span className="value-inline">{password}</span></div>
+              </div>
+            </div>
 
-        <div className="section muted-bg" style={{ pageBreakInside: 'avoid' }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Problem</div>
-          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35, fontSize: '10.5pt' }}>{problem}</div>
-        </div>
+            <div className="section muted-bg" style={{ pageBreakInside: 'avoid' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Problem</div>
+              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35, fontSize: '10.5pt' }}>{problem}</div>
+            </div>
+          </>
+        ) : null}
 
         <div className="section muted-bg">
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Items</div>
-          <table className="items" role="table" style={{ tableLayout: 'fixed' }}>
-            <thead>
-              <tr>
-                <th scope="col">Repair Service / Description</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Parts</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Labor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it: any) => {
-                const parts = typeof it.parts === 'number' ? it.parts : (typeof it.partCost === 'number' ? it.partCost : 0);
-                const labor = typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0));
-                const desc = it.repair || it.description || it.title || it.name || it.altDescription || '';
-                return (
+          {!isSaleReceipt ? (
+            <table className="items" role="table" style={{ tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th scope="col">Repair Service / Description</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Parts</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Labor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it: any) => {
+                  const parts = typeof it.parts === 'number' ? it.parts : (typeof it.partCost === 'number' ? it.partCost : 0);
+                  const labor = typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0));
+                  const desc = it.repair || it.description || it.title || it.name || it.altDescription || '';
+                  return (
+                    <tr key={it.id}>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', overflowWrap: 'anywhere' }}>{desc}</td>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{parts ? parts.toFixed(2) : ''}</td>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{labor ? labor.toFixed(2) : ''}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <table className="items" role="table" style={{ tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col" style={{ width: 60, textAlign: 'right' }}>Qty</th>
+                  <th scope="col" style={{ width: 110, textAlign: 'right' }}>Price</th>
+                  <th scope="col" style={{ width: 120, textAlign: 'right' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {saleItems.map((it: { id: string; description: string; qty: number; price: number; total: number }) => (
                   <tr key={it.id}>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', overflowWrap: 'anywhere' }}>{desc}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{parts ? parts.toFixed(2) : ''}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{labor ? labor.toFixed(2) : ''}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', overflowWrap: 'anywhere' }}>{it.description}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{it.qty}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{it.price ? it.price.toFixed(2) : ''}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{it.total ? it.total.toFixed(2) : ''}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Totals under list, aligned right */}
         <div className="totals" style={{ marginBottom: 10 }}>
-          <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{partCosts.toFixed(2)}</div></div>
-          <div className="row"><div className="label">Total Labor</div><div style={{ marginLeft: 'auto' }}>{laborCost.toFixed(2)}</div></div>
-          <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{discount.toFixed(2)}</div></div>
-          <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{taxes.toFixed(2)}</div></div>
-          <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{amountPaid.toFixed(2)}</div></div>
-          <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-          <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{remaining.toFixed(2)}</strong></div></div>
+          {!isSaleReceipt ? (
+            <>
+              <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{partCosts.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Total Labor</div><div style={{ marginLeft: 'auto' }}>{laborCost.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{discount.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{taxes.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{amountPaid.toFixed(2)}</div></div>
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
+              <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{remaining.toFixed(2)}</strong></div></div>
+            </>
+          ) : (
+            <>
+              <div className="row"><div className="label">Subtotal</div><div style={{ marginLeft: 'auto' }}>{subTotal.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{discount.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{taxes.toFixed(2)}</div></div>
+              <div className="row"><div className="label"><strong>Total</strong></div><div style={{ marginLeft: 'auto' }}><strong>{totalDue.toFixed(2)}</strong></div></div>
+              <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{amountPaid.toFixed(2)}</div></div>
+              <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
+              <div className="row"><div className="label"><strong>Balance Due</strong></div><div style={{ marginLeft: 'auto' }}><strong>{remaining.toFixed(2)}</strong></div></div>
+            </>
+          )}
         </div>
 
-        {/* Terms and signature removed per request */}
+        {isSaleReceipt ? (
+          <div className="section muted-bg terms" style={{ pageBreakInside: 'avoid' }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Sales Terms &amp; Conditions</div>
+            <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
+              Please keep this receipt for any return/exchange or warranty service.
+              {'\n'}Items are sold as-is unless otherwise stated in writing.
+              {'\n'}Returns/exchanges are subject to store policy and may not apply to all items.
+              {'\n'}By signing below, customer acknowledges receipt of goods and acceptance of these terms.
+            </div>
+            <div style={{ marginTop: 14, display: 'flex', gap: 16, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ borderBottom: '1px solid #111', height: 22 }} />
+                <div style={{ fontSize: '9pt', color: '#444', marginTop: 4 }}>Customer Signature</div>
+              </div>
+              <div style={{ width: 180 }}>
+                <div style={{ borderBottom: '1px solid #111', height: 22 }} />
+                <div style={{ fontSize: '9pt', color: '#444', marginTop: 4 }}>Date</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         </div>
       </div>
     </div>

@@ -376,8 +376,6 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
       { label: 'Copy Invoice #', onClick: async () => { try { await navigator.clipboard.writeText(inv); } catch {} } },
       { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(phone); } catch {} } },
       { type: 'separator' },
-      { label: 'Print Product Form', onClick: async () => { await api?.openProductForm?.({ saleId: ctxRow.id }); } },
-      { type: 'separator' },
       {
         label: 'Delete…',
         danger: true,
