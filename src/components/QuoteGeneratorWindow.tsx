@@ -290,7 +290,16 @@ function QuoteGeneratorWindow(): JSX.Element {
     // -------- Device pages (mirror print layout) --------
     const specRowsInteractive = (item: SaleItem) => {
       const rows: Array<[string, string]> = [];
-      const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').split(' ').filter(Boolean).map((w) => { const up = w.toUpperCase(); return (w.length <= 3 && w === up) ? up : (w.charAt(0).toUpperCase() + w.slice(1)); }).join(' ');
+      const titleCase = (s: string) => s
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => {
+          const up = w.toUpperCase();
+          return (w.length <= 3 && w === up) ? up : (w.charAt(0).toUpperCase() + w.slice(1));
+        })
+        .join(' ');
 
       const asPrintableText = (x: any): string => {
         if (x == null) return '';
@@ -1851,24 +1860,33 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         if (Array.isArray(v)) {
           const primitiveList = (v as any[])
-            .map((x) => (typeof x === 'string' || typeof x === 'number' ? String(x).trim() : ''))
+            .map((x) => (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean' ? String(x).trim() : ''))
             .filter(Boolean);
           rows.push([k, primitiveList.length ? primitiveList.join(', ') : `${v.length} item(s)`]);
           return;
         }
 
         if (v && typeof v === 'object') {
-          // Avoid printing "[object Object]" into customer-facing printouts.
+          // Avoid printing "[object Object]" into customer-facing printouts, but
+          // allow common select/combobox shapes (value/label/text).
+          const t = asPrintableText(v).trim();
+          if (t) rows.push([k, t]);
           return;
         }
 
-        rows.push([k, String(v ?? '')]);
+        rows.push([k, asPrintableText(v)]);
       });
-      const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').split(' ').filter(Boolean).map((w) => {
-        const up = w.toUpperCase();
-        if (w.length <= 3 && w === up) return up;
-        return w.charAt(0).toUpperCase() + w.slice(1);
-      }).join(' ');
+      const titleCase = (s: string) => s
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => {
+          const up = w.toUpperCase();
+          if (w.length <= 3 && w === up) return up;
+          return w.charAt(0).toUpperCase() + w.slice(1);
+        })
+        .join(' ');
       return rows.map(([k, v]) => `<tr><td style="border:1px solid #f00; padding:6px 14px; font-weight:600; white-space:nowrap">${esc(titleCase(k))}</td><td style="border:1px solid #f00; padding:6px 14px">${esc(v)}</td></tr>`).join('');
     };
 
@@ -5124,25 +5142,72 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                 if (first.model) rows.push(['Model', first.model]);
                                                 if (first.condition) rows.push(['Condition', first.condition]);
                                                 if (first.accessories) rows.push(['Accessories', first.accessories]);
+                                                const titleCase = (s: string) => s
+                                                  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                                                  .replace(/[_-]+/g, ' ')
+                                                  .split(' ')
+                                                  .filter(Boolean)
+                                                  .map((w) => {
+                                                    const up = w.toUpperCase();
+                                                    if (w.length <= 3 && w === up) return up; // keep acronyms
+                                                    return w.charAt(0).toUpperCase() + w.slice(1);
+                                                  })
+                                                  .join(' ');
+                                                const asPrintableText = (x: any): string => {
+                                                  if (x == null) return '';
+                                                  if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return String(x);
+                                                  if (Array.isArray(x)) {
+                                                    const parts = x
+                                                      .map((y) => (typeof y === 'string' || typeof y === 'number' || typeof y === 'boolean') ? String(y) : '')
+                                                      .map((s) => s.trim())
+                                                      .filter(Boolean);
+                                                    return parts.join(', ');
+                                                  }
+                                                  if (typeof x === 'object') {
+                                                    const v = (x as any).value;
+                                                    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+                                                    const l = (x as any).label;
+                                                    if (typeof l === 'string' || typeof l === 'number' || typeof l === 'boolean') return String(l);
+                                                    const t = (x as any).text;
+                                                    if (typeof t === 'string' || typeof t === 'number' || typeof t === 'boolean') return String(t);
+                                                    return '';
+                                                  }
+                                                  return '';
+                                                };
                                                 Object.entries(first.dynamic || {}).forEach(([k, v]) => {
                                                   if (k === 'device') return; // already included as Apple Family
-                                                  rows.push([k, String(v ?? '')]);
+
+                                                  if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
+                                                    (v as any[]).forEach((s: any, i: number) => {
+                                                      const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
+                                                      const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+                                                      if (!desc && !val) return;
+                                                      rows.push([desc || `Spec ${i + 1}`, val]);
+                                                    });
+                                                    return;
+                                                  }
+
+                                                  if (Array.isArray(v)) {
+                                                    const list = (v as any[])
+                                                      .map((x) => asPrintableText(x))
+                                                      .map((s) => s.trim())
+                                                      .filter(Boolean);
+                                                    rows.push([titleCase(k), list.length ? list.join(', ') : `${v.length} item(s)`]);
+                                                    return;
+                                                  }
+
+                                                  if (v && typeof v === 'object') {
+                                                    const t = asPrintableText(v).trim();
+                                                    if (t) rows.push([titleCase(k), t]);
+                                                    return;
+                                                  }
+
+                                                  const t = asPrintableText(v).trim();
+                                                  if (t) rows.push([titleCase(k), t]);
                                                 });
-                                                const titleCase = (s: string) => {
-                                                  return s
-                                                    .replace(/[_-]+/g, ' ')
-                                                    .split(' ')
-                                                    .filter(Boolean)
-                                                    .map((w) => {
-                                                      const up = w.toUpperCase();
-                                                      if (w.length <= 3 && w === up) return up; // keep acronyms
-                                                      return w.charAt(0).toUpperCase() + w.slice(1);
-                                                    })
-                                                    .join(' ');
-                                                };
                                                 return rows.map(([k, v]) => (
                                                   <tr key={k}>
-                                                    <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{titleCase(k)}</td>
+                                                    <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{k}</td>
                                                     <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{v}</td>
                                                   </tr>
                                                 ));
@@ -5224,25 +5289,72 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                     if (item.model) rows.push(['Model', item.model]);
                                                     if (item.condition) rows.push(['Condition', item.condition]);
                                                     if (item.accessories) rows.push(['Accessories', item.accessories]);
+                                                    const titleCase = (s: string) => s
+                                                      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                                                      .replace(/[_-]+/g, ' ')
+                                                      .split(' ')
+                                                      .filter(Boolean)
+                                                      .map((w) => {
+                                                        const up = w.toUpperCase();
+                                                        if (w.length <= 3 && w === up) return up;
+                                                        return w.charAt(0).toUpperCase() + w.slice(1);
+                                                      })
+                                                      .join(' ');
+                                                    const asPrintableText = (x: any): string => {
+                                                      if (x == null) return '';
+                                                      if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return String(x);
+                                                      if (Array.isArray(x)) {
+                                                        const parts = x
+                                                          .map((y) => (typeof y === 'string' || typeof y === 'number' || typeof y === 'boolean') ? String(y) : '')
+                                                          .map((s) => s.trim())
+                                                          .filter(Boolean);
+                                                        return parts.join(', ');
+                                                      }
+                                                      if (typeof x === 'object') {
+                                                        const v = (x as any).value;
+                                                        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+                                                        const l = (x as any).label;
+                                                        if (typeof l === 'string' || typeof l === 'number' || typeof l === 'boolean') return String(l);
+                                                        const t = (x as any).text;
+                                                        if (typeof t === 'string' || typeof t === 'number' || typeof t === 'boolean') return String(t);
+                                                        return '';
+                                                      }
+                                                      return '';
+                                                    };
                                                     Object.entries(item.dynamic || {}).forEach(([k, v]) => {
                                                       if (k === 'device') return;
-                                                      rows.push([k, String(v ?? '')]);
+
+                                                      if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
+                                                        (v as any[]).forEach((s: any, i: number) => {
+                                                          const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
+                                                          const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+                                                          if (!desc && !val) return;
+                                                          rows.push([desc || `Spec ${i + 1}`, val]);
+                                                        });
+                                                        return;
+                                                      }
+
+                                                      if (Array.isArray(v)) {
+                                                        const list = (v as any[])
+                                                          .map((x) => asPrintableText(x))
+                                                          .map((s) => s.trim())
+                                                          .filter(Boolean);
+                                                        rows.push([titleCase(k), list.length ? list.join(', ') : `${v.length} item(s)`]);
+                                                        return;
+                                                      }
+
+                                                      if (v && typeof v === 'object') {
+                                                        const t = asPrintableText(v).trim();
+                                                        if (t) rows.push([titleCase(k), t]);
+                                                        return;
+                                                      }
+
+                                                      const t = asPrintableText(v).trim();
+                                                      if (t) rows.push([titleCase(k), t]);
                                                     });
-                                                    const titleCase = (s: string) => {
-                                                      return s
-                                                        .replace(/[_-]+/g, ' ')
-                                                        .split(' ')
-                                                        .filter(Boolean)
-                                                        .map((w) => {
-                                                          const up = w.toUpperCase();
-                                                          if (w.length <= 3 && w === up) return up;
-                                                          return w.charAt(0).toUpperCase() + w.slice(1);
-                                                        })
-                                                        .join(' ');
-                                                    };
                                                     return rows.map(([k, v]) => (
                                                       <tr key={k}>
-                                                        <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{titleCase(k)}</td>
+                                                        <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{k}</td>
                                                         <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{v}</td>
                                                       </tr>
                                                     ));
