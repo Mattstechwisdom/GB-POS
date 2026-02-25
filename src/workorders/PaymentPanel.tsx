@@ -1,5 +1,6 @@
 import React from 'react';
 import { WorkOrderFull } from '../lib/types';
+import MoneyInput from '../components/MoneyInput';
 
 interface Props {
   workOrder: WorkOrderFull;
@@ -10,6 +11,10 @@ interface Props {
 
 const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesMode = false }) => {
   const t = workOrder.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+  const lastNonZeroTaxRateRef = React.useRef<number>(Number(workOrder.taxRate) || 0);
+  const currentTaxRate = Number(workOrder.taxRate) || 0;
+  if (currentTaxRate > 0) lastNonZeroTaxRateRef.current = currentTaxRate;
+  const salesTaxed = currentTaxRate > 0;
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
@@ -59,13 +64,12 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
                 />
               )}
               {workOrder.discountType === 'custom_amt' && (
-                <input
-                  type="number"
+                <MoneyInput
                   className="w-28 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                  placeholder="$"
-                  value={workOrder.discountCustomAmount ?? ''}
-                  onChange={e => {
-                    const amt = Number(e.target.value) || 0;
+                  placeholder="0.00"
+                  value={Number(workOrder.discountCustomAmount || 0)}
+                  onValueChange={(v) => {
+                    const amt = Number(v || 0) || 0;
                     onChange({ discountCustomAmount: amt, discount: amt });
                   }}
                 />
@@ -83,11 +87,41 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
         )}
         <div>
           <label className="block text-xs text-zinc-400">Amount paid</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.amountPaid || 0} onChange={e => onChange({ amountPaid: Number(e.target.value) })} />
+          <MoneyInput
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={Number(workOrder.amountPaid || 0)}
+            onValueChange={(v) => onChange({ amountPaid: Number(v || 0) })}
+          />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400">Sales tax %</label>
-          <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={workOrder.taxRate || 0} onChange={e => onChange({ taxRate: Number(e.target.value) })} />
+          <div className="flex items-center justify-between">
+            <label className="block text-xs text-zinc-400">Sales tax %</label>
+            {salesMode && (
+              <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+                <input
+                  className="scale-90"
+                  type="checkbox"
+                  checked={salesTaxed}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    if (!next) {
+                      onChange({ taxRate: 0 });
+                      return;
+                    }
+                    const fallback = Number(lastNonZeroTaxRateRef.current) || 8;
+                    onChange({ taxRate: fallback });
+                  }}
+                />
+                Taxed
+              </label>
+            )}
+          </div>
+          <input
+            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+            value={workOrder.taxRate || 0}
+            onChange={e => onChange({ taxRate: Number(e.target.value) })}
+            disabled={salesMode && !salesTaxed}
+          />
         </div>
       </div>
 

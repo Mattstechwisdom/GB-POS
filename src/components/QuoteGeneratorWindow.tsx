@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
+import MoneyInput from './MoneyInput';
 
 // Minimal types to satisfy this component
 type SaleItem = {
@@ -290,6 +291,29 @@ function QuoteGeneratorWindow(): JSX.Element {
     const specRowsInteractive = (item: SaleItem) => {
       const rows: Array<[string, string]> = [];
       const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').split(' ').filter(Boolean).map((w) => { const up = w.toUpperCase(); return (w.length <= 3 && w === up) ? up : (w.charAt(0).toUpperCase() + w.slice(1)); }).join(' ');
+
+      const asPrintableText = (x: any): string => {
+        if (x == null) return '';
+        if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return String(x);
+        if (Array.isArray(x)) {
+          const parts = x
+            .map((y) => (typeof y === 'string' || typeof y === 'number' || typeof y === 'boolean') ? String(y) : '')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          return parts.join(', ');
+        }
+        if (typeof x === 'object') {
+          const v = (x as any).value;
+          if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+          const l = (x as any).label;
+          if (typeof l === 'string' || typeof l === 'number' || typeof l === 'boolean') return String(l);
+          const t = (x as any).text;
+          if (typeof t === 'string' || typeof t === 'number' || typeof t === 'boolean') return String(t);
+          return '';
+        }
+        return '';
+      };
+
       if (item.deviceType) rows.push(['Device Type', item.deviceType]);
       const appleFamily = (item.dynamic || ({} as any)).device as string | undefined;
       if (appleFamily) rows.push(['Apple Family', appleFamily]);
@@ -297,14 +321,42 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (item.condition) rows.push(['Condition', item.condition]);
       if (item.accessories) rows.push(['Accessories', item.accessories]);
       try {
-        Object.entries(item.dynamic || {}).forEach(([k, v]) => { if (k !== 'device') rows.push([titleCase(k), String(v ?? '')]); });
+        Object.entries(item.dynamic || {}).forEach(([k, v]) => {
+          if (k === 'device') return;
+
+          if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
+            (v as any[]).forEach((s: any, i: number) => {
+              const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
+              const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+              if (!desc && !val) return;
+              rows.push([desc || `Spec ${i + 1}`, val]);
+            });
+            return;
+          }
+
+          if (Array.isArray(v)) {
+            const list = (v as any[])
+              .map((x) => (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') ? String(x).trim() : '')
+              .filter(Boolean);
+            rows.push([titleCase(k), list.length ? list.join(', ') : `${v.length} item(s)`]);
+            return;
+          }
+
+          if (v && typeof v === 'object') {
+            const t = asPrintableText(v).trim();
+            if (t) rows.push([titleCase(k), t]);
+            return;
+          }
+
+          rows.push([titleCase(k), asPrintableText(v)]);
+        });
       } catch {}
       return rows.map(([k, v]) => `<tr><td style="border:1px solid #f00; padding:6px 14px; font-weight:600; white-space:nowrap">${esc(k)}</td><td style="border:1px solid #f00; padding:6px 14px">${esc(v)}</td></tr>`).join('');
     };
 
     const devicePageInteractive = (item: SaleItem, title: string, standalone: boolean = true) => {
       const images = (item.images || []).slice(0, 3);
-      const base = parseFloat((item.price || '').toString());
+      const base = Number(item.price || 0);
       const shown = Number.isFinite(base) && base > 0 ? (base * 1.15) : null;
       const inner = `
         <div class=\"text-base\" style=\"text-align:center; font-weight:600; margin-bottom:8px\">${esc(title)}</div>
@@ -1821,7 +1873,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     };
 
     function devicePage(item: SaleItem, title: string, standalone: boolean = true) {
-      const base = parseFloat((item.price || '').toString());
+      const base = Number(item.price || 0);
       const shown = Number.isFinite(base) && base > 0 ? (base * 1.15) : null;
       const hasSpecs = !!(
         (item.dynamic && Object.keys(item.dynamic || {}).length > 0) ||
@@ -3166,11 +3218,13 @@ function QuoteGeneratorWindow(): JSX.Element {
               </div>
               {/* Price */}
               <div className="col-span-2">
-                <input
-                  type="number" step="0.01" min="0"
+                <MoneyInput
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                  value={(it.dynamic || ({} as any))[priceKey] || ''}
-                  onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [priceKey]: (e.target as HTMLInputElement).value } } : x)) }))}
+                  value={Number((it.dynamic || ({} as any))[priceKey] || 0) || 0}
+                  onValueChange={(v) => setSales((s) => ({
+                    ...s,
+                    items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [priceKey]: Number(v || 0) } } : x)),
+                  }))}
                   placeholder="0.00"
                 />
                 <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
@@ -3227,7 +3281,20 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={e?.desc || ''} onChange={(ev)=> setSales((s)=>({ ...s, items: s.items.map((x,ii)=>{ if(ii!==idx) return x; const list = Array.isArray((x.dynamic as any)?.extraParts)?[...(x.dynamic as any).extraParts]:[]; list[i] = { ...(list[i]||{}), desc: ev.target.value }; return { ...x, dynamic: { ...(x.dynamic||{}), extraParts: list } }; }) }))} placeholder="Part Description" />
                 </div>
                 <div className="col-span-2">
-                  <input type="number" step="0.01" min="0" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={e?.price || ''} onChange={(ev)=> setSales((s)=>({ ...s, items: s.items.map((x,ii)=>{ if(ii!==idx) return x; const list = Array.isArray((x.dynamic as any)?.extraParts)?[...(x.dynamic as any).extraParts]:[]; list[i] = { ...(list[i]||{}), price: (ev.target as HTMLInputElement).value }; return { ...x, dynamic: { ...(x.dynamic||{}), extraParts: list } }; }) }))} placeholder="0.00" />
+                  <MoneyInput
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                    value={Number(e?.price || 0) || 0}
+                    onValueChange={(v) => setSales((s) => ({
+                      ...s,
+                      items: s.items.map((x, ii) => {
+                        if (ii !== idx) return x;
+                        const list = Array.isArray((x.dynamic as any)?.extraParts) ? [ ...(x.dynamic as any).extraParts ] : [];
+                        list[i] = { ...(list[i] || {}), price: Number(v || 0) };
+                        return { ...x, dynamic: { ...(x.dynamic || {}), extraParts: list } };
+                      }),
+                    }))}
+                    placeholder="0.00"
+                  />
                   <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                 </div>
                 <div className="col-span-1 flex items-end justify-end">
@@ -3250,9 +3317,13 @@ function QuoteGeneratorWindow(): JSX.Element {
           {/* Build Labor at the bottom */}
           <div className="col-span-16">
             <label className="block text-xs text-zinc-400 mb-1">Build Labor Fee</label>
-            <input type="number" step="0.01" min="0" className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
-              value={(it.dynamic || ({} as any)).buildLabor || ''}
-              onChange={(e) => setSales((s)=>({ ...s, items: s.items.map((x,i)=> (i===idx ? { ...x, dynamic: { ...(x.dynamic||{}), buildLabor: (e.target as HTMLInputElement).value } } : x)) }))}
+            <MoneyInput
+              className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
+              value={Number((it.dynamic || ({} as any)).buildLabor || 0) || 0}
+              onValueChange={(v) => setSales((s) => ({
+                ...s,
+                items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), buildLabor: Number(v || 0) } } : x)),
+              }))}
               placeholder="0.00"
             />
             <div className="text-[10px] text-zinc-800 mt-0.5">Labor has no markup</div>
@@ -3487,11 +3558,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                                 <div className="col-span-4">
                                   <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                                  <input
-                                    type="number" step="0.01" min="0"
+                                  <MoneyInput
                                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                    value={String(dyn.storagePrice || '')}
-                                    onChange={(e) => setDyn('storagePrice', (e.target as HTMLInputElement).value)}
+                                    value={Number(dyn.storagePrice || 0) || 0}
+                                    onValueChange={(v) => setDyn('storagePrice', Number(v || 0))}
                                     placeholder="0.00"
                                   />
                                   <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
@@ -3562,11 +3632,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                   </div>
                                                   <div className="col-span-2">
                                                     <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                                                    <input
-                                                      type="number" step="0.01" min="0"
+                                                    <MoneyInput
                                                       className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                                      value={String(d?.price || '')}
-                                                      onChange={(e) => updateSecondaryField(di, 'price', (e.target as HTMLInputElement).value)}
+                                                      value={Number(d?.price || 0) || 0}
+                                                      onValueChange={(v) => updateSecondaryField(di, 'price', String(Number(v || 0)))}
                                                       placeholder="0.00"
                                                     />
                                                     <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
@@ -3644,12 +3713,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                                       </div>
                                       <div className="w-32">
                                         <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                                        <input
-                                          type="number" step="0.01" min="0"
+                                        <MoneyInput
                                           className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
                                           placeholder="0.00"
-                                          value={e?.price || ''}
-                                          onChange={(ev) => updatePcExtra(iExtra, { price: (ev.target as HTMLInputElement).value })}
+                                          value={Number(e?.price || 0) || 0}
+                                          onValueChange={(v) => updatePcExtra(iExtra, { price: Number(v || 0) })}
                                         />
                                         <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
                                       </div>
@@ -3669,11 +3737,13 @@ function QuoteGeneratorWindow(): JSX.Element {
                               {/* Price field per category */}
                               <div className="col-span-4">
                                 <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                                <input
-                                  type="number" step="0.01" min="0"
+                                <MoneyInput
                                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                  value={(it.dynamic || ({} as any))[`${cat.key}Price`] || ''}
-                                  onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [`${cat.key}Price`]: (e.target as HTMLInputElement).value } } : x)) }))}
+                                  value={Number((it.dynamic || ({} as any))[`${cat.key}Price`] || 0) || 0}
+                                  onValueChange={(v) => setSales((s) => ({
+                                    ...s,
+                                    items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), [`${cat.key}Price`]: Number(v || 0) } } : x)),
+                                  }))}
                                   placeholder="0.00"
                                 />
                                 <div className="text-[10px] text-zinc-400 mt-0.5">Print shows +5%</div>
@@ -3686,11 +3756,13 @@ function QuoteGeneratorWindow(): JSX.Element {
                       <div className="grid grid-cols-16 gap-3">
                         <div className="col-span-6">
                           <label className="block text-xs text-zinc-400 mb-1">Build Labor</label>
-                          <input
-                            type="number" step="0.01" min="0"
+                          <MoneyInput
                             className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
-                            value={(it.dynamic || ({} as any)).buildLabor || ''}
-                            onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), buildLabor: (e.target as HTMLInputElement).value } } : x)) }))}
+                            value={Number((it.dynamic || ({} as any)).buildLabor || 0) || 0}
+                            onValueChange={(v) => setSales((s) => ({
+                              ...s,
+                              items: s.items.map((x, i2) => (i2 === idx ? { ...x, dynamic: { ...(x.dynamic || {}), buildLabor: Number(v || 0) } } : x)),
+                            }))}
                             placeholder="0.00"
                           />
                           <div className="text-[10px] text-zinc-800 mt-0.5">Labor has no markup</div>
@@ -4457,14 +4529,14 @@ function QuoteGeneratorWindow(): JSX.Element {
                           </div>
                           <div className="col-span-4 mt-2">
                             <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
+                            <MoneyInput
                               className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
-                              value={it.price || ''}
-                              onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, price: e.target.value } : x)) }))}
-                              placeholder="Enter base price"
+                              value={Number(it.price || 0) || 0}
+                              onValueChange={(v) => setSales((s) => ({
+                                ...s,
+                                items: s.items.map((x, i) => (i === idx ? { ...x, price: Number(v || 0) } : x)),
+                              }))}
+                              placeholder="0.00"
                             />
                             <div className="text-[10px] text-zinc-400 mt-0.5">Printed total is before tax</div>
                           </div>
@@ -5180,7 +5252,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                             </div>
                                           </div>
                                           {(() => {
-                                            const base = parseFloat((item.price || '').toString());
+                                            const base = Number(item.price || 0);
                                             if (!isFinite(base) || base <= 0) return null;
                                             const shown = base * 1.15;
                                             return (
@@ -5194,7 +5266,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                         </div>
                                       )}
                                       {!hasSpecs && (() => {
-                                        const base = parseFloat((item.price || '').toString());
+                                        const base = Number(item.price || 0);
                                         if (!isFinite(base) || base <= 0) return null;
                                         const shown = base * 1.15;
                                         return (

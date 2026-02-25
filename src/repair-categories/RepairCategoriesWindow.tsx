@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRepairCategoriesVM } from './useRepairCategoriesVM';
 import DataGrid from '../components/DataGrid';
+import MoneyInput from '../components/MoneyInput';
 import { RepairItem } from './types';
 import '../repair-categories/repair-categories.css';
 
@@ -58,11 +59,27 @@ export default function RepairCategoriesWindow() {
         <div className="mb-2 grid grid-cols-2 gap-2">
           <div>
             <label className="block text-sm">Part costs</label>
-            <input value={editing?.partCost?.toFixed(2) || '0.00'} onChange={e => { const v = parseFloat(e.target.value || '0'); setEditing(ed => ed ? ({ ...ed, partCost: isNaN(v) ? 0 : v }) : ed); setDirty(true); }} className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full" />
+            <MoneyInput
+              className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full"
+              value={Number(editing?.partCost || 0)}
+              onValueChange={(v) => {
+                setEditing(ed => ed ? ({ ...ed, partCost: Number(v || 0) }) : ed);
+                setDirty(true);
+              }}
+              placeholder="0.00"
+            />
           </div>
           <div>
             <label className="block text-sm">Labor costs</label>
-            <input value={editing?.laborCost?.toFixed(2) || '0.00'} onChange={e => { const v = parseFloat(e.target.value || '0'); setEditing(ed => ed ? ({ ...ed, laborCost: isNaN(v) ? 0 : v }) : ed); setDirty(true); }} className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full" />
+            <MoneyInput
+              className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full"
+              value={Number(editing?.laborCost || 0)}
+              onValueChange={(v) => {
+                setEditing(ed => ed ? ({ ...ed, laborCost: Number(v || 0) }) : ed);
+                setDirty(true);
+              }}
+              placeholder="0.00"
+            />
           </div>
         </div>
         <div className="mb-2">

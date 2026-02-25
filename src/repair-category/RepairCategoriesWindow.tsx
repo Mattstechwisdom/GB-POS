@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRepairCategoriesVM } from './useRepairCategoriesVM';
 import DataGridSimple from '../components/DataGridSimple';
+import MoneyInput from '../components/MoneyInput';
 import '../repair-categories/repair-categories.css';
 import { RepairItem } from './types';
 
@@ -94,17 +95,42 @@ export default function RepairCategoriesWindow() {
         <div className="grid grid-cols-2 gap-2 mb-2">
           <div>
             <label className="block text-sm">Part costs</label>
-            <input value={(editing?.partCost ?? 0).toFixed(2)} onChange={e => { const v = parseFloat(e.target.value || '0'); setEditing(ed => ed ? ({ ...ed, partCost: isNaN(v) ? 0 : v }) : ed); setDirty(true); }} className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full" />
+            <MoneyInput
+              className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full"
+              value={Number(editing?.partCost || 0)}
+              onValueChange={(v) => {
+                setEditing(ed => ed ? ({ ...ed, partCost: Number(v || 0) }) : ed);
+                setDirty(true);
+              }}
+              placeholder="0.00"
+            />
           </div>
           <div>
             <label className="block text-sm">Labor costs</label>
-            <input value={(editing?.laborCost ?? 0).toFixed(2)} onChange={e => { const v = parseFloat(e.target.value || '0'); setEditing(ed => ed ? ({ ...ed, laborCost: isNaN(v) ? 0 : v }) : ed); setDirty(true); }} className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full" />
+            <MoneyInput
+              className="bg-yellow-300 text-black border border-zinc-700 rounded px-2 py-1 text-sm w-full"
+              value={Number(editing?.laborCost || 0)}
+              onValueChange={(v) => {
+                setEditing(ed => ed ? ({ ...ed, laborCost: Number(v || 0) }) : ed);
+                setDirty(true);
+              }}
+              placeholder="0.00"
+            />
           </div>
         </div>
 
         <div className="mb-2">
           <label className="block text-sm">Internal Cost (reporting only)</label>
-          <input value={editing?.internalCost === undefined || editing?.internalCost === null ? '' : Number(editing.internalCost).toFixed(2)} onChange={e => { const v = parseFloat(e.target.value || ''); setEditing(ed => ed ? ({ ...ed, internalCost: isNaN(v) ? undefined : v }) : ed); setDirty(true); }} className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm w-full" placeholder="$0.00" />
+          <MoneyInput
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm w-full"
+            value={typeof editing?.internalCost === 'number' ? editing.internalCost : undefined}
+            onValueChange={(v) => {
+              setEditing(ed => ed ? ({ ...ed, internalCost: v == null ? undefined : Number(v || 0) }) : ed);
+              setDirty(true);
+            }}
+            allowEmpty
+            placeholder="0.00"
+          />
           <div className="text-xs text-zinc-400 mt-1">Not shown on work orders; used for reporting.</div>
         </div>
 

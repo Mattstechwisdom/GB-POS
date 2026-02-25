@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import MoneyInput from '@/components/MoneyInput';
 
 interface DeviceFormProps {
   onCancel: () => void;
@@ -30,7 +31,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const [fees, setFees] = useState<AdditionalFeeRecord[]>([]);
   const [feeCategoryText, setFeeCategoryText] = useState('');
   const [feeNameText, setFeeNameText] = useState('');
-  const [feeAmountText, setFeeAmountText] = useState('');
+  const [feeAmount, setFeeAmount] = useState<number>(0);
   const [selectedFeeId, setSelectedFeeId] = useState<number | undefined>(undefined);
 
   const [saving, setSaving] = useState(false);
@@ -101,11 +102,6 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
   }, [fees, feeCategoryText]);
 
-  function parseMoney(v: string) {
-    const n = Number(String(v || '').replace(/[^0-9.\-]/g, ''));
-    return Number.isFinite(n) ? n : 0;
-  }
-
   async function upsertFeeRepairItem(fee: AdditionalFeeRecord) {
     const api: any = (window as any).api || {};
     if (!api?.dbGet || !api?.dbAdd || !api?.dbUpdate) return;
@@ -137,7 +133,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     if (!api?.dbAdd || !api?.dbUpdate) return;
     const category = String(feeCategoryText || '').trim();
     const name = String(feeNameText || '').trim();
-    const amount = parseMoney(feeAmountText);
+    const amount = Number(feeAmount || 0) || 0;
     if (!category || !name) return;
 
     setSaving(true);
@@ -157,7 +153,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       onSaved();
       setSelectedFeeId(undefined);
       setFeeNameText('');
-      setFeeAmountText('');
+      setFeeAmount(0);
     } catch (e) {
       console.error('save fee failed', e);
       alert('Failed to save additional fee');
@@ -181,7 +177,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       setSelectedFeeId(undefined);
       setFeeCategoryText('');
       setFeeNameText('');
-      setFeeAmountText('');
+      setFeeAmount(0);
     } catch (e) {
       console.error('delete fee failed', e);
       alert('Failed to delete additional fee');
@@ -461,7 +457,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                 const found = (fees || []).find(f => String((f as any).category || '').trim().toLowerCase() === String(feeCategoryText || '').trim().toLowerCase() && String((f as any).name || '').trim().toLowerCase() === v.trim().toLowerCase());
                 if (found?.id != null) {
                   setSelectedFeeId(Number(found.id));
-                  setFeeAmountText(String((found as any).amount ?? ''));
+                  setFeeAmount(Number((found as any).amount ?? 0) || 0);
                 } else {
                   setSelectedFeeId(undefined);
                 }
@@ -475,12 +471,10 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           </div>
           <div>
             <label className="block text-xs text-zinc-400">Amount (labor)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={feeAmountText}
-              onChange={e => setFeeAmountText(e.target.value)}
-              placeholder="$0.00"
+            <MoneyInput
+              value={Number(feeAmount || 0)}
+              onValueChange={(v) => setFeeAmount(Number(v || 0))}
+              placeholder="0.00"
               className="w-full mt-1 bg-yellow-200 text-black border border-yellow-300 rounded px-2 py-1 text-sm"
             />
           </div>
@@ -532,7 +526,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                       setSelectedFeeId((f as any).id != null ? Number((f as any).id) : undefined);
                       setFeeCategoryText(String((f as any).category || ''));
                       setFeeNameText(String((f as any).name || ''));
-                      setFeeAmountText(String((f as any).amount ?? ''));
+                      setFeeAmount(Number((f as any).amount ?? 0) || 0);
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -615,7 +609,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                 if (feeId != null) setSelectedFeeId(feeId);
                 setFeeCategoryText(String(f.category || ''));
                 setFeeNameText(String(f.name || ''));
-                setFeeAmountText(String((f as any).amount ?? ''));
+                setFeeAmount(Number((f as any).amount ?? 0) || 0);
               },
             },
             { type: 'separator' },

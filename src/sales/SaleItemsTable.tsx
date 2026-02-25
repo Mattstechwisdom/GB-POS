@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import MoneyInput from '@/components/MoneyInput';
 
 export type SaleItemRow = {
   id: string;
@@ -193,7 +194,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
             </div>
             <div className="w-2/3">
               <label className="block text-xs text-zinc-400">Price</label>
-              <input className="w-full bg-zinc-900 rounded px-2 py-1" type="number" step="0.01" min={0} value={editing.price} onChange={e => setEditing({ ...editing, price: Number(e.target.value) || 0 })} />
+              <MoneyInput
+                className="w-full bg-zinc-900 rounded px-2 py-1"
+                value={Number(editing.price || 0)}
+                onValueChange={(v) => setEditing({ ...editing, price: Number(v || 0) })}
+              />
             </div>
           </div>
           <div className="flex gap-2 mt-2">
@@ -208,7 +213,12 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
             </div>
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Internal cost</label>
-              <input className="w-full bg-yellow-200 text-black rounded px-2 py-1" type="number" step="0.01" min={0} value={typeof editing.internalCost === 'number' ? editing.internalCost : '' as any} onChange={e => setEditing({ ...editing, internalCost: e.target.value === '' ? undefined : Number(e.target.value) })} />
+              <MoneyInput
+                className="w-full bg-yellow-200 text-black rounded px-2 py-1"
+                value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
+                onValueChange={(v) => setEditing({ ...editing, internalCost: v == null ? undefined : Number(v || 0) })}
+                allowEmpty
+              />
             </div>
           </div>
           <div className="mt-2">

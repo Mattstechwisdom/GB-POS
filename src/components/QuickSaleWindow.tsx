@@ -1,29 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
+import MoneyInput from './MoneyInput';
 
 const TAX_RATE = 8;
-
-function sanitizeMoneyInput(raw: string): string {
-  const cleaned = String(raw || '')
-    .replace(/[^0-9.]/g, '')
-    .replace(/(\..*?)\..*/g, '$1');
-  // avoid absurd long strings
-  return cleaned.slice(0, 12);
-}
-
-function asMoney(raw: string): number {
-  const n = parseFloat(String(raw || '0'));
-  return Number.isFinite(n) && n >= 0 ? round2(n) : 0;
-}
 
 const QuickSaleWindow: React.FC = () => {
   const api = (window as any)?.api as any;
   const [description, setDescription] = useState<string>('');
-  const [amountStr, setAmountStr] = useState<string>('0.00');
+  const [amount, setAmount] = useState<number>(0);
   const [taxed, setTaxed] = useState<boolean>(true);
   const [busy, setBusy] = useState<boolean>(false);
 
-  const amount = useMemo(() => asMoney(amountStr), [amountStr]);
   const taxRate = taxed ? TAX_RATE : 0;
   const totals = useMemo(
     () => computeTotals({ laborCost: 0, partCosts: amount, discount: 0, taxRate, amountPaid: 0 }),
@@ -197,11 +184,10 @@ const QuickSaleWindow: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Sale amount</label>
-              <input
+              <MoneyInput
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-neon-green"
-                value={amountStr}
-                onChange={(e) => setAmountStr(sanitizeMoneyInput(e.target.value))}
-                inputMode="decimal"
+                value={amount}
+                onValueChange={(v) => setAmount(Number(v || 0))}
               />
             </div>
 

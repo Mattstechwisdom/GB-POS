@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
+import MoneyInput from './MoneyInput';
 
 type Product = {
   id?: number;
@@ -242,10 +243,23 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
             <input value={editing.itemDescription || ''} onChange={e => setEditing(ed => ({ ...ed, itemDescription: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2" />
 
             <label className="block text-sm">Internal cost</label>
-            <input type="number" step="0.01" value={editing.internalCost ?? ''} onChange={e => setEditing(ed => ({ ...ed, internalCost: e.target.value === '' ? undefined : Number(e.target.value) }))} className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 mb-2" />
+            <MoneyInput
+              className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 mb-2"
+              value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
+              onValueChange={(v) => setEditing(ed => ({ ...ed, internalCost: v == null ? undefined : Number(v || 0) }))}
+              allowEmpty
+            />
 
             <label className="block text-sm">Price</label>
-            <input type="number" step="0.01" value={editing.price ?? ''} onChange={e => { setPriceManuallyEdited(true); setEditing(ed => ({ ...ed, price: e.target.value === '' ? undefined : Number(e.target.value) })); }} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2" />
+            <MoneyInput
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2"
+              value={typeof editing.price === 'number' ? editing.price : undefined}
+              onValueChange={(v) => {
+                setPriceManuallyEdited(true);
+                setEditing(ed => ({ ...ed, price: v == null ? undefined : Number(v || 0) }));
+              }}
+              allowEmpty
+            />
 
             <label className="block text-sm">Condition</label>
             <select value={editing.condition || 'New'} onChange={e => setEditing(ed => ({ ...ed, condition: e.target.value as any }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2">

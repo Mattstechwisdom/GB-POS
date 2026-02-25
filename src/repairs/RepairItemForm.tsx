@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
+import MoneyInput from '../components/MoneyInput';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -62,10 +63,6 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
-  // Track focus for cost fields
-  const [partCostFocused, setPartCostFocused] = useState(false);
-  const [laborCostFocused, setLaborCostFocused] = useState(false);
-  const [internalCostFocused, setInternalCostFocused] = useState(false);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
@@ -221,84 +218,31 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="^\$?\d{1,3}(,\d{3})*(\.\d{0,2})?$"
-              value={
-                partCostFocused
-                  ? (formData.partCost === undefined || formData.partCost === null ? '' : String(formData.partCost))
-                  : (formData.partCost === undefined || formData.partCost === null ? '' : Number(formData.partCost).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))
-              }
-              name="partCost"
-              onChange={e => {
-                const raw = e.target.value.replace(/[^\d.]/g, '');
-                setFormData(prev => ({ ...prev, partCost: raw === '' ? undefined : Number(raw) }));
-              }}
-              onFocus={() => setPartCostFocused(true)}
-              onBlur={e => {
-                setPartCostFocused(false);
-                let val = e.target.value.replace(/[^\d.]/g, '');
-                let num = parseFloat(val);
-                setFormData(prev => ({ ...prev, partCost: isNaN(num) ? undefined : num }));
-              }}
+            <MoneyInput
               className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-              placeholder="$0.00"
+              value={Number(formData.partCost || 0)}
+              onValueChange={(v) => setFormData(prev => ({ ...prev, partCost: Number(v || 0) }))}
+              placeholder="0.00"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Labor costs</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="^\$?\d{1,3}(,\d{3})*(\.\d{0,2})?$"
-              value={
-                laborCostFocused
-                  ? (formData.laborCost === undefined || formData.laborCost === null ? '' : String(formData.laborCost))
-                  : (formData.laborCost === undefined || formData.laborCost === null ? '' : Number(formData.laborCost).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))
-              }
-              name="laborCost"
-              onChange={e => {
-                const raw = e.target.value.replace(/[^\d.]/g, '');
-                setFormData(prev => ({ ...prev, laborCost: raw === '' ? undefined : Number(raw) }));
-              }}
-              onFocus={() => setLaborCostFocused(true)}
-              onBlur={e => {
-                setLaborCostFocused(false);
-                let val = e.target.value.replace(/[^\d.]/g, '');
-                let num = parseFloat(val);
-                setFormData(prev => ({ ...prev, laborCost: isNaN(num) ? undefined : num }));
-              }}
+            <MoneyInput
               className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-              placeholder="$0.00"
+              value={Number(formData.laborCost || 0)}
+              onValueChange={(v) => setFormData(prev => ({ ...prev, laborCost: Number(v || 0) }))}
+              placeholder="0.00"
             />
           </div>
           {effectiveMode === 'admin' && (
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-300 mb-1">Internal Cost (reporting only)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                pattern="^\$?\d{1,3}(,\d{3})*(\.\d{0,2})?$"
-                value={
-                  internalCostFocused
-                    ? (formData.internalCost === undefined || formData.internalCost === null ? '' : String(formData.internalCost))
-                    : (formData.internalCost === undefined || formData.internalCost === null ? '' : Number(formData.internalCost).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))
-                }
-                name="internalCost"
-                onChange={e => {
-                  const raw = e.target.value.replace(/[^\d.]/g, '');
-                  setFormData(prev => ({ ...prev, internalCost: raw === '' ? undefined : Number(raw) }));
-                }}
-                onFocus={() => setInternalCostFocused(true)}
-                onBlur={e => {
-                  setInternalCostFocused(false);
-                  let val = e.target.value.replace(/[^\d.]/g, '');
-                  let num = parseFloat(val);
-                  setFormData(prev => ({ ...prev, internalCost: isNaN(num) ? undefined : num }));
-                }}
+              <MoneyInput
                 className="w-full bg-zinc-800 text-gray-100 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-                placeholder="$0.00"
+                value={typeof formData.internalCost === 'number' ? formData.internalCost : undefined}
+                onValueChange={(v) => setFormData(prev => ({ ...prev, internalCost: v == null ? undefined : Number(v || 0) }))}
+                allowEmpty
+                placeholder="0.00"
               />
               <div className="text-xs text-zinc-400 mt-1">Not shown to customers; used for reporting only.</div>
             </div>

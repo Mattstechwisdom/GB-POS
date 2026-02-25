@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import MoneyInput from '../components/MoneyInput';
 
 export type PaymentType = "Cash" | "Card" | "Apple Pay" | "Google Pay" | "Other";
 
@@ -43,7 +44,7 @@ const CheckoutWindow: React.FC = () => {
   const hasPayFor = partsDue > 0 || laborDue > 0;
 
   const [payFor, setPayFor] = useState<CheckoutPayFor>('both');
-  const [cashReceived, setCashReceived] = useState<string>('0.00');
+  const [cashReceived, setCashReceived] = useState<number>(0);
   const [cashEdited, setCashEdited] = useState<boolean>(false);
   const [paymentType, setPaymentType] = useState<PaymentType | ''>('');
   const [closeParent, setCloseParent] = useState(true);
@@ -90,8 +91,8 @@ const CheckoutWindow: React.FC = () => {
   }, [originalAmountDue, hasPayFor, payFor, partsDue, laborDue]);
 
   const numericCashReceived = useMemo(() => {
-    const n = parseFloat(cashReceived || '0');
-    return Number.isFinite(n) && n >= 0 ? parseFloat(n.toFixed(2)) : 0;
+    const n = Number(cashReceived || 0);
+    return Number.isFinite(n) && n >= 0 ? round2(n) : 0;
   }, [cashReceived]);
 
   const isCash = (paymentType as any) === 'Cash';
@@ -135,12 +136,12 @@ const CheckoutWindow: React.FC = () => {
 
   useEffect(() => {
     // ensure initial formatting
-    setCashReceived(originalAmountDue.toFixed(2));
+    setCashReceived(round2(originalAmountDue));
   }, []);
 
   useEffect(() => {
     // When the selected due changes, default the input fields (unless user edited).
-    if (paymentType === 'Cash' && !cashEdited) setCashReceived(selectedDue.toFixed(2));
+    if (paymentType === 'Cash' && !cashEdited) setCashReceived(round2(selectedDue));
   }, [selectedDue, cashEdited, paymentType]);
 
   useEffect(() => {
@@ -148,7 +149,7 @@ const CheckoutWindow: React.FC = () => {
     if (paymentType === 'Cash') {
       setCashReceived(prev => {
         if (cashEdited) return prev;
-        return (prev && prev !== '0' && prev !== '0.00') ? prev : selectedDue.toFixed(2);
+        return (Number(prev) > 0) ? prev : round2(selectedDue);
       });
     }
   }, [paymentType, selectedDue, cashEdited]);
@@ -194,13 +195,12 @@ const CheckoutWindow: React.FC = () => {
           {isCash ? (
             <div className="col-span-2">
               <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Cash received</label>
-              <input
-                inputMode="decimal"
+              <MoneyInput
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
-                value={cashReceived}
-                onChange={e => {
+                value={numericCashReceived}
+                onValueChange={(v) => {
                   setCashEdited(true);
-                  setCashReceived(e.target.value.replace(/[^0-9.]/g,'').replace(/(\..*?)\..*/,'$1'));
+                  setCashReceived(Number(v || 0));
                 }}
               />
               <div className="text-[10px] text-zinc-500 mt-1">Applied to balance: <span className="text-zinc-200 font-semibold">${appliedPaid.toFixed(2)}</span></div>

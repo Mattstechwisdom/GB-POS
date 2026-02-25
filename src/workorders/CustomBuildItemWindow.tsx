@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import MoneyInput from '../components/MoneyInput';
 
 export type CustomBuildItemPayload = {
   title?: string;
@@ -26,17 +27,8 @@ function parsePayload(): CustomBuildItemPayload {
   }
 }
 
-function sanitizeMoneyInput(raw: string): string {
-  const cleaned = String(raw || '')
-    .replace(/[^0-9.]/g, '')
-    .replace(/(\..*?)\..*/g, '$1');
-  return cleaned.slice(0, 12);
-}
-
-function asMoney(raw: string): number {
-  const n = parseFloat(String(raw || '0'));
-  const v = Number.isFinite(n) && n >= 0 ? n : 0;
-  return Math.round(v * 100) / 100;
+function round2(n: number) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 const CustomBuildItemWindow: React.FC = () => {
@@ -44,12 +36,11 @@ const CustomBuildItemWindow: React.FC = () => {
   const existing = payload?.item || null;
 
   const [description, setDescription] = useState<string>(String(existing?.description || ''));
-  const [priceStr, setPriceStr] = useState<string>(
-    existing?.price != null && Number.isFinite(Number(existing.price)) ? Number(existing.price).toFixed(2) : '0.00'
+  const [price, setPrice] = useState<number>(
+    existing?.price != null && Number.isFinite(Number(existing.price)) ? round2(Number(existing.price)) : 0
   );
   const [isParts, setIsParts] = useState<boolean>(existing?.isParts !== false);
 
-  const price = useMemo(() => asMoney(priceStr), [priceStr]);
   const canSave = description.trim().length > 0 && price >= 0;
 
   useEffect(() => {
@@ -97,11 +88,10 @@ const CustomBuildItemWindow: React.FC = () => {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Price</label>
-            <input
+            <MoneyInput
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-neon-green"
-              value={priceStr}
-              onChange={(e) => setPriceStr(sanitizeMoneyInput(e.target.value))}
-              inputMode="decimal"
+              value={price}
+              onValueChange={(v) => setPrice(round2(Number(v || 0)))}
             />
             <div className="text-[11px] text-zinc-500 mt-1">Saved as ${price.toFixed(2)}</div>
           </div>
