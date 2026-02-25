@@ -1753,6 +1753,30 @@ function QuoteGeneratorWindow(): JSX.Element {
 
     const specRows = (item: SaleItem) => {
       const rows: Array<[string, string]> = [];
+
+      const asPrintableText = (x: any): string => {
+        if (x == null) return '';
+        if (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') return String(x);
+        if (Array.isArray(x)) {
+          const parts = x
+            .map((y) => (typeof y === 'string' || typeof y === 'number' || typeof y === 'boolean') ? String(y) : '')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          return parts.join(', ');
+        }
+        if (typeof x === 'object') {
+          // Common shapes from select/combobox components
+          const v = (x as any).value;
+          if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+          const l = (x as any).label;
+          if (typeof l === 'string' || typeof l === 'number' || typeof l === 'boolean') return String(l);
+          const t = (x as any).text;
+          if (typeof t === 'string' || typeof t === 'number' || typeof t === 'boolean') return String(t);
+          return '';
+        }
+        return '';
+      };
+
       if (item.deviceType) rows.push(['Device Type', item.deviceType]);
       const appleFamily = (item.dynamic || ({} as any)).device as string | undefined;
       if (appleFamily) rows.push(['Apple Family', appleFamily]);
@@ -1765,8 +1789,8 @@ function QuoteGeneratorWindow(): JSX.Element {
         // 'Other' / 'Drone' ad-hoc spec rows are arrays of {desc,value}.
         if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
           (v as any[]).forEach((s: any, i: number) => {
-            const desc = String(s?.desc || '').trim();
-            const val = String(s?.value ?? '').trim();
+            const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
+            const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
             if (!desc && !val) return;
             rows.push([desc || `Spec ${i + 1}`, val]);
           });
