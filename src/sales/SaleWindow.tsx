@@ -358,6 +358,26 @@ const SaleWindow: React.FC = () => {
     return record;
   }
 
+  async function closeThisWindow(opts?: { focusMain?: boolean }) {
+    const api = (window as any).api;
+    try {
+      if (api?.closeSelfWindow) {
+        const res = await api.closeSelfWindow({ focusMain: opts?.focusMain ?? true });
+        if (res?.ok) return;
+        if (res?.blocked) {
+          // If this view is ever rendered in the main window, don't close the whole app.
+          try {
+            const u = new URL(window.location.href);
+            u.search = '';
+            window.location.href = u.toString();
+            return;
+          } catch {}
+        }
+      }
+    } catch {}
+    try { window.close(); } catch {}
+  }
+
   async function handleSave() {
     if (!validate('saving this sale')) return;
     const record = buildSaleRecordBase();
@@ -377,7 +397,7 @@ const SaleWindow: React.FC = () => {
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
 
         // After saving, return the user to the main/customer screen.
-        window.close();
+        await closeThisWindow({ focusMain: true });
       }
     } catch (e) {
       console.error('Save failed', e);
@@ -518,23 +538,47 @@ const SaleWindow: React.FC = () => {
         status = 'closed';
         checkoutDate = new Date().toISOString();
       }
-      // Ensure the sale exists in DB. If unsaved, create it first.
+
+      // Persist the full sale record so Customer Overview, EOD, etc. always see it.
+      const updatedTotals = computeTotals({
+        laborCost: 0,
+        partCosts: total,
+        discount: sale.discount || 0,
+        taxRate: sale.taxRate || 0,
+        amountPaid: newAmountPaid,
+      });
+
+      const recordBase = buildSaleRecordBase();
+      const recordToPersist: SaleRecord = {
+        ...recordBase,
+        amountPaid: newAmountPaid,
+        paymentType: result.paymentType,
+        payments,
+        status: status as any,
+        checkoutDate,
+        partCosts: total,
+        laborCost: 0,
+        totals: updatedTotals,
+        total: updatedTotals.total,
+      } as any;
+
+      let saved: any = null;
       let currentId = (sale as any).id as number | undefined;
-      if (!currentId) {
-        const base = buildSaleRecordBase();
-        const created = await (window as any).api.dbAdd('sales', base);
-        if (created && created.id) {
-          currentId = created.id;
-          setSale(created);
-          try { await reflectSaleInCalendar(created); } catch (e) { console.warn('calendar sync failed', e); }
-        }
-      }
-      // Now persist payment/status changes
-      setSale(s => ({ ...s, id: currentId, amountPaid: newAmountPaid, paymentType: result.paymentType, payments, status, checkoutDate }));
       if (currentId) {
-        try { await (window as any).api.dbUpdate('sales', currentId, { amountPaid: newAmountPaid, paymentType: result.paymentType, payments, status, checkoutDate }); } catch {}
+        saved = await (window as any).api.dbUpdate('sales', currentId, { ...recordToPersist, id: currentId });
+      } else {
+        saved = await (window as any).api.dbAdd('sales', recordToPersist);
+        currentId = saved?.id;
       }
-      try { window.opener?.postMessage({ type: 'sales:changed', customerId: (sale as any).customerId }, '*'); } catch {}
+      if (saved) {
+        setSale(saved);
+        try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
+      } else {
+        // Fallback: at least update local state
+        setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+      }
+      try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
+
       if (result.printReceipt) {
         // Reuse customer receipt for now, mapping fields
         try {
@@ -549,21 +593,35 @@ const SaleWindow: React.FC = () => {
           const payload = {
             receiptType: 'sale',
             id: currentId || (sale as any).id,
-            customerId: sale.customerId,
-            customerName: sale.customerName,
-            customerPhone: sale.customerPhone,
+            customerId: recordToPersist.customerId,
+            customerName: recordToPersist.customerName,
+            customerPhone: recordToPersist.customerPhone,
+            customerEmail: (recordToPersist as any).customerEmail || '',
+            productCategory: 'Retail',
+            productDescription: (recordToPersist.items && (recordToPersist.items as any)[0]?.description) || recordToPersist.itemDescription || 'Sale',
             items: receiptItems,
-            discount: sale.discount || 0,
-            taxRate: sale.taxRate || 0,
-            totals: sale.totals,
+            partCosts: total,
+            laborCost: 0,
+            discount: recordToPersist.discount || 0,
+            taxRate: recordToPersist.taxRate || 0,
+            totals: updatedTotals,
             amountPaid: newAmountPaid,
           };
           if ((window as any).api?.openCustomerReceipt) {
-            await (window as any).api.openCustomerReceipt(payload);
+            await (window as any).api.openCustomerReceipt({
+              data: payload,
+              autoPrint: true,
+              silent: true,
+              autoCloseMs: 900,
+              show: false,
+            });
           }
         } catch (e) { console.error('openCustomerReceipt failed', e); }
       }
-      if (result.closeParent) window.close();
+      if (result.closeParent) {
+        const delayMs = result.printReceipt ? 1300 : 0;
+        setTimeout(() => { void closeThisWindow({ focusMain: true }); }, delayMs);
+      }
     } catch (e) {
       console.error('Checkout failed', e);
       alert('Checkout failed. See console.');
@@ -572,11 +630,11 @@ const SaleWindow: React.FC = () => {
 
   function onCancel() {
     if (!(sale as any).id && !hasMeaningfulInput) {
-      window.close();
+      void closeThisWindow({ focusMain: true });
       return;
     }
     if (!ensureRequired('close', 'closing this sale window')) return;
-    window.close();
+    void closeThisWindow({ focusMain: true });
   }
 
   // Listen for product selection from Products picker via window message or IPC
@@ -659,19 +717,32 @@ const SaleWindow: React.FC = () => {
                 qty: Number(r.qty) || 1,
                 price: Number(r.price) || 0,
               }));
+              const partCosts = Number(sale.partCosts ?? 0) || 0;
+              const laborCost = Number(sale.laborCost ?? 0) || 0;
               const payload = {
                 receiptType: 'sale',
                 id: (sale as any).id,
                 customerId: sale.customerId,
                 customerName: sale.customerName,
                 customerPhone: sale.customerPhone,
+                customerEmail: (sale as any).customerEmail || '',
+                productCategory: 'Retail',
+                productDescription: (rows[0]?.description) || sale.itemDescription || 'Sale',
                 items: receiptItems,
+                partCosts,
+                laborCost,
                 discount: sale.discount || 0,
                 taxRate: sale.taxRate || 0,
                 totals: sale.totals,
                 amountPaid: sale.amountPaid || 0,
               };
-              await (window as any).api.openCustomerReceipt(payload);
+              await (window as any).api.openCustomerReceipt({
+                data: payload,
+                autoPrint: true,
+                silent: true,
+                autoCloseMs: 900,
+                show: false,
+              });
             }}
           >
             Print Customer Receipt

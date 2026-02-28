@@ -1,15 +1,65 @@
-import React, { useState } from 'react';
-import DevicePicker from '@/components/DevicePicker';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import PatternLock from '../components/PatternLock';
 import { WorkOrderFull } from '../lib/types';
 
 type WorkOrderValidationFlags = Partial<Record<'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial', boolean>>;
 
-const DeviceCategorySelect: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => (
-  <div className="mt-1">
-    <DevicePicker value={value} onChange={onChange} onTitleSelect={onChange} className="w-full" />
-  </div>
-);
+type DeviceCat = { id?: number; name: string; title?: string };
+
+const DeviceCategorySelect: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => {
+  const [cats, setCats] = useState<DeviceCat[]>([]);
+  const listId = useId();
+
+  const loadCats = async () => {
+    try {
+      const list = await (window as any).api.getDeviceCategories();
+      setCats(Array.isArray(list) ? list : []);
+    } catch {
+      setCats([]);
+    }
+  };
+
+  useEffect(() => {
+    loadCats();
+  }, []);
+
+  useEffect(() => {
+    const off = (window as any).api?.onDeviceCategoriesChanged?.(() => {
+      loadCats();
+    });
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, []);
+
+  const options = useMemo(() => {
+    const out = new Set<string>();
+    for (const c of cats) {
+      const name = (c?.name || '').trim();
+      if (name) out.add(name);
+      const title = (c?.title || '').trim();
+      if (title) out.add(title);
+    }
+    return Array.from(out.values()).sort((a, b) => a.localeCompare(b));
+  }, [cats]);
+
+  return (
+    <div className="mt-1">
+      <input
+        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        list={listId}
+        placeholder="Type or select…"
+      />
+      <datalist id={listId}>
+        {options.map((opt) => (
+          <option key={opt} value={opt} />
+        ))}
+      </datalist>
+    </div>
+  );
+};
 
 interface Props {
   workOrder: WorkOrderFull;

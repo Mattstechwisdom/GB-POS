@@ -2682,10 +2682,16 @@ ipcMain.handle('open-customer-overview', async (_event: any, customerId: number)
 });
 
 // IPC handler for opening a simple New Sale window
-ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
+ipcMain.handle('open-new-sale', async (event: any, payload: any) => {
   const { screen } = electron;
   const primary = screen.getPrimaryDisplay();
   const bounds = primary && primary.bounds ? primary.bounds : ({ x: 0, y: 0, width: 1920, height: 1080 } as any);
+
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const parentWin = parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined;
+
   const child = new BrowserWindow({
     x: (bounds as any).x ?? 0,
     y: (bounds as any).y ?? 0,
@@ -2697,7 +2703,7 @@ ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
     resizable: true,
     maximizable: true,
     frame: true,
-    parent: undefined,
+    parent: parentWin as any,
     modal: false,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
@@ -2716,6 +2722,14 @@ ipcMain.handle('open-new-sale', async (_event: any, payload: any) => {
     try { child.maximize(); } catch {}
     child.show();
     try { child.focus(); } catch {}
+  });
+  child.on('closed', () => {
+    try {
+      if (parentWin && !parentWin.isDestroyed()) {
+        parentWin.show();
+        parentWin.focus();
+      }
+    } catch {}
   });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));

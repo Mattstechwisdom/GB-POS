@@ -95,6 +95,10 @@ const DATE_KEYS = [
   'completedAt', 'completedDate', 'completed_on',
   'closedAt', 'closedDate', 'closed_on',
   'finishedAt', 'finishedDate',
+  'checkInAt',
+  'checkoutDate',
+  'repairCompletionDate',
+  'clientPickupDate',
   'invoiceDate', 'invoice_date', 'saleDate', 'sale_date', 'transactionDate', 'transaction_date',
   'date', 'dateCreated', 'date_created', 'created', 'createdAt', 'createdDate', 'created_at', 'created_on',
   'updatedAt', 'updatedDate', 'updated_at',
@@ -200,6 +204,43 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
   if (!date) return null;
   const { total, paid, remaining } = resolveTotals(enriched);
   const payments = collectPayments(enriched);
+
+  const statusRaw = (enriched as any)?.status;
+  const status = typeof statusRaw === 'string'
+    ? statusRaw
+    : (statusRaw === null || statusRaw === undefined ? undefined : String(statusRaw));
+
+  const checkoutRaw = (enriched as any)?.checkoutDate;
+  const checkoutDate = typeof checkoutRaw === 'string'
+    ? checkoutRaw
+    : (checkoutRaw === null || checkoutRaw === undefined ? null : String(checkoutRaw));
+
+  const assignedToRaw = (enriched as any)?.assignedTo;
+  const assignedTo = typeof assignedToRaw === 'string'
+    ? assignedToRaw
+    : (assignedToRaw === null || assignedToRaw === undefined ? null : String(assignedToRaw));
+
+  const customerNameRaw = (enriched as any)?.customerName
+    ?? (enriched as any)?.name
+    ?? (enriched as any)?.customer
+    ?? [
+      (enriched as any)?.firstName,
+      (enriched as any)?.lastName,
+    ].filter(Boolean).join(' ').trim();
+  const customerName = typeof customerNameRaw === 'string' && customerNameRaw.trim() ? customerNameRaw.trim() : undefined;
+
+  const titleRaw = kind === 'work'
+    ? ((enriched as any)?.productCategory || (enriched as any)?.productDescription || (enriched as any)?.summary || '').toString()
+    : (() => {
+        const items = Array.isArray((enriched as any)?.items) ? (enriched as any).items : [];
+        const first = items.find((it: any) => (it?.description || '').toString().trim());
+        return (first?.description || (enriched as any)?.itemDescription || '').toString();
+      })();
+  const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : undefined;
+
+  const diagnosticLike = kind === 'work' && Array.isArray((enriched as any)?.items)
+    ? (enriched as any).items.some((it: any) => /diagnos/i.test((it?.description || '').toString()))
+    : false;
   const id = enriched?.id
     ?? enriched?.ticketNumber
     ?? enriched?.ticketNo
@@ -218,7 +259,12 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
     paid,
     remaining,
     payments,
-    status: kind === 'work' ? enriched?.status : undefined,
+    status,
+    checkoutDate,
+    assignedTo,
+    customerName,
+    title,
+    diagnosticLike,
   };
 }
 
@@ -231,6 +277,11 @@ type UnifiedRow = {
   remaining: number;
   payments: any[];
   status?: string;
+  checkoutDate?: string | null;
+  assignedTo?: string | null;
+  customerName?: string;
+  title?: string;
+  diagnosticLike?: boolean;
 };
 
 const EODWindow: React.FC = () => {
@@ -514,13 +565,30 @@ const EODWindow: React.FC = () => {
     const salesRows = unified.filter(row => row.kind === 'sale');
     const outstandingRows = unified.filter(row => row.remaining > 0.01);
     const collectedRows = workOrderRows.filter(row => (row.status || '').toLowerCase() === 'closed');
+
+    const openTicketRows: UnifiedRow[] = [];
+    const pushOpen = (kind: UnifiedRow['kind'], record: any) => {
+      const normalized = normalizeRow(kind, record);
+      if (!normalized) return;
+      const st = (normalized.status || '').toLowerCase();
+      const isClosed = st === 'closed';
+      const needsCheckout = !normalized.checkoutDate;
+      if (!isClosed || needsCheckout) {
+        openTicketRows.push(normalized);
+      }
+    };
+    (workOrders || []).forEach(wo => pushOpen('work', wo));
+    (sales || []).forEach(sa => pushOpen('sale', sa));
+    openTicketRows.sort((a, b) => a.date.getTime() - b.date.getTime());
+
     return {
       work: workOrderRows,
       sales: salesRows,
       outstanding: outstandingRows,
       collected: collectedRows,
+      openTickets: openTicketRows,
     };
-  }, [unified]);
+  }, [sales, unified, workOrders]);
 
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
 
@@ -531,6 +599,7 @@ const EODWindow: React.FC = () => {
       sales: 'Sales in range',
       outstanding: 'Outstanding balances',
       collected: 'Closed work orders (collected)',
+      openTickets: 'Open tickets (not completed / not checked out)',
     };
     const rows = filteredLists[activeList];
     return {
@@ -540,13 +609,18 @@ const EODWindow: React.FC = () => {
   }, [activeList, filteredLists]);
 
   async function handleRowOpen(row: UnifiedRow) {
-    if (row.kind !== 'work') return;
     const api = (window as any).api;
-    if (!api?.openNewWorkOrder) return;
+    if (!api) return;
     try {
-      await api.openNewWorkOrder({ workOrderId: row.id });
+      if (row.kind === 'work') {
+        if (!api?.openNewWorkOrder) return;
+        await api.openNewWorkOrder({ workOrderId: row.id });
+      } else {
+        if (!api?.openNewSale) return;
+        await api.openNewSale({ id: row.id });
+      }
     } catch (err) {
-      console.error('Failed to open work order', err);
+      console.error('Failed to open record', err);
     }
   }
 
@@ -720,6 +794,16 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold text-orange-300">{formatCurrency(summary.grandRemaining)}</div>
                     <div className="text-[11px] text-zinc-400">{filteredLists.outstanding.length} with balance</div>
                   </button>
+
+                  <button
+                    type="button"
+                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
+                    onClick={() => setActiveList(prev => (prev === 'openTickets' ? null : 'openTickets'))}
+                  >
+                    <div className="text-xs text-zinc-500">Open tickets</div>
+                    <div className="text-xl font-semibold">{filteredLists.openTickets.length}</div>
+                    <div className="text-[11px] text-zinc-400">not closed / needs checkout</div>
+                  </button>
                 </div>
               </div>
 
@@ -770,13 +854,24 @@ const EODWindow: React.FC = () => {
                         {listMeta.rows.map(row => (
                           <tr
                             key={`${row.kind}-${row.id}`}
-                            className={`${row.kind === 'work' ? 'hover:bg-zinc-800/50 cursor-pointer' : 'hover:bg-zinc-800/40'} transition-colors`}
-                            onClick={() => { if (row.kind === 'work') { void handleRowOpen(row); } }}
+                            className="hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                            onClick={() => { void handleRowOpen(row); }}
                           >
-                            <td className="py-2 pr-4 font-mono text-xs text-zinc-200">{row.id}</td>
+                            <td className="py-2 pr-4">
+                              <div className="font-mono text-xs text-zinc-200">{row.id}</div>
+                              {row.customerName ? <div className="text-[11px] text-zinc-400 truncate max-w-[220px]">{row.customerName}</div> : null}
+                            </td>
                             <td className="py-2 pr-4 text-zinc-300">{row.date.toLocaleDateString()}</td>
-                            <td className="py-2 pr-4 capitalize text-zinc-300">{row.kind === 'work' ? 'Work order' : 'Sale'}</td>
-                            <td className="py-2 pr-4 text-zinc-400">{row.status || '—'}</td>
+                            <td className="py-2 pr-4 text-zinc-300">
+                              <div className="capitalize">{row.kind === 'work' ? 'Work order' : 'Sale'}</div>
+                              {row.title ? <div className="text-[11px] text-zinc-400 truncate max-w-[260px]">{row.title}</div> : null}
+                            </td>
+                            <td className="py-2 pr-4 text-zinc-400">
+                              <div>{row.status || '—'}</div>
+                              {!row.checkoutDate ? <div className="text-[11px] text-orange-200">Needs checkout</div> : null}
+                              {row.paid > 0.01 && row.remaining > 0.01 ? <div className="text-[11px] text-yellow-200">Partial payment</div> : null}
+                              {row.diagnosticLike ? <div className="text-[11px] text-zinc-300">Diagnostic</div> : null}
+                            </td>
                             <td className="py-2 pr-4 text-right text-zinc-200">{formatCurrency(row.total)}</td>
                             <td className="py-2 pr-4 text-right text-zinc-200">{formatCurrency(row.paid)}</td>
                             <td className={`py-2 text-right ${row.remaining > 0.01 ? 'text-orange-300' : 'text-zinc-400'}`}>{formatCurrency(row.remaining)}</td>
