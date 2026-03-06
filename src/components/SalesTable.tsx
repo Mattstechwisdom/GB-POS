@@ -19,8 +19,10 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
   async function load() {
     try {
       setLoading(true);
-      const list = await (window as any).api.dbGet('sales');
-      setRows(Array.isArray(list) ? list : []);
+      const MAX_PAGES = 10;
+      const MAX_ITEMS = pageSize * MAX_PAGES;
+      const list = await (window as any).api.dbGet('sales', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' });
+      setRows(Array.isArray(list) ? list.slice(0, MAX_ITEMS) : []);
     } catch (e) {
       console.error('Failed loading sales', e);
     } finally {
@@ -85,17 +87,22 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
   }, [rows, technicianFilter, dateFrom, dateTo]);
 
   useEffect(() => {
-    setTotalItems(filtered.length);
+    const MAX_PAGES = 10;
+    const MAX_ITEMS = pageSize * MAX_PAGES;
+    setTotalItems(Math.min(filtered.length, MAX_ITEMS));
     return () => {
       setTotalItems(0);
     };
-  }, [filtered.length, setTotalItems]);
+  }, [filtered.length, setTotalItems, pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const MAX_PAGES = 10;
+  const MAX_ITEMS = pageSize * MAX_PAGES;
+  const capped = filtered.slice(0, MAX_ITEMS);
+  const totalPages = Math.max(1, Math.ceil(capped.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const startIdx = (safePage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, filtered.length);
-  const paged = useMemo(() => filtered.slice(startIdx, endIdx), [filtered, startIdx, endIdx]);
+  const endIdx = Math.min(startIdx + pageSize, capped.length);
+  const paged = useMemo(() => capped.slice(startIdx, endIdx), [capped, startIdx, endIdx]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);

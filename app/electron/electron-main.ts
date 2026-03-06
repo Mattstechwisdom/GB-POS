@@ -1565,9 +1565,52 @@ ipcMain.handle('db-reset-all', async () => {
   return { ok: errors.length === 0, removed, errors, dataRoot };
 });
 
-ipcMain.handle('db-get', async (_e: any, key: string) => {
+ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => {
   const db = readDb();
-  return db[key] || [];
+  const raw = db[key] || [];
+  const list = Array.isArray(raw) ? raw : [];
+  if (!opts) return list;
+
+  const limit = typeof opts.limit === 'number' && Number.isFinite(opts.limit) ? Math.max(0, Math.floor(opts.limit)) : 0;
+  const sortBy = (opts.sortBy || '').toString().trim();
+  const sortDir = (opts.sortDir || 'desc') === 'asc' ? 'asc' : 'desc';
+
+  let out = list.slice();
+
+  // If limiting without an explicit sortBy, apply a sensible default for time-ordered collections.
+  const effectiveSortBy = sortBy || ((key === 'workOrders' || key === 'sales') ? 'checkInAt' : 'id');
+  if (effectiveSortBy) {
+    out.sort((a: any, b: any) => {
+      const av = a?.[effectiveSortBy];
+      const bv = b?.[effectiveSortBy];
+
+      const ai = Number(a?.id ?? 0);
+      const bi = Number(b?.id ?? 0);
+
+      // Numeric compare when both look numeric.
+      const an = Number(av);
+      const bn = Number(bv);
+      if (Number.isFinite(an) && Number.isFinite(bn)) {
+        const primary = sortDir === 'asc' ? an - bn : bn - an;
+        if (primary !== 0) return primary;
+        // Tie-breaker
+        if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) return sortDir === 'asc' ? ai - bi : bi - ai;
+        return 0;
+      }
+
+      // Date-ish/string compare fallback.
+      const as = (av ?? '').toString();
+      const bs = (bv ?? '').toString();
+      const cmp = bs.localeCompare(as);
+      const primary = sortDir === 'asc' ? -cmp : cmp;
+      if (primary !== 0) return primary;
+      if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) return sortDir === 'asc' ? ai - bi : bi - ai;
+      return 0;
+    });
+  }
+
+  if (limit > 0) out = out.slice(0, limit);
+  return out;
 });
 
 ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {

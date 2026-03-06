@@ -19,7 +19,7 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<'workorders'|'sales'|'all'>('all');
 
   return (
-    <PaginationProvider pageSize={25}>
+    <PaginationProvider pageSize={30}>
       <AppInner
         showCustomerSearch={showCustomerSearch}
         setShowCustomerSearch={setShowCustomerSearch}
@@ -121,12 +121,15 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   const [customerIndex, setCustomerIndex] = React.useState<Record<number, { name: string; phone?: string }>>({});
   const { page, setPage, pageSize, setTotalItems } = usePagination();
 
+  const MAX_PAGES = 10;
+  const MAX_ITEMS = pageSize * MAX_PAGES;
+
   const load = React.useCallback(async () => {
     try {
       setLoading(true);
       const [wos, sales] = await Promise.all([
-        (window as any).api.getWorkOrders(),
-        (window as any).api.dbGet('sales').catch(() => []),
+        (window as any).api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }),
+        (window as any).api.dbGet('sales', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
       ]);
       setWo(Array.isArray(wos) ? wos : []);
       setSa(Array.isArray(sales) ? sales : []);
@@ -275,18 +278,20 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
   React.useEffect(() => {
-    setTotalItems(rows.length);
+    // Cap pagination to MAX_PAGES (older records stay stored, but not always loaded here)
+    setTotalItems(Math.min(rows.length, MAX_ITEMS));
     return () => {
       // Clear when switching away from this view
       setTotalItems(0);
     };
-  }, [rows.length, setTotalItems]);
+  }, [rows.length, setTotalItems, MAX_ITEMS]);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(Math.min(rows.length, MAX_ITEMS) / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const startIdx = (safePage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, rows.length);
-  const pagedRows = React.useMemo(() => rows.slice(startIdx, endIdx), [rows, startIdx, endIdx]);
+  const capped = rows.slice(0, MAX_ITEMS);
+  const endIdx = Math.min(startIdx + pageSize, capped.length);
+  const pagedRows = React.useMemo(() => capped.slice(startIdx, endIdx), [capped, startIdx, endIdx]);
 
   React.useEffect(() => {
     if (page !== safePage) setPage(safePage);

@@ -23,7 +23,7 @@ declare global {
     getCustomers: () => Promise<any[]>;
     addCustomer: (c: any) => Promise<any>;
     findCustomers: (q: any) => Promise<any[]>;
-    getWorkOrders: () => Promise<any[]>;
+    getWorkOrders: (opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => Promise<any[]>;
     addWorkOrder: (w: any) => Promise<any>;
     findWorkOrders: (q: any) => Promise<any[]>;
     update: (key: string, item: any) => Promise<any>;
@@ -43,7 +43,7 @@ declare global {
   getProductCategories: () => Promise<any[]>;
   addProductCategory: (c: any) => Promise<any>;
     deleteFromCollection: (key: string, id: number) => Promise<boolean>;
-    dbGet: (key: string) => Promise<any[]>;
+    dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => Promise<any[]>;
     dbAdd: (key: string, item: any) => Promise<any>;
     dbUpdate: (key: string, id: any, item: any) => Promise<any>;
   dbDelete: (key: string, id: any) => Promise<boolean>;

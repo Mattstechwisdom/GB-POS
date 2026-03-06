@@ -26,20 +26,26 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
 	const ctx = useContextMenu<WorkOrderRow>();
 	const ctxRow = ctx.state.data;
 
+  const MAX_PAGES = 10;
+  const MAX_ITEMS = pageSize * MAX_PAGES;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const api = (window as any).api;
-      const list = await (api?.getWorkOrders ? api.getWorkOrders() : (api?.dbGet ? api.dbGet('workOrders') : Promise.resolve([])));
+      const list = await (api?.getWorkOrders
+        ? api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' })
+        : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }) : Promise.resolve([]))
+      );
       // Sort newest first by checkInAt or id
       list.sort((a: any, b: any) => {
         const ad = a.checkInAt || ''; const bd = b.checkInAt || '';
         return (bd.localeCompare(ad)) || (b.id - a.id);
       });
-      setRows(list);
+      setRows(list.slice(0, MAX_ITEMS));
     } catch (e) { console.error('Failed loading work orders', e); }
     finally { setLoading(false); }
-  }, []);
+  }, [MAX_ITEMS]);
 
   useEffect(() => {
     load();
@@ -105,17 +111,18 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   }, [rows, technicianFilter, dateFrom, dateTo, techIndex]);
 
   useEffect(() => {
-    setTotalItems(filteredRows.length);
+    setTotalItems(Math.min(filteredRows.length, MAX_ITEMS));
     return () => {
       setTotalItems(0);
     };
-  }, [filteredRows.length, setTotalItems]);
+  }, [filteredRows.length, setTotalItems, MAX_ITEMS]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const capped = filteredRows.slice(0, MAX_ITEMS);
+  const totalPages = Math.max(1, Math.ceil(capped.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const startIdx = (safePage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, filteredRows.length);
-  const pagedRows = filteredRows.slice(startIdx, endIdx);
+  const endIdx = Math.min(startIdx + pageSize, capped.length);
+  const pagedRows = capped.slice(startIdx, endIdx);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
