@@ -242,21 +242,21 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   }, [ctxRow, customerIndex]);
 
   return (
-    <div className="overflow-x-auto relative" ref={tableRef}>
-      <table className="min-w-full text-[13px] leading-tight border-separate border-spacing-0">
+    <div className="w-full overflow-x-auto relative" ref={tableRef}>
+      <table className="min-w-[1200px] w-full table-fixed text-[13px] leading-tight border-separate border-spacing-0">
         <thead className="bg-zinc-800">
           <tr>
-            <th className="px-2 py-1 text-left">Invoice #</th>
-            <th className="px-2 py-1 text-left">Status</th>
-            <th className="px-2 py-1 text-left">Tech</th>
-            <th className="px-2 py-1 text-left">Client</th>
-            <th className="px-2 py-1 text-left">Phone</th>
-            <th className="px-2 py-1 text-left">Date</th>
-            <th className="px-2 py-1 text-left">Description</th>
-            <th className="px-2 py-1 text-left">Items</th>
-            <th className="px-2 py-1 text-left">Problem</th>
-            <th className="px-2 py-1 text-left">Total</th>
-            <th className="px-2 py-1 text-left">Remaining</th>
+            <th className="px-2 py-1 text-left w-[120px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[84px]">Status</th>
+            <th className="px-2 py-1 text-left w-[120px]">Tech</th>
+            <th className="px-2 py-1 text-left w-[180px]">Client</th>
+            <th className="px-2 py-1 text-left w-[140px]">Phone</th>
+            <th className="px-2 py-1 text-left w-[110px]">Date</th>
+            <th className="px-2 py-1 text-left w-[220px]">Description</th>
+            <th className="px-2 py-1 text-left w-[260px]">Items</th>
+            <th className="px-2 py-1 text-left w-[240px]">Problem</th>
+            <th className="px-2 py-1 text-right w-[110px]">Total</th>
+            <th className="px-2 py-1 text-right w-[130px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
@@ -309,14 +309,14 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                   }
                   return '';
                 })()}</td>
-                <td className="px-2 py-1 max-w-[200px] truncate" title={clientName}>{clientName}</td>
+                <td className="px-2 py-1" title={clientName}><div className="truncate">{clientName}</div></td>
                 <td className="px-2 py-1 whitespace-nowrap" title={clientPhone}>{clientPhone}</td>
                 <td className="px-2 py-1">{r.checkInAt ? r.checkInAt.split('T')[0] : ''}</td>
-                <td className="px-2 py-1 max-w-[220px] truncate" title={r.productDescription || r.productCategory || ''}>{r.productDescription || r.productCategory || ''}</td>
-                <td className="px-2 py-1 max-w-[320px] truncate" title={repairs}>{repairs}</td>
-                <td className="px-2 py-1 max-w-[260px] truncate" title={r.problemInfo || ''}>{r.problemInfo || ''}</td>
-                <td className="px-2 py-1">${total.toFixed(2)}</td>
-                <td className="px-2 py-1">${remaining.toFixed(2)}</td>
+                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}><div className="truncate">{r.productDescription || r.productCategory || ''}</div></td>
+                <td className="px-2 py-1" title={repairs}><div className="truncate">{repairs}</div></td>
+                <td className="px-2 py-1" title={r.problemInfo || ''}><div className="truncate">{r.problemInfo || ''}</div></td>
+                <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
+                <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>
             );
           })}

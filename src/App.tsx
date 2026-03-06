@@ -70,7 +70,7 @@ const AppInner: React.FC<{
   return (
     <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
       <div className="flex flex-1">
-        <aside className="w-[320px] bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
+        <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
@@ -86,7 +86,7 @@ const AppInner: React.FC<{
             <RecentCustomers />
           </div>
         </aside>
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 min-w-0 flex flex-col">
           <Toolbar mode={mode} onModeChange={setMode} />
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
@@ -395,21 +395,21 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
 
   return (
     <div className="p-2 overflow-x-auto">
-      <table className="min-w-full text-[13px] leading-tight">
+      <table className="min-w-[1200px] w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
-            <th className="px-2 py-1 text-left">Invoice #</th>
-            <th className="px-2 py-1 text-left">Type</th>
-            <th className="px-2 py-1 text-left">Status</th>
-            <th className="px-2 py-1 text-left">Tech</th>
-            <th className="px-2 py-1 text-left">Customer</th>
-            <th className="px-2 py-1 text-left">Phone</th>
-            <th className="px-2 py-1 text-left">Date</th>
-            <th className="px-2 py-1 text-left">Description</th>
-            <th className="px-2 py-1 text-left">Items</th>
-            <th className="px-2 py-1 text-left">Problem</th>
-            <th className="px-2 py-1 text-right">Total</th>
-            <th className="px-2 py-1 text-right">Remaining</th>
+            <th className="px-2 py-1 text-left w-[120px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[84px]">Type</th>
+            <th className="px-2 py-1 text-left w-[84px]">Status</th>
+            <th className="px-2 py-1 text-left w-[120px]">Tech</th>
+            <th className="px-2 py-1 text-left w-[180px]">Customer</th>
+            <th className="px-2 py-1 text-left w-[140px]">Phone</th>
+            <th className="px-2 py-1 text-left w-[110px]">Date</th>
+            <th className="px-2 py-1 text-left w-[220px]">Description</th>
+            <th className="px-2 py-1 text-left w-[260px]">Items</th>
+            <th className="px-2 py-1 text-left w-[240px]">Problem</th>
+            <th className="px-2 py-1 text-right w-[110px]">Total</th>
+            <th className="px-2 py-1 text-right w-[130px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
@@ -438,12 +438,12 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                 <td className="px-2 py-1 capitalize">{r.type}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
                 <td className="px-2 py-1">{r.tech}</td>
-                <td className="px-2 py-1 truncate" title={r.customer}>{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</td>
+                <td className="px-2 py-1" title={r.customer}><div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div></td>
                 <td className="px-2 py-1 whitespace-nowrap" title={phone}>{phone}</td>
                 <td className="px-2 py-1">{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
-                <td className="px-2 py-1 truncate" title={r.desc}>{r.desc}</td>
-                <td className="px-2 py-1 max-w-[320px] truncate" title={r.items || ''}>{r.items || ''}</td>
-                <td className="px-2 py-1 max-w-[260px] truncate" title={r.problem || ''}>{r.problem || ''}</td>
+                <td className="px-2 py-1" title={r.desc}><div className="truncate">{r.desc}</div></td>
+                <td className="px-2 py-1" title={r.items || ''}><div className="truncate">{r.items || ''}</div></td>
+                <td className="px-2 py-1" title={r.problem || ''}><div className="truncate">{r.problem || ''}</div></td>
                 <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>

@@ -110,20 +110,20 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
 
   return (
     <div className="p-2 overflow-x-auto">
-      <table className="min-w-full text-[13px] leading-tight">
+      <table className="min-w-[1100px] w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
-            <th className="px-2 py-1 text-left">Invoice #</th>
-            <th className="px-2 py-1 text-left">Status</th>
-            <th className="px-2 py-1 text-left">Tech</th>
-            <th className="px-2 py-1 text-left">Customer</th>
-            <th className="px-2 py-1 text-left">Phone</th>
-            <th className="px-2 py-1 text-left">Date</th>
-            <th className="px-2 py-1 text-left">Description</th>
-            <th className="px-2 py-1 text-left">Items</th>
-            <th className="px-2 py-1 text-left">Problem</th>
-            <th className="px-2 py-1 text-right">Total</th>
-            <th className="px-2 py-1 text-right">Remaining</th>
+            <th className="px-2 py-1 text-left w-[120px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[84px]">Status</th>
+            <th className="px-2 py-1 text-left w-[120px]">Tech</th>
+            <th className="px-2 py-1 text-left w-[200px]">Customer</th>
+            <th className="px-2 py-1 text-left w-[140px]">Phone</th>
+            <th className="px-2 py-1 text-left w-[110px]">Date</th>
+            <th className="px-2 py-1 text-left w-[260px]">Description</th>
+            <th className="px-2 py-1 text-left w-[260px]">Items</th>
+            <th className="px-2 py-1 text-left w-[180px]">Problem</th>
+            <th className="px-2 py-1 text-right w-[110px]">Total</th>
+            <th className="px-2 py-1 text-right w-[130px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
@@ -185,11 +185,11 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
                 <td className="px-2 py-1 font-mono">{typeof s.id === 'number' ? `GB${String(s.id).padStart(7,'0')}` : ''}</td>
                 <td className="px-2 py-1 capitalize">{status}</td>
                 <td className="px-2 py-1">{techLabel}</td>
-                <td className="px-2 py-1 truncate" title={customerLabel}>{customerLabel}</td>
+                <td className="px-2 py-1" title={customerLabel}><div className="truncate">{customerLabel}</div></td>
                 <td className="px-2 py-1 whitespace-nowrap" title={phone}>{phone}</td>
                 <td className="px-2 py-1">{date}</td>
-                <td className="px-2 py-1 truncate" title={desc}>{desc || 'Sale Item'}</td>
-                <td className="px-2 py-1 max-w-[320px] truncate" title={itemsText}>{itemsText}</td>
+                <td className="px-2 py-1" title={desc}><div className="truncate">{desc || 'Sale Item'}</div></td>
+                <td className="px-2 py-1" title={itemsText}><div className="truncate">{itemsText}</div></td>
                 <td className="px-2 py-1 max-w-[260px] truncate" title=""></td>
                 <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
