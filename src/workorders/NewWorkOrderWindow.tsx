@@ -561,11 +561,19 @@ const NewWorkOrderWindow: React.FC = () => {
       let newAmountPaid = (wo.amountPaid || 0) + additionalPaid;
       if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = wo.amountPaid || 0;
 
+      const updatedTotals = computeTotals({
+        laborCost: Number(wo.laborCost || 0) || 0,
+        partCosts: Number(wo.partCosts || 0) || 0,
+        discount: Number(wo.discount || 0) || 0,
+        taxRate: Number(wo.taxRate || 0) || 0,
+        amountPaid: newAmountPaid,
+      });
+
       // Prepare updated items if marking closed
       let updatedItems = wo.items;
       let status = wo.status;
       let checkoutDate = wo.checkoutDate;
-      if (result.markClosed || (wo.totals?.remaining || 0) - additionalPaid <= 0) {
+      if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
         status = 'closed';
         checkoutDate = new Date().toISOString();
         updatedItems = wo.items.map(it => ({ ...it, status: 'done' }));
@@ -592,20 +600,23 @@ const NewWorkOrderWindow: React.FC = () => {
         return [...prevPayments, entry];
       })();
 
-      setWo(w => ({
-        ...w,
+      const nextWo = {
+        ...wo,
         amountPaid: newAmountPaid,
         paymentType: result.paymentType,
         payments,
         status,
         checkoutDate,
         items: updatedItems,
-      }));
+        totals: updatedTotals,
+      };
+
+      setWo(() => nextWo);
 
       // Persist if already saved (id > 0)
       if (wo.id && wo.id > 0) {
         try {
-          await (window as any).api.update('workOrders', { ...wo, amountPaid: newAmountPaid, paymentType: result.paymentType, payments, status, checkoutDate, items: updatedItems });
+          await (window as any).api.update('workOrders', { ...nextWo });
         } catch (e) {
           console.error('Failed persisting checkout update', e);
         }
@@ -641,13 +652,13 @@ const NewWorkOrderWindow: React.FC = () => {
             model: (wo as any).model,
             serial: (wo as any).serial,
             problemInfo: wo.problemInfo,
-            items: (wo as any).items || [],
-            partCosts: (wo as any).partCosts,
-            laborCost: (wo as any).laborCost,
-            discount: (wo as any).discount,
-            taxRate: (wo as any).taxRate,
-            totals: (wo as any).totals,
-            amountPaid: (wo as any).amountPaid,
+            items: (nextWo as any).items || [],
+            partCosts: (nextWo as any).partCosts,
+            laborCost: (nextWo as any).laborCost,
+            discount: (nextWo as any).discount,
+            taxRate: (nextWo as any).taxRate,
+            totals: (nextWo as any).totals,
+            amountPaid: (nextWo as any).amountPaid,
           };
           if ((window as any).api?.openCustomerReceipt) {
             await (window as any).api.openCustomerReceipt({

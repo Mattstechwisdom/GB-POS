@@ -42,7 +42,8 @@ const QuickSaleWindow: React.FC = () => {
 
       const amountPaid = Number(result.amountPaid || 0) || 0;
       const paymentType = result.paymentType;
-      const remainingAfter = round2(Math.max(0, amountDue - amountPaid));
+      const totalsAfter = computeTotals({ laborCost: 0, partCosts: amount, discount: 0, taxRate, amountPaid });
+      const remainingAfter = round2(Math.max(0, totalsAfter.remaining || 0));
       const shouldClose = remainingAfter <= 0 || !!result.markClosed;
 
       const now = new Date().toISOString();
@@ -94,8 +95,8 @@ const QuickSaleWindow: React.FC = () => {
         taxRate,
         laborCost: 0,
         partCosts: amount,
-        totals,
-        total: totals.total,
+        totals: totalsAfter,
+        total: totalsAfter.total,
       };
 
       const created = await api.dbAdd('sales', saleRecord);
@@ -115,7 +116,7 @@ const QuickSaleWindow: React.FC = () => {
             laborCost: 0,
             discount: 0,
             taxRate,
-            totals,
+            totals: totalsAfter,
             amountPaid,
           };
           if (api?.openCustomerReceipt) {
