@@ -269,7 +269,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div style="margin-top:16px">
               <div class="no-print" style="display:flex; justify-content:center">
-                <button id="signFinalize" type="button" onclick="try{ if(!window.__gbSignFinalize){ alert('Loading… please try again in a moment.'); return false; } return window.__gbSignFinalize(); }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+                <button id="signFinalize" type="button" onclick="try{ var w=null; try{ w=window.__gbSignWinPreopen; if(w&&w.closed) w=null; }catch(_){} if(!w){ try{ w=window.open('', 'gbSignFinalize', 'width=420,height=650'); }catch(_) { w=null; } try{ window.__gbSignWinPreopen=w; }catch(_){} try{ if(w&&w.document){ w.document.open(); w.document.write('<!doctype html><html><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Loading…</title></head><body style=\"font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;padding:14px\"><div style=\"font-size:14pt;font-weight:900\">Loading signature…</div><div style=\"margin-top:8px\">If nothing happens, use “Open in Browser” (Safari/Chrome) and allow popups.</div></body></html>'); w.document.close(); } }catch(_){} } if(window.__gbSignFinalize) return window.__gbSignFinalize(); try{ alert('Loading… please wait a second and tap again.'); }catch(_){} return false; }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -659,7 +659,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
 
             <div class="no-print" style="display:flex; justify-content:center; margin-top:16px">
-              <button id="signFinalize" type="button" onclick="try{ if(!window.__gbSignFinalize){ alert('Loading… please try again in a moment.'); return false; } return window.__gbSignFinalize(); }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+              <button id="signFinalize" type="button" onclick="try{ var w=null; try{ w=window.__gbSignWinPreopen; if(w&&w.closed) w=null; }catch(_){} if(!w){ try{ w=window.open('', 'gbSignFinalize', 'width=420,height=650'); }catch(_) { w=null; } try{ window.__gbSignWinPreopen=w; }catch(_){} try{ if(w&&w.document){ w.document.open(); w.document.write('<!doctype html><html><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>Loading…</title></head><body style=\"font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;padding:14px\"><div style=\"font-size:14pt;font-weight:900\">Loading signature…</div><div style=\"margin-top:8px\">If nothing happens, use “Open in Browser” (Safari/Chrome) and allow popups.</div></body></html>'); w.document.close(); } }catch(_){} } if(window.__gbSignFinalize) return window.__gbSignFinalize(); try{ alert('Loading… please wait a second and tap again.'); }catch(_){} return false; }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -801,7 +801,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                     setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
                   } catch(_) {}
                   var w = null;
-                  try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+                  try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
+                  if (!w) {
+                    try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+                  }
+                  try { (window).__gbSignWinPreopen = w; } catch(_) {}
                   if (!w || !w.document) {
                     try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
                     return;
@@ -1509,7 +1513,11 @@ function QuoteGeneratorWindow(): JSX.Element {
               setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
             } catch(_) {}
             var w = null;
-            try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+            try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
+            if (!w) {
+              try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+            }
+            try { (window).__gbSignWinPreopen = w; } catch(_) {}
             if (!w || !w.document) {
               try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
               return;

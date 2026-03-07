@@ -127,3 +127,6 @@
 ## v0.2.45 (2026-03-07)
 - fix(quotes): Sign & Finalize button fallback wiring (inline onclick + delegated handler)
 
+## v0.2.46 (2026-03-07)
+- fix(quotes): pre-open signing popup on tap/click to prevent "Loading" dead-end
+
