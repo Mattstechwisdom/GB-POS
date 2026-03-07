@@ -124,3 +124,6 @@
 - fix(quotes): typed signatures auto-render while typing in Sign & Finalize popup
 - fix(quotes): keep signature/date off the HTML view; apply them only to exported PDF
 
+## v0.2.45 (2026-03-07)
+- fix(quotes): Sign & Finalize button fallback wiring (inline onclick + delegated handler)
+

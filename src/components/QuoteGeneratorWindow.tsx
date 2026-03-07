@@ -269,7 +269,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div style="margin-top:16px">
               <div class="no-print" style="display:flex; justify-content:center">
-                <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+                <button id="signFinalize" type="button" onclick="try{ if(!window.__gbSignFinalize){ alert('Loading… please try again in a moment.'); return false; } return window.__gbSignFinalize(); }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -659,7 +659,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
 
             <div class="no-print" style="display:flex; justify-content:center; margin-top:16px">
-              <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+              <button id="signFinalize" type="button" onclick="try{ if(!window.__gbSignFinalize){ alert('Loading… please try again in a moment.'); return false; } return window.__gbSignFinalize(); }catch(_){ try{ alert('Could not start signing. Please use Open in Browser.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -795,6 +795,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                 (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
 
                 function openSignWindow(){
+                  try {
+                    if ((window).__gbSignOpening) return;
+                    (window).__gbSignOpening = true;
+                    setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
+                  } catch(_) {}
                   var w = null;
                   try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
                   if (!w || !w.document) {
@@ -882,9 +887,33 @@ function QuoteGeneratorWindow(): JSX.Element {
                 }
 
                 try {
-                  var signBtn = document.getElementById('signFinalize');
-                  if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                  (window).__gbSignFinalize = function(){ try{ openSignWindow(); }catch(_){} return false; };
                 } catch(_) {}
+
+                function wireSignFinalize(){
+                  try {
+                    document.addEventListener('click', function(e){
+                      try {
+                        var t = e && e.target;
+                        if (!t) return;
+                        if (t.id === 'signFinalize') {
+                          try { e.preventDefault(); } catch(_) {}
+                          openSignWindow();
+                        }
+                      } catch(_) {}
+                    }, true);
+                  } catch(_) {}
+
+                  try {
+                    var signBtn = document.getElementById('signFinalize');
+                    if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                  } catch(_) {}
+                }
+
+                try {
+                  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireSignFinalize);
+                  else wireSignFinalize();
+                } catch(_) { try { wireSignFinalize(); } catch(__) {} }
                 return;
               } catch(_) {}
 
@@ -1474,6 +1503,11 @@ function QuoteGeneratorWindow(): JSX.Element {
           (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
 
           function openSignWindow(){
+            try {
+              if ((window).__gbSignOpening) return;
+              (window).__gbSignOpening = true;
+              setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
+            } catch(_) {}
             var w = null;
             try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
             if (!w || !w.document) {
@@ -1561,7 +1595,23 @@ function QuoteGeneratorWindow(): JSX.Element {
             }
           }
 
+          try {
+            (window).__gbSignFinalize = function(){ try{ openSignWindow(); }catch(_){} return false; };
+          } catch(_) {}
+
           gbReady(function(){
+            try {
+              document.addEventListener('click', function(e){
+                try {
+                  var t = e && e.target;
+                  if (!t) return;
+                  if (t.id === 'signFinalize') {
+                    try { e.preventDefault(); } catch(_) {}
+                    openSignWindow();
+                  }
+                } catch(_) {}
+              }, true);
+            } catch(_) {}
             try {
               var gbSignBtn = document.getElementById('signFinalize');
               if (gbSignBtn) gbSignBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
