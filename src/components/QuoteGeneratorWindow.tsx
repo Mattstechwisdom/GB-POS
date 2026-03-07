@@ -268,20 +268,21 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
 
             <div style="margin-top:16px">
-              <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
-              <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; break-inside: avoid; page-break-inside: avoid">
-                <div style="flex:1">
-                  <div style="border:2px solid #f00; border-radius:4px; padding:10px">
-                    <div id="gbSigHint" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; color:#666; padding:8px; font-size:11pt">Tap “Sign &amp; Finalize” to sign and download a PDF.</div>
-                    <img id="gbSigImg" alt="Signature" style="display:none; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
-                    <div class="sig-actions no-print" style="margin-top:10px; display:flex; justify-content:center">
-                      <button id="signFinalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Sign &amp; Finalize</button>
-                    </div>
+              <div class="no-print" style="display:flex; justify-content:center">
+                <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+              </div>
+
+              <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
+              <div id="gbPdfSigWrap" style="display:none; margin-top:16px; break-inside:avoid; page-break-inside:avoid">
+                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
+                <div style="display:flex; gap:24px; align-items:flex-start">
+                  <div style="flex:1">
+                    <img id="gbPdfSigImg" alt="Signature" style="display:block; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
                   </div>
-                </div>
-                <div style="width:220px">
-                  <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
-                  <div id="dateBox" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:600"></div>
+                  <div style="width:220px">
+                    <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
+                    <div id="gbPdfDate" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:700"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -657,20 +658,21 @@ function QuoteGeneratorWindow(): JSX.Element {
               </ul>
             </div>
 
-            <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; margin-top:16px">
-              <div style="flex:1">
-                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
-                <div style="border:2px solid #f00; border-radius:4px; padding:10px">
-                  <div id="gbSigHint" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; color:#666; padding:8px; font-size:11pt">Tap “Sign &amp; Finalize” to sign and download a PDF.</div>
-                  <img id="gbSigImg" alt="Signature" style="display:none; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
-                  <div class="sig-actions no-print" style="margin-top:10px; display:flex; justify-content:center">
-                    <button id="signFinalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Sign &amp; Finalize</button>
-                  </div>
+            <div class="no-print" style="display:flex; justify-content:center; margin-top:16px">
+              <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+            </div>
+
+            <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
+            <div id="gbPdfSigWrap" style="display:none; margin-top:16px; break-inside:avoid; page-break-inside:avoid">
+              <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
+              <div style="display:flex; gap:24px; align-items:flex-start">
+                <div style="flex:1">
+                  <img id="gbPdfSigImg" alt="Signature" style="display:block; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
                 </div>
-              </div>
-              <div style="width:220px">
-                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
-                <div id="dateBox" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box"></div>
+                <div style="width:220px">
+                  <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
+                  <div id="gbPdfDate" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:700"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -711,12 +713,11 @@ function QuoteGeneratorWindow(): JSX.Element {
               // then generates a PDF download and replaces this page with a thank-you/instructions screen.
               try {
                 var SHOP_EMAIL = 'gadgetboysc@gmail.com';
-                var signBtn = document.getElementById('signFinalize');
-                var sigImg = document.getElementById('gbSigImg');
-                var sigHint = document.getElementById('gbSigHint');
-                var dateBox = document.getElementById('dateBox');
                 var CUSTOMER_NAME = ${JSON.stringify(cust)};
                 var STAMP_SHORT = ${JSON.stringify(stampShort)};
+
+                var gbSigDataUrl = '';
+                var gbSigDateStr = '';
 
                 function sanitize(s){
                   return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,'');
@@ -730,12 +731,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                 }
                 function applySignature(dataUrl, dateStr){
                   try {
-                    if (sigImg && sigImg.style) {
-                      sigImg.setAttribute('src', dataUrl || '');
-                      sigImg.style.display = 'block';
-                    }
-                    if (sigHint && sigHint.style) sigHint.style.display = 'none';
-                    if (dateBox) dateBox.textContent = dateStr || fmtDate(new Date());
+                    gbSigDataUrl = String(dataUrl || '');
+                    gbSigDateStr = String(dateStr || '');
                   } catch(_) {}
                 }
                 function showThankYou(filename){
@@ -756,6 +753,17 @@ function QuoteGeneratorWindow(): JSX.Element {
                 async function exportPdfAndThankYou(){
                   var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
                   var filename = base + '-' + (STAMP_SHORT || '') + '.pdf';
+
+                  // Populate PDF-only signature/date slots
+                  var pdfWrap = document.getElementById('gbPdfSigWrap');
+                  var pdfImg = document.getElementById('gbPdfSigImg');
+                  var pdfDate = document.getElementById('gbPdfDate');
+                  try {
+                    if (pdfImg && gbSigDataUrl) pdfImg.setAttribute('src', gbSigDataUrl);
+                    if (pdfDate) pdfDate.textContent = gbSigDateStr || fmtDate(new Date());
+                    if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'block';
+                  } catch(_) {}
+
                   var style = document.createElement('style');
                   style.setAttribute('data-gb-hide','1');
                   style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
@@ -779,6 +787,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
                   } finally {
                     try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
+                    try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
                   }
                 }
 
@@ -815,7 +824,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     '<div class="card">' +
                       '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
                       '<canvas id="pad"></canvas>' +
-                      '<div class="hint">Tip: You can also type your name below and tap Apply Typed.</div>' +
+                      '<div class="hint">Tip: Type your name below — it will render automatically (Apply is optional).</div>' +
                     '</div>' +
                     '<div style="height:10px"></div>' +
                     '<div class="card">' +
@@ -853,7 +862,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                       'canvas.addEventListener("pointermove", move, {passive:false});' +
                       'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
                       'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
-                      'if(apply) apply.addEventListener("click", function(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ alert("Please type your full name."); return; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } });' +
+                      'function applyTypedNow(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ return false; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } return true; }' +
+                      'if(input) input.addEventListener("input", function(){ try{ applyTypedNow(); }catch(_){} });' +
+                      'if(apply) apply.addEventListener("click", function(){ var ok=applyTypedNow(); if(!ok){ alert("Please type your full name."); } });' +
                       'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
                       'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
                     '})();' +
@@ -870,7 +881,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                   }
                 }
 
-                if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                try {
+                  var signBtn = document.getElementById('signFinalize');
+                  if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                } catch(_) {}
                 return;
               } catch(_) {}
 
@@ -1297,6 +1311,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       ${pages.join('\n')}
       <script>
       (function(){
+        function gbReady(fn){ try { if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); } catch(_) { try { fn(); } catch(__) {} } }
         function setupImageZoom(){
           try {
             var imgs = Array.prototype.slice.call(document.querySelectorAll('img[data-gbzoom="1"]'));
@@ -1353,17 +1368,16 @@ function QuoteGeneratorWindow(): JSX.Element {
         setupImageZoom();
 
         // New signing flow: Sign & Finalize opens a dedicated signing window (draw or type),
-        // then generates a PDF download and replaces this page with a thank-you/instructions screen.
+        // then generates a PDF download with signature/date auto-applied (not shown on screen).
         try {
           var gbShopEmail = 'gadgetboysc@gmail.com';
-          var gbSignBtn = document.getElementById('signFinalize');
-          var gbSigImg = document.getElementById('gbSigImg');
-          var gbSigHint = document.getElementById('gbSigHint');
-          var gbDateBox = document.getElementById('dateBox');
           var gbCustomerName = ${JSON.stringify(cust)};
           var gbCustomerPhone = ${JSON.stringify(phone)};
           var gbItemsCount = ${JSON.stringify((sales.items || []).length)};
           var gbStampShort = ${JSON.stringify(stampShort)};
+
+          var gbSigDataUrl = '';
+          var gbSigDateStr = '';
 
           function sanitize(s){
             return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,'');
@@ -1378,12 +1392,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           function applySignature(dataUrl, dateStr){
             try {
-              if (gbSigImg && gbSigImg.style) {
-                gbSigImg.setAttribute('src', dataUrl || '');
-                gbSigImg.style.display = 'block';
-              }
-              if (gbSigHint && gbSigHint.style) gbSigHint.style.display = 'none';
-              if (gbDateBox) gbDateBox.textContent = dateStr || fmtDate(new Date());
+              gbSigDataUrl = String(dataUrl || '');
+              gbSigDateStr = String(dateStr || '');
             } catch(_) {}
           }
 
@@ -1407,6 +1417,16 @@ function QuoteGeneratorWindow(): JSX.Element {
             var base = 'Gadgetboy-Quote-' + sanitize(gbCustomerName || 'Customer');
             var filename = base + '-' + (gbStampShort || '') + '.pdf';
             var api = (window).api;
+
+            // Populate PDF-only signature/date slots (do not show on screen permanently)
+            var pdfWrap = document.getElementById('gbPdfSigWrap');
+            var pdfImg = document.getElementById('gbPdfSigImg');
+            var pdfDate = document.getElementById('gbPdfDate');
+            try {
+              if (pdfImg && gbSigDataUrl) pdfImg.setAttribute('src', gbSigDataUrl);
+              if (pdfDate) pdfDate.textContent = gbSigDateStr || fmtDate(new Date());
+              if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'block';
+            } catch(_) {}
 
             // Hide any interactive elements while capturing the PDF.
             var style = document.createElement('style');
@@ -1446,6 +1466,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
             } finally {
               try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
+              try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
             }
           }
 
@@ -1483,7 +1504,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               '<div class="card">' +
                 '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
                 '<canvas id="pad"></canvas>' +
-                '<div class="hint">Tip: You can also type your name below and tap Apply Typed.</div>' +
+                '<div class="hint">Tip: Type your name below — it will render automatically (Apply is optional).</div>' +
               '</div>' +
               '<div style="height:10px"></div>' +
               '<div class="card">' +
@@ -1521,7 +1542,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                 'canvas.addEventListener("pointermove", move, {passive:false});' +
                 'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
                 'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
-                'if(apply) apply.addEventListener("click", function(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ alert("Please type your full name."); return; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } });' +
+                'function applyTypedNow(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ return false; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } return true; }' +
+                'if(input) input.addEventListener("input", function(){ try{ applyTypedNow(); }catch(_){} });' +
+                'if(apply) apply.addEventListener("click", function(){ var ok=applyTypedNow(); if(!ok){ alert("Please type your full name."); } });' +
                 'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
                 'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
               '})();' +
@@ -1538,7 +1561,12 @@ function QuoteGeneratorWindow(): JSX.Element {
             }
           }
 
-          if (gbSignBtn) gbSignBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+          gbReady(function(){
+            try {
+              var gbSignBtn = document.getElementById('signFinalize');
+              if (gbSignBtn) gbSignBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+            } catch(_) {}
+          });
 
           // Stop here; the legacy inline signature/PDF code below is kept for reference but no longer runs.
           return;

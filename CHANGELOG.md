@@ -120,3 +120,7 @@
 ## v0.2.43 (2026-03-07)
 - No commits recorded.
 
+## v0.2.44 (2026-03-07)
+- fix(quotes): typed signatures auto-render while typing in Sign & Finalize popup
+- fix(quotes): keep signature/date off the HTML view; apply them only to exported PDF
+
