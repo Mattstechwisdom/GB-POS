@@ -130,3 +130,6 @@
 ## v0.2.46 (2026-03-07)
 - fix(quotes): pre-open signing popup on tap/click to prevent "Loading" dead-end
 
+## v0.2.47 (2026-03-07)
+- fix(quotes): stable global Sign & Finalize handler + init-wait (prevents stuck "Loading")
+

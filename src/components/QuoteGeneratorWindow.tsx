@@ -800,6 +800,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     (window).__gbSignOpening = true;
                     setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
                   } catch(_) {}
+                  try { (window).__gbOpenSignWindow = openSignWindow; } catch(_) {}
                   var w = null;
                   try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
                   if (!w) {
@@ -1344,6 +1345,42 @@ function QuoteGeneratorWindow(): JSX.Element {
       ${pages.join('\n')}
       <script>
       (function(){
+        try {
+          (window).__gbSignFinalize = function(){
+            try {
+              var w = null;
+              try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
+              if (!w) {
+                try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+                try { (window).__gbSignWinPreopen = w; } catch(_) {}
+              }
+              // If signing hasn't initialized yet, wait a moment for the page script to finish loading.
+              var startedAt = Date.now();
+              var tick = function(){
+                try {
+                  if (typeof (window).__gbOpenSignWindow === 'function') { (window).__gbOpenSignWindow(); return; }
+                } catch(_) {}
+                if (Date.now() - startedAt > 2200) {
+                  try {
+                    if (w && w.document) {
+                      w.document.open();
+                      w.document.write('<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Cannot sign</title></head><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;padding:14px"><div style="font-size:14pt;font-weight:900">Could not start signing</div><div style="margin-top:8px">This viewer may be blocking scripts. Please open this quote in your browser (Safari/Chrome/Firefox/Brave) and allow popups.</div></body></html>');
+                      w.document.close();
+                      try { w.focus(); } catch(_) {}
+                    } else {
+                      alert('Could not start signing. Please open in your browser and allow popups.');
+                    }
+                  } catch(_) {}
+                  return;
+                }
+                try { setTimeout(tick, 60); } catch(_) {}
+              };
+              tick();
+            } catch(_) {}
+            return false;
+          };
+        } catch(_) {}
+
         function gbReady(fn){ try { if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); } catch(_) { try { fn(); } catch(__) {} } }
         function setupImageZoom(){
           try {
@@ -1512,6 +1549,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               (window).__gbSignOpening = true;
               setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
             } catch(_) {}
+            try { (window).__gbOpenSignWindow = openSignWindow; } catch(_) {}
             var w = null;
             try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
             if (!w) {
