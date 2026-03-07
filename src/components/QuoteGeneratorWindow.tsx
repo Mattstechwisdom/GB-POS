@@ -269,7 +269,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div style="margin-top:16px">
               <div class="no-print" style="display:flex; justify-content:center">
-                <button id="signFinalize" type="button" onclick="try{ var w=null; try{ w=window.__gbSignWinPreopen; if(w&&w.closed) w=null; }catch(_){} if(!w){ try{ w=window.open('', 'gbSignFinalize', 'width=420,height=650'); }catch(_) { w=null; } try{ window.__gbSignWinPreopen=w; }catch(_){} } try{ if(w&&w.document){ w.document.open(); w.document.write('<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=width=device-width,initial-scale=1><title>Loading</title></head><body><b>Loading signature...</b><div>If nothing happens, allow popups and try again.</div></body></html>'); w.document.close(); try{ w.focus(); }catch(_){} } }catch(_){} if(window.__gbSignFinalize) return window.__gbSignFinalize(); try{ alert('Loading... please wait a moment and tap again.'); }catch(_){} return false; }catch(_){ try{ alert('Could not start signing. Please open in your browser and allow popups.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+                <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -659,7 +659,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
 
             <div class="no-print" style="display:flex; justify-content:center; margin-top:16px">
-              <button id="signFinalize" type="button" onclick="try{ var w=null; try{ w=window.__gbSignWinPreopen; if(w&&w.closed) w=null; }catch(_){} if(!w){ try{ w=window.open('', 'gbSignFinalize', 'width=420,height=650'); }catch(_) { w=null; } try{ window.__gbSignWinPreopen=w; }catch(_){} } try{ if(w&&w.document){ w.document.open(); w.document.write('<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=width=device-width,initial-scale=1><title>Loading</title></head><body><b>Loading signature...</b><div>If nothing happens, allow popups and try again.</div></body></html>'); w.document.close(); try{ w.focus(); }catch(_){} } }catch(_){} if(window.__gbSignFinalize) return window.__gbSignFinalize(); try{ alert('Loading... please wait a moment and tap again.'); }catch(_){} return false; }catch(_){ try{ alert('Could not start signing. Please open in your browser and allow popups.'); }catch(__){} return false; }" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+              <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -794,131 +794,142 @@ function QuoteGeneratorWindow(): JSX.Element {
                 (window).__gbApplySignature = applySignature;
                 (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
 
-                function openSignWindow(){
+                function gbPad(n){ return String(n).padStart(2,'0'); }
+                function gbTodayIso(){ try{ var d=new Date(); return String(d.getFullYear())+'-'+gbPad(d.getMonth()+1)+'-'+gbPad(d.getDate()); }catch(_){ return ''; } }
+                function gbIsoToSlash(iso){
                   try {
-                    if ((window).__gbSignOpening) return;
-                    (window).__gbSignOpening = true;
-                    setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
-                  } catch(_) {}
-                  try { (window).__gbOpenSignWindow = openSignWindow; } catch(_) {}
-                  var w = null;
-                  try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
-                  if (!w) {
-                    try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
-                  }
-                  try { (window).__gbSignWinPreopen = w; } catch(_) {}
-                  if (!w || !w.document) {
-                    try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
-                    return;
-                  }
-                  var signHtml = '<!doctype html><html><head>' +
-                    '<meta charset="utf-8" />' +
-                    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' +
-                    '<title>Sign Quote</title>' +
-                    '<link rel="preconnect" href="https://fonts.googleapis.com" />' +
-                    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' +
-                    '<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />' +
-                    '<style>' +
-                    'html,body{margin:0;padding:0;background:#ffffff;color:#000;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}' +
-                    '.wrap{max-width:520px;margin:0 auto;padding:14px}' +
-                    '.card{border:2px solid #111;border-radius:12px;padding:12px}' +
-                    '.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}' +
-                    'button{padding:10px 14px;border-radius:10px;border:2px solid #000;background:#39FF14;color:#000;font-weight:900;cursor:pointer}' +
-                    'button.secondary{background:#efefef;font-weight:700}' +
-                    'input{flex:1;min-width:220px;padding:10px 12px;border:2px solid #000;border-radius:10px;font-size:12pt}' +
-                    '#pad{width:100%;height:160px;display:block;border:2px solid #000;border-radius:10px;background:#fff;touch-action:none}' +
-                    '.hint{color:#333;font-size:11.5pt;line-height:1.35;margin-top:8px}' +
-                    '</style>' +
-                    '</head><body><div class="wrap">' +
-                    '<div style="font-size:16pt;font-weight:900;margin:6px 0 10px 0">Sign &amp; Finalize</div>' +
-                    '<div class="card">' +
-                      '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
-                      '<canvas id="pad"></canvas>' +
-                      '<div class="hint">Tip: Type your name below — it will render automatically (Apply is optional).</div>' +
-                    '</div>' +
-                    '<div style="height:10px"></div>' +
-                    '<div class="card">' +
-                      '<div style="font-weight:800;margin-bottom:8px">Type signature</div>' +
-                      '<div class="row">' +
-                        '<input id="name" type="text" placeholder="Type full name" />' +
-                        '<button id="apply" type="button" class="secondary">Apply Typed</button>' +
-                      '</div>' +
-                      '<div class="row" style="margin-top:10px">' +
-                        '<button id="clear" type="button" class="secondary">Clear</button>' +
-                        '<button id="final" type="button">Finalize (Download PDF)</button>' +
-                      '</div>' +
-                    '</div>' +
-                    '<div class="hint" style="margin-top:10px">After Finalize, this window will close and the quote page will show next steps.</div>' +
-                    '<script>' +
-                    '(function(){' +
-                      'var canvas=document.getElementById("pad");' +
-                      'var ctx=canvas && canvas.getContext ? canvas.getContext("2d") : null;' +
-                      'var input=document.getElementById("name");' +
-                      'var apply=document.getElementById("apply");' +
-                      'var clear=document.getElementById("clear");' +
-                      'var fin=document.getElementById("final");' +
-                      'var drawing=false,last=[0,0],dirty=false;' +
-                      'function resize(){ if(!canvas||!ctx) return; var r=canvas.getBoundingClientRect(); var dpr=(window.devicePixelRatio||1); var cssW=r.width||320; var cssH=r.height||160; canvas.width=Math.max(1,Math.floor(cssW*dpr)); canvas.height=Math.max(1,Math.floor(cssH*dpr)); ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.lineWidth=2.8; ctx.lineCap="round"; ctx.strokeStyle="#000"; }' +
-                      'function pos(e){ var r=canvas.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; return [ (t.clientX-r.left), (t.clientY-r.top) ]; }' +
-                      'function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{e.preventDefault();}catch(_){} }' +
-                      'function move(e){ if(!drawing||!ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0],last[1]); ctx.lineTo(p[0],p[1]); ctx.stroke(); last=p; dirty=true; try{e.preventDefault();}catch(_){} }' +
-                      'function end(){ drawing=false; }' +
-                      'function drawTyped(name){ if(!ctx) return; resize(); ctx.clearRect(0,0,canvas.width,canvas.height); var dpr=(window.devicePixelRatio||1); var cssH=canvas.height/dpr; var size=Math.floor(Math.max(28, cssH*0.55)); ctx.fillStyle="#000"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font=String(size)+"px \"Alex Brush\", \"Segoe Script\", \"Brush Script MT\", cursive"; var cx=(canvas.width/dpr)/2; var cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; }' +
-                      'function sigDataUrl(){ try { var tmp=document.createElement("canvas"); tmp.width=canvas.width; tmp.height=canvas.height; var t=tmp.getContext("2d"); if(t){ t.fillStyle="#fff"; t.fillRect(0,0,tmp.width,tmp.height); t.drawImage(canvas,0,0); return tmp.toDataURL("image/png"); } } catch(_){} try { return canvas.toDataURL("image/png"); } catch(_){} return ""; }' +
-                      'function dateStr(){ try { var d=new Date(); var pad=function(n){return String(n).padStart(2,"0");}; return pad(d.getMonth()+1)+"/"+pad(d.getDate())+"/"+String(d.getFullYear()); } catch(_) { return ""; } }' +
-                      'window.addEventListener("resize", function(){ try{resize();}catch(_){} }, {passive:true});' +
-                      'resize();' +
-                      'canvas.addEventListener("pointerdown", function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, {passive:false});' +
-                      'canvas.addEventListener("pointermove", move, {passive:false});' +
-                      'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
-                      'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
-                      'function applyTypedNow(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ return false; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } return true; }' +
-                      'if(input) input.addEventListener("input", function(){ try{ applyTypedNow(); }catch(_){} });' +
-                      'if(apply) apply.addEventListener("click", function(){ var ok=applyTypedNow(); if(!ok){ alert("Please type your full name."); } });' +
-                      'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
-                      'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
-                    '})();' +
-                    '</' + 'script>' +
-                    '</div></body></html>';
-
-                  try {
-                    w.document.open();
-                    w.document.write(signHtml);
-                    w.document.close();
-                    try { w.focus(); } catch(_) {}
-                  } catch(_) {
-                    try { alert('Could not open the signing window. Please use "Open in Browser" and try again.'); } catch(_) {}
-                  }
+                    var s=String(iso||'');
+                    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+                    return s.slice(5,7) + '/' + s.slice(8,10) + '/' + s.slice(0,4);
+                  } catch(_) { return ''; }
                 }
 
-                try {
-                  (window).__gbSignFinalize = function(){ try{ openSignWindow(); }catch(_){} return false; };
-                } catch(_) {}
+                function setupInPageSigning(){
+                  var overlay = document.getElementById('gbSignOverlay');
+                  var canvas = document.getElementById('gbSignCanvas');
+                  var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+                  var nameInput = document.getElementById('gbSignName');
+                  var dateInput = document.getElementById('gbSignDate');
+                  var backBtn = document.getElementById('gbSignBack');
+                  var clearBtn = document.getElementById('gbSignClear');
+                  var finBtn = document.getElementById('gbSignDoFinalize');
+                  var dirty = false;
+                  var drawing = false;
+                  var last = [0,0];
 
-                function wireSignFinalize(){
+                  function resize(){
+                    if(!canvas || !ctx) return;
+                    var r = canvas.getBoundingClientRect();
+                    var dpr = (window.devicePixelRatio || 1);
+                    var cssW = r.width || 320;
+                    var cssH = r.height || 160;
+                    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+                    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+                    ctx.setTransform(1,0,0,1,0,0);
+                    ctx.scale(dpr, dpr);
+                    ctx.lineWidth = 2.8;
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = '#000';
+                  }
+                  function pos(e){ var r = canvas.getBoundingClientRect(); var t = (e.touches && e.touches[0]) ? e.touches[0] : e; return [ (t.clientX - r.left), (t.clientY - r.top) ]; }
+                  function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch(_){} }
+                  function move(e){ if(!drawing || !ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch(_){} }
+                  function end(){ drawing=false; }
+                  function clear(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; }
+                  function drawTyped(name){
+                    if(!ctx) return;
+                    resize();
+                    try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){}
+                    var dpr = (window.devicePixelRatio||1);
+                    var cssH = canvas.height / dpr;
+                    var size = Math.floor(Math.max(28, cssH * 0.55));
+                    ctx.fillStyle = '#000';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+                    var cx = (canvas.width / dpr) / 2;
+                    var cy = (canvas.height / dpr) / 2;
+                    ctx.fillText(String(name||''), cx, cy);
+                    dirty = !!String(name||'').trim();
+                  }
+                  function sigDataUrl(){
+                    try {
+                      var tmp = document.createElement('canvas');
+                      tmp.width = canvas.width;
+                      tmp.height = canvas.height;
+                      var t = tmp.getContext('2d');
+                      if (t) {
+                        t.fillStyle = '#fff';
+                        t.fillRect(0,0,tmp.width,tmp.height);
+                        t.drawImage(canvas, 0, 0);
+                        return tmp.toDataURL('image/png');
+                      }
+                    } catch(_) {}
+                    try { return canvas.toDataURL('image/png'); } catch(_) {}
+                    return '';
+                  }
+
+                  function show(){
+                    try { if (!overlay) return; overlay.style.display = 'block'; } catch(_) {}
+                    try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
+                    try { resize(); } catch(_) {}
+                    try { window.scrollTo(0,0); } catch(_) {}
+                  }
+                  function hide(){ try { if (overlay) overlay.style.display = 'none'; } catch(_) {} }
+
+                  try { (window).__gbShowSign = show; } catch(_) {}
+                  try { (window).__gbSignFinalize = function(){ try{ show(); }catch(_){} return false; }; } catch(_) {}
+
                   try {
-                    document.addEventListener('click', function(e){
+                    if (canvas) {
+                      resize();
+                      window.addEventListener('resize', function(){ try{ resize(); }catch(_){} }, { passive:true });
+                      canvas.addEventListener('pointerdown', function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
+                      canvas.addEventListener('pointermove', move, { passive:false });
+                      window.addEventListener('pointerup', end);
+                      window.addEventListener('pointercancel', end);
+                      canvas.addEventListener('touchstart', start, { passive:false });
+                      canvas.addEventListener('touchmove', move, { passive:false });
+                      window.addEventListener('touchend', end);
+                      window.addEventListener('touchcancel', end);
+                    }
+                  } catch(_) {}
+
+                  try {
+                    if (nameInput) nameInput.addEventListener('input', function(){
+                      var name = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
+                      if (!name) { return; }
                       try {
-                        var t = e && e.target;
-                        if (!t) return;
-                        if (t.id === 'signFinalize') {
-                          try { e.preventDefault(); } catch(_) {}
-                          openSignWindow();
+                        if (document.fonts && document.fonts.load) {
+                          document.fonts.load('48px "Alex Brush"').then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); });
+                        } else {
+                          drawTyped(name);
                         }
-                      } catch(_) {}
-                    }, true);
+                      } catch(_) { drawTyped(name); }
+                    });
+                  } catch(_) {}
+
+                  try { if (backBtn) backBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} hide(); }); } catch(_) {}
+                  try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
+                  try {
+                    if (finBtn) finBtn.addEventListener('click', function(e){
+                      try{ e.preventDefault(); }catch(_){}
+                      if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return; }
+                      var url = sigDataUrl();
+                      var ds = '';
+                      try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                      try { applySignature(url, ds); } catch(_) {}
+                      try { exportPdfAndThankYou(); } catch(_) {}
+                    });
                   } catch(_) {}
 
                   try {
                     var signBtn = document.getElementById('signFinalize');
-                    if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                    if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} show(); });
                   } catch(_) {}
                 }
 
-                try {
-                  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireSignFinalize);
-                  else wireSignFinalize();
-                } catch(_) { try { wireSignFinalize(); } catch(__) {} }
+                try { setupInPageSigning(); } catch(_) {}
                 return;
               } catch(_) {}
 
@@ -1251,6 +1262,24 @@ function QuoteGeneratorWindow(): JSX.Element {
         ${partPagesHtml}
         ${summaryPage}
         ${approvalPage}
+
+        <div id="gbSignOverlay" class="no-print" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.75); padding:12px; box-sizing:border-box; overflow:auto">
+          <div style="max-width:720px; margin:0 auto; background:#ffffff; color:#000000; border:2px solid #111; border-radius:12px; padding:12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+            <div style="font-size:16pt; font-weight:900; margin:4px 0 10px 0">Sign &amp; Finalize</div>
+            <div style="font-weight:800; margin-bottom:6px">Draw or type your signature</div>
+            <canvas id="gbSignCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+              <input id="gbSignName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+              <input id="gbSignDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
+              <button id="gbSignBack" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Back</button>
+              <button id="gbSignClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+              <button id="gbSignDoFinalize" type="button" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+            </div>
+            <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">When you tap Finalize, the signed PDF will download automatically.</div>
+          </div>
+        </div>
       </body>
       </html>`;
       // Debug: attempt to save generated HTML into the app DB for inspection
@@ -1340,45 +1369,31 @@ function QuoteGeneratorWindow(): JSX.Element {
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> Tap <b>Sign &amp; Finalize</b>. If nothing happens, tap "Open in Browser" (Safari/Chrome) and allow the popup window for signing.
+        <b>On mobile:</b> Tap <b>Sign &amp; Finalize</b> to open the signature + date screen, then Finalize to download the PDF.
       </div>
       ${pages.join('\n')}
+
+      <div id="gbSignOverlay" class="no-print" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.75); padding:12px; box-sizing:border-box; overflow:auto">
+        <div style="max-width:720px; margin:0 auto; background:#ffffff; color:#000000; border:2px solid #111; border-radius:12px; padding:12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+          <div style="font-size:16pt; font-weight:900; margin:4px 0 10px 0">Sign &amp; Finalize</div>
+          <div style="font-weight:800; margin-bottom:6px">Draw or type your signature</div>
+          <canvas id="gbSignCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+            <input id="gbSignName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+            <input id="gbSignDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
+            <button id="gbSignBack" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Back</button>
+            <button id="gbSignClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+            <button id="gbSignDoFinalize" type="button" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+          </div>
+          <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">When you tap Finalize, the signed PDF will download automatically.</div>
+        </div>
+      </div>
       <script>
       (function(){
         try {
-          (window).__gbSignFinalize = function(){
-            try {
-              var w = null;
-              try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
-              if (!w) {
-                try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
-                try { (window).__gbSignWinPreopen = w; } catch(_) {}
-              }
-              // If signing hasn't initialized yet, wait a moment for the page script to finish loading.
-              var startedAt = Date.now();
-              var tick = function(){
-                try {
-                  if (typeof (window).__gbOpenSignWindow === 'function') { (window).__gbOpenSignWindow(); return; }
-                } catch(_) {}
-                if (Date.now() - startedAt > 2200) {
-                  try {
-                    if (w && w.document) {
-                      w.document.open();
-                      w.document.write('<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Cannot sign</title></head><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;padding:14px"><div style="font-size:14pt;font-weight:900">Could not start signing</div><div style="margin-top:8px">This viewer may be blocking scripts. Please open this quote in your browser (Safari/Chrome/Firefox/Brave) and allow popups.</div></body></html>');
-                      w.document.close();
-                      try { w.focus(); } catch(_) {}
-                    } else {
-                      alert('Could not start signing. Please open in your browser and allow popups.');
-                    }
-                  } catch(_) {}
-                  return;
-                }
-                try { setTimeout(tick, 60); } catch(_) {}
-              };
-              tick();
-            } catch(_) {}
-            return false;
-          };
+          (window).__gbSignFinalize = function(){ try { if ((window).__gbShowSign) (window).__gbShowSign(); } catch(_) {} return false; };
         } catch(_) {}
 
         function gbReady(fn){ try { if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); } catch(_) { try { fn(); } catch(__) {} } }
@@ -1437,8 +1452,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         setupImageZoom();
 
-        // New signing flow: Sign & Finalize opens a dedicated signing window (draw or type),
-        // then generates a PDF download with signature/date auto-applied (not shown on screen).
+        // Signing flow: Sign & Finalize opens an in-page signing screen (signature + date),
+        // then generates a PDF download with signature/date auto-applied (not shown on the main quote screen).
         try {
           var gbShopEmail = 'gadgetboysc@gmail.com';
           var gbCustomerName = ${JSON.stringify(cust)};
@@ -1543,126 +1558,145 @@ function QuoteGeneratorWindow(): JSX.Element {
           (window).__gbApplySignature = applySignature;
           (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
 
-          function openSignWindow(){
+          function gbPad(n){ return String(n).padStart(2,'0'); }
+          function gbTodayIso(){ try{ var d=new Date(); return String(d.getFullYear())+'-'+gbPad(d.getMonth()+1)+'-'+gbPad(d.getDate()); }catch(_){ return ''; } }
+          function gbIsoToSlash(iso){
             try {
-              if ((window).__gbSignOpening) return;
-              (window).__gbSignOpening = true;
-              setTimeout(function(){ try { (window).__gbSignOpening = false; } catch(_) {} }, 800);
-            } catch(_) {}
-            try { (window).__gbOpenSignWindow = openSignWindow; } catch(_) {}
-            var w = null;
-            try { w = (window).__gbSignWinPreopen; if (w && w.closed) w = null; } catch(_) { w = null; }
-            if (!w) {
-              try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
-            }
-            try { (window).__gbSignWinPreopen = w; } catch(_) {}
-            if (!w || !w.document) {
-              try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
-              return;
-            }
-
-            var signHtml = '<!doctype html><html><head>' +
-              '<meta charset="utf-8" />' +
-              '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' +
-              '<title>Sign Quote</title>' +
-              '<link rel="preconnect" href="https://fonts.googleapis.com" />' +
-              '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' +
-              '<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />' +
-              '<style>' +
-              'html,body{margin:0;padding:0;background:#ffffff;color:#000;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}' +
-              '.wrap{max-width:520px;margin:0 auto;padding:14px}' +
-              '.card{border:2px solid #111;border-radius:12px;padding:12px}' +
-              '.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}' +
-              'button{padding:10px 14px;border-radius:10px;border:2px solid #000;background:#39FF14;color:#000;font-weight:900;cursor:pointer}' +
-              'button.secondary{background:#efefef;font-weight:700}' +
-              'input{flex:1;min-width:220px;padding:10px 12px;border:2px solid #000;border-radius:10px;font-size:12pt}' +
-              '#pad{width:100%;height:160px;display:block;border:2px solid #000;border-radius:10px;background:#fff;touch-action:none}' +
-              '.hint{color:#333;font-size:11.5pt;line-height:1.35;margin-top:8px}' +
-              '</style>' +
-              '</head><body><div class="wrap">' +
-              '<div style="font-size:16pt;font-weight:900;margin:6px 0 10px 0">Sign &amp; Finalize</div>' +
-              '<div class="card">' +
-                '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
-                '<canvas id="pad"></canvas>' +
-                '<div class="hint">Tip: Type your name below — it will render automatically (Apply is optional).</div>' +
-              '</div>' +
-              '<div style="height:10px"></div>' +
-              '<div class="card">' +
-                '<div style="font-weight:800;margin-bottom:8px">Type signature</div>' +
-                '<div class="row">' +
-                  '<input id="name" type="text" placeholder="Type full name" />' +
-                  '<button id="apply" type="button" class="secondary">Apply Typed</button>' +
-                '</div>' +
-                '<div class="row" style="margin-top:10px">' +
-                  '<button id="clear" type="button" class="secondary">Clear</button>' +
-                  '<button id="final" type="button">Finalize (Download PDF)</button>' +
-                '</div>' +
-              '</div>' +
-              '<div class="hint" style="margin-top:10px">After Finalize, this window will close and the quote page will show next steps.</div>' +
-              '<script>' +
-              '(function(){' +
-                'var canvas=document.getElementById("pad");' +
-                'var ctx=canvas && canvas.getContext ? canvas.getContext("2d") : null;' +
-                'var input=document.getElementById("name");' +
-                'var apply=document.getElementById("apply");' +
-                'var clear=document.getElementById("clear");' +
-                'var fin=document.getElementById("final");' +
-                'var drawing=false,last=[0,0],dirty=false;' +
-                'function resize(){ if(!canvas||!ctx) return; var r=canvas.getBoundingClientRect(); var dpr=(window.devicePixelRatio||1); var cssW=r.width||320; var cssH=r.height||160; canvas.width=Math.max(1,Math.floor(cssW*dpr)); canvas.height=Math.max(1,Math.floor(cssH*dpr)); ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.lineWidth=2.8; ctx.lineCap="round"; ctx.strokeStyle="#000"; }' +
-                'function pos(e){ var r=canvas.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; return [ (t.clientX-r.left), (t.clientY-r.top) ]; }' +
-                'function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{e.preventDefault();}catch(_){} }' +
-                'function move(e){ if(!drawing||!ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0],last[1]); ctx.lineTo(p[0],p[1]); ctx.stroke(); last=p; dirty=true; try{e.preventDefault();}catch(_){} }' +
-                'function end(){ drawing=false; }' +
-                'function drawTyped(name){ if(!ctx) return; resize(); ctx.clearRect(0,0,canvas.width,canvas.height); var dpr=(window.devicePixelRatio||1); var cssH=canvas.height/dpr; var size=Math.floor(Math.max(28, cssH*0.55)); ctx.fillStyle="#000"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font=String(size)+"px \"Alex Brush\", \"Segoe Script\", \"Brush Script MT\", cursive"; var cx=(canvas.width/dpr)/2; var cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; }' +
-                'function sigDataUrl(){ try { var tmp=document.createElement("canvas"); tmp.width=canvas.width; tmp.height=canvas.height; var t=tmp.getContext("2d"); if(t){ t.fillStyle="#fff"; t.fillRect(0,0,tmp.width,tmp.height); t.drawImage(canvas,0,0); return tmp.toDataURL("image/png"); } } catch(_){} try { return canvas.toDataURL("image/png"); } catch(_){} return ""; }' +
-                'function dateStr(){ try { var d=new Date(); var pad=function(n){return String(n).padStart(2,"0");}; return pad(d.getMonth()+1)+"/"+pad(d.getDate())+"/"+String(d.getFullYear()); } catch(_) { return ""; } }' +
-                'window.addEventListener("resize", function(){ try{resize();}catch(_){} }, {passive:true});' +
-                'resize();' +
-                'canvas.addEventListener("pointerdown", function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, {passive:false});' +
-                'canvas.addEventListener("pointermove", move, {passive:false});' +
-                'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
-                'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
-                'function applyTypedNow(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ return false; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } return true; }' +
-                'if(input) input.addEventListener("input", function(){ try{ applyTypedNow(); }catch(_){} });' +
-                'if(apply) apply.addEventListener("click", function(){ var ok=applyTypedNow(); if(!ok){ alert("Please type your full name."); } });' +
-                'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
-                'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
-              '})();' +
-              '</' + 'script>' +
-              '</div></body></html>';
-
-            try {
-              w.document.open();
-              w.document.write(signHtml);
-              w.document.close();
-              try { w.focus(); } catch(_) {}
-            } catch(_) {
-              try { alert('Could not open the signing window. Please use "Open in Browser" and try again.'); } catch(_) {}
-            }
+              var s=String(iso||'');
+              if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+              return s.slice(5,7) + '/' + s.slice(8,10) + '/' + s.slice(0,4);
+            } catch(_) { return ''; }
           }
 
-          try {
-            (window).__gbSignFinalize = function(){ try{ openSignWindow(); }catch(_){} return false; };
-          } catch(_) {}
+          function setupInPageSigning(){
+            var overlay = document.getElementById('gbSignOverlay');
+            var canvas = document.getElementById('gbSignCanvas');
+            var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+            var nameInput = document.getElementById('gbSignName');
+            var dateInput = document.getElementById('gbSignDate');
+            var backBtn = document.getElementById('gbSignBack');
+            var clearBtn = document.getElementById('gbSignClear');
+            var finBtn = document.getElementById('gbSignDoFinalize');
+            var dirty = false;
+            var drawing = false;
+            var last = [0,0];
 
-          gbReady(function(){
+            function resize(){
+              if(!canvas || !ctx) return;
+              var r = canvas.getBoundingClientRect();
+              var dpr = (window.devicePixelRatio || 1);
+              var cssW = r.width || 320;
+              var cssH = r.height || 160;
+              canvas.width = Math.max(1, Math.floor(cssW * dpr));
+              canvas.height = Math.max(1, Math.floor(cssH * dpr));
+              ctx.setTransform(1,0,0,1,0,0);
+              ctx.scale(dpr, dpr);
+              ctx.lineWidth = 2.8;
+              ctx.lineCap = 'round';
+              ctx.strokeStyle = '#000';
+            }
+            function pos(e){
+              var r = canvas.getBoundingClientRect();
+              var t = (e.touches && e.touches[0]) ? e.touches[0] : e;
+              return [ (t.clientX - r.left), (t.clientY - r.top) ];
+            }
+            function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch(_){} }
+            function move(e){ if(!drawing || !ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch(_){} }
+            function end(){ drawing=false; }
+            function clear(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; }
+            function drawTyped(name){
+              if(!ctx) return;
+              resize();
+              try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){}
+              var dpr = (window.devicePixelRatio||1);
+              var cssH = canvas.height / dpr;
+              var size = Math.floor(Math.max(28, cssH * 0.55));
+              ctx.fillStyle = '#000';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+              var cx = (canvas.width / dpr) / 2;
+              var cy = (canvas.height / dpr) / 2;
+              ctx.fillText(String(name||''), cx, cy);
+              dirty = !!String(name||'').trim();
+            }
+            function sigDataUrl(){
+              try {
+                var tmp = document.createElement('canvas');
+                tmp.width = canvas.width;
+                tmp.height = canvas.height;
+                var t = tmp.getContext('2d');
+                if (t) {
+                  t.fillStyle = '#fff';
+                  t.fillRect(0,0,tmp.width,tmp.height);
+                  t.drawImage(canvas, 0, 0);
+                  return tmp.toDataURL('image/png');
+                }
+              } catch(_) {}
+              try { return canvas.toDataURL('image/png'); } catch(_) {}
+              return '';
+            }
+
+            function show(){
+              try { if (!overlay) return; overlay.style.display = 'block'; } catch(_) {}
+              try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
+              try { resize(); } catch(_) {}
+              try { window.scrollTo(0,0); } catch(_) {}
+            }
+            function hide(){ try { if (overlay) overlay.style.display = 'none'; } catch(_) {} }
+
+            try { (window).__gbShowSign = show; } catch(_) {}
+
             try {
-              document.addEventListener('click', function(e){
+              if (canvas) {
+                resize();
+                window.addEventListener('resize', function(){ try{ resize(); }catch(_){} }, { passive:true });
+                canvas.addEventListener('pointerdown', function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
+                canvas.addEventListener('pointermove', move, { passive:false });
+                window.addEventListener('pointerup', end);
+                window.addEventListener('pointercancel', end);
+                canvas.addEventListener('touchstart', start, { passive:false });
+                canvas.addEventListener('touchmove', move, { passive:false });
+                window.addEventListener('touchend', end);
+                window.addEventListener('touchcancel', end);
+              }
+            } catch(_) {}
+
+            try {
+              if (nameInput) nameInput.addEventListener('input', function(){
+                var name = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
+                if (!name) { return; }
                 try {
-                  var t = e && e.target;
-                  if (!t) return;
-                  if (t.id === 'signFinalize') {
-                    try { e.preventDefault(); } catch(_) {}
-                    openSignWindow();
+                  if (document.fonts && document.fonts.load) {
+                    document.fonts.load('48px "Alex Brush"').then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); });
+                  } else {
+                    drawTyped(name);
                   }
-                } catch(_) {}
-              }, true);
+                } catch(_) { drawTyped(name); }
+              });
             } catch(_) {}
+
+            try { if (backBtn) backBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} hide(); }); } catch(_) {}
+            try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
             try {
-              var gbSignBtn = document.getElementById('signFinalize');
-              if (gbSignBtn) gbSignBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+              if (finBtn) finBtn.addEventListener('click', function(e){
+                try{ e.preventDefault(); }catch(_){}
+                if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return; }
+                var url = sigDataUrl();
+                var ds = '';
+                try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                try { applySignature(url, ds); } catch(_) {}
+                try { exportPdfAndThankYou(); } catch(_) {}
+              });
             } catch(_) {}
-          });
+
+            try {
+              var signBtn = document.getElementById('signFinalize');
+              if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} show(); });
+            } catch(_) {}
+          }
+
+          gbReady(function(){ try { setupInPageSigning(); } catch(_) {} });
 
           // Stop here; the legacy inline signature/PDF code below is kept for reference but no longer runs.
           return;

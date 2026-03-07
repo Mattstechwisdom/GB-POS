@@ -136,3 +136,6 @@
 ## v0.2.48 (2026-03-07)
 - fix(quotes): prevent Sign & Finalize button HTML from breaking (quote-safe onclick)
 
+## v0.2.49 (2026-03-07)
+- fix(quotes): remove popup-based signing; Sign & Finalize now opens an in-page signature + date screen and downloads the signed PDF
+
