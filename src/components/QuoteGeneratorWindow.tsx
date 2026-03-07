@@ -271,17 +271,17 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
               <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; break-inside: avoid; page-break-inside: avoid">
                 <div style="flex:1">
-                  <canvas id="sigPad" style="width:100%; height:96px; display:block; background:#ffffff; border:1px solid #000; border-radius:4px"></canvas>
-                  <div class="sig-actions no-print" style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-                    <input id="sigName" type="text" placeholder="Type full name to sign" style="flex:1; padding:6px; font-size:12px" />
-                    <button id="sigApply" type="button" style="padding:6px; font-size:12px">Apply Typed</button>
-                    <button id="sigClear" type="button" style="padding:6px; font-size:12px">Clear</button>
-                    <button id="finalize" type="button" style="padding:6px; font-size:12px">Finalize</button>
+                  <div style="border:2px solid #f00; border-radius:4px; padding:10px">
+                    <div id="gbSigHint" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; color:#666; padding:8px; font-size:11pt">Tap “Sign &amp; Finalize” to sign and download a PDF.</div>
+                    <img id="gbSigImg" alt="Signature" style="display:none; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
+                    <div class="sig-actions no-print" style="margin-top:10px; display:flex; justify-content:center">
+                      <button id="signFinalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Sign &amp; Finalize</button>
+                    </div>
                   </div>
                 </div>
                 <div style="width:220px">
-                  <div id="dateBox" style="border-bottom:2px solid #000; height:0; margin-bottom:4px"></div>
-                  <div style="font-size:12pt">Date</div>
+                  <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Date</div>
+                  <div id="dateBox" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:600"></div>
                 </div>
               </div>
             </div>
@@ -659,15 +659,12 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div id="sigSection" style="display:flex; gap:24px; align-items:flex-start; margin-top:16px">
               <div style="flex:1">
-                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Optional Signature</div>
+                <div style="font-weight:700; margin-bottom:6px; font-size:12pt">Signature</div>
                 <div style="border:2px solid #f00; border-radius:4px; padding:10px">
-                  <canvas id="sigPad" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff"></canvas>
-                  <div id="typedSigBox" style="display:none; width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; align-items:center; justify-content:center; font-family:'Alex Brush','Segoe Script','Edwardian Script ITC','Brush Script MT','Lucida Handwriting',cursive; font-size:40px; font-style:normal; line-height:1; letter-spacing:0.2px; text-align:center; padding:6px"></div>
-                  <div class="sig-actions no-print" style="display:flex; gap:8px; align-items:center; margin-top:8px">
-                    <button id="sigToggle" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef; font-weight:600">Type Instead</button>
-                    <input id="sigName" type="text" placeholder="Type full name (optional)" style="flex:1; border:1px solid #000; border-radius:4px; padding:6px 8px; font: 11pt system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; display:none" />
-                    <button id="sigApply" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef; font-weight:600">Apply</button>
-                    <button id="sigClear" type="button" style="padding:6px 10px; border:1px solid #000; border-radius:4px; background:#efefef">Clear</button>
+                  <div id="gbSigHint" style="width:100%; height:96px; border:1px solid #000; border-radius:4px; background:#fff; box-sizing:border-box; display:flex; align-items:center; justify-content:center; text-align:center; color:#666; padding:8px; font-size:11pt">Tap “Sign &amp; Finalize” to sign and download a PDF.</div>
+                  <img id="gbSigImg" alt="Signature" style="display:none; width:100%; height:96px; object-fit:contain; border:1px solid #000; border-radius:4px; background:#fff" />
+                  <div class="sig-actions no-print" style="margin-top:10px; display:flex; justify-content:center">
+                    <button id="signFinalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Sign &amp; Finalize</button>
                   </div>
                 </div>
               </div>
@@ -676,11 +673,6 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <div id="dateBox" style="border:2px solid #f00; border-radius:4px; min-height:96px; padding:10px; box-sizing:border-box"></div>
               </div>
             </div>
-
-            <div class="no-print" style="display:flex; justify-content:center; margin-top:14px">
-              <button id="finalize" type="button" style="padding:10px 16px; border:2px solid #000; border-radius:6px; background:#39FF14; color:#000; font-weight:800">Preview / Download</button>
-            </div>
-            <div class="no-print" style="text-align:center; margin-top:6px; color:#333; font-size:10.5pt">Tip: Signature is optional. Use "Preview / Download" to print or save as PDF.</div>
           </div>
         </div>`;
 
@@ -715,6 +707,173 @@ function QuoteGeneratorWindow(): JSX.Element {
           (function(){
             function ready(fn){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
             ready(function(){
+              // New signing flow: Sign & Finalize opens a dedicated signing window (draw or type),
+              // then generates a PDF download and replaces this page with a thank-you/instructions screen.
+              try {
+                var SHOP_EMAIL = 'gadgetboysc@gmail.com';
+                var signBtn = document.getElementById('signFinalize');
+                var sigImg = document.getElementById('gbSigImg');
+                var sigHint = document.getElementById('gbSigHint');
+                var dateBox = document.getElementById('dateBox');
+                var CUSTOMER_NAME = ${JSON.stringify(cust)};
+                var STAMP_SHORT = ${JSON.stringify(stampShort)};
+
+                function sanitize(s){
+                  return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,'');
+                }
+                function fmtDate(d){
+                  try {
+                    var pad=function(n){ return String(n).padStart(2,'0'); };
+                    var mm=pad(d.getMonth()+1), dd=pad(d.getDate()), yy=String(d.getFullYear());
+                    return mm + '/' + dd + '/' + yy;
+                  } catch(_) { return ''; }
+                }
+                function applySignature(dataUrl, dateStr){
+                  try {
+                    if (sigImg && sigImg.style) {
+                      sigImg.setAttribute('src', dataUrl || '');
+                      sigImg.style.display = 'block';
+                    }
+                    if (sigHint && sigHint.style) sigHint.style.display = 'none';
+                    if (dateBox) dateBox.textContent = dateStr || fmtDate(new Date());
+                  } catch(_) {}
+                }
+                function showThankYou(filename){
+                  try {
+                    var safeFile = filename ? String(filename) : 'the PDF';
+                    document.documentElement.style.background = '#ffffff';
+                    document.body.style.background = '#ffffff';
+                    document.body.style.color = '#000000';
+                    document.body.innerHTML =
+                      '<div style="max-width:720px; margin:20px auto; padding:18px; border:2px solid #111; border-radius:12px; background:#ffffff; color:#000; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">' +
+                        '<div style="font-size:20pt; font-weight:900; margin-bottom:10px">Thank you!</div>' +
+                        '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
+                        '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a> and we will get back to you as soon as possible.</div>' +
+                        '<div style="font-size:11.5pt; color:#333; margin-top:10px">If your browser didn\'t download it automatically, try the "Save/Share" option after the PDF opens.</div>' +
+                      '</div>';
+                  } catch(_) {}
+                }
+                async function exportPdfAndThankYou(){
+                  var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
+                  var filename = base + '-' + (STAMP_SHORT || '') + '.pdf';
+                  var style = document.createElement('style');
+                  style.setAttribute('data-gb-hide','1');
+                  style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
+                  try { document.head.appendChild(style); } catch(_) {}
+                  try {
+                    if (typeof (window).html2pdf !== 'function') {
+                      try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
+                      return;
+                    }
+                    var opt = {
+                      margin: 0,
+                      filename: filename,
+                      image: { type: 'jpeg', quality: 0.98 },
+                      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                      pagebreak: { mode: ['css', 'legacy'] }
+                    };
+                    await (window).html2pdf().set(opt).from(document.body).save();
+                    showThankYou(filename);
+                  } catch(e) {
+                    try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
+                  } finally {
+                    try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
+                  }
+                }
+
+                (window).__gbApplySignature = applySignature;
+                (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
+
+                function openSignWindow(){
+                  var w = null;
+                  try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+                  if (!w || !w.document) {
+                    try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
+                    return;
+                  }
+                  var signHtml = '<!doctype html><html><head>' +
+                    '<meta charset="utf-8" />' +
+                    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' +
+                    '<title>Sign Quote</title>' +
+                    '<link rel="preconnect" href="https://fonts.googleapis.com" />' +
+                    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' +
+                    '<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />' +
+                    '<style>' +
+                    'html,body{margin:0;padding:0;background:#ffffff;color:#000;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}' +
+                    '.wrap{max-width:520px;margin:0 auto;padding:14px}' +
+                    '.card{border:2px solid #111;border-radius:12px;padding:12px}' +
+                    '.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}' +
+                    'button{padding:10px 14px;border-radius:10px;border:2px solid #000;background:#39FF14;color:#000;font-weight:900;cursor:pointer}' +
+                    'button.secondary{background:#efefef;font-weight:700}' +
+                    'input{flex:1;min-width:220px;padding:10px 12px;border:2px solid #000;border-radius:10px;font-size:12pt}' +
+                    '#pad{width:100%;height:160px;display:block;border:2px solid #000;border-radius:10px;background:#fff;touch-action:none}' +
+                    '.hint{color:#333;font-size:11.5pt;line-height:1.35;margin-top:8px}' +
+                    '</style>' +
+                    '</head><body><div class="wrap">' +
+                    '<div style="font-size:16pt;font-weight:900;margin:6px 0 10px 0">Sign &amp; Finalize</div>' +
+                    '<div class="card">' +
+                      '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
+                      '<canvas id="pad"></canvas>' +
+                      '<div class="hint">Tip: You can also type your name below and tap Apply Typed.</div>' +
+                    '</div>' +
+                    '<div style="height:10px"></div>' +
+                    '<div class="card">' +
+                      '<div style="font-weight:800;margin-bottom:8px">Type signature</div>' +
+                      '<div class="row">' +
+                        '<input id="name" type="text" placeholder="Type full name" />' +
+                        '<button id="apply" type="button" class="secondary">Apply Typed</button>' +
+                      '</div>' +
+                      '<div class="row" style="margin-top:10px">' +
+                        '<button id="clear" type="button" class="secondary">Clear</button>' +
+                        '<button id="final" type="button">Finalize (Download PDF)</button>' +
+                      '</div>' +
+                    '</div>' +
+                    '<div class="hint" style="margin-top:10px">After Finalize, this window will close and the quote page will show next steps.</div>' +
+                    '<script>' +
+                    '(function(){' +
+                      'var canvas=document.getElementById("pad");' +
+                      'var ctx=canvas && canvas.getContext ? canvas.getContext("2d") : null;' +
+                      'var input=document.getElementById("name");' +
+                      'var apply=document.getElementById("apply");' +
+                      'var clear=document.getElementById("clear");' +
+                      'var fin=document.getElementById("final");' +
+                      'var drawing=false,last=[0,0],dirty=false;' +
+                      'function resize(){ if(!canvas||!ctx) return; var r=canvas.getBoundingClientRect(); var dpr=(window.devicePixelRatio||1); var cssW=r.width||320; var cssH=r.height||160; canvas.width=Math.max(1,Math.floor(cssW*dpr)); canvas.height=Math.max(1,Math.floor(cssH*dpr)); ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.lineWidth=2.8; ctx.lineCap="round"; ctx.strokeStyle="#000"; }' +
+                      'function pos(e){ var r=canvas.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; return [ (t.clientX-r.left), (t.clientY-r.top) ]; }' +
+                      'function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{e.preventDefault();}catch(_){} }' +
+                      'function move(e){ if(!drawing||!ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0],last[1]); ctx.lineTo(p[0],p[1]); ctx.stroke(); last=p; dirty=true; try{e.preventDefault();}catch(_){} }' +
+                      'function end(){ drawing=false; }' +
+                      'function drawTyped(name){ if(!ctx) return; resize(); ctx.clearRect(0,0,canvas.width,canvas.height); var dpr=(window.devicePixelRatio||1); var cssH=canvas.height/dpr; var size=Math.floor(Math.max(28, cssH*0.55)); ctx.fillStyle="#000"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font=String(size)+"px \"Alex Brush\", \"Segoe Script\", \"Brush Script MT\", cursive"; var cx=(canvas.width/dpr)/2; var cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; }' +
+                      'function sigDataUrl(){ try { var tmp=document.createElement("canvas"); tmp.width=canvas.width; tmp.height=canvas.height; var t=tmp.getContext("2d"); if(t){ t.fillStyle="#fff"; t.fillRect(0,0,tmp.width,tmp.height); t.drawImage(canvas,0,0); return tmp.toDataURL("image/png"); } } catch(_){} try { return canvas.toDataURL("image/png"); } catch(_){} return ""; }' +
+                      'function dateStr(){ try { var d=new Date(); var pad=function(n){return String(n).padStart(2,"0");}; return pad(d.getMonth()+1)+"/"+pad(d.getDate())+"/"+String(d.getFullYear()); } catch(_) { return ""; } }' +
+                      'window.addEventListener("resize", function(){ try{resize();}catch(_){} }, {passive:true});' +
+                      'resize();' +
+                      'canvas.addEventListener("pointerdown", function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, {passive:false});' +
+                      'canvas.addEventListener("pointermove", move, {passive:false});' +
+                      'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
+                      'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
+                      'if(apply) apply.addEventListener("click", function(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ alert("Please type your full name."); return; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } });' +
+                      'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
+                      'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
+                    '})();' +
+                    '</' + 'script>' +
+                    '</div></body></html>';
+
+                  try {
+                    w.document.open();
+                    w.document.write(signHtml);
+                    w.document.close();
+                    try { w.focus(); } catch(_) {}
+                  } catch(_) {
+                    try { alert('Could not open the signing window. Please use "Open in Browser" and try again.'); } catch(_) {}
+                  }
+                }
+
+                if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+                return;
+              } catch(_) {}
+
               // Minimal signature pad (optional)
               var canvas = document.getElementById('sigPad');
               var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
@@ -1133,7 +1292,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> If the signature box doesn't let you draw, tap "Open in Browser" (Safari/Chrome). After you sign, tap <b>Finalize</b>, then use <b>Share PDF</b> to send it back to <b>gadgetboysc@gmail.com</b>.
+        <b>On mobile:</b> Tap <b>Sign &amp; Finalize</b>. If nothing happens, tap "Open in Browser" (Safari/Chrome) and allow the popup window for signing.
       </div>
       ${pages.join('\n')}
       <script>
@@ -1192,6 +1351,198 @@ function QuoteGeneratorWindow(): JSX.Element {
         }
 
         setupImageZoom();
+
+        // New signing flow: Sign & Finalize opens a dedicated signing window (draw or type),
+        // then generates a PDF download and replaces this page with a thank-you/instructions screen.
+        try {
+          var SHOP_EMAIL = 'gadgetboysc@gmail.com';
+          var signBtn = document.getElementById('signFinalize');
+          var sigImg = document.getElementById('gbSigImg');
+          var sigHint = document.getElementById('gbSigHint');
+          var dateBox = document.getElementById('dateBox');
+          var CUSTOMER_NAME = ${JSON.stringify(cust)};
+          var CUSTOMER_PHONE = ${JSON.stringify(phone)};
+          var ITEMS_COUNT = ${JSON.stringify((sales.items || []).length)};
+          var STAMP_SHORT = ${JSON.stringify(stampShort)};
+
+          function sanitize(s){
+            return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,'');
+          }
+          function fmtDate(d){
+            try {
+              var pad=function(n){ return String(n).padStart(2,'0'); };
+              var mm=pad(d.getMonth()+1), dd=pad(d.getDate()), yy=String(d.getFullYear());
+              return mm + '/' + dd + '/' + yy;
+            } catch(_) { return ''; }
+          }
+
+          function applySignature(dataUrl, dateStr){
+            try {
+              if (sigImg && sigImg.style) {
+                sigImg.setAttribute('src', dataUrl || '');
+                sigImg.style.display = 'block';
+              }
+              if (sigHint && sigHint.style) sigHint.style.display = 'none';
+              if (dateBox) dateBox.textContent = dateStr || fmtDate(new Date());
+            } catch(_) {}
+          }
+
+          function showThankYou(filename){
+            try {
+              var safeFile = filename ? String(filename) : 'the PDF';
+              document.documentElement.style.background = '#ffffff';
+              document.body.style.background = '#ffffff';
+              document.body.style.color = '#000000';
+              document.body.innerHTML =
+                '<div style="max-width:720px; margin:20px auto; padding:18px; border:2px solid #111; border-radius:12px; background:#ffffff; color:#000; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">' +
+                  '<div style="font-size:20pt; font-weight:900; margin-bottom:10px">Thank you!</div>' +
+                  '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
+                  '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a> and we will get back to you as soon as possible.</div>' +
+                  '<div style="font-size:11.5pt; color:#333; margin-top:10px">If your browser didn\'t download it automatically, try the "Save/Share" option after the PDF opens.</div>' +
+                '</div>';
+            } catch(_) {}
+          }
+
+          async function exportPdfAndThankYou(){
+            var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
+            var filename = base + '-' + (STAMP_SHORT || '') + '.pdf';
+            var api = (window).api;
+
+            // Hide any interactive elements while capturing the PDF.
+            var style = document.createElement('style');
+            style.setAttribute('data-gb-hide','1');
+            style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
+            try { document.head.appendChild(style); } catch(_) {}
+
+            try {
+              if (api && typeof api.exportPdf === 'function') {
+                var html = '<!doctype html>' + document.documentElement.outerHTML;
+                var res = await api.exportPdf(html, base);
+                try {
+                  if (res && res.ok && res.filePath && typeof api.dbAdd === 'function') {
+                    api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerName: CUSTOMER_NAME, customerPhone: CUSTOMER_PHONE, filePath: res.filePath, title: document.title, itemsCount: ITEMS_COUNT });
+                  }
+                } catch(_) {}
+                showThankYou(filename);
+                return;
+              }
+
+              // Browser path: use inlined html2pdf bundle (offline-friendly)
+              if (typeof (window).html2pdf !== 'function') {
+                try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
+                return;
+              }
+              var opt = {
+                margin: 0,
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
+              };
+              await (window).html2pdf().set(opt).from(document.body).save();
+              showThankYou(filename);
+            } catch(e) {
+              try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
+            } finally {
+              try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
+            }
+          }
+
+          (window).__gbApplySignature = applySignature;
+          (window).__gbFinalizeFromPopup = exportPdfAndThankYou;
+
+          function openSignWindow(){
+            var w = null;
+            try { w = window.open('', 'gbSignFinalize', 'width=420,height=650'); } catch(_) { w = null; }
+            if (!w || !w.document) {
+              try { alert('Popup blocked. Please allow popups and try again (or use "Open in Browser").'); } catch(_) {}
+              return;
+            }
+
+            var signHtml = '<!doctype html><html><head>' +
+              '<meta charset="utf-8" />' +
+              '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' +
+              '<title>Sign Quote</title>' +
+              '<link rel="preconnect" href="https://fonts.googleapis.com" />' +
+              '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />' +
+              '<link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />' +
+              '<style>' +
+              'html,body{margin:0;padding:0;background:#ffffff;color:#000;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}' +
+              '.wrap{max-width:520px;margin:0 auto;padding:14px}' +
+              '.card{border:2px solid #111;border-radius:12px;padding:12px}' +
+              '.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}' +
+              'button{padding:10px 14px;border-radius:10px;border:2px solid #000;background:#39FF14;color:#000;font-weight:900;cursor:pointer}' +
+              'button.secondary{background:#efefef;font-weight:700}' +
+              'input{flex:1;min-width:220px;padding:10px 12px;border:2px solid #000;border-radius:10px;font-size:12pt}' +
+              '#pad{width:100%;height:160px;display:block;border:2px solid #000;border-radius:10px;background:#fff;touch-action:none}' +
+              '.hint{color:#333;font-size:11.5pt;line-height:1.35;margin-top:8px}' +
+              '</style>' +
+              '</head><body><div class="wrap">' +
+              '<div style="font-size:16pt;font-weight:900;margin:6px 0 10px 0">Sign &amp; Finalize</div>' +
+              '<div class="card">' +
+                '<div style="font-weight:800;margin-bottom:8px">Draw signature</div>' +
+                '<canvas id="pad"></canvas>' +
+                '<div class="hint">Tip: You can also type your name below and tap Apply Typed.</div>' +
+              '</div>' +
+              '<div style="height:10px"></div>' +
+              '<div class="card">' +
+                '<div style="font-weight:800;margin-bottom:8px">Type signature</div>' +
+                '<div class="row">' +
+                  '<input id="name" type="text" placeholder="Type full name" />' +
+                  '<button id="apply" type="button" class="secondary">Apply Typed</button>' +
+                '</div>' +
+                '<div class="row" style="margin-top:10px">' +
+                  '<button id="clear" type="button" class="secondary">Clear</button>' +
+                  '<button id="final" type="button">Finalize (Download PDF)</button>' +
+                '</div>' +
+              '</div>' +
+              '<div class="hint" style="margin-top:10px">After Finalize, this window will close and the quote page will show next steps.</div>' +
+              '<script>' +
+              '(function(){' +
+                'var canvas=document.getElementById("pad");' +
+                'var ctx=canvas && canvas.getContext ? canvas.getContext("2d") : null;' +
+                'var input=document.getElementById("name");' +
+                'var apply=document.getElementById("apply");' +
+                'var clear=document.getElementById("clear");' +
+                'var fin=document.getElementById("final");' +
+                'var drawing=false,last=[0,0],dirty=false;' +
+                'function resize(){ if(!canvas||!ctx) return; var r=canvas.getBoundingClientRect(); var dpr=(window.devicePixelRatio||1); var cssW=r.width||320; var cssH=r.height||160; canvas.width=Math.max(1,Math.floor(cssW*dpr)); canvas.height=Math.max(1,Math.floor(cssH*dpr)); ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.lineWidth=2.8; ctx.lineCap="round"; ctx.strokeStyle="#000"; }' +
+                'function pos(e){ var r=canvas.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; return [ (t.clientX-r.left), (t.clientY-r.top) ]; }' +
+                'function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{e.preventDefault();}catch(_){} }' +
+                'function move(e){ if(!drawing||!ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0],last[1]); ctx.lineTo(p[0],p[1]); ctx.stroke(); last=p; dirty=true; try{e.preventDefault();}catch(_){} }' +
+                'function end(){ drawing=false; }' +
+                'function drawTyped(name){ if(!ctx) return; resize(); ctx.clearRect(0,0,canvas.width,canvas.height); var dpr=(window.devicePixelRatio||1); var cssH=canvas.height/dpr; var size=Math.floor(Math.max(28, cssH*0.55)); ctx.fillStyle="#000"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font=String(size)+"px \"Alex Brush\", \"Segoe Script\", \"Brush Script MT\", cursive"; var cx=(canvas.width/dpr)/2; var cy=(canvas.height/dpr)/2; ctx.fillText(name, cx, cy); dirty=true; }' +
+                'function sigDataUrl(){ try { var tmp=document.createElement("canvas"); tmp.width=canvas.width; tmp.height=canvas.height; var t=tmp.getContext("2d"); if(t){ t.fillStyle="#fff"; t.fillRect(0,0,tmp.width,tmp.height); t.drawImage(canvas,0,0); return tmp.toDataURL("image/png"); } } catch(_){} try { return canvas.toDataURL("image/png"); } catch(_){} return ""; }' +
+                'function dateStr(){ try { var d=new Date(); var pad=function(n){return String(n).padStart(2,"0");}; return pad(d.getMonth()+1)+"/"+pad(d.getDate())+"/"+String(d.getFullYear()); } catch(_) { return ""; } }' +
+                'window.addEventListener("resize", function(){ try{resize();}catch(_){} }, {passive:true});' +
+                'resize();' +
+                'canvas.addEventListener("pointerdown", function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, {passive:false});' +
+                'canvas.addEventListener("pointermove", move, {passive:false});' +
+                'window.addEventListener("pointerup", end); window.addEventListener("pointercancel", end);' +
+                'canvas.addEventListener("touchstart", start, {passive:false}); canvas.addEventListener("touchmove", move, {passive:false}); window.addEventListener("touchend", end); window.addEventListener("touchcancel", end);' +
+                'if(apply) apply.addEventListener("click", function(){ var name=(input&&input.value?String(input.value).trim():""); if(!name){ alert("Please type your full name."); return; } try{ if(document.fonts&&document.fonts.load){ document.fonts.load("48px \"Alex Brush\"").then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); }); } else { drawTyped(name); } }catch(_){ drawTyped(name); } });' +
+                'if(clear) clear.addEventListener("click", function(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; try{ if(input) input.value=""; }catch(_){} });' +
+                'if(fin) fin.addEventListener("click", function(){ if(!dirty){ alert("Please sign by drawing or typing your name."); return; } var url=sigDataUrl(); var ds=dateStr(); try{ if(window.opener && window.opener.__gbApplySignature) window.opener.__gbApplySignature(url, ds); }catch(_){} try{ if(window.opener && window.opener.__gbFinalizeFromPopup) window.opener.__gbFinalizeFromPopup(); }catch(_){} try{ window.close(); }catch(_){} });' +
+              '})();' +
+              '</' + 'script>' +
+              '</div></body></html>';
+
+            try {
+              w.document.open();
+              w.document.write(signHtml);
+              w.document.close();
+              try { w.focus(); } catch(_) {}
+            } catch(_) {
+              try { alert('Could not open the signing window. Please use "Open in Browser" and try again.'); } catch(_) {}
+            }
+          }
+
+          if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+
+          // Stop here; the legacy inline signature/PDF code below is kept for reference but no longer runs.
+          return;
+        } catch(_) {}
 
         // Exact single-canvas signature logic (preview parity)
         const canvas = document.getElementById('sigPad');
