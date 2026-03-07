@@ -434,7 +434,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                 }}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1 capitalize">{r.type}</td>
+                <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
                 <td className="px-2 py-1">{r.tech}</td>
                 <td className="px-2 py-1" title={r.customer}>
