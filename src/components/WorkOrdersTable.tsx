@@ -163,7 +163,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
   };
   const onCopyPhone = async () => {
     if (!ctxRow) return;
-    const rawPhone = (ctxRow.customerId && customerIndex[ctxRow.customerId!]?.phone) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
+    const rawPhone = (ctxRow.customerId && (customerIndex[ctxRow.customerId!]?.phone || customerIndex[ctxRow.customerId!]?.phoneAlt)) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
     const phone = (formatPhone(rawPhone || '') || rawPhone || '').toString().trim();
     if (!phone) return;
     try { await navigator.clipboard.writeText(phone); } catch { /* ignore */ }
@@ -221,7 +221,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     const inv = `GB${String(ctxRow.id).padStart(7,'0')}`;
     const remaining = (ctxRow.totals?.remaining ?? Math.max(0, (ctxRow.totals?.total ?? 0) - (ctxRow.amountPaid || 0)));
     const hasCustomer = !!ctxRow.customerId;
-    const rawPhone = (ctxRow.customerId && customerIndex[ctxRow.customerId!]?.phone) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
+    const rawPhone = (ctxRow.customerId && (customerIndex[ctxRow.customerId!]?.phone || customerIndex[ctxRow.customerId!]?.phoneAlt)) || (ctxRow as any).customerPhone || (ctxRow as any).phone || '';
     const phone = (formatPhone(rawPhone || '') || rawPhone || '').toString().trim();
 
     return [
