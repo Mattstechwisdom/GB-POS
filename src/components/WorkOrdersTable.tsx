@@ -4,6 +4,7 @@ import { listTechnicians } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import CustomerHoverCard from './CustomerHoverCard';
+import ItemsDescriptionHoverCard from './ItemsDescriptionHoverCard';
 import { useContextMenu } from '../lib/useContextMenu';
 import { usePagination } from '../lib/pagination';
 
@@ -315,8 +316,26 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                     <div className="truncate">{clientName}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={repairs}><div className="truncate">{repairs}</div></td>
-                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}><div className="truncate">{r.productDescription || r.productCategory || ''}</div></td>
+                <td className="px-2 py-1" title={repairs}>
+                  <ItemsDescriptionHoverCard
+                    items={repairs}
+                    description={String(r.productDescription || r.productCategory || '')}
+                    problem={String(r.problemInfo || '')}
+                    className="min-w-0"
+                  >
+                    <div className="truncate">{repairs}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
+                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}>
+                  <ItemsDescriptionHoverCard
+                    items={repairs}
+                    description={String(r.productDescription || r.productCategory || '')}
+                    problem={String(r.problemInfo || '')}
+                    className="min-w-0"
+                  >
+                    <div className="truncate">{r.productDescription || r.productCategory || ''}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
                 <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>

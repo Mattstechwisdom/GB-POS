@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '../lib/admin';
 import { usePagination } from '../lib/pagination';
 import CustomerHoverCard from './CustomerHoverCard';
+import ItemsDescriptionHoverCard from './ItemsDescriptionHoverCard';
 
 type Props = {
   technicianFilter?: string;
@@ -190,8 +191,16 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
                     <div className="truncate">{customerLabel}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={itemsText}><div className="truncate">{itemsText}</div></td>
-                <td className="px-2 py-1" title={desc}><div className="truncate">{desc || 'Sale Item'}</div></td>
+                <td className="px-2 py-1" title={itemsText}>
+                  <ItemsDescriptionHoverCard items={itemsText} description={String(desc || '')} className="min-w-0">
+                    <div className="truncate">{itemsText}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
+                <td className="px-2 py-1" title={desc}>
+                  <ItemsDescriptionHoverCard items={itemsText} description={String(desc || '')} className="min-w-0">
+                    <div className="truncate">{desc || 'Sale Item'}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
                 <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>

@@ -4,6 +4,7 @@ import Toolbar from './components/Toolbar';
 import WorkOrdersTable from './components/WorkOrdersTable';
 import SalesTable from './components/SalesTable';
 import CustomerHoverCard from './components/CustomerHoverCard';
+import ItemsDescriptionHoverCard from './components/ItemsDescriptionHoverCard';
 import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
@@ -443,8 +444,16 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                     <div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.items || ''}><div className="truncate">{r.items || ''}</div></td>
-                <td className="px-2 py-1" title={r.desc}><div className="truncate">{r.desc}</div></td>
+                <td className="px-2 py-1" title={r.items || ''}>
+                  <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
+                    <div className="truncate">{r.items || ''}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
+                <td className="px-2 py-1" title={r.desc}>
+                  <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
+                    <div className="truncate">{r.desc}</div>
+                  </ItemsDescriptionHoverCard>
+                </td>
                 <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>
