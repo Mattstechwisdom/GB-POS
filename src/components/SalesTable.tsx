@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '../lib/admin';
-import { formatPhone } from '../lib/format';
 import { usePagination } from '../lib/pagination';
+import CustomerHoverCard from './CustomerHoverCard';
 
 type Props = {
   technicianFilter?: string;
@@ -13,7 +13,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
-  const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string }>>({});
+  const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }>>({});
   const { page, setPage, pageSize, setTotalItems } = usePagination();
 
   async function load() {
@@ -48,11 +48,11 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
     const refreshCustomers = async () => {
       try {
         const customers = await ((window as any).api.getCustomers?.() ?? (window as any).api.dbGet('customers'));
-        const cMap: Record<number, { name: string; phone?: string }> = {};
+        const cMap: Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }> = {};
         (customers || []).forEach((c: any) => {
           const composed = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
           const name = composed || c.name || c.email || `Customer #${c.id}`;
-          cMap[c.id] = { name, phone: c.phone || c.phoneAlt };
+          cMap[c.id] = { name, phone: c.phone || '', phoneAlt: c.phoneAlt || '', email: c.email || '' };
         });
         setCustomerIndex(cMap);
       } catch (e) { /* ignore */ }
@@ -110,28 +110,26 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
 
   return (
     <div className="p-2 overflow-x-auto">
-      <table className="min-w-[1100px] w-full table-fixed text-[13px] leading-tight">
+      <table className="w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
-            <th className="px-2 py-1 text-left w-[120px]">Invoice #</th>
-            <th className="px-2 py-1 text-left w-[84px]">Status</th>
-            <th className="px-2 py-1 text-left w-[120px]">Tech</th>
-            <th className="px-2 py-1 text-left w-[200px]">Customer</th>
-            <th className="px-2 py-1 text-left w-[140px]">Phone</th>
-            <th className="px-2 py-1 text-left w-[110px]">Date</th>
-            <th className="px-2 py-1 text-left w-[260px]">Description</th>
-            <th className="px-2 py-1 text-left w-[260px]">Items</th>
-            <th className="px-2 py-1 text-left w-[180px]">Problem</th>
-            <th className="px-2 py-1 text-right w-[110px]">Total</th>
-            <th className="px-2 py-1 text-right w-[130px]">Remaining</th>
+            <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[70px]">Status</th>
+            <th className="px-2 py-1 text-left w-[110px]">Tech</th>
+            <th className="px-2 py-1 text-left">Customer</th>
+            <th className="px-2 py-1 text-left w-[105px]">Date</th>
+            <th className="px-2 py-1 text-left">Description</th>
+            <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-right w-[100px]">Total</th>
+            <th className="px-2 py-1 text-right w-[110px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
           {loading && (
-            <tr><td colSpan={11} className="p-6 text-center text-zinc-500">Loading...</td></tr>
+            <tr><td colSpan={9} className="p-6 text-center text-zinc-500">Loading...</td></tr>
           )}
           {!loading && filtered.length === 0 && (
-            <tr><td colSpan={11} className="p-6 text-center text-zinc-500">No sales yet</td></tr>
+            <tr><td colSpan={9} className="p-6 text-center text-zinc-500">No sales yet</td></tr>
           )}
           {!loading && paged.map((s: any) => {
             const date = (s.createdAt || s.checkInAt || '').toString().split('T')[0];
@@ -151,8 +149,6 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
               }
               return '';
             })();
-            const phoneRaw = (s.customerPhone || (s.customerId && customerIndex[s.customerId!]?.phone) || '') as string;
-            const phone = formatPhone(phoneRaw || '') || phoneRaw || '';
             const itemsText = (() => {
               const items = Array.isArray(s.items) ? s.items : [];
               const titles = items.map((it: any) => (it.description || it.name || it.title || '').toString().trim()).filter(Boolean);
@@ -166,6 +162,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
               if (inline && inline.trim()) return inline.trim();
               return id ? (`Customer #${id}`) : '';
             })();
+            const customer = s.customerId ? ({ id: s.customerId, ...(customerIndex[s.customerId] || {}) } as any) : null;
             return (
               <tr
                 key={s.id}
@@ -185,12 +182,14 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
                 <td className="px-2 py-1 font-mono">{typeof s.id === 'number' ? `GB${String(s.id).padStart(7,'0')}` : ''}</td>
                 <td className="px-2 py-1 capitalize">{status}</td>
                 <td className="px-2 py-1">{techLabel}</td>
-                <td className="px-2 py-1" title={customerLabel}><div className="truncate">{customerLabel}</div></td>
-                <td className="px-2 py-1 whitespace-nowrap" title={phone}>{phone}</td>
+                <td className="px-2 py-1" title={customerLabel}>
+                  <CustomerHoverCard customerId={s.customerId} customer={customer} className="min-w-0">
+                    <div className="truncate">{customerLabel}</div>
+                  </CustomerHoverCard>
+                </td>
                 <td className="px-2 py-1">{date}</td>
                 <td className="px-2 py-1" title={desc}><div className="truncate">{desc || 'Sale Item'}</div></td>
                 <td className="px-2 py-1" title={itemsText}><div className="truncate">{itemsText}</div></td>
-                <td className="px-2 py-1 max-w-[260px] truncate" title=""></td>
                 <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>

@@ -1673,54 +1673,67 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
 ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
   const db = readDb();
   const list = db[key] || [];
+  return list.filter((it: any) => matchesDbQuery(it, q));
+});
+
+function matchesDbQuery(it: any, q: any): boolean {
   // Filter semantics:
   // - For id-like fields (id, *Id, *_id): exact match (numeric when possible)
   // - For other string fields: case-insensitive substring match
-  return list.filter((it: any) => {
-    const query = q || {};
-    for (const k of Object.keys(query)) {
-      const rawQ = query[k];
-      if (rawQ === null || typeof rawQ === 'undefined') continue;
+  const query = q || {};
+  for (const k of Object.keys(query)) {
+    const rawQ = query[k];
+    if (rawQ === null || typeof rawQ === 'undefined') continue;
 
-      const isIdLike = /^id$/i.test(k) || /Id$/i.test(k) || /_id$/i.test(k);
+    const isIdLike = /^id$/i.test(k) || /Id$/i.test(k) || /_id$/i.test(k);
 
-      // Booleans: strict boolean match
-      if (typeof rawQ === 'boolean') {
-        if (Boolean(it?.[k]) !== rawQ) return false;
-        continue;
-      }
-
-      // Numbers: strict numeric match
-      if (typeof rawQ === 'number') {
-        if (!Number.isFinite(rawQ)) continue;
-        const itemNum = Number(it?.[k]);
-        if (!Number.isFinite(itemNum) || itemNum !== rawQ) return false;
-        continue;
-      }
-
-      // Strings
-      const qStr = rawQ.toString();
-      if (!qStr.trim()) continue;
-
-      if (isIdLike) {
-        const qNum = Number(qStr);
-        const itemNum = Number(it?.[k]);
-        if (Number.isFinite(qNum) && Number.isFinite(itemNum)) {
-          if (itemNum !== qNum) return false;
-          continue;
-        }
-        // Fallback to exact string match for id-like fields
-        if (String(it?.[k] ?? '') !== qStr) return false;
-        continue;
-      }
-
-      // Default: substring match (case-insensitive)
-      const needle = qStr.toLowerCase();
-      const hay = String(it?.[k] ?? '').toLowerCase();
-      if (!hay.includes(needle)) return false;
+    // Booleans: strict boolean match
+    if (typeof rawQ === 'boolean') {
+      if (Boolean(it?.[k]) !== rawQ) return false;
+      continue;
     }
-    return true;
-  });
+
+    // Numbers: strict numeric match
+    if (typeof rawQ === 'number') {
+      if (!Number.isFinite(rawQ)) continue;
+      const itemNum = Number(it?.[k]);
+      if (!Number.isFinite(itemNum) || itemNum !== rawQ) return false;
+      continue;
+    }
+
+    // Strings
+    const qStr = rawQ.toString();
+    if (!qStr.trim()) continue;
+
+    if (isIdLike) {
+      const qNum = Number(qStr);
+      const itemNum = Number(it?.[k]);
+      if (Number.isFinite(qNum) && Number.isFinite(itemNum)) {
+        if (itemNum !== qNum) return false;
+        continue;
+      }
+      // Fallback to exact string match for id-like fields
+      if (String(it?.[k] ?? '') !== qStr) return false;
+      continue;
+    }
+
+    // Default: substring match (case-insensitive)
+    const needle = qStr.toLowerCase();
+    const hay = String(it?.[k] ?? '').toLowerCase();
+    if (!hay.includes(needle)) return false;
+  }
+  return true;
+}
+
+ipcMain.handle('db-count', async (_e: any, key: string, q: any) => {
+  const db = readDb();
+  const list = db[key] || [];
+  if (!Array.isArray(list) || list.length === 0) return 0;
+  let count = 0;
+  for (const it of list) {
+    if (matchesDbQuery(it, q)) count++;
+  }
+  return count;
 });
 
 ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {

@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('api', {
   addProductCategory: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'productCategories', c),
   deleteFromCollection: (key: string, id: number): Promise<boolean> => ipcRenderer.invoke('db-delete', key, id),
   dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => ipcRenderer.invoke('db-get', key, opts),
+  dbCount: (key: string, q: any): Promise<number> => ipcRenderer.invoke('db-count', key, q),
   dbAdd: (key: string, item: any): Promise<any> => ipcRenderer.invoke('db-add', key, item),
   dbUpdate: (key: string, id: any, item: any): Promise<any> => ipcRenderer.invoke('db-update', key, id, item),
   dbDelete: (key: string, id: any): Promise<boolean> => ipcRenderer.invoke('db-delete', key, id),

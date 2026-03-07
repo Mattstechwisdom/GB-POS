@@ -3,6 +3,7 @@ import SidebarFilters from './components/SidebarFilters';
 import Toolbar from './components/Toolbar';
 import WorkOrdersTable from './components/WorkOrdersTable';
 import SalesTable from './components/SalesTable';
+import CustomerHoverCard from './components/CustomerHoverCard';
 import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
@@ -118,7 +119,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   const [sa, setSa] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [techIndex, setTechIndex] = React.useState<Record<string,string>>({});
-  const [customerIndex, setCustomerIndex] = React.useState<Record<number, { name: string; phone?: string }>>({});
+  const [customerIndex, setCustomerIndex] = React.useState<Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }>>({});
   const { page, setPage, pageSize, setTotalItems } = usePagination();
 
   const MAX_PAGES = 10;
@@ -160,11 +161,11 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
     const refreshCustomers = async () => {
       try {
         const customers = await ((window as any).api.getCustomers?.() ?? (window as any).api.dbGet('customers'));
-        const cMap: Record<number, { name: string; phone?: string }> = {};
+        const cMap: Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }> = {};
         (customers || []).forEach((c: any) => {
           const composed = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
           const name = composed || c.name || c.email || `Customer #${c.id}`;
-          cMap[c.id] = { name, phone: c.phone || c.phoneAlt };
+          cMap[c.id] = { name, phone: c.phone || '', phoneAlt: c.phoneAlt || '', email: c.email || '' };
         });
         setCustomerIndex(cMap);
       } catch {}
@@ -395,28 +396,26 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
 
   return (
     <div className="p-2 overflow-x-auto">
-      <table className="min-w-[1200px] w-full table-fixed text-[13px] leading-tight">
+      <table className="w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
-            <th className="px-2 py-1 text-left w-[120px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
             <th className="px-2 py-1 text-left w-[84px]">Type</th>
-            <th className="px-2 py-1 text-left w-[84px]">Status</th>
-            <th className="px-2 py-1 text-left w-[120px]">Tech</th>
-            <th className="px-2 py-1 text-left w-[180px]">Customer</th>
-            <th className="px-2 py-1 text-left w-[140px]">Phone</th>
-            <th className="px-2 py-1 text-left w-[110px]">Date</th>
-            <th className="px-2 py-1 text-left w-[220px]">Description</th>
-            <th className="px-2 py-1 text-left w-[260px]">Items</th>
-            <th className="px-2 py-1 text-left w-[240px]">Problem</th>
-            <th className="px-2 py-1 text-right w-[110px]">Total</th>
-            <th className="px-2 py-1 text-right w-[130px]">Remaining</th>
+            <th className="px-2 py-1 text-left w-[70px]">Status</th>
+            <th className="px-2 py-1 text-left w-[110px]">Tech</th>
+            <th className="px-2 py-1 text-left">Customer</th>
+            <th className="px-2 py-1 text-left w-[105px]">Date</th>
+            <th className="px-2 py-1 text-left">Description</th>
+            <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-right w-[100px]">Total</th>
+            <th className="px-2 py-1 text-right w-[110px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
-          {loading && (<tr><td colSpan={12} className="p-6 text-center text-zinc-500">Loading...</td></tr>)}
-          {!loading && rows.length === 0 && (<tr><td colSpan={12} className="p-6 text-center text-zinc-500">No entries yet</td></tr>)}
+          {loading && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">Loading...</td></tr>)}
+          {!loading && rows.length === 0 && (<tr><td colSpan={10} className="p-6 text-center text-zinc-500">No entries yet</td></tr>)}
           {!loading && pagedRows.map(r => {
-            const phone = (formatPhone(String(r.phone || '')) || String(r.phone || '')).trim();
+            const customer = r.customerId ? ({ id: r.customerId, ...(customerIndex[r.customerId] || {}) } as any) : null;
             return (
               <tr
                 key={`${r.type}-${r.id}`}
@@ -438,12 +437,14 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                 <td className="px-2 py-1 capitalize">{r.type}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
                 <td className="px-2 py-1">{r.tech}</td>
-                <td className="px-2 py-1" title={r.customer}><div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div></td>
-                <td className="px-2 py-1 whitespace-nowrap" title={phone}>{phone}</td>
+                <td className="px-2 py-1" title={r.customer}>
+                  <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
+                    <div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div>
+                  </CustomerHoverCard>
+                </td>
                 <td className="px-2 py-1">{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
                 <td className="px-2 py-1" title={r.desc}><div className="truncate">{r.desc}</div></td>
                 <td className="px-2 py-1" title={r.items || ''}><div className="truncate">{r.items || ''}</div></td>
-                <td className="px-2 py-1" title={r.problem || ''}><div className="truncate">{r.problem || ''}</div></td>
                 <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>
