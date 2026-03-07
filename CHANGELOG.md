@@ -133,3 +133,6 @@
 ## v0.2.47 (2026-03-07)
 - fix(quotes): stable global Sign & Finalize handler + init-wait (prevents stuck "Loading")
 
+## v0.2.48 (2026-03-07)
+- fix(quotes): prevent Sign & Finalize button HTML from breaking (quote-safe onclick)
+
