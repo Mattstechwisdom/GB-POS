@@ -320,7 +320,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                   <ItemsDescriptionHoverCard
                     items={repairs}
                     description={String(r.productDescription || r.productCategory || '')}
-                    problem={String(r.problemInfo || '')}
+                    problem={String((r as any).problemInfo || (r as any).problem || '')}
                     className="min-w-0"
                   >
                     <div className="truncate">{repairs}</div>
@@ -330,7 +330,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                   <ItemsDescriptionHoverCard
                     items={repairs}
                     description={String(r.productDescription || r.productCategory || '')}
-                    problem={String(r.problemInfo || '')}
+                    problem={String((r as any).problemInfo || (r as any).problem || '')}
                     className="min-w-0"
                   >
                     <div className="truncate">{r.productDescription || r.productCategory || ''}</div>

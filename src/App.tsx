@@ -195,7 +195,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
           const titles = list.map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim()).filter(Boolean);
           return titles.join(', ');
         })(),
-        problem: w.problemInfo || '',
+        problem: w.problemInfo || (w as any).problem || '',
         customer: (() => {
           const id = (w as any).customerId as number | undefined;
           const fromIndex = id ? customerIndex[id]?.name : '';
