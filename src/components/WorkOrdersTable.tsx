@@ -248,22 +248,23 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
         <thead className="bg-zinc-800">
           <tr>
             <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
+            <th className="px-2 py-1 text-left w-[105px]">Date</th>
             <th className="px-2 py-1 text-left w-[70px]">Status</th>
+            <th className="px-2 py-1 text-left w-[56px]">Type</th>
             <th className="px-2 py-1 text-left w-[110px]">Tech</th>
             <th className="px-2 py-1 text-left">Client</th>
-            <th className="px-2 py-1 text-left w-[105px]">Date</th>
-            <th className="px-2 py-1 text-left">Description</th>
             <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-left">Description</th>
             <th className="px-2 py-1 text-right w-[100px]">Total</th>
             <th className="px-2 py-1 text-right w-[110px]">Remaining</th>
           </tr>
         </thead>
         <tbody>
           {loading && (
-            <tr><td colSpan={9} className="p-6 text-center text-zinc-500">Loading...</td></tr>
+            <tr><td colSpan={10} className="p-6 text-center text-zinc-500">Loading...</td></tr>
           )}
           {!loading && rows.length === 0 && (
-            <tr><td colSpan={9} className="p-6 text-center text-zinc-500">No work orders yet</td></tr>
+            <tr><td colSpan={10} className="p-6 text-center text-zinc-500">No work orders yet</td></tr>
           )}
           {!loading && pagedRows.map(r => {
             const total = r.totals?.total ?? 0;
@@ -290,7 +291,9 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                 className={`odd:bg-zinc-900 even:bg-zinc-800/40 cursor-pointer transition-colors border-l-4 ${selectedId === r.id ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_6px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/70'}`}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
+                <td className="px-2 py-1">{r.checkInAt ? r.checkInAt.split('T')[0] : ''}</td>
                 <td className="px-2 py-1 capitalize">{computedStatus}</td>
+                <td className="px-2 py-1 font-semibold">WO</td>
                 <td className="px-2 py-1">{(() => {
                   const atRaw = r.assignedTo as any;
                   if (atRaw === null || typeof atRaw === 'undefined') return '';
@@ -312,9 +315,8 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                     <div className="truncate">{clientName}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1">{r.checkInAt ? r.checkInAt.split('T')[0] : ''}</td>
-                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}><div className="truncate">{r.productDescription || r.productCategory || ''}</div></td>
                 <td className="px-2 py-1" title={repairs}><div className="truncate">{repairs}</div></td>
+                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}><div className="truncate">{r.productDescription || r.productCategory || ''}</div></td>
                 <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>

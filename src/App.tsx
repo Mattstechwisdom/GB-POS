@@ -400,13 +400,13 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
             <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
-            <th className="px-2 py-1 text-left w-[84px]">Type</th>
+            <th className="px-2 py-1 text-left w-[105px]">Date</th>
             <th className="px-2 py-1 text-left w-[70px]">Status</th>
+            <th className="px-2 py-1 text-left w-[56px]">Type</th>
             <th className="px-2 py-1 text-left w-[110px]">Tech</th>
             <th className="px-2 py-1 text-left">Customer</th>
-            <th className="px-2 py-1 text-left w-[105px]">Date</th>
-            <th className="px-2 py-1 text-left">Description</th>
             <th className="px-2 py-1 text-left">Items</th>
+            <th className="px-2 py-1 text-left">Description</th>
             <th className="px-2 py-1 text-right w-[100px]">Total</th>
             <th className="px-2 py-1 text-right w-[110px]">Remaining</th>
           </tr>
@@ -434,17 +434,17 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                 }}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
+                <td className="px-2 py-1">{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
+                <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
                 <td className="px-2 py-1">{r.tech}</td>
                 <td className="px-2 py-1" title={r.customer}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1">{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
-                <td className="px-2 py-1" title={r.desc}><div className="truncate">{r.desc}</div></td>
                 <td className="px-2 py-1" title={r.items || ''}><div className="truncate">{r.items || ''}</div></td>
+                <td className="px-2 py-1" title={r.desc}><div className="truncate">{r.desc}</div></td>
                 <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>
