@@ -268,8 +268,18 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
 
             <div style="margin-top:16px">
-              <div class="no-print" style="display:flex; justify-content:center">
-                <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+              <div class="no-print" style="margin:16px 0 0 0; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
+                <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
+                <canvas id="gbSigCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+                  <input id="gbSigName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
+                  <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+                  <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+                </div>
+                <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Draw your signature above, or type your name to render it automatically. Then tap Finalize to download the signed PDF.</div>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -658,8 +668,18 @@ function QuoteGeneratorWindow(): JSX.Element {
               </ul>
             </div>
 
-            <div class="no-print" style="display:flex; justify-content:center; margin-top:16px">
-              <button id="signFinalize" type="button" style="padding:12px 18px; border:2px solid #000; border-radius:10px; background:#39FF14; color:#000; font-weight:900">Sign &amp; Finalize (Download PDF)</button>
+            <div class="no-print" style="margin-top:16px; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
+              <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
+              <canvas id="gbSigCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+                <input id="gbSigName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
+                <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+                <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+              </div>
+              <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Draw your signature above, or type your name to render it automatically. Then tap Finalize to download the signed PDF.</div>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -804,15 +824,13 @@ function QuoteGeneratorWindow(): JSX.Element {
                   } catch(_) { return ''; }
                 }
 
-                function setupInPageSigning(){
-                  var overlay = document.getElementById('gbSignOverlay');
-                  var canvas = document.getElementById('gbSignCanvas');
+                function setupInlineSigning(){
+                  var canvas = document.getElementById('gbSigCanvas');
                   var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-                  var nameInput = document.getElementById('gbSignName');
-                  var dateInput = document.getElementById('gbSignDate');
-                  var backBtn = document.getElementById('gbSignBack');
-                  var clearBtn = document.getElementById('gbSignClear');
-                  var finBtn = document.getElementById('gbSignDoFinalize');
+                  var nameInput = document.getElementById('gbSigName');
+                  var dateInput = document.getElementById('gbSigDate');
+                  var clearBtn = document.getElementById('gbSigClear');
+                  var finBtn = document.getElementById('signFinalize');
                   var dirty = false;
                   var drawing = false;
                   var last = [0,0];
@@ -869,16 +887,31 @@ function QuoteGeneratorWindow(): JSX.Element {
                     return '';
                   }
 
-                  function show(){
-                    try { if (!overlay) return; overlay.style.display = 'block'; } catch(_) {}
-                    try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
-                    try { resize(); } catch(_) {}
-                    try { window.scrollTo(0,0); } catch(_) {}
+                  function inlineFinalize(){
+                    try {
+                      var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
+                      if (!dirty && typed) {
+                        try {
+                          if (document.fonts && document.fonts.load) {
+                            document.fonts.load('48px "Alex Brush"').then(function(){ try{ drawTyped(typed); }catch(_){}; }).catch(function(){ try{ drawTyped(typed); }catch(_){}; });
+                          } else {
+                            drawTyped(typed);
+                          }
+                        } catch(_) { drawTyped(typed); }
+                      }
+                      if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return false; }
+                      var url = sigDataUrl();
+                      var ds = '';
+                      try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                      try { applySignature(url, ds); } catch(_) {}
+                      try { exportPdfAndThankYou(); } catch(_) {}
+                    } catch(_) {}
+                    return false;
                   }
-                  function hide(){ try { if (overlay) overlay.style.display = 'none'; } catch(_) {} }
 
-                  try { (window).__gbShowSign = show; } catch(_) {}
-                  try { (window).__gbSignFinalize = function(){ try{ show(); }catch(_){} return false; }; } catch(_) {}
+                  try { (window).__gbInlineFinalize = inlineFinalize; } catch(_) {}
+
+                  try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
                   try {
                     if (canvas) {
@@ -909,27 +942,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                     });
                   } catch(_) {}
 
-                  try { if (backBtn) backBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} hide(); }); } catch(_) {}
                   try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
-                  try {
-                    if (finBtn) finBtn.addEventListener('click', function(e){
-                      try{ e.preventDefault(); }catch(_){}
-                      if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return; }
-                      var url = sigDataUrl();
-                      var ds = '';
-                      try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
-                      try { applySignature(url, ds); } catch(_) {}
-                      try { exportPdfAndThankYou(); } catch(_) {}
-                    });
-                  } catch(_) {}
-
-                  try {
-                    var signBtn = document.getElementById('signFinalize');
-                    if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} show(); });
-                  } catch(_) {}
+                  try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
                 }
 
-                try { setupInPageSigning(); } catch(_) {}
+                try { setupInlineSigning(); } catch(_) {}
                 return;
               } catch(_) {}
 
@@ -1262,24 +1279,6 @@ function QuoteGeneratorWindow(): JSX.Element {
         ${partPagesHtml}
         ${summaryPage}
         ${approvalPage}
-
-        <div id="gbSignOverlay" class="no-print" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.75); padding:12px; box-sizing:border-box; overflow:auto">
-          <div style="max-width:720px; margin:0 auto; background:#ffffff; color:#000000; border:2px solid #111; border-radius:12px; padding:12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
-            <div style="font-size:16pt; font-weight:900; margin:4px 0 10px 0">Sign &amp; Finalize</div>
-            <div style="font-weight:800; margin-bottom:6px">Draw or type your signature</div>
-            <canvas id="gbSignCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-              <input id="gbSignName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-              <input id="gbSignDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
-              <button id="gbSignBack" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Back</button>
-              <button id="gbSignClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
-              <button id="gbSignDoFinalize" type="button" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
-            </div>
-            <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">When you tap Finalize, the signed PDF will download automatically.</div>
-          </div>
-        </div>
       </body>
       </html>`;
       // Debug: attempt to save generated HTML into the app DB for inspection
@@ -1369,33 +1368,11 @@ function QuoteGeneratorWindow(): JSX.Element {
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> Tap <b>Sign &amp; Finalize</b> to open the signature + date screen, then Finalize to download the PDF.
+        <b>On mobile:</b> Sign at the bottom of this quote, then tap <b>Finalize</b> to download the signed PDF.
       </div>
       ${pages.join('\n')}
-
-      <div id="gbSignOverlay" class="no-print" style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.75); padding:12px; box-sizing:border-box; overflow:auto">
-        <div style="max-width:720px; margin:0 auto; background:#ffffff; color:#000000; border:2px solid #111; border-radius:12px; padding:12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
-          <div style="font-size:16pt; font-weight:900; margin:4px 0 10px 0">Sign &amp; Finalize</div>
-          <div style="font-weight:800; margin-bottom:6px">Draw or type your signature</div>
-          <canvas id="gbSignCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-            <input id="gbSignName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-            <input id="gbSignDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
-            <button id="gbSignBack" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Back</button>
-            <button id="gbSignClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
-            <button id="gbSignDoFinalize" type="button" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
-          </div>
-          <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">When you tap Finalize, the signed PDF will download automatically.</div>
-        </div>
-      </div>
       <script>
       (function(){
-        try {
-          (window).__gbSignFinalize = function(){ try { if ((window).__gbShowSign) (window).__gbShowSign(); } catch(_) {} return false; };
-        } catch(_) {}
-
         function gbReady(fn){ try { if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); } catch(_) { try { fn(); } catch(__) {} } }
         function setupImageZoom(){
           try {
@@ -1568,15 +1545,13 @@ function QuoteGeneratorWindow(): JSX.Element {
             } catch(_) { return ''; }
           }
 
-          function setupInPageSigning(){
-            var overlay = document.getElementById('gbSignOverlay');
-            var canvas = document.getElementById('gbSignCanvas');
+          function setupInlineSigning(){
+            var canvas = document.getElementById('gbSigCanvas');
             var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-            var nameInput = document.getElementById('gbSignName');
-            var dateInput = document.getElementById('gbSignDate');
-            var backBtn = document.getElementById('gbSignBack');
-            var clearBtn = document.getElementById('gbSignClear');
-            var finBtn = document.getElementById('gbSignDoFinalize');
+            var nameInput = document.getElementById('gbSigName');
+            var dateInput = document.getElementById('gbSigDate');
+            var clearBtn = document.getElementById('gbSigClear');
+            var finBtn = document.getElementById('signFinalize');
             var dirty = false;
             var drawing = false;
             var last = [0,0];
@@ -1637,15 +1612,31 @@ function QuoteGeneratorWindow(): JSX.Element {
               return '';
             }
 
-            function show(){
-              try { if (!overlay) return; overlay.style.display = 'block'; } catch(_) {}
-              try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
-              try { resize(); } catch(_) {}
-              try { window.scrollTo(0,0); } catch(_) {}
+            function inlineFinalize(){
+              try {
+                var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
+                if (!dirty && typed) {
+                  try {
+                    if (document.fonts && document.fonts.load) {
+                      document.fonts.load('48px "Alex Brush"').then(function(){ try{ drawTyped(typed); }catch(_){}; }).catch(function(){ try{ drawTyped(typed); }catch(_){}; });
+                    } else {
+                      drawTyped(typed);
+                    }
+                  } catch(_) { drawTyped(typed); }
+                }
+                if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return false; }
+                var url = sigDataUrl();
+                var ds = '';
+                try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                try { applySignature(url, ds); } catch(_) {}
+                try { exportPdfAndThankYou(); } catch(_) {}
+              } catch(_) {}
+              return false;
             }
-            function hide(){ try { if (overlay) overlay.style.display = 'none'; } catch(_) {} }
 
-            try { (window).__gbShowSign = show; } catch(_) {}
+            try { (window).__gbInlineFinalize = inlineFinalize; } catch(_) {}
+
+            try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
             try {
               if (canvas) {
@@ -1676,27 +1667,11 @@ function QuoteGeneratorWindow(): JSX.Element {
               });
             } catch(_) {}
 
-            try { if (backBtn) backBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} hide(); }); } catch(_) {}
             try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
-            try {
-              if (finBtn) finBtn.addEventListener('click', function(e){
-                try{ e.preventDefault(); }catch(_){}
-                if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return; }
-                var url = sigDataUrl();
-                var ds = '';
-                try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
-                try { applySignature(url, ds); } catch(_) {}
-                try { exportPdfAndThankYou(); } catch(_) {}
-              });
-            } catch(_) {}
-
-            try {
-              var signBtn = document.getElementById('signFinalize');
-              if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} show(); });
-            } catch(_) {}
+            try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
           }
 
-          gbReady(function(){ try { setupInPageSigning(); } catch(_) {} });
+          gbReady(function(){ try { setupInlineSigning(); } catch(_) {} });
 
           // Stop here; the legacy inline signature/PDF code below is kept for reference but no longer runs.
           return;

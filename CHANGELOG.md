@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.50 (2026-03-07)
+- Interactive Quote: signature + date fields are inline on the page (no popup/overlay).
+- Interactive Quote: Finalize reliably downloads the signed PDF in one step.
+
 ## v0.2.31 (2026-02-20)
 - Fix: Quote Generator print/PDF build now compiles cleanly after adding Customer Email.
 

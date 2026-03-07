@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.2.49",
+  "version": "0.2.50",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
