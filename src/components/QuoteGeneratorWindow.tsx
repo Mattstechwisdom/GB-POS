@@ -4,6 +4,9 @@ import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
 import MoneyInput from './MoneyInput';
+import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
+
+const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
 
 // Minimal types to satisfy this component
 type SaleItem = {
@@ -371,9 +374,9 @@ function QuoteGeneratorWindow(): JSX.Element {
         <div class=\"text-base\" style=\"text-align:center; font-weight:600; margin-bottom:8px\">${esc(title)}</div>
         ${images.length ? `
           <div style=\"margin-bottom:10px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center\">
-            ${images.map((src) => `<img src=\"${src}\" style=\"max-height:55mm; max-width:55mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px\" />`).join('')}
+            ${images.map((src) => `<img src=\"${src}\" data-gbzoom=\"1\" style=\"max-height:55mm; max-width:55mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px; cursor:zoom-in\" />`).join('')}
           </div>` : ''}
-        <div style=\"display:grid; grid-template-columns:1fr auto 1fr; align-items:end; column-gap:12px; width:100%\">
+        <div class=\"gb-spec-grid\" style=\"display:grid; grid-template-columns:1fr auto 1fr; align-items:end; column-gap:12px; width:100%\">
           <div style=\"grid-column:2; text-align:center; justify-self:center; margin-left:auto; margin-right:auto\">
             <div style=\"font-size:12pt; border:2px solid #f00; display:inline-block; padding:12px 14px; border-radius:4px\">
               <div style=\"font-weight:600; margin-bottom:6px; text-align:center\">Specifications</div>
@@ -382,7 +385,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               </tbody></table>
             </div>
           </div>
-          ${shown != null ? `<div style=\"grid-column:3; justify-self:end\">
+          ${shown != null ? `<div class=\"gb-total\" style=\"grid-column:3; justify-self:end\">
             <div style=\"display:inline-block; border:1px solid #f00; padding:6px 10px; border-radius:4px; font-size:10pt; white-space:nowrap; font-weight:700\">Total (before tax): $${shown.toFixed(2)}</div>
           </div>` : ``}
         </div>
@@ -690,11 +693,20 @@ function QuoteGeneratorWindow(): JSX.Element {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />
+        <script>${HTML2PDF_BUNDLE_INLINE}</script>
         <style>
           @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } .no-print { display:none !important; } }
           html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
           /* Mobile drawing reliability */
           #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
+
+          /* Mobile layout: avoid zoomed-in A4 */
+          @media screen and (max-width: 900px) {
+            .print-page { width: calc(100vw - 16px) !important; min-height: auto !important; margin: 8px auto !important; padding: 14px !important; border-width: 2px !important; }
+            #sigSection { flex-direction: column !important; gap: 12px !important; }
+            #sigSection > div { width: 100% !important; }
+            .sig-actions { flex-wrap: wrap !important; }
+          }
         </style>
         <script>
           try { window.__GB_CUSTOM_PRINT__ = true; console.log('[GB POS] Custom Build Print active'); } catch(e) {}
@@ -1077,6 +1089,10 @@ function QuoteGeneratorWindow(): JSX.Element {
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <title>Quote - ${esc(cust || 'Customer')} - ${stampTitle}</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />
+      <script>${HTML2PDF_BUNDLE_INLINE}</script>
       <style>
         @media print {
           @page { size: A4; margin: 12mm; }
@@ -1091,6 +1107,23 @@ function QuoteGeneratorWindow(): JSX.Element {
         @media (min-width: 900px) { #mobileHelp { display:none; } }
         /* Mobile drawing reliability */
         #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
+
+        /* Screen layout: make pages readable on phones */
+        .print-page { background: #ffffff; color: #000000; }
+        @media screen and (max-width: 900px) {
+          html, body { background: #ffffff; color: #000000; }
+          #mobileHelp { margin: 8px; border-radius: 10px; }
+          .print-page { width: calc(100vw - 16px) !important; min-height: auto !important; margin: 8px auto !important; padding: 14px !important; border-width: 2px !important; border-radius: 12px !important; }
+          .gb-spec-grid { display: block !important; }
+          .gb-total { display: block !important; text-align: center !important; margin-top: 10px !important; }
+          #sigSection { flex-direction: column !important; gap: 12px !important; }
+          #sigSection > div { width: 100% !important; }
+          .sig-actions { flex-wrap: wrap !important; }
+          textarea#clientNotes { height: 35vh !important; }
+        }
+
+        /* Image zoom helper */
+        img[data-gbzoom="1"] { -webkit-tap-highlight-color: transparent; }
       </style>
     </head>
     <body>
@@ -1105,6 +1138,61 @@ function QuoteGeneratorWindow(): JSX.Element {
       ${pages.join('\n')}
       <script>
       (function(){
+        function setupImageZoom(){
+          try {
+            var imgs = Array.prototype.slice.call(document.querySelectorAll('img[data-gbzoom="1"]'));
+            if (!imgs || !imgs.length) return;
+
+            var overlay = document.getElementById('gbImgZoomOverlay');
+            if (!overlay) {
+              overlay = document.createElement('div');
+              overlay.id = 'gbImgZoomOverlay';
+              overlay.className = 'no-print';
+              overlay.style.position = 'fixed';
+              overlay.style.left = '0';
+              overlay.style.top = '0';
+              overlay.style.right = '0';
+              overlay.style.bottom = '0';
+              overlay.style.zIndex = '9999';
+              overlay.style.display = 'none';
+              overlay.style.alignItems = 'center';
+              overlay.style.justifyContent = 'center';
+              overlay.style.background = 'rgba(0,0,0,0.75)';
+              overlay.innerHTML =
+                '<div id="gbImgZoomInner" style="position:relative; max-width:92vw; max-height:92vh">' +
+                  '<button id="gbImgZoomClose" type="button" aria-label="Close" style="position:absolute; right:-10px; top:-10px; width:40px; height:40px; border-radius:999px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">×</button>' +
+                  '<img id="gbImgZoomImg" alt="" style="display:block; max-width:92vw; max-height:92vh; object-fit:contain; background:#fff; border-radius:10px" />' +
+                '</div>';
+              document.body.appendChild(overlay);
+            }
+
+            var zoomImg = document.getElementById('gbImgZoomImg');
+            var closeBtn = document.getElementById('gbImgZoomClose');
+            var hide = function(){ try { overlay.style.display = 'none'; } catch(_) {} };
+            if (closeBtn) closeBtn.addEventListener('click', function(e){ try { e.preventDefault(); e.stopPropagation(); } catch(_) {} hide(); });
+            overlay.addEventListener('click', function(e){
+              try {
+                var inner = document.getElementById('gbImgZoomInner');
+                if (inner && inner.contains && inner.contains(e.target)) return; // clicking the image/inner shouldn't close
+              } catch(_) {}
+              hide();
+            });
+            document.addEventListener('keydown', function(e){ try { if (e && e.key === 'Escape') hide(); } catch(_) {} });
+
+            imgs.forEach(function(img){
+              img.addEventListener('click', function(e){
+                try { e.preventDefault(); } catch(_) {}
+                try {
+                  if (zoomImg) zoomImg.setAttribute('src', img.getAttribute('src') || '');
+                  overlay.style.display = 'flex';
+                } catch(_) {}
+              }, false);
+            });
+          } catch(_) {}
+        }
+
+        setupImageZoom();
+
         // Exact single-canvas signature logic (preview parity)
         const canvas = document.getElementById('sigPad');
         const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;

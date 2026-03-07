@@ -166,6 +166,14 @@ contextBridge.exposeInMainWorld('api', {
   
   // backup & restore
   openBackup: (): Promise<any> => ipcRenderer.invoke('open-backup'),
+  // server/NAS sync (offline-first)
+  serverSyncGetConfig: (): Promise<any> => ipcRenderer.invoke('server-sync-get-config'),
+  serverSyncSetConfig: (patch: any): Promise<any> => ipcRenderer.invoke('server-sync-set-config', patch),
+  serverSyncBrowse: (opts?: { basePath?: string }): Promise<any> => ipcRenderer.invoke('server-sync-browse', opts),
+  serverSyncTest: (): Promise<any> => ipcRenderer.invoke('server-sync-test'),
+  serverSyncNow: (direction?: 'auto' | 'push' | 'pull'): Promise<any> => ipcRenderer.invoke('server-sync-sync-now', direction),
+  serverBackupNow: (label?: string): Promise<any> => ipcRenderer.invoke('server-sync-backup-now', label),
+  serverSyncStatus: (): Promise<any> => ipcRenderer.invoke('server-sync-status'),
   createEncryptedBackup: (backupData: any, password: string): Promise<any> => ipcRenderer.invoke('create-encrypted-backup', backupData, password),
   restoreEncryptedBackup: (password: string): Promise<any> => ipcRenderer.invoke('restore-encrypted-backup', password),
   getLastBackupPath: (): Promise<string> => ipcRenderer.invoke('get-last-backup-path'),

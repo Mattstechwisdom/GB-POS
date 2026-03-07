@@ -111,3 +111,6 @@
 - ui: tidy device category actions
 - fix: stack source + url fields
 
+## v0.2.41 (2026-03-07)
+- Data Management + mobile quote fixes (v0.2.41)
+

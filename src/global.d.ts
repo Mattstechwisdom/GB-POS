@@ -66,6 +66,13 @@ declare global {
     backupImport: () => Promise<any>;
     // backup window & encryption helpers
     openBackup: () => Promise<any>;
+    serverSyncGetConfig: () => Promise<{ ok: boolean; config?: { enabled?: boolean; serverPath?: string; serverHost?: string; serverShare?: string; serverBackupsPath?: string; autoSync?: boolean; backupToLocal?: boolean; backupToServer?: boolean; lastSyncAt?: string; lastTestAt?: string; lastOkAt?: string; lastError?: string } | any; error?: string }>;
+    serverSyncSetConfig: (patch: any) => Promise<{ ok: boolean; config?: { enabled?: boolean; serverPath?: string; serverHost?: string; serverShare?: string; serverBackupsPath?: string; autoSync?: boolean; backupToLocal?: boolean; backupToServer?: boolean; lastSyncAt?: string; lastTestAt?: string; lastOkAt?: string; lastError?: string } | any; error?: string }>;
+    serverSyncBrowse: (opts?: { basePath?: string }) => Promise<{ ok: boolean; path?: string; canceled?: boolean; serverRoot?: string; error?: string }>;
+    serverSyncTest: () => Promise<{ ok: boolean; serverRoot?: string; error?: string }>;
+    serverSyncNow: (direction?: 'auto' | 'push' | 'pull') => Promise<{ ok: boolean; action?: 'push' | 'pull' | 'noop'; serverDbPath?: string; error?: string }>;
+    serverBackupNow: (label?: string) => Promise<{ ok: boolean; localBackupPath?: string; serverBackupPath?: string; serverError?: string; error?: string }>;
+    serverSyncStatus: () => Promise<{ ok: boolean; config?: any; error?: string }>;
     createEncryptedBackup: (backupData: any, password: string) => Promise<any>;
     restoreEncryptedBackup: (password: string) => Promise<any>;
     getLastBackupPath: () => Promise<string>;
@@ -114,5 +121,9 @@ declare global {
   _emitCustomBuildItemSave: (result: any) => void;
   _emitCustomBuildItemCancel: () => void;
     };
+  }
+  declare module '*?raw' {
+    const content: string;
+    export default content;
   }
 }

@@ -10,6 +10,328 @@ const { spawn } = require('child_process');
 let mainWindow: any | null = null;
 
 // -------------------------------------------------------------
+// NAS / server sync config (offline-first)
+// -------------------------------------------------------------
+
+type ServerSyncConfig = {
+  enabled?: boolean;
+  serverPath?: string; // UNC path or local folder for testing (e.g. \\\\NAS\\Share or C:\\temp\\gbpos-nas-test)
+  serverHost?: string; // NAS IP/hostname
+  serverShare?: string; // NAS share name
+  serverBackupsPath?: string; // Optional: override backups folder location on server
+  autoSync?: boolean; // attempt sync after local DB writes
+  backupToLocal?: boolean;
+  backupToServer?: boolean;
+  lastSyncAt?: string;
+  lastTestAt?: string;
+  lastOkAt?: string;
+  lastError?: string;
+};
+
+const SERVER_SYNC_CONFIG_PATH = () => path.join(resolveDataRoot(), 'server-sync.json');
+
+function readServerSyncConfig(): ServerSyncConfig {
+  try {
+    const p = SERVER_SYNC_CONFIG_PATH();
+    if (!fs.existsSync(p)) return { enabled: false, autoSync: true, backupToLocal: true, backupToServer: true };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { enabled: false, autoSync: true, backupToLocal: true, backupToServer: true };
+    return {
+      enabled: (json as any).enabled === true,
+      serverPath: typeof (json as any).serverPath === 'string' ? String((json as any).serverPath) : '',
+      serverHost: typeof (json as any).serverHost === 'string' ? String((json as any).serverHost) : '',
+      serverShare: typeof (json as any).serverShare === 'string' ? String((json as any).serverShare) : '',
+      serverBackupsPath: typeof (json as any).serverBackupsPath === 'string' ? String((json as any).serverBackupsPath) : '',
+      autoSync: (json as any).autoSync !== false,
+      backupToLocal: (json as any).backupToLocal !== false,
+      backupToServer: (json as any).backupToServer !== false,
+      lastSyncAt: typeof (json as any).lastSyncAt === 'string' ? String((json as any).lastSyncAt) : undefined,
+      lastTestAt: typeof (json as any).lastTestAt === 'string' ? String((json as any).lastTestAt) : undefined,
+      lastOkAt: typeof (json as any).lastOkAt === 'string' ? String((json as any).lastOkAt) : undefined,
+      lastError: typeof (json as any).lastError === 'string' ? String((json as any).lastError) : undefined,
+    };
+  } catch {
+    return { enabled: false, autoSync: true, backupToLocal: true, backupToServer: true };
+  }
+}
+
+function writeServerSyncConfig(patch: Partial<ServerSyncConfig>) {
+  try {
+    const current = readServerSyncConfig();
+    const next: ServerSyncConfig = { ...current, ...patch };
+    ensureDir(path.dirname(SERVER_SYNC_CONFIG_PATH()));
+    fs.writeFileSync(SERVER_SYNC_CONFIG_PATH(), JSON.stringify(next, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeServerDataRoot(inputPath: string): string {
+  const base = String(inputPath || '').trim();
+  if (!base) return '';
+  try {
+    const bn = path.basename(base).toLowerCase();
+    if (bn === APP_DATA_DIRNAME.toLowerCase()) return base;
+  } catch {}
+  return path.join(base, APP_DATA_DIRNAME);
+}
+
+function serverDataRootFromConfig(cfg?: ServerSyncConfig): string {
+  const c = cfg || readServerSyncConfig();
+  if (!c?.enabled) return '';
+  // If a custom path is explicitly set (e.g. selected via Browse), treat it as the final root.
+  const explicit = (c.serverPath || '').toString().trim();
+  const host = (c.serverHost || '').toString().trim();
+  const share = (c.serverShare || '').toString().trim().replace(/^\\+/, '').replace(/^\/+/, '');
+  if (explicit) {
+    // Back-compat: older builds persisted serverPath as the bare share root.
+    // If host/share are present and serverPath equals \\host\share, treat it as inferred.
+    if (host && share) {
+      const inferredBase = `\\\\${host}\\${share}`;
+      if (explicit === inferredBase) return normalizeServerDataRoot(inferredBase);
+    }
+    return explicit;
+  }
+
+  // Otherwise infer from host/share, and keep data under a dedicated app folder.
+  if (!(host && share)) return '';
+  const inferredBase = `\\\\${host}\\${share}`;
+  return normalizeServerDataRoot(inferredBase);
+}
+
+function serverBackupsDirFromConfig(cfg?: ServerSyncConfig, serverRoot?: string): string {
+  const c = cfg || readServerSyncConfig();
+  const explicit = (c.serverBackupsPath || '').toString().trim();
+  if (explicit) return explicit;
+  const root = serverRoot || serverDataRootFromConfig(c);
+  if (!root) return '';
+  return path.join(root, 'backups');
+}
+
+function ensureServerLayout(serverRoot: string) {
+  if (!serverRoot) return;
+  ensureDir(serverRoot);
+  ensureDir(path.join(serverRoot, 'backups'));
+  ensureDir(path.join(serverRoot, 'quote-previews'));
+}
+
+async function canWriteToFolderAsync(folderPath: string): Promise<{ ok: boolean; error?: string }>
+{
+  try {
+    ensureDir(folderPath);
+    const testPath = path.join(folderPath, `.__gbpos_write_test_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+    await (fs.promises as any).writeFile(testPath, 'ok', 'utf-8');
+    await (fs.promises as any).unlink(testPath);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+async function serverTestConnection(): Promise<{ ok: boolean; serverRoot?: string; error?: string }>
+{
+  try {
+    const cfg = readServerSyncConfig();
+    const serverRoot = serverDataRootFromConfig(cfg);
+    if (!cfg?.enabled) return { ok: false, error: 'Server sync is disabled.' };
+    if (!serverRoot) return { ok: false, error: 'Server path is not set.' };
+    ensureServerLayout(serverRoot);
+    const writeCheck = await canWriteToFolderAsync(serverRoot);
+    if (!writeCheck.ok) {
+      writeServerSyncConfig({ lastTestAt: new Date().toISOString(), lastError: writeCheck.error || 'Cannot write to server folder.' });
+      return { ok: false, error: writeCheck.error || 'Cannot write to server folder.', serverRoot };
+    }
+
+    // If server backups are enabled, also validate the backups target folder is writable.
+    if (cfg.backupToServer !== false) {
+      const backupsDir = serverBackupsDirFromConfig(cfg, serverRoot);
+      if (backupsDir) {
+        const backupsCheck = await canWriteToFolderAsync(backupsDir);
+        if (!backupsCheck.ok) {
+          writeServerSyncConfig({ lastTestAt: new Date().toISOString(), lastError: backupsCheck.error || 'Cannot write to server backups folder.' });
+          return { ok: false, error: backupsCheck.error || 'Cannot write to server backups folder.', serverRoot };
+        }
+      }
+    }
+    writeServerSyncConfig({ lastTestAt: new Date().toISOString(), lastOkAt: new Date().toISOString(), lastError: '' });
+    return { ok: true, serverRoot };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    writeServerSyncConfig({ lastTestAt: new Date().toISOString(), lastError: msg });
+    return { ok: false, error: msg };
+  }
+}
+
+async function copyFileAtomic(src: string, dst: string): Promise<void> {
+  const dir = path.dirname(dst);
+  ensureDir(dir);
+  const tmp = path.join(dir, `.__gbpos_tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+  await (fs.promises as any).copyFile(src, tmp);
+  try {
+    await (fs.promises as any).rename(tmp, dst);
+  } catch {
+    // Fallback: overwrite (e.g., cross-device oddities)
+    await (fs.promises as any).copyFile(tmp, dst);
+    try { await (fs.promises as any).unlink(tmp); } catch {}
+  }
+}
+
+async function writeJsonAtomic(dst: string, obj: any): Promise<void> {
+  const dir = path.dirname(dst);
+  ensureDir(dir);
+  const tmp = dst + `.tmp_${Date.now()}`;
+  await (fs.promises as any).writeFile(tmp, JSON.stringify(obj, null, 2), 'utf-8');
+  await (fs.promises as any).rename(tmp, dst);
+}
+
+function emitAllDataChanged() {
+  try {
+    const wins = BrowserWindow.getAllWindows();
+    const events = [
+      'workorders:changed',
+      'customers:changed',
+      'sales:changed',
+      'technicians:changed',
+      'deviceCategories:changed',
+      'productCategories:changed',
+      'products:changed',
+      'partSources:changed',
+      'calendarEvents:changed',
+      'timeEntries:changed',
+      'notifications:changed',
+      'notificationSettings:changed',
+    ];
+    for (const w of wins) {
+      for (const ev of events) {
+        try { w.webContents.send(ev); } catch {}
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function snapshotDbToRoot(targetRoot: string, label: string): Promise<string> {
+  const backupsDir = path.join(targetRoot, 'backups');
+  ensureDir(backupsDir);
+  const ts = new Date();
+  const stamp = formatStamp(ts);
+  const backupPath = path.join(backupsDir, `gbpos-${label}-${stamp}.json`);
+  const db = readDb();
+  await writeJsonAtomic(backupPath, db);
+  return backupPath;
+}
+
+async function snapshotDbToBackupsDir(backupsDir: string, label: string): Promise<string> {
+  ensureDir(backupsDir);
+  const ts = new Date();
+  const stamp = formatStamp(ts);
+  const backupPath = path.join(backupsDir, `gbpos-${label}-${stamp}.json`);
+  const db = readDb();
+  await writeJsonAtomic(backupPath, db);
+  return backupPath;
+}
+
+async function syncDbWithServer(direction: 'auto' | 'push' | 'pull' = 'auto') {
+  const cfg = readServerSyncConfig();
+  if (!cfg?.enabled) return { ok: false, error: 'Server sync is disabled.' };
+  const test = await serverTestConnection();
+  if (!test.ok || !test.serverRoot) return { ok: false, error: test.error || 'Server not reachable.' };
+
+  const serverRoot = test.serverRoot;
+  const localDbPath = dbFilePath();
+  const serverDbPath = path.join(serverRoot, 'gbpos-db.json');
+
+  // Ensure pending local writes are flushed before comparing/copying.
+  try { await drainDbWrites(); } catch {}
+
+  const localExists = fs.existsSync(localDbPath);
+  const serverExists = fs.existsSync(serverDbPath);
+
+  const localStat = (() => { try { return localExists ? fs.statSync(localDbPath) : null; } catch { return null; } })();
+  const serverStat = (() => { try { return serverExists ? fs.statSync(serverDbPath) : null; } catch { return null; } })();
+
+  const decide = (): 'push' | 'pull' | 'noop' => {
+    if (direction === 'push') return 'push';
+    if (direction === 'pull') return 'pull';
+    if (!localExists && serverExists) return 'pull';
+    if (localExists && !serverExists) return 'push';
+    if (!localExists && !serverExists) return 'noop';
+    const lm = localStat?.mtimeMs || 0;
+    const sm = serverStat?.mtimeMs || 0;
+    if (Math.abs(lm - sm) < 1500) return 'noop';
+    return lm > sm ? 'push' : 'pull';
+  };
+
+  const action = decide();
+  if (action === 'noop') {
+    writeServerSyncConfig({ lastSyncAt: new Date().toISOString(), lastOkAt: new Date().toISOString(), lastError: '' });
+    return { ok: true, action: 'noop', serverDbPath };
+  }
+
+  try {
+    // Pre-overwrite safety backups
+    if (action === 'push') {
+      if (serverExists) {
+        try {
+          const serverBackupsDir = serverBackupsDirFromConfig(cfg, serverRoot);
+          if (serverBackupsDir) await snapshotDbToBackupsDir(serverBackupsDir, 'pre-sync-server');
+        } catch {}
+      }
+      if (localExists) {
+        await copyFileAtomic(localDbPath, serverDbPath);
+      }
+    } else {
+      if (localExists) {
+        try { await snapshotDbToRoot(resolveDataRoot(), 'pre-sync-local'); } catch {}
+      }
+      if (serverExists) {
+        await copyFileAtomic(serverDbPath, localDbPath);
+        // Refresh cache to reflect pulled data
+        try {
+          dbCache = null;
+          readDb();
+        } catch {}
+        try { emitAllDataChanged(); } catch {}
+      }
+    }
+
+    writeServerSyncConfig({ lastSyncAt: new Date().toISOString(), lastOkAt: new Date().toISOString(), lastError: '' });
+    return { ok: true, action, serverDbPath };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    writeServerSyncConfig({ lastError: msg });
+    return { ok: false, error: msg };
+  }
+}
+
+let serverAutoSyncTimer: NodeJS.Timeout | null = null;
+let serverAutoSyncRunning = false;
+function scheduleServerAutoSync() {
+  try {
+    const cfg = readServerSyncConfig();
+    if (!cfg?.enabled) return;
+    if (cfg.autoSync === false) return;
+    if (serverAutoSyncTimer) return;
+    serverAutoSyncTimer = setTimeout(async () => {
+      serverAutoSyncTimer = null;
+      if (serverAutoSyncRunning) return;
+      serverAutoSyncRunning = true;
+      try {
+        await syncDbWithServer('push');
+      } catch {
+        // ignore
+      } finally {
+        serverAutoSyncRunning = false;
+      }
+    }, 1200);
+  } catch {
+    // ignore
+  }
+}
+
+// -------------------------------------------------------------
 // App data location (ProgramData default, user-approved)
 // -------------------------------------------------------------
 const APP_DATA_DIRNAME = 'GadgetBoy POS';
@@ -1320,6 +1642,81 @@ ipcMain.handle('open-backup', async () => {
   return { ok: true };
 });
 
+// Server/NAS sync + backup (offline-first)
+ipcMain.handle('server-sync-get-config', async () => {
+  return { ok: true, config: readServerSyncConfig() };
+});
+
+ipcMain.handle('server-sync-set-config', async (_e: any, patch: Partial<ServerSyncConfig>) => {
+  writeServerSyncConfig(patch || {});
+  return { ok: true, config: readServerSyncConfig() };
+});
+
+ipcMain.handle('server-sync-browse', async (event: any, opts?: { basePath?: string }) => {
+  const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+  try {
+    const test = await serverTestConnection();
+    if (!test.ok) return { ok: false, error: test.error || 'Server not reachable', serverRoot: test.serverRoot };
+    const basePath = (opts?.basePath || '').toString().trim();
+    const open = await dialog.showOpenDialog(parentWin as any, {
+      title: 'Select NAS/Server Folder',
+      defaultPath: basePath || undefined,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (open.canceled || !open.filePaths || !open.filePaths[0]) {
+      return { ok: false, canceled: true };
+    }
+    return { ok: true, path: open.filePaths[0] };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('server-sync-test', async () => {
+  const res = await serverTestConnection();
+  return res.ok ? { ok: true, serverRoot: res.serverRoot } : { ok: false, error: res.error || 'Test failed', serverRoot: res.serverRoot };
+});
+
+ipcMain.handle('server-sync-sync-now', async (_e: any, direction?: 'auto' | 'push' | 'pull') => {
+  const res = await syncDbWithServer(direction || 'auto');
+  return res;
+});
+
+ipcMain.handle('server-sync-backup-now', async (_e: any, label?: string) => {
+  const cfg = readServerSyncConfig();
+  const safeLabel = (label || 'manual').toString().trim() || 'manual';
+  const out: any = { ok: true };
+  try {
+    const doLocal = cfg.backupToLocal !== false;
+    if (doLocal) {
+      out.localBackupPath = await snapshotDbToRoot(resolveDataRoot(), safeLabel);
+    }
+  } catch (e: any) {
+    out.ok = false;
+    out.error = e?.message || String(e);
+  }
+  try {
+    const doServer = cfg.enabled === true && cfg.backupToServer !== false;
+    if (doServer) {
+      const test = await serverTestConnection();
+      if (test.ok && test.serverRoot) {
+        const serverBackupsDir = serverBackupsDirFromConfig(cfg, test.serverRoot);
+        out.serverBackupPath = await snapshotDbToBackupsDir(serverBackupsDir, safeLabel);
+      } else {
+        out.serverError = test.error || 'Server not reachable';
+      }
+    }
+  } catch (e: any) {
+    out.serverError = e?.message || String(e);
+  }
+  return out;
+});
+
+ipcMain.handle('server-sync-status', async () => {
+  const cfg = readServerSyncConfig();
+  return { ok: true, config: cfg };
+});
+
 // Open Clock In window
 ipcMain.handle('open-clock-in', async () => {
   console.log('[IPC] open-clock-in invoked');
@@ -1457,6 +1854,8 @@ function flushWriteDb() {
       const tmp = p + '.tmp';
       await (fs.promises as any).writeFile(tmp, JSON.stringify(snapshot, null, 2), 'utf-8');
       await (fs.promises as any).rename(tmp, p);
+      // Opportunistic server push; never blocks local writes.
+      try { scheduleServerAutoSync(); } catch {}
     })
     .catch(() => {
       /* swallow to keep queue moving */
@@ -2537,12 +2936,24 @@ if (!app.requestSingleInstanceLock()) {
       if (win) win.focus();
     }
   });
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     setupAutoUpdater();
     ensureBatchOutScheduler();
+    // Optional: quick startup sync to pull newer server data (offline-first; bounded timeout).
+    try {
+      const cfg = readServerSyncConfig();
+      if (cfg?.enabled) {
+        await Promise.race([
+          syncDbWithServer('auto'),
+          new Promise((resolve) => setTimeout(() => resolve({ ok: false, timeout: true }), 1200)),
+        ]);
+      }
+    } catch {
+      // ignore
+    }
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -3035,19 +3446,33 @@ async function runBatchOutBackup(label: string = 'batchout') {
   if (batchOutRunning) return { ok: false, error: 'Batch out already running' };
   batchOutRunning = true;
   try {
-    const dataRoot = resolveDataRoot();
-    const backupsDir = path.join(dataRoot, 'backups');
-    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
-    const ts = new Date();
-    const stamp = formatStamp(ts);
-    const backupPath = path.join(backupsDir, `gbpos-${label}-${stamp}.json`);
-    const db = readDb();
-    fs.writeFileSync(backupPath, JSON.stringify(db, null, 2), 'utf-8');
+    const cfg = readServerSyncConfig();
+    let localBackupPath: string | undefined;
+    let serverBackupPath: string | undefined;
+
+    if (cfg.backupToLocal !== false) {
+      localBackupPath = await snapshotDbToRoot(resolveDataRoot(), label);
+    }
+
+    if (cfg.enabled === true && cfg.backupToServer !== false) {
+      try {
+        const test = await serverTestConnection();
+        if (test.ok && test.serverRoot) {
+          const serverBackupsDir = serverBackupsDirFromConfig(cfg, test.serverRoot);
+          serverBackupPath = await snapshotDbToBackupsDir(serverBackupsDir, label);
+        }
+      } catch {
+        // ignore server backup failures
+      }
+    }
+
+    const backupPath = localBackupPath || serverBackupPath;
+    if (!backupPath) return { ok: false, error: 'No backup target selected.' };
     const iso = new Date().toISOString();
     writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso });
     lastBatchOutDate = iso.slice(0, 10);
     console.log('[BATCH-OUT] Backup written to', backupPath);
-    return { ok: true, backupPath };
+    return { ok: true, backupPath, localBackupPath, serverBackupPath };
   } catch (e: any) {
     console.error('[BATCH-OUT] Failed to write backup', e);
     return { ok: false, error: e?.message || String(e) };

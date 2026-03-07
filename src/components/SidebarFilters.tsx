@@ -68,7 +68,7 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
                 const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
                 try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
                 catch (e) { console.error(e); openRoute(); }
-              }}>Backup/Restore</button>
+              }}>Data Management</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
                 try {
