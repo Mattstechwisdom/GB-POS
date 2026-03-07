@@ -1355,15 +1355,15 @@ function QuoteGeneratorWindow(): JSX.Element {
         // New signing flow: Sign & Finalize opens a dedicated signing window (draw or type),
         // then generates a PDF download and replaces this page with a thank-you/instructions screen.
         try {
-          var SHOP_EMAIL = 'gadgetboysc@gmail.com';
-          var signBtn = document.getElementById('signFinalize');
-          var sigImg = document.getElementById('gbSigImg');
-          var sigHint = document.getElementById('gbSigHint');
-          var dateBox = document.getElementById('dateBox');
-          var CUSTOMER_NAME = ${JSON.stringify(cust)};
-          var CUSTOMER_PHONE = ${JSON.stringify(phone)};
-          var ITEMS_COUNT = ${JSON.stringify((sales.items || []).length)};
-          var STAMP_SHORT = ${JSON.stringify(stampShort)};
+          var gbShopEmail = 'gadgetboysc@gmail.com';
+          var gbSignBtn = document.getElementById('signFinalize');
+          var gbSigImg = document.getElementById('gbSigImg');
+          var gbSigHint = document.getElementById('gbSigHint');
+          var gbDateBox = document.getElementById('dateBox');
+          var gbCustomerName = ${JSON.stringify(cust)};
+          var gbCustomerPhone = ${JSON.stringify(phone)};
+          var gbItemsCount = ${JSON.stringify((sales.items || []).length)};
+          var gbStampShort = ${JSON.stringify(stampShort)};
 
           function sanitize(s){
             return String(s||'').toString().replace(/[^a-z0-9\-\_\+]+/gi,'-').replace(/-{2,}/g,'-').replace(/^-+|-+$/g,'');
@@ -1378,12 +1378,12 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           function applySignature(dataUrl, dateStr){
             try {
-              if (sigImg && sigImg.style) {
-                sigImg.setAttribute('src', dataUrl || '');
-                sigImg.style.display = 'block';
+              if (gbSigImg && gbSigImg.style) {
+                gbSigImg.setAttribute('src', dataUrl || '');
+                gbSigImg.style.display = 'block';
               }
-              if (sigHint && sigHint.style) sigHint.style.display = 'none';
-              if (dateBox) dateBox.textContent = dateStr || fmtDate(new Date());
+              if (gbSigHint && gbSigHint.style) gbSigHint.style.display = 'none';
+              if (gbDateBox) gbDateBox.textContent = dateStr || fmtDate(new Date());
             } catch(_) {}
           }
 
@@ -1397,15 +1397,15 @@ function QuoteGeneratorWindow(): JSX.Element {
                 '<div style="max-width:720px; margin:20px auto; padding:18px; border:2px solid #111; border-radius:12px; background:#ffffff; color:#000; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">' +
                   '<div style="font-size:20pt; font-weight:900; margin-bottom:10px">Thank you!</div>' +
                   '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
-                  '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a> and we will get back to you as soon as possible.</div>' +
+                  '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(gbShopEmail) + '" style="font-weight:800; color:#000; text-decoration:underline">' + gbShopEmail + '</a> and we will get back to you as soon as possible.</div>' +
                   '<div style="font-size:11.5pt; color:#333; margin-top:10px">If your browser didn\'t download it automatically, try the "Save/Share" option after the PDF opens.</div>' +
                 '</div>';
             } catch(_) {}
           }
 
           async function exportPdfAndThankYou(){
-            var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
-            var filename = base + '-' + (STAMP_SHORT || '') + '.pdf';
+            var base = 'Gadgetboy-Quote-' + sanitize(gbCustomerName || 'Customer');
+            var filename = base + '-' + (gbStampShort || '') + '.pdf';
             var api = (window).api;
 
             // Hide any interactive elements while capturing the PDF.
@@ -1420,7 +1420,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 var res = await api.exportPdf(html, base);
                 try {
                   if (res && res.ok && res.filePath && typeof api.dbAdd === 'function') {
-                    api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerName: CUSTOMER_NAME, customerPhone: CUSTOMER_PHONE, filePath: res.filePath, title: document.title, itemsCount: ITEMS_COUNT });
+                    api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerName: gbCustomerName, customerPhone: gbCustomerPhone, filePath: res.filePath, title: document.title, itemsCount: gbItemsCount });
                   }
                 } catch(_) {}
                 showThankYou(filename);
@@ -1538,7 +1538,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             }
           }
 
-          if (signBtn) signBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
+          if (gbSignBtn) gbSignBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} openSignWindow(); });
 
           // Stop here; the legacy inline signature/PDF code below is kept for reference but no longer runs.
           return;

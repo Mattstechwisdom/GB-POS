@@ -117,3 +117,6 @@
 ## v0.2.42 (2026-03-07)
 - No commits recorded.
 
+## v0.2.43 (2026-03-07)
+- No commits recorded.
+
