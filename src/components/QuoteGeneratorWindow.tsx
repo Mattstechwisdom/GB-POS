@@ -856,7 +856,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   try {
                     if (typeof (window).html2pdf !== 'function') {
                       try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
-                      return;
+                      throw new Error('html2pdf missing');
                     }
                     var opt = {
                       margin: 0,
@@ -866,45 +866,64 @@ function QuoteGeneratorWindow(): JSX.Element {
                       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                       pagebreak: { mode: ['css', 'legacy'] }
                     };
+                    // Blob-first export (more reliable than triggering a download directly in many browsers/viewers)
+                    var worker = (window).html2pdf().set(opt).from(document.body);
+                    var blob = null;
                     try {
-                      await (window).html2pdf().set(opt).from(document.body).save();
-                    } catch(e1) {
-                      // Mobile-friendly fallback: generate a blob and try to open/share it.
-                      try {
-                        var blob = await (window).html2pdf().set(opt).from(document.body).outputPdf('blob');
-                        if (blob) {
-                          try {
-                            var file = null;
-                            try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
-                            if (navigator && navigator.share && file) {
-                              try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
-                            }
-                          } catch(_) {}
-
-                          try {
-                            var url = URL.createObjectURL(blob);
-                            // Some mobile browsers ignore download=; opening the blob URL at least shows the PDF.
-                            try {
-                              var a = document.createElement('a');
-                              a.href = url;
-                              a.download = filename;
-                              a.target = '_blank';
-                              document.body.appendChild(a);
-                              a.click();
-                              try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
-                            } catch(_) {
-                              try { window.open(url, '_blank'); } catch(_) { try { window.location.href = url; } catch(_) {} }
-                            }
-                            try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
-                          } catch(_) {}
-                        }
-                      } catch(e2) {
-                        throw e2;
+                      if (worker && typeof worker.outputPdf === 'function') {
+                        blob = await worker.outputPdf('blob');
+                      } else {
+                        try { if (worker && typeof worker.toPdf === 'function') await worker.toPdf(); } catch(_) {}
+                        var pdf = null;
+                        try { if (worker && typeof worker.get === 'function') pdf = await worker.get('pdf'); } catch(_) { pdf = null; }
+                        try { if (pdf && typeof pdf.output === 'function') blob = pdf.output('blob'); } catch(_) { blob = null; }
                       }
+                    } catch(_) { blob = null; }
+
+                    if (blob) {
+                      try {
+                        var file = null;
+                        try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
+                        if (navigator && navigator.share && file) {
+                          try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                        }
+                      } catch(_) {}
+
+                      try {
+                        var url = URL.createObjectURL(blob);
+                        // Try to download and also open in a new tab as a fallback.
+                        try {
+                          var a = document.createElement('a');
+                          a.href = url;
+                          a.download = filename;
+                          a.target = '_blank';
+                          document.body.appendChild(a);
+                          a.click();
+                          try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
+                        } catch(_) {}
+                        try { window.open(url, '_blank'); } catch(_) {}
+                        try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                      } catch(_) {}
+
+                      showThankYou(filename);
+                      return;
                     }
-                    showThankYou(filename);
+
+                    // Last resort: library-managed download
+                    try {
+                      if (worker && typeof worker.save === 'function') {
+                        await worker.save();
+                      } else {
+                        await (window).html2pdf().set(opt).from(document.body).save();
+                      }
+                      showThankYou(filename);
+                      return;
+                    } catch(_) {
+                      throw new Error('Could not generate PDF');
+                    }
                   } catch(e) {
-                    try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
+                    try { console.error(e); } catch(_) {}
+                    try { alert('Could not generate the PDF. If you are in Chrome and nothing downloads, check your Downloads list and allow popups/downloads for this file.'); } catch(_) {}
                   } finally {
                     try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
                     try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
@@ -930,6 +949,17 @@ function QuoteGeneratorWindow(): JSX.Element {
                   var dateInput = document.getElementById('gbSigDate');
                   var clearBtn = document.getElementById('gbSigClear');
                   var finBtn = document.getElementById('signFinalize');
+                  var finText = '';
+                  try { finText = finBtn && finBtn.textContent ? String(finBtn.textContent) : ''; } catch(_) { finText = ''; }
+
+                  function setBusy(isBusy){
+                    try {
+                      if (!finBtn) return;
+                      finBtn.disabled = !!isBusy;
+                      finBtn.style.opacity = isBusy ? '0.75' : '1';
+                      finBtn.textContent = isBusy ? 'Generating PDF…' : (finText || 'Finalize (Download PDF)');
+                    } catch(_) {}
+                  }
 
                   // Best-effort: start loading the signature font early.
                   try { if (document.fonts && document.fonts.load) document.fonts.load('48px "Alex Brush"'); } catch(_) {}
@@ -964,6 +994,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                   function inlineFinalize(){
                     try {
+                      setBusy(true);
                       var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
                       if (!typed) { try { alert('Please type your full name to sign.'); } catch(_) {} return false; }
                       var iso = '';
@@ -974,8 +1005,23 @@ function QuoteGeneratorWindow(): JSX.Element {
                       var ds = '';
                       try { ds = gbIsoToSlash(iso) || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
                       try { applySignature(url, ds); } catch(_) {}
-                      try { exportPdfAndThankYou(); } catch(_) {}
-                    } catch(_) {}
+                      try {
+                        var p = exportPdfAndThankYou();
+                        if (p && typeof p.then === 'function') {
+                          p.then(function(){ try{ setBusy(false); } catch(_){} }).catch(function(e){ try{ setBusy(false); } catch(_){} try{ console.error(e); } catch(_){} try{ alert('PDF export failed. Please try again, and check Chrome Downloads / popup settings.'); } catch(_){} });
+                        } else {
+                          setBusy(false);
+                        }
+                      } catch(e) {
+                        try { setBusy(false); } catch(_) {}
+                        try { console.error(e); } catch(_) {}
+                        try { alert('PDF export failed. Please try again.'); } catch(_) {}
+                      }
+                    } catch(e) {
+                      try { setBusy(false); } catch(_) {}
+                      try { console.error(e); } catch(_) {}
+                      try { alert('Finalize failed. Please refresh and try again.'); } catch(_) {}
+                    }
                     return false;
                   }
 
@@ -1607,7 +1653,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               // Browser path: use inlined html2pdf bundle (offline-friendly)
               if (typeof (window).html2pdf !== 'function') {
                 try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
-                return;
+                throw new Error('html2pdf missing');
               }
               var opt = {
                 margin: 0,
@@ -1617,45 +1663,63 @@ function QuoteGeneratorWindow(): JSX.Element {
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                 pagebreak: { mode: ['css', 'legacy'] }
               };
-                    try {
-                      await (window).html2pdf().set(opt).from(document.body).save();
-                    } catch(e1) {
-                      // Mobile-friendly fallback: generate a blob and try to open/share it.
-                      try {
-                        var blob = await (window).html2pdf().set(opt).from(document.body).outputPdf('blob');
-                        if (blob) {
-                          try {
-                            var file = null;
-                            try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
-                            if (navigator && navigator.share && file) {
-                              try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
-                            }
-                          } catch(_) {}
+              // Blob-first export (more reliable than triggering a download directly in many browsers/viewers)
+              var worker = (window).html2pdf().set(opt).from(document.body);
+              var blob = null;
+              try {
+                if (worker && typeof worker.outputPdf === 'function') {
+                  blob = await worker.outputPdf('blob');
+                } else {
+                  try { if (worker && typeof worker.toPdf === 'function') await worker.toPdf(); } catch(_) {}
+                  var pdf = null;
+                  try { if (worker && typeof worker.get === 'function') pdf = await worker.get('pdf'); } catch(_) { pdf = null; }
+                  try { if (pdf && typeof pdf.output === 'function') blob = pdf.output('blob'); } catch(_) { blob = null; }
+                }
+              } catch(_) { blob = null; }
 
-                          try {
-                            var url = URL.createObjectURL(blob);
-                            // Some mobile browsers ignore download=; opening the blob URL at least shows the PDF.
-                            try {
-                              var a = document.createElement('a');
-                              a.href = url;
-                              a.download = filename;
-                              a.target = '_blank';
-                              document.body.appendChild(a);
-                              a.click();
-                              try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
-                            } catch(_) {
-                              try { window.open(url, '_blank'); } catch(_) { try { window.location.href = url; } catch(_) {} }
-                            }
-                            try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
-                          } catch(_) {}
-                        }
-                      } catch(e2) {
-                        throw e2;
-                      }
-                    }
+              if (blob) {
+                try {
+                  var file = null;
+                  try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
+                  if (navigator && navigator.share && file) {
+                    try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                  }
+                } catch(_) {}
+
+                try {
+                  var url = URL.createObjectURL(blob);
+                  // Try to download and also open in a new tab as a fallback.
+                  try {
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    a.target = '_blank';
+                    document.body.appendChild(a);
+                    a.click();
+                    try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
+                  } catch(_) {}
+                  try { window.open(url, '_blank'); } catch(_) {}
+                  try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                } catch(_) {}
+
+                showThankYou(filename);
+                return;
+              }
+
+              // Last resort: library-managed download
+              try {
+                if (worker && typeof worker.save === 'function') {
+                  await worker.save();
+                } else {
+                  await (window).html2pdf().set(opt).from(document.body).save();
+                }
+              } catch(_) {
+                throw new Error('Could not generate PDF');
+              }
               showThankYou(filename);
             } catch(e) {
-              try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
+              try { console.error(e); } catch(_) {}
+              try { alert('Could not generate the PDF. If you are in Chrome and nothing downloads, check your Downloads list and allow popups/downloads for this file.'); } catch(_) {}
             } finally {
               try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
               try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
@@ -1681,6 +1745,17 @@ function QuoteGeneratorWindow(): JSX.Element {
             var dateInput = document.getElementById('gbSigDate');
             var clearBtn = document.getElementById('gbSigClear');
             var finBtn = document.getElementById('signFinalize');
+            var finText = '';
+            try { finText = finBtn && finBtn.textContent ? String(finBtn.textContent) : ''; } catch(_) { finText = ''; }
+
+            function setBusy(isBusy){
+              try {
+                if (!finBtn) return;
+                finBtn.disabled = !!isBusy;
+                finBtn.style.opacity = isBusy ? '0.75' : '1';
+                finBtn.textContent = isBusy ? 'Generating PDF…' : (finText || 'Finalize (Download PDF)');
+              } catch(_) {}
+            }
 
             // Best-effort: start loading the signature font early.
             try { if (document.fonts && document.fonts.load) document.fonts.load('48px "Alex Brush"'); } catch(_) {}
@@ -1715,6 +1790,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             function inlineFinalize(){
               try {
+                setBusy(true);
                 var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
                 if (!typed) { try { alert('Please type your full name to sign.'); } catch(_) {} return false; }
                 var iso = '';
@@ -1725,8 +1801,23 @@ function QuoteGeneratorWindow(): JSX.Element {
                 var ds = '';
                 try { ds = gbIsoToSlash(iso) || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
                 try { applySignature(url, ds); } catch(_) {}
-                try { exportPdfAndThankYou(); } catch(_) {}
-              } catch(_) {}
+                try {
+                  var p = exportPdfAndThankYou();
+                  if (p && typeof p.then === 'function') {
+                    p.then(function(){ try{ setBusy(false); } catch(_){} }).catch(function(e){ try{ setBusy(false); } catch(_){} try{ console.error(e); } catch(_){} try{ alert('PDF export failed. Please try again, and check Chrome Downloads / popup settings.'); } catch(_){} });
+                  } else {
+                    setBusy(false);
+                  }
+                } catch(e) {
+                  try { setBusy(false); } catch(_) {}
+                  try { console.error(e); } catch(_) {}
+                  try { alert('PDF export failed. Please try again.'); } catch(_) {}
+                }
+              } catch(e) {
+                try { setBusy(false); } catch(_) {}
+                try { console.error(e); } catch(_) {}
+                try { alert('Finalize failed. Please refresh and try again.'); } catch(_) {}
+              }
               return false;
             }
 
