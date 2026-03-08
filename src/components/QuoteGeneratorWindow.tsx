@@ -270,16 +270,15 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="margin-top:16px">
               <div class="no-print" style="margin:16px 0 0 0; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
                 <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
-                <canvas id="gbSigCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-                  <input id="gbSigName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
                   <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
                   <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
                   <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
                 </div>
-                <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Draw your signature above, or type your name to render it automatically. Then tap Finalize to download the signed PDF.</div>
+                <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -670,16 +669,15 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div class="no-print" style="margin-top:16px; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
               <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
-              <canvas id="gbSigCanvas" style="width:100%; height:160px; display:block; border:2px solid #000; border-radius:10px; background:#fff; touch-action:none"></canvas>
               <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-                <input id="gbSigName" type="text" placeholder="Type full name (optional)" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
                 <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
                 <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
                 <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
               </div>
-              <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Draw your signature above, or type your name to render it automatically. Then tap Finalize to download the signed PDF.</div>
+              <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -770,6 +768,58 @@ function QuoteGeneratorWindow(): JSX.Element {
                       '</div>';
                   } catch(_) {}
                 }
+
+                function bakeInputsForPdf(){
+                  try {
+                    // Notes: replace textarea with a static div so the PDF looks like the printout.
+                    var ta = document.getElementById('clientNotes');
+                    if (ta && ta.tagName === 'TEXTAREA') {
+                      var div = document.createElement('div');
+                      div.setAttribute('data-gb-baked', '1');
+                      try { div.setAttribute('style', ta.getAttribute('style') || ''); } catch(_) {}
+                      try {
+                        div.style.whiteSpace = 'pre-wrap';
+                        div.style.overflowWrap = 'break-word';
+                        div.style.wordBreak = 'break-word';
+                      } catch(_) {}
+                      try { div.textContent = (ta).value ? String((ta).value) : ''; } catch(_) { div.textContent = ''; }
+                      try { if (ta.parentNode) ta.parentNode.replaceChild(div, ta); } catch(_) {}
+                    }
+
+                    // Checklist: replace checkbox inputs with static checked/unchecked boxes.
+                    var labels = document.querySelectorAll('label');
+                    for (var i = 0; i < labels.length; i++) {
+                      var lbl = labels[i];
+                      if (!lbl) continue;
+                      var cb = lbl.querySelector && lbl.querySelector('input[type="checkbox"]');
+                      if (!cb) continue;
+                      var span = lbl.querySelector && lbl.querySelector('span');
+                      var txt = '';
+                      try { txt = String(span ? span.textContent : lbl.textContent || '').trim(); } catch(_) { txt = ''; }
+
+                      var row = document.createElement('div');
+                      row.setAttribute('data-gb-baked', '1');
+                      row.style.display = 'flex';
+                      row.style.alignItems = 'flex-start';
+                      row.style.gap = '8px';
+                      row.style.margin = '0 0 6px 0';
+
+                      var box = document.createElement('div');
+                      try { box.textContent = (cb).checked ? '☑' : '☐'; } catch(_) { box.textContent = '☐'; }
+                      box.style.fontWeight = '900';
+                      box.style.width = '16px';
+                      box.style.lineHeight = '1';
+
+                      var text = document.createElement('div');
+                      text.textContent = txt;
+
+                      row.appendChild(box);
+                      row.appendChild(text);
+                      try { if (lbl.parentNode) lbl.parentNode.replaceChild(row, lbl); } catch(_) {}
+                    }
+                  } catch(_) {}
+                }
+
                 async function exportPdfAndThankYou(){
                   var base = 'Gadgetboy-Quote-' + sanitize(CUSTOMER_NAME || 'Customer');
                   var filename = base + '-' + (STAMP_SHORT || '') + '.pdf';
@@ -783,6 +833,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                     if (pdfDate) pdfDate.textContent = gbSigDateStr || fmtDate(new Date());
                     if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'block';
                   } catch(_) {}
+
+                  // Convert interactive inputs to static content before capturing the PDF.
+                  try { bakeInputsForPdf(); } catch(_) {}
 
                   var style = document.createElement('style');
                   style.setAttribute('data-gb-hide','1');
@@ -825,84 +878,53 @@ function QuoteGeneratorWindow(): JSX.Element {
                 }
 
                 function setupInlineSigning(){
-                  var canvas = document.getElementById('gbSigCanvas');
-                  var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
                   var nameInput = document.getElementById('gbSigName');
                   var dateInput = document.getElementById('gbSigDate');
                   var clearBtn = document.getElementById('gbSigClear');
                   var finBtn = document.getElementById('signFinalize');
-                  var dirty = false;
-                  var drawing = false;
-                  var last = [0,0];
 
-                  function resize(){
-                    if(!canvas || !ctx) return;
-                    var r = canvas.getBoundingClientRect();
-                    var dpr = (window.devicePixelRatio || 1);
-                    var cssW = r.width || 320;
-                    var cssH = r.height || 160;
-                    canvas.width = Math.max(1, Math.floor(cssW * dpr));
-                    canvas.height = Math.max(1, Math.floor(cssH * dpr));
-                    ctx.setTransform(1,0,0,1,0,0);
-                    ctx.scale(dpr, dpr);
-                    ctx.lineWidth = 2.8;
-                    ctx.lineCap = 'round';
-                    ctx.strokeStyle = '#000';
-                  }
-                  function pos(e){ var r = canvas.getBoundingClientRect(); var t = (e.touches && e.touches[0]) ? e.touches[0] : e; return [ (t.clientX - r.left), (t.clientY - r.top) ]; }
-                  function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch(_){} }
-                  function move(e){ if(!drawing || !ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch(_){} }
-                  function end(){ drawing=false; }
-                  function clear(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; }
-                  function drawTyped(name){
-                    if(!ctx) return;
-                    resize();
-                    try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){}
-                    var dpr = (window.devicePixelRatio||1);
-                    var cssH = canvas.height / dpr;
-                    var size = Math.floor(Math.max(28, cssH * 0.55));
-                    ctx.fillStyle = '#000';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
-                    var cx = (canvas.width / dpr) / 2;
-                    var cy = (canvas.height / dpr) / 2;
-                    ctx.fillText(String(name||''), cx, cy);
-                    dirty = !!String(name||'').trim();
-                  }
-                  function sigDataUrl(){
+                  // Best-effort: start loading the signature font early.
+                  try { if (document.fonts && document.fonts.load) document.fonts.load('48px "Alex Brush"'); } catch(_) {}
+
+                  function sigDataUrlFromName(name){
                     try {
-                      var tmp = document.createElement('canvas');
-                      tmp.width = canvas.width;
-                      tmp.height = canvas.height;
-                      var t = tmp.getContext('2d');
-                      if (t) {
-                        t.fillStyle = '#fff';
-                        t.fillRect(0,0,tmp.width,tmp.height);
-                        t.drawImage(canvas, 0, 0);
-                        return tmp.toDataURL('image/png');
+                      var n = String(name || '').trim();
+                      if (!n) return '';
+                      var c = document.createElement('canvas');
+                      c.width = 1200;
+                      c.height = 300;
+                      var t = c.getContext && c.getContext('2d');
+                      if (!t) return '';
+                      t.fillStyle = '#ffffff';
+                      t.fillRect(0,0,c.width,c.height);
+                      t.fillStyle = '#000000';
+                      t.textAlign = 'center';
+                      t.textBaseline = 'middle';
+
+                      var maxW = c.width * 0.92;
+                      var size = 140;
+                      while (size > 64) {
+                        t.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+                        try { if (t.measureText(n).width <= maxW) break; } catch(_) { break; }
+                        size -= 6;
                       }
-                    } catch(_) {}
-                    try { return canvas.toDataURL('image/png'); } catch(_) {}
-                    return '';
+                      t.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+                      t.fillText(n, c.width/2, (c.height/2) + 8);
+                      return c.toDataURL('image/png');
+                    } catch(_) { return ''; }
                   }
 
                   function inlineFinalize(){
                     try {
                       var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
-                      if (!dirty && typed) {
-                        try {
-                          if (document.fonts && document.fonts.load) {
-                            document.fonts.load('48px "Alex Brush"').then(function(){ try{ drawTyped(typed); }catch(_){}; }).catch(function(){ try{ drawTyped(typed); }catch(_){}; });
-                          } else {
-                            drawTyped(typed);
-                          }
-                        } catch(_) { drawTyped(typed); }
-                      }
-                      if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return false; }
-                      var url = sigDataUrl();
+                      if (!typed) { try { alert('Please type your full name to sign.'); } catch(_) {} return false; }
+                      var iso = '';
+                      try { iso = (dateInput && dateInput.value) ? String(dateInput.value) : ''; } catch(_) { iso = ''; }
+                      if (!iso) { try { alert('Please select a date.'); } catch(_) {} return false; }
+                      var url = sigDataUrlFromName(typed);
+                      if (!url) { try { alert('Could not render the signature. Please try again.'); } catch(_) {} return false; }
                       var ds = '';
-                      try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                      try { ds = gbIsoToSlash(iso) || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
                       try { applySignature(url, ds); } catch(_) {}
                       try { exportPdfAndThankYou(); } catch(_) {}
                     } catch(_) {}
@@ -913,36 +935,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                   try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
-                  try {
-                    if (canvas) {
-                      resize();
-                      window.addEventListener('resize', function(){ try{ resize(); }catch(_){} }, { passive:true });
-                      canvas.addEventListener('pointerdown', function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
-                      canvas.addEventListener('pointermove', move, { passive:false });
-                      window.addEventListener('pointerup', end);
-                      window.addEventListener('pointercancel', end);
-                      canvas.addEventListener('touchstart', start, { passive:false });
-                      canvas.addEventListener('touchmove', move, { passive:false });
-                      window.addEventListener('touchend', end);
-                      window.addEventListener('touchcancel', end);
-                    }
-                  } catch(_) {}
-
-                  try {
-                    if (nameInput) nameInput.addEventListener('input', function(){
-                      var name = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
-                      if (!name) { return; }
-                      try {
-                        if (document.fonts && document.fonts.load) {
-                          document.fonts.load('48px "Alex Brush"').then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); });
-                        } else {
-                          drawTyped(name);
-                        }
-                      } catch(_) { drawTyped(name); }
-                    });
-                  } catch(_) {}
-
-                  try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
+                  try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
                   try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
                 }
 
@@ -1475,6 +1468,57 @@ function QuoteGeneratorWindow(): JSX.Element {
             } catch(_) {}
           }
 
+          function bakeInputsForPdf(){
+            try {
+              // Notes: replace textarea with a static div so the PDF looks like the printout.
+              var ta = document.getElementById('clientNotes');
+              if (ta && ta.tagName === 'TEXTAREA') {
+                var div = document.createElement('div');
+                div.setAttribute('data-gb-baked', '1');
+                try { div.setAttribute('style', ta.getAttribute('style') || ''); } catch(_) {}
+                try {
+                  div.style.whiteSpace = 'pre-wrap';
+                  div.style.overflowWrap = 'break-word';
+                  div.style.wordBreak = 'break-word';
+                } catch(_) {}
+                try { div.textContent = (ta).value ? String((ta).value) : ''; } catch(_) { div.textContent = ''; }
+                try { if (ta.parentNode) ta.parentNode.replaceChild(div, ta); } catch(_) {}
+              }
+
+              // Checklist: replace checkbox inputs with static checked/unchecked boxes.
+              var labels = document.querySelectorAll('label');
+              for (var i = 0; i < labels.length; i++) {
+                var lbl = labels[i];
+                if (!lbl) continue;
+                var cb = lbl.querySelector && lbl.querySelector('input[type="checkbox"]');
+                if (!cb) continue;
+                var span = lbl.querySelector && lbl.querySelector('span');
+                var txt = '';
+                try { txt = String(span ? span.textContent : lbl.textContent || '').trim(); } catch(_) { txt = ''; }
+
+                var row = document.createElement('div');
+                row.setAttribute('data-gb-baked', '1');
+                row.style.display = 'flex';
+                row.style.alignItems = 'flex-start';
+                row.style.gap = '8px';
+                row.style.margin = '0 0 6px 0';
+
+                var box = document.createElement('div');
+                try { box.textContent = (cb).checked ? '☑' : '☐'; } catch(_) { box.textContent = '☐'; }
+                box.style.fontWeight = '900';
+                box.style.width = '16px';
+                box.style.lineHeight = '1';
+
+                var text = document.createElement('div');
+                text.textContent = txt;
+
+                row.appendChild(box);
+                row.appendChild(text);
+                try { if (lbl.parentNode) lbl.parentNode.replaceChild(row, lbl); } catch(_) {}
+              }
+            } catch(_) {}
+          }
+
           async function exportPdfAndThankYou(){
             var base = 'Gadgetboy-Quote-' + sanitize(gbCustomerName || 'Customer');
             var filename = base + '-' + (gbStampShort || '') + '.pdf';
@@ -1489,6 +1533,9 @@ function QuoteGeneratorWindow(): JSX.Element {
               if (pdfDate) pdfDate.textContent = gbSigDateStr || fmtDate(new Date());
               if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'block';
             } catch(_) {}
+
+            // Convert interactive inputs to static content before capturing the PDF.
+            try { bakeInputsForPdf(); } catch(_) {}
 
             // Hide any interactive elements while capturing the PDF.
             var style = document.createElement('style');
@@ -1546,88 +1593,53 @@ function QuoteGeneratorWindow(): JSX.Element {
           }
 
           function setupInlineSigning(){
-            var canvas = document.getElementById('gbSigCanvas');
-            var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
             var nameInput = document.getElementById('gbSigName');
             var dateInput = document.getElementById('gbSigDate');
             var clearBtn = document.getElementById('gbSigClear');
             var finBtn = document.getElementById('signFinalize');
-            var dirty = false;
-            var drawing = false;
-            var last = [0,0];
 
-            function resize(){
-              if(!canvas || !ctx) return;
-              var r = canvas.getBoundingClientRect();
-              var dpr = (window.devicePixelRatio || 1);
-              var cssW = r.width || 320;
-              var cssH = r.height || 160;
-              canvas.width = Math.max(1, Math.floor(cssW * dpr));
-              canvas.height = Math.max(1, Math.floor(cssH * dpr));
-              ctx.setTransform(1,0,0,1,0,0);
-              ctx.scale(dpr, dpr);
-              ctx.lineWidth = 2.8;
-              ctx.lineCap = 'round';
-              ctx.strokeStyle = '#000';
-            }
-            function pos(e){
-              var r = canvas.getBoundingClientRect();
-              var t = (e.touches && e.touches[0]) ? e.touches[0] : e;
-              return [ (t.clientX - r.left), (t.clientY - r.top) ];
-            }
-            function start(e){ if(!ctx) return; drawing=true; last=pos(e); try{ e.preventDefault(); }catch(_){} }
-            function move(e){ if(!drawing || !ctx) return; var p=pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last=p; dirty=true; try{ e.preventDefault(); }catch(_){} }
-            function end(){ drawing=false; }
-            function clear(){ try{ ctx && ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){} dirty=false; }
-            function drawTyped(name){
-              if(!ctx) return;
-              resize();
-              try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(_){}
-              var dpr = (window.devicePixelRatio||1);
-              var cssH = canvas.height / dpr;
-              var size = Math.floor(Math.max(28, cssH * 0.55));
-              ctx.fillStyle = '#000';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
-              var cx = (canvas.width / dpr) / 2;
-              var cy = (canvas.height / dpr) / 2;
-              ctx.fillText(String(name||''), cx, cy);
-              dirty = !!String(name||'').trim();
-            }
-            function sigDataUrl(){
+            // Best-effort: start loading the signature font early.
+            try { if (document.fonts && document.fonts.load) document.fonts.load('48px "Alex Brush"'); } catch(_) {}
+
+            function sigDataUrlFromName(name){
               try {
-                var tmp = document.createElement('canvas');
-                tmp.width = canvas.width;
-                tmp.height = canvas.height;
-                var t = tmp.getContext('2d');
-                if (t) {
-                  t.fillStyle = '#fff';
-                  t.fillRect(0,0,tmp.width,tmp.height);
-                  t.drawImage(canvas, 0, 0);
-                  return tmp.toDataURL('image/png');
+                var n = String(name || '').trim();
+                if (!n) return '';
+                var c = document.createElement('canvas');
+                c.width = 1200;
+                c.height = 300;
+                var t = c.getContext && c.getContext('2d');
+                if (!t) return '';
+                t.fillStyle = '#ffffff';
+                t.fillRect(0,0,c.width,c.height);
+                t.fillStyle = '#000000';
+                t.textAlign = 'center';
+                t.textBaseline = 'middle';
+
+                var maxW = c.width * 0.92;
+                var size = 140;
+                while (size > 64) {
+                  t.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+                  try { if (t.measureText(n).width <= maxW) break; } catch(_) { break; }
+                  size -= 6;
                 }
-              } catch(_) {}
-              try { return canvas.toDataURL('image/png'); } catch(_) {}
-              return '';
+                t.font = String(size) + 'px "Alex Brush", "Segoe Script", "Brush Script MT", cursive';
+                t.fillText(n, c.width/2, (c.height/2) + 8);
+                return c.toDataURL('image/png');
+              } catch(_) { return ''; }
             }
 
             function inlineFinalize(){
               try {
                 var typed = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
-                if (!dirty && typed) {
-                  try {
-                    if (document.fonts && document.fonts.load) {
-                      document.fonts.load('48px "Alex Brush"').then(function(){ try{ drawTyped(typed); }catch(_){}; }).catch(function(){ try{ drawTyped(typed); }catch(_){}; });
-                    } else {
-                      drawTyped(typed);
-                    }
-                  } catch(_) { drawTyped(typed); }
-                }
-                if (!dirty) { try { alert('Please sign by drawing or typing your name.'); } catch(_) {} return false; }
-                var url = sigDataUrl();
+                if (!typed) { try { alert('Please type your full name to sign.'); } catch(_) {} return false; }
+                var iso = '';
+                try { iso = (dateInput && dateInput.value) ? String(dateInput.value) : ''; } catch(_) { iso = ''; }
+                if (!iso) { try { alert('Please select a date.'); } catch(_) {} return false; }
+                var url = sigDataUrlFromName(typed);
+                if (!url) { try { alert('Could not render the signature. Please try again.'); } catch(_) {} return false; }
                 var ds = '';
-                try { ds = gbIsoToSlash(dateInput && dateInput.value ? dateInput.value : '') || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
+                try { ds = gbIsoToSlash(iso) || fmtDate(new Date()); } catch(_) { ds = fmtDate(new Date()); }
                 try { applySignature(url, ds); } catch(_) {}
                 try { exportPdfAndThankYou(); } catch(_) {}
               } catch(_) {}
@@ -1638,36 +1650,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
-            try {
-              if (canvas) {
-                resize();
-                window.addEventListener('resize', function(){ try{ resize(); }catch(_){} }, { passive:true });
-                canvas.addEventListener('pointerdown', function(e){ start(e); try{ if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); }catch(_){} }, { passive:false });
-                canvas.addEventListener('pointermove', move, { passive:false });
-                window.addEventListener('pointerup', end);
-                window.addEventListener('pointercancel', end);
-                canvas.addEventListener('touchstart', start, { passive:false });
-                canvas.addEventListener('touchmove', move, { passive:false });
-                window.addEventListener('touchend', end);
-                window.addEventListener('touchcancel', end);
-              }
-            } catch(_) {}
-
-            try {
-              if (nameInput) nameInput.addEventListener('input', function(){
-                var name = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
-                if (!name) { return; }
-                try {
-                  if (document.fonts && document.fonts.load) {
-                    document.fonts.load('48px "Alex Brush"').then(function(){ drawTyped(name); }).catch(function(){ drawTyped(name); });
-                  } else {
-                    drawTyped(name);
-                  }
-                } catch(_) { drawTyped(name); }
-              });
-            } catch(_) {}
-
-            try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} clear(); try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
+            try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
             try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
           }
 
