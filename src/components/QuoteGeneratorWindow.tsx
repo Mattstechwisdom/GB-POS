@@ -927,7 +927,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                   var style = document.createElement('style');
                   style.setAttribute('data-gb-hide','1');
-                  style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
+                  style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important; box-sizing:border-box !important; page-break-after:always !important; break-after:page !important;} .print-page:last-of-type{page-break-after:auto !important; break-after:auto !important;} .print-page *{box-sizing:border-box !important;} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
                   try { document.head.appendChild(style); } catch(_) {}
                   try {
                     if (typeof (window).html2pdf !== 'function') {
@@ -1797,7 +1797,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             // Hide any interactive elements while capturing the PDF.
             var style = document.createElement('style');
             style.setAttribute('data-gb-hide','1');
-            style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
+            style.textContent = '.no-print{display:none !important} html,body{background:#ffffff !important; color:#000000 !important} .print-page{background:#ffffff !important; color:#000000 !important; box-sizing:border-box !important; page-break-after:always !important; break-after:page !important;} .print-page:last-of-type{page-break-after:auto !important; break-after:auto !important;} .print-page *{box-sizing:border-box !important;} *{-webkit-print-color-adjust:exact; print-color-adjust:exact;}';
             try { document.head.appendChild(style); } catch(_) {}
 
             try {
