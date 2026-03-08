@@ -270,20 +270,22 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div style="margin-top:16px">
               <div class="no-print" style="margin:16px 0 0 0; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
                 <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-                  <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-                  <div style="display:flex; flex-direction:column; gap:6px">
-                    <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
-                    <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                <form id="gbSigForm" autocomplete="off" style="margin:0">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+                    <input id="gbSigName" name="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                      <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
+                      <input id="gbSigDate" name="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                    </div>
                   </div>
-                </div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
-                  <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
-                  <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
-                </div>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
+                    <button id="gbSigClear" type="reset" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+                    <button id="signFinalize" type="button" onclick="try{ if(window.__gbInlineFinalize) return window.__gbInlineFinalize(); try{ alert('Finalize is not ready in this viewer. If you opened this from an email preview, use Open in Browser.\n\nFallback: use Print to Save as PDF.'); }catch(_){} try{ window.print(); }catch(_){} return false; }catch(e){ try{ console.error(e); }catch(_){} try{ alert('Finalize failed. Please try again, or use Print to Save as PDF.'); }catch(_){} try{ window.print(); }catch(_){} return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+                  </div>
+                </form>
                 <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
                 <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
-                  If Finalize does nothing, this viewer is blocking scripts (common in email previews). Open this HTML in Safari/Chrome.
+                  If Finalize does nothing, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML file and open it from Files/Downloads in Chrome/Safari.
                 </div>
               </div>
 
@@ -675,20 +677,22 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             <div class="no-print" style="margin-top:16px; border:2px solid #111; border-radius:12px; padding:12px; background:#ffffff; color:#000000">
               <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
-                <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-                  <div style="display:flex; flex-direction:column; gap:6px">
-                    <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
-                    <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-                  </div>
-              </div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
-                <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
-                <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
-              </div>
+              <form id="gbSigForm" autocomplete="off" style="margin:0">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
+                  <input id="gbSigName" name="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                      <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
+                      <input id="gbSigDate" name="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
+                  <button id="gbSigClear" type="reset" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
+                  <button id="signFinalize" type="button" onclick="try{ if(window.__gbInlineFinalize) return window.__gbInlineFinalize(); try{ alert('Finalize is not ready in this viewer. If you opened this from an email preview, use Open in Browser.\n\nFallback: use Print to Save as PDF.'); }catch(_){} try{ window.print(); }catch(_){} return false; }catch(e){ try{ console.error(e); }catch(_){} try{ alert('Finalize failed. Please try again, or use Print to Save as PDF.'); }catch(_){} try{ window.print(); }catch(_){} return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
+                </div>
+              </form>
               <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
               <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
-                If Finalize does nothing, this viewer is blocking scripts (common in email previews). Open this HTML in Safari/Chrome.
+                If Finalize does nothing, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML file and open it from Files/Downloads in Chrome/Safari.
               </div>
             </div>
 
@@ -775,9 +779,81 @@ function QuoteGeneratorWindow(): JSX.Element {
                       '<div style="max-width:720px; margin:20px auto; padding:18px; border:2px solid #111; border-radius:12px; background:#ffffff; color:#000; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">' +
                         '<div style="font-size:20pt; font-weight:900; margin-bottom:10px">Thank you!</div>' +
                         '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
-                        '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a> and we will get back to you as soon as possible.</div>' +
-                        '<div style="font-size:11.5pt; color:#333; margin-top:10px">If your browser didn\'t download it automatically, try the "Save/Share" option after the PDF opens.</div>' +
+                        '<div id="gbPdfActions" style="display:none; margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center"></div>' +
+                        '<div style="font-size:12pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a>.</div>' +
+                        '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you don\'t see a download, tap <b>Open PDF</b> then use your browser\'s Share/Save options.</div>' +
                       '</div>';
+
+                    try {
+                      var pdfUrl = '';
+                      try { pdfUrl = String((window).__gbLastPdfUrl || ''); } catch(_) { pdfUrl = ''; }
+                      if (!pdfUrl) return;
+                      var actions = document.getElementById('gbPdfActions');
+                      if (!actions) return;
+                      actions.style.display = 'flex';
+
+                      function mkLink(text, href, isPrimary){
+                        var a = document.createElement('a');
+                        a.textContent = String(text || '');
+                        a.href = String(href || '#');
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.style.display = 'inline-flex';
+                        a.style.alignItems = 'center';
+                        a.style.justifyContent = 'center';
+                        a.style.padding = '10px 14px';
+                        a.style.borderRadius = '10px';
+                        a.style.border = '2px solid #000';
+                        a.style.fontWeight = '900';
+                        a.style.textDecoration = 'none';
+                        a.style.cursor = 'pointer';
+                        a.style.background = isPrimary ? '#39FF14' : '#efefef';
+                        a.style.color = '#000';
+                        return a;
+                      }
+
+                      function mkBtn(text, isPrimary){
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.textContent = String(text || '');
+                        b.style.display = 'inline-flex';
+                        b.style.alignItems = 'center';
+                        b.style.justifyContent = 'center';
+                        b.style.padding = '10px 14px';
+                        b.style.borderRadius = '10px';
+                        b.style.border = '2px solid #000';
+                        b.style.fontWeight = '900';
+                        b.style.cursor = 'pointer';
+                        b.style.background = isPrimary ? '#39FF14' : '#efefef';
+                        b.style.color = '#000';
+                        return b;
+                      }
+
+                      var open = mkLink('Open PDF', pdfUrl, true);
+                      actions.appendChild(open);
+
+                      var dl = mkLink('Download PDF', pdfUrl, false);
+                      try { dl.setAttribute('download', safeFile); } catch(_) {}
+                      actions.appendChild(dl);
+
+                      try {
+                        if (navigator && navigator.share && typeof File === 'function') {
+                          var shareBtn = mkBtn('Share PDF', false);
+                          shareBtn.addEventListener('click', async function(){
+                            try {
+                              var blob = null;
+                              try { blob = (window).__gbLastPdfBlob || null; } catch(_) { blob = null; }
+                              if (!blob) { try { alert('Share is not available yet. Please use Open PDF.'); } catch(_) {} return; }
+                              var f = null;
+                              try { f = new File([blob], safeFile, { type: 'application/pdf' }); } catch(_) { f = null; }
+                              if (!f) { try { alert('Sharing is not supported in this browser.'); } catch(_) {} return; }
+                              await navigator.share({ files: [f], title: safeFile });
+                            } catch(_) { }
+                          });
+                          actions.appendChild(shareBtn);
+                        }
+                      } catch(_) {}
+                    } catch(_) {}
                   } catch(_) {}
                 }
 
@@ -855,8 +931,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                   try { document.head.appendChild(style); } catch(_) {}
                   try {
                     if (typeof (window).html2pdf !== 'function') {
-                      try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
-                      throw new Error('html2pdf missing');
+                      try { alert('PDF export is not available in this viewer. Use Print to Save as PDF.'); } catch(_) {}
+                      try { window.print(); } catch(_) {}
+                      return;
                     }
                     var opt = {
                       margin: 0,
@@ -891,6 +968,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                       try {
                         var url = URL.createObjectURL(blob);
+                        try { (window).__gbLastPdfUrl = url; (window).__gbLastPdfBlob = blob; } catch(_) {}
                         // Try to download and also open in a new tab as a fallback.
                         try {
                           var a = document.createElement('a');
@@ -902,7 +980,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                           try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
                         } catch(_) {}
                         try { window.open(url, '_blank'); } catch(_) {}
-                        try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                        try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 600000); } catch(_) {}
                       } catch(_) {}
 
                       showThankYou(filename);
@@ -923,7 +1001,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                     }
                   } catch(e) {
                     try { console.error(e); } catch(_) {}
-                    try { alert('Could not generate the PDF. If you are in Chrome and nothing downloads, check your Downloads list and allow popups/downloads for this file.'); } catch(_) {}
+                    try { alert('Could not generate the PDF. Check Chrome Downloads / popups. Fallback: Print to Save as PDF.'); } catch(_) {}
+                    try { window.print(); } catch(_) {}
                   } finally {
                     try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
                     try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
@@ -1029,7 +1108,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                   try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
-                  try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
+                  try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} try{ if(dateInput) dateInput.value=''; }catch(_){} }); } catch(_) {}
                   try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
                 }
 
@@ -1363,6 +1442,15 @@ function QuoteGeneratorWindow(): JSX.Element {
         </script>
       </head>
       <body>
+        <noscript>
+          <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
+            This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app/attachment viewer, download the HTML and open it in Chrome/Safari.
+          </div>
+        </noscript>
+        <div class="no-print" style="max-width:920px; margin:12px auto; padding:12px; border-radius:12px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:11.5pt; line-height:1.35">
+          <b style="color:#ffffff">On mobile:</b> Scroll to the signature section, then tap <b style="color:#ffffff">Finalize</b> to generate the signed PDF.
+          <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML attachment first, then open it from Files/Downloads in Chrome/Safari.</div>
+        </div>
         ${partPagesHtml}
         ${summaryPage}
         ${approvalPage}
@@ -1455,7 +1543,8 @@ function QuoteGeneratorWindow(): JSX.Element {
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> Sign at the bottom of this quote, then tap <b>Finalize</b> to download the signed PDF.
+        <b>On mobile:</b> Sign at the bottom of this quote, then tap <b>Finalize</b> to generate the signed PDF.
+        <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML attachment first, then open it from Files/Downloads in Chrome/Safari.</div>
       </div>
       ${pages.join('\n')}
       <script>
@@ -1556,9 +1645,81 @@ function QuoteGeneratorWindow(): JSX.Element {
                 '<div style="max-width:720px; margin:20px auto; padding:18px; border:2px solid #111; border-radius:12px; background:#ffffff; color:#000; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">' +
                   '<div style="font-size:20pt; font-weight:900; margin-bottom:10px">Thank you!</div>' +
                   '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
-                  '<div style="font-size:12.5pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(gbShopEmail) + '" style="font-weight:800; color:#000; text-decoration:underline">' + gbShopEmail + '</a> and we will get back to you as soon as possible.</div>' +
-                  '<div style="font-size:11.5pt; color:#333; margin-top:10px">If your browser didn\'t download it automatically, try the "Save/Share" option after the PDF opens.</div>' +
+                  '<div id="gbPdfActions" style="display:none; margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center"></div>' +
+                  '<div style="font-size:12pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(gbShopEmail) + '" style="font-weight:800; color:#000; text-decoration:underline">' + gbShopEmail + '</a>.</div>' +
+                  '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you don\'t see a download, tap <b>Open PDF</b> then use your browser\'s Share/Save options.</div>' +
                 '</div>';
+
+              try {
+                var pdfUrl = '';
+                try { pdfUrl = String((window).__gbLastPdfUrl || ''); } catch(_) { pdfUrl = ''; }
+                if (!pdfUrl) return;
+                var actions = document.getElementById('gbPdfActions');
+                if (!actions) return;
+                actions.style.display = 'flex';
+
+                function mkLink(text, href, isPrimary){
+                  var a = document.createElement('a');
+                  a.textContent = String(text || '');
+                  a.href = String(href || '#');
+                  a.target = '_blank';
+                  a.rel = 'noopener noreferrer';
+                  a.style.display = 'inline-flex';
+                  a.style.alignItems = 'center';
+                  a.style.justifyContent = 'center';
+                  a.style.padding = '10px 14px';
+                  a.style.borderRadius = '10px';
+                  a.style.border = '2px solid #000';
+                  a.style.fontWeight = '900';
+                  a.style.textDecoration = 'none';
+                  a.style.cursor = 'pointer';
+                  a.style.background = isPrimary ? '#39FF14' : '#efefef';
+                  a.style.color = '#000';
+                  return a;
+                }
+
+                function mkBtn(text, isPrimary){
+                  var b = document.createElement('button');
+                  b.type = 'button';
+                  b.textContent = String(text || '');
+                  b.style.display = 'inline-flex';
+                  b.style.alignItems = 'center';
+                  b.style.justifyContent = 'center';
+                  b.style.padding = '10px 14px';
+                  b.style.borderRadius = '10px';
+                  b.style.border = '2px solid #000';
+                  b.style.fontWeight = '900';
+                  b.style.cursor = 'pointer';
+                  b.style.background = isPrimary ? '#39FF14' : '#efefef';
+                  b.style.color = '#000';
+                  return b;
+                }
+
+                var open = mkLink('Open PDF', pdfUrl, true);
+                actions.appendChild(open);
+
+                var dl = mkLink('Download PDF', pdfUrl, false);
+                try { dl.setAttribute('download', safeFile); } catch(_) {}
+                actions.appendChild(dl);
+
+                try {
+                  if (navigator && navigator.share && typeof File === 'function') {
+                    var shareBtn = mkBtn('Share PDF', false);
+                    shareBtn.addEventListener('click', async function(){
+                      try {
+                        var blob = null;
+                        try { blob = (window).__gbLastPdfBlob || null; } catch(_) { blob = null; }
+                        if (!blob) { try { alert('Share is not available yet. Please use Open PDF.'); } catch(_) {} return; }
+                        var f = null;
+                        try { f = new File([blob], safeFile, { type: 'application/pdf' }); } catch(_) { f = null; }
+                        if (!f) { try { alert('Sharing is not supported in this browser.'); } catch(_) {} return; }
+                        await navigator.share({ files: [f], title: safeFile });
+                      } catch(_) { }
+                    });
+                    actions.appendChild(shareBtn);
+                  }
+                } catch(_) {}
+              } catch(_) {}
             } catch(_) {}
           }
 
@@ -1652,8 +1813,9 @@ function QuoteGeneratorWindow(): JSX.Element {
 
               // Browser path: use inlined html2pdf bundle (offline-friendly)
               if (typeof (window).html2pdf !== 'function') {
-                try { alert('PDF export is not available in this viewer. Please open this file in Safari/Chrome.'); } catch(_) {}
-                throw new Error('html2pdf missing');
+                try { alert('PDF export is not available in this viewer. Use Print to Save as PDF.'); } catch(_) {}
+                try { window.print(); } catch(_) {}
+                return;
               }
               var opt = {
                 margin: 0,
@@ -1688,6 +1850,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                 try {
                   var url = URL.createObjectURL(blob);
+                  try { (window).__gbLastPdfUrl = url; (window).__gbLastPdfBlob = blob; } catch(_) {}
                   // Try to download and also open in a new tab as a fallback.
                   try {
                     var a = document.createElement('a');
@@ -1699,7 +1862,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
                   } catch(_) {}
                   try { window.open(url, '_blank'); } catch(_) {}
-                  try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                  try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 600000); } catch(_) {}
                 } catch(_) {}
 
                 showThankYou(filename);
@@ -1719,7 +1882,8 @@ function QuoteGeneratorWindow(): JSX.Element {
               showThankYou(filename);
             } catch(e) {
               try { console.error(e); } catch(_) {}
-              try { alert('Could not generate the PDF. If you are in Chrome and nothing downloads, check your Downloads list and allow popups/downloads for this file.'); } catch(_) {}
+              try { alert('Could not generate the PDF. Check Chrome Downloads / popups. Fallback: Print to Save as PDF.'); } catch(_) {}
+              try { window.print(); } catch(_) {}
             } finally {
               try { if (style && style.parentNode) style.parentNode.removeChild(style); } catch(_) {}
               try { if (pdfWrap && pdfWrap.style) pdfWrap.style.display = 'none'; } catch(_) {}
@@ -1825,7 +1989,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             try { if (dateInput && !dateInput.value) dateInput.value = gbTodayIso(); } catch(_) {}
 
-            try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} }); } catch(_) {}
+            try { if (clearBtn) clearBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} try{ if(nameInput) nameInput.value=''; }catch(_){} try{ if(dateInput) dateInput.value=''; }catch(_){} }); } catch(_) {}
             try { if (finBtn) finBtn.addEventListener('click', function(e){ try{ e.preventDefault(); }catch(_){} inlineFinalize(); }); } catch(_) {}
           }
 
