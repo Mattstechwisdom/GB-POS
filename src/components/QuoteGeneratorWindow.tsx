@@ -285,7 +285,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                 </form>
                 <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
                 <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
-                  If Finalize does nothing, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML file and open it from Files/Downloads in Chrome/Safari.
+                  If Finalize does nothing, this viewer is blocking scripts.
+                  <br/><br/>
+                  <b>iPhone/iPad:</b> Opening the HTML inside the iOS Files preview will NOT run scripts. In Files, tap <b>Share</b> → <b>Open in Safari</b> (or “Open in Browser”), then try Finalize again.
+                  <br/><br/>
+                  <b>Gmail/Drive:</b> Attachment viewers often block scripts. Download the HTML first, then open it from Files/Downloads in a real browser.
                 </div>
               </div>
 
@@ -692,7 +696,11 @@ function QuoteGeneratorWindow(): JSX.Element {
               </form>
               <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
               <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
-                If Finalize does nothing, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML file and open it from Files/Downloads in Chrome/Safari.
+                If Finalize does nothing, this viewer is blocking scripts.
+                <br/><br/>
+                <b>iPhone/iPad:</b> Opening the HTML inside the iOS Files preview will NOT run scripts. In Files, tap <b>Share</b> → <b>Open in Safari</b> (or “Open in Browser”), then try Finalize again.
+                <br/><br/>
+                <b>Gmail/Drive:</b> Attachment viewers often block scripts. Download the HTML first, then open it from Files/Downloads in a real browser.
               </div>
             </div>
 
@@ -1446,12 +1454,14 @@ function QuoteGeneratorWindow(): JSX.Element {
       <body>
         <noscript>
           <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
-            This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app/attachment viewer, download the HTML and open it in Chrome/Safari.
+            This quote requires JavaScript for signature + PDF export.
+            <br/>
+            <b>iPhone/iPad:</b> If it opens in the iOS Files preview, tap Share → Open in Safari.
           </div>
         </noscript>
         <div class="no-print" style="max-width:920px; margin:12px auto; padding:12px; border-radius:12px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:11.5pt; line-height:1.35">
           <b style="color:#ffffff">On mobile:</b> Scroll to the signature section, then tap <b style="color:#ffffff">Finalize</b> to generate the signed PDF.
-          <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML attachment first, then open it from Files/Downloads in Chrome/Safari.</div>
+          <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond: iPhone/iPad Files preview blocks scripts (Share → Open in Safari). Gmail/Drive attachment viewers can also block scripts—download the HTML, then open it in a real browser.</div>
         </div>
         ${partPagesHtml}
         ${summaryPage}
@@ -1546,7 +1556,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       </noscript>
       <div id="mobileHelp" class="no-print">
         <b>On mobile:</b> Sign at the bottom of this quote, then tap <b>Finalize</b> to generate the signed PDF.
-        <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond, your viewer is blocking scripts (common with Gmail/Drive attachment viewers). Download the HTML attachment first, then open it from Files/Downloads in Chrome/Safari.</div>
+        <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond: iPhone/iPad Files preview blocks scripts (Share → Open in Safari). Gmail/Drive attachment viewers can also block scripts—download the HTML, then open it in a real browser.</div>
       </div>
       ${pages.join('\n')}
       <script>
