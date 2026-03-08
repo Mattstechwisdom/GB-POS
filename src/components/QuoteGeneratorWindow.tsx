@@ -272,7 +272,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
                   <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-                  <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  <div style="display:flex; flex-direction:column; gap:6px">
+                    <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
+                    <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  </div>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
                   <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
@@ -671,7 +674,10 @@ function QuoteGeneratorWindow(): JSX.Element {
               <div style="font-size:14pt; font-weight:900; margin-bottom:10px; text-align:center">Signature</div>
               <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px">
                 <input id="gbSigName" type="text" placeholder="Type your full name to sign" style="flex:1; min-width:220px; padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
-                <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  <div style="display:flex; flex-direction:column; gap:6px">
+                    <div style="font-weight:900; font-size:10pt; letter-spacing:0.4px">DATE</div>
+                    <input id="gbSigDate" type="date" style="padding:10px 12px; border:2px solid #000; border-radius:10px; font-size:12pt" />
+                  </div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center">
                 <button id="gbSigClear" type="button" style="padding:10px 14px; border-radius:10px; border:2px solid #000; background:#efefef; color:#000; font-weight:800; cursor:pointer">Clear</button>
@@ -854,7 +860,42 @@ function QuoteGeneratorWindow(): JSX.Element {
                       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                       pagebreak: { mode: ['css', 'legacy'] }
                     };
-                    await (window).html2pdf().set(opt).from(document.body).save();
+                    try {
+                      await (window).html2pdf().set(opt).from(document.body).save();
+                    } catch(e1) {
+                      // Mobile-friendly fallback: generate a blob and try to open/share it.
+                      try {
+                        var blob = await (window).html2pdf().set(opt).from(document.body).outputPdf('blob');
+                        if (blob) {
+                          try {
+                            var file = null;
+                            try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
+                            if (navigator && navigator.share && file) {
+                              try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                            }
+                          } catch(_) {}
+
+                          try {
+                            var url = URL.createObjectURL(blob);
+                            // Some mobile browsers ignore download=; opening the blob URL at least shows the PDF.
+                            try {
+                              var a = document.createElement('a');
+                              a.href = url;
+                              a.download = filename;
+                              a.target = '_blank';
+                              document.body.appendChild(a);
+                              a.click();
+                              try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
+                            } catch(_) {
+                              try { window.open(url, '_blank'); } catch(_) { try { window.location.href = url; } catch(_) {} }
+                            }
+                            try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                          } catch(_) {}
+                        }
+                      } catch(e2) {
+                        throw e2;
+                      }
+                    }
                     showThankYou(filename);
                   } catch(e) {
                     try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
@@ -1569,7 +1610,42 @@ function QuoteGeneratorWindow(): JSX.Element {
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                 pagebreak: { mode: ['css', 'legacy'] }
               };
-              await (window).html2pdf().set(opt).from(document.body).save();
+                    try {
+                      await (window).html2pdf().set(opt).from(document.body).save();
+                    } catch(e1) {
+                      // Mobile-friendly fallback: generate a blob and try to open/share it.
+                      try {
+                        var blob = await (window).html2pdf().set(opt).from(document.body).outputPdf('blob');
+                        if (blob) {
+                          try {
+                            var file = null;
+                            try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
+                            if (navigator && navigator.share && file) {
+                              try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                            }
+                          } catch(_) {}
+
+                          try {
+                            var url = URL.createObjectURL(blob);
+                            // Some mobile browsers ignore download=; opening the blob URL at least shows the PDF.
+                            try {
+                              var a = document.createElement('a');
+                              a.href = url;
+                              a.download = filename;
+                              a.target = '_blank';
+                              document.body.appendChild(a);
+                              a.click();
+                              try { a.parentNode && a.parentNode.removeChild(a); } catch(_) {}
+                            } catch(_) {
+                              try { window.open(url, '_blank'); } catch(_) { try { window.location.href = url; } catch(_) {} }
+                            }
+                            try { setTimeout(function(){ try{ URL.revokeObjectURL(url); } catch(_){} }, 60000); } catch(_) {}
+                          } catch(_) {}
+                        }
+                      } catch(e2) {
+                        throw e2;
+                      }
+                    }
               showThankYou(filename);
             } catch(e) {
               try { alert('Could not generate the PDF. Please try "Open in Browser" and then Sign & Finalize again.'); } catch(_) {}
