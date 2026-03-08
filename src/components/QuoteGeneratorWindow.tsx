@@ -781,7 +781,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                         '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
                         '<div id="gbPdfActions" style="display:none; margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center"></div>' +
                         '<div style="font-size:12pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(SHOP_EMAIL) + '" style="font-weight:800; color:#000; text-decoration:underline">' + SHOP_EMAIL + '</a>.</div>' +
-                        '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you don\'t see a download, tap <b>Open PDF</b> then use your browser\'s Share/Save options.</div>' +
+                        '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you do not see a download, tap <b>Open PDF</b> then use your browser Share/Save options.</div>' +
                       '</div>';
 
                     try {
@@ -1017,7 +1017,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                 function gbIsoToSlash(iso){
                   try {
                     var s=String(iso||'');
-                    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+                    // This script is inside a TS template literal, so use double-backslashes
+                    // to preserve the intended regex escapes in the exported HTML.
+                    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return '';
                     return s.slice(5,7) + '/' + s.slice(8,10) + '/' + s.slice(0,4);
                   } catch(_) { return ''; }
                 }
@@ -1354,7 +1356,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                     emailBtn.textContent = 'Open Email (prefilled)';
                     emailBtn.href = 'mailto:' + encodeURIComponent(SHOP_EMAIL) +
                       '?subject=' + encodeURIComponent('Signed Gadgetboy Quote') +
-                      '&body=' + encodeURIComponent('Hi Gadgetboy,\n\nI signed the quote. I am attaching the PDF from this page.\n\nThanks,\n' + (CUSTOMER_NAME || ''));
+                      '&body=' + encodeURIComponent('Hi Gadgetboy,\\n\\nI signed the quote. I am attaching the PDF from this page.\\n\\nThanks,\\n' + (CUSTOMER_NAME || ''));
                     emailBtn.style.display = 'inline-flex';
                     emailBtn.style.alignItems = 'center';
                     emailBtn.style.justifyContent = 'center';
@@ -1647,7 +1649,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   '<div style="font-size:12.5pt; line-height:1.45">Your signed PDF should download as <b>' + safeFile + '</b>.</div>' +
                   '<div id="gbPdfActions" style="display:none; margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center"></div>' +
                   '<div style="font-size:12pt; line-height:1.45; margin-top:10px">Please email the signed PDF back to us at <a href="mailto:' + encodeURIComponent(gbShopEmail) + '" style="font-weight:800; color:#000; text-decoration:underline">' + gbShopEmail + '</a>.</div>' +
-                  '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you don\'t see a download, tap <b>Open PDF</b> then use your browser\'s Share/Save options.</div>' +
+                  '<div style="font-size:11.5pt; color:#333; margin-top:10px">If you do not see a download, tap <b>Open PDF</b> then use your browser Share/Save options.</div>' +
                 '</div>';
 
               try {
@@ -1898,7 +1900,9 @@ function QuoteGeneratorWindow(): JSX.Element {
           function gbIsoToSlash(iso){
             try {
               var s=String(iso||'');
-              if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+              // This script is inside a TS template literal, so use double-backslashes
+              // to preserve the intended regex escapes in the exported HTML.
+              if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return '';
               return s.slice(5,7) + '/' + s.slice(8,10) + '/' + s.slice(0,4);
             } catch(_) { return ''; }
           }
@@ -2232,7 +2236,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 emailBtn.textContent = 'Open Email (prefilled)';
                 emailBtn.href = 'mailto:' + encodeURIComponent(SHOP_EMAIL) +
                   '?subject=' + encodeURIComponent('Signed Gadgetboy Quote') +
-                  '&body=' + encodeURIComponent('Hi Gadgetboy,\n\nI signed the quote. I am attaching the PDF from this page.\n\nThanks,\n' + (CUSTOMER_NAME || ''));
+                  '&body=' + encodeURIComponent('Hi Gadgetboy,\\n\\nI signed the quote. I am attaching the PDF from this page.\\n\\nThanks,\\n' + (CUSTOMER_NAME || ''));
                 emailBtn.style.display = 'inline-flex';
                 emailBtn.style.alignItems = 'center';
                 emailBtn.style.justifyContent = 'center';
