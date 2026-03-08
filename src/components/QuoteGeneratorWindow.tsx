@@ -282,6 +282,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
                 </div>
                 <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
+                <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
+                  If Finalize does nothing, this viewer is blocking scripts (common in email previews). Open this HTML in Safari/Chrome.
+                </div>
               </div>
 
               <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -684,6 +687,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                 <button id="signFinalize" type="button" onclick="try{ return window.__gbInlineFinalize?window.__gbInlineFinalize():false; }catch(_){ return false; }" style="margin-left:auto; padding:10px 14px; border-radius:10px; border:2px solid #000; background:#39FF14; color:#000; font-weight:900; cursor:pointer">Finalize (Download PDF)</button>
               </div>
               <div style="color:#333; font-size:11.5pt; line-height:1.35; margin-top:10px">Type your full name to sign. Finalize downloads the signed PDF automatically.</div>
+              <div id="gbJsWarn" style="margin-top:10px; padding:10px 12px; border:2px solid #f00; border-radius:10px; font-size:11.5pt; line-height:1.35; font-weight:800">
+                If Finalize does nothing, this viewer is blocking scripts (common in email previews). Open this HTML in Safari/Chrome.
+              </div>
             </div>
 
             <!-- PDF-only signature area (hidden on screen; auto-filled during export) -->
@@ -919,6 +925,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 }
 
                 function setupInlineSigning(){
+                  try { var warn = document.getElementById('gbJsWarn'); if (warn && warn.style) warn.style.display = 'none'; } catch(_) {}
                   var nameInput = document.getElementById('gbSigName');
                   var dateInput = document.getElementById('gbSigDate');
                   var clearBtn = document.getElementById('gbSigClear');
@@ -1669,6 +1676,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           }
 
           function setupInlineSigning(){
+                  try { var warn = document.getElementById('gbJsWarn'); if (warn && warn.style) warn.style.display = 'none'; } catch(_) {}
             var nameInput = document.getElementById('gbSigName');
             var dateInput = document.getElementById('gbSigDate');
             var clearBtn = document.getElementById('gbSigClear');
