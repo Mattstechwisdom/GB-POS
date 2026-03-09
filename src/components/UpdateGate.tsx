@@ -18,7 +18,7 @@ type GateState =
       releaseNotes?: any;
     }
   | { kind: 'downloading'; app: AppInfo; latestVersion: string; progressPct: number }
-  | { kind: 'downloaded'; app: AppInfo; latestVersion: string }
+  | { kind: 'installing'; app: AppInfo; latestVersion: string }
   | { kind: 'error'; message: string };
 
 function fmtBytes(n: number) {
@@ -131,9 +131,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         {state.kind === 'updateAvailable' && (
           <>
             <div className={titleClass}>Update available</div>
-            <div className={subClass}>
-              A newer version is available. Download to ensure you’re up to date.
-            </div>
+            <div className={subClass}>Update now, or continue and update later.</div>
             <div className="mt-4 text-sm text-gray-300 space-y-1">
               <div>
                 Current: <span className="text-gray-100">{state.app.version}</span>
@@ -165,38 +163,32 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
                               return { ...prev, progressPct: Math.max(0, Math.min(100, Number(ev.percent))) };
                             });
                           }
-                          if (ev?.kind === 'downloaded') {
-                            setState({ kind: 'downloaded', app: state.app, latestVersion: state.latestVersion });
-                          }
                         })
                       : null;
 
-                    const res = await api.updateDownload();
-                    if (unsub) unsub();
-                    if (!res?.ok) throw new Error(res?.error || 'Download failed');
-                    // If the downloaded event didn't arrive for some reason, fall back.
-                    setState((prev) => (prev.kind === 'downloading' ? { kind: 'downloaded', app: state.app, latestVersion: state.latestVersion } : prev));
+                    try {
+                      const res = await api.updateDownload();
+                      if (!res?.ok) throw new Error(res?.error || 'Download failed');
+                    } finally {
+                      try { if (unsub) unsub(); } catch {}
+                    }
+
+                    // Immediately run the installer and restart.
+                    if (!api?.updateQuitAndInstall) throw new Error('Update install is unavailable.');
+                    setState({ kind: 'installing', app: state.app, latestVersion: state.latestVersion });
+                    await api.updateQuitAndInstall();
                   } catch (e: any) {
                     setState({ kind: 'error', message: String(e?.message || e) });
                   }
                 }}
               >
-                Download update
+                Update now
               </button>
               <button
                 className={btnClass}
-                onClick={async () => {
-                  const api = (window as any)?.api;
-                  try {
-                    if (api?.updateSkip) await api.updateSkip(state.latestVersion);
-                  } catch {}
-                  setState({ kind: 'ok' });
-                }}
+                onClick={() => setState({ kind: 'ok' })}
               >
-                Skip (can’t ensure up to date)
-              </button>
-              <button className={btnClass} onClick={() => checkNow()}>
-                Re-check
+                Later
               </button>
             </div>
           </>
@@ -218,28 +210,10 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
           </>
         )}
 
-        {state.kind === 'downloaded' && (
+        {state.kind === 'installing' && (
           <>
-            <div className={titleClass}>Update ready</div>
-            <div className={subClass}>Restart to apply the update and continue.</div>
-            <div className="mt-4 flex gap-3">
-              <button
-                className={primaryBtnClass}
-                onClick={async () => {
-                  const api = (window as any)?.api;
-                  try {
-                    await api.updateQuitAndInstall();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }}
-              >
-                Restart and apply
-              </button>
-              <button className={btnClass} onClick={() => setState({ kind: 'ok' })}>
-                Later
-              </button>
-            </div>
+            <div className={titleClass}>Installing update…</div>
+            <div className={subClass}>Launching the installer. The app will close and restart after updating.</div>
           </>
         )}
 
