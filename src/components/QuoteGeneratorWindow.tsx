@@ -1453,15 +1453,23 @@ function QuoteGeneratorWindow(): JSX.Element {
       </head>
       <body>
         <noscript>
-          <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
-            This quote requires JavaScript for signature + PDF export.
+          <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:12px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt; text-align:center">
+            <div style="font-weight:900; margin-bottom:6px">This quote needs JavaScript</div>
+            This file must be opened in a browser to sign and generate the PDF.
             <br/>
-            <b>iPhone/iPad:</b> If it opens in the iOS Files preview, tap Share → Open in Safari.
+            <b>iPhone/iPad:</b> If it opened in the iOS Files preview, tap <b>Share</b> → <b>Open in Safari</b>.
           </div>
         </noscript>
-        <div class="no-print" style="max-width:920px; margin:12px auto; padding:12px; border-radius:12px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:11.5pt; line-height:1.35">
-          <b style="color:#ffffff">On mobile:</b> Scroll to the signature section, then tap <b style="color:#ffffff">Finalize</b> to generate the signed PDF.
-          <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond: iPhone/iPad Files preview blocks scripts (Share → Open in Safari). Gmail/Drive attachment viewers can also block scripts—download the HTML, then open it in a real browser.</div>
+        <div class="no-print" style="max-width:920px; margin:12px auto; padding:12px; border-radius:12px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:11.5pt; line-height:1.4; text-align:center">
+          <div style="font-weight:900; font-size:12.5pt; margin-bottom:6px; color:#ffffff">How to fill & finalize this quote</div>
+          <div><b style="color:#ffffff">1)</b> Fill out the Notes + Checklist.</div>
+          <div><b style="color:#ffffff">2)</b> Scroll to <b style="color:#ffffff">Signature</b> and type your name + select a date.</div>
+          <div><b style="color:#ffffff">3)</b> Tap <b style="color:#ffffff">Finalize (Download PDF)</b>.</div>
+          <div style="margin-top:8px; font-size:11pt; color:#d1d5db">
+            <b style="color:#ffffff">iPhone/iPad:</b> If it opens in the Files preview, tap <b style="color:#ffffff">Share</b> → <b style="color:#ffffff">Open in Safari</b> (Files preview blocks scripts).
+            <br/>
+            <b style="color:#ffffff">Gmail/Drive:</b> Attachment previews can block scripts—use “Open in Browser” or download and open in Safari/Chrome.
+          </div>
         </div>
         ${partPagesHtml}
         ${summaryPage}
@@ -1526,7 +1534,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         html, body { margin: 0; padding: 0; background: #1f2937; color: #e5e7eb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-text-size-adjust: 100%; }
         #mobileHelp { max-width: 920px; margin: 12px auto; padding: 12px; border-radius: 12px; background: #111827; border: 1px solid #374151; color: #e5e7eb; font-size: 11.5pt; line-height: 1.35; }
         #mobileHelp b { color: #ffffff; }
-        @media (min-width: 900px) { #mobileHelp { display:none; } }
+        /* Keep instructions visible on all screen sizes (HTML only; never prints because of .no-print) */
         /* Mobile drawing reliability */
         #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
 
@@ -1551,12 +1559,22 @@ function QuoteGeneratorWindow(): JSX.Element {
     <body>
       <noscript>
         <div style="max-width:920px; margin:12px auto; padding:12px; border-radius:10px; background:#111827; border:1px solid #374151; color:#e5e7eb; font-size:12pt">
-          This quote requires JavaScript for signature + PDF export. If you opened it inside a mail-app preview, tap "Open in Browser" (Safari/Chrome), then try again.
+          <div style="font-weight:900; margin-bottom:6px; text-align:center">This quote needs JavaScript</div>
+          <div style="text-align:center">Open this file in a browser (Safari/Chrome) to sign and generate the PDF.</div>
         </div>
       </noscript>
       <div id="mobileHelp" class="no-print">
-        <b>On mobile:</b> Sign at the bottom of this quote, then tap <b>Finalize</b> to generate the signed PDF.
-        <div style="margin-top:6px; font-size:11pt; color:#d1d5db">If buttons don’t respond: iPhone/iPad Files preview blocks scripts (Share → Open in Safari). Gmail/Drive attachment viewers can also block scripts—download the HTML, then open it in a real browser.</div>
+        <div style="text-align:center">
+          <div style="font-weight:900; font-size:12.5pt; margin-bottom:6px">How to fill & finalize this quote</div>
+          <div><b>1)</b> Fill out Notes + Checklist.</div>
+          <div><b>2)</b> Scroll to <b>Signature</b> and type your name + select a date.</div>
+          <div><b>3)</b> Tap <b>Finalize (Download PDF)</b>.</div>
+          <div style="margin-top:8px; font-size:11pt; color:#d1d5db">
+            <b>iPhone/iPad:</b> If it opens in the Files preview, tap <b>Share</b> → <b>Open in Safari</b>.
+            <br/>
+            <b>Gmail/Drive:</b> Attachment previews can block scripts—use “Open in Browser” or download and open in Safari/Chrome.
+          </div>
+        </div>
       </div>
       ${pages.join('\n')}
       <script>

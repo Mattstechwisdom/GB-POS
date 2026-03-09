@@ -77,8 +77,11 @@ const BackupWindow: React.FC = () => {
 
     // If the user pasted a UNC like \\SERVER\SHARE into either field, split it.
     const tryParseUnc = (value: string): { host?: string; share?: string } => {
-      const v = String(value || '').trim();
+      let v = String(value || '').trim();
       if (!v) return {};
+      // Accept common network URL forms like smb://SERVER/SHARE
+      // (Users often copy these from NAS UIs like ZimaOS/CasaOS.)
+      v = v.replace(/^(smb|cifs|file):[\\/]+/i, '');
       const parts = v.split(/[\\/]+/).filter(Boolean);
       if (parts.length >= 2) return { host: parts[0], share: parts[1] };
       return {};
@@ -157,6 +160,13 @@ const BackupWindow: React.FC = () => {
             The app remains offline-first: it always runs from local data, and the NAS is a sync/backup target.
           </div>
           <div className="text-xs text-gray-300">
+            <div className="font-medium text-gray-100">ZimaOS note</div>
+            <div>
+              On ZimaOS (Samba/SMB), create a share (example: <span className="text-gray-100">POS</span>) and ensure your PCs have read+write access.
+              You will connect from Windows using a UNC path like <span className="text-gray-100">\\SERVER\SHARE</span>.
+            </div>
+          </div>
+          <div className="text-xs text-gray-300">
             <div className="font-medium text-gray-100">What “Share” means (and why it matters)</div>
             <div>
               On Windows/SMB you connect to <span className="text-gray-100">\\SERVER\SHARE</span>. The <span className="text-gray-100">share</span> is the top-level exported storage.
@@ -172,6 +182,14 @@ const BackupWindow: React.FC = () => {
               <li>Click <span className="text-gray-100">Test Connection</span> and confirm the status shows <span className="text-[#39FF14]">Connected</span>. Browsing is enabled after this.</li>
               <li>(Optional) Use <span className="text-gray-100">Browse…</span> to choose a custom <span className="text-gray-100">App data root</span> and/or a custom <span className="text-gray-100">Server backups folder</span>.</li>
             </ol>
+          </div>
+          <div className="text-xs text-gray-300">
+            <div className="font-medium text-gray-100">Multi-device workflow (important)</div>
+            <div>
+              Sync is file-based and offline-first. When you click <span className="text-gray-100">Sync Now</span>, the newest database file wins (push or pull).
+              To avoid overwriting changes between PCs, use one device at a time, or always:
+              <span className="text-gray-100"> Sync Now</span> when you start a shift and again when you finish.
+            </div>
           </div>
           <div className="text-xs text-gray-300">
             <div className="font-medium text-gray-100">What the app writes on the NAS</div>
@@ -195,6 +213,7 @@ const BackupWindow: React.FC = () => {
               <li>In Windows File Explorer, try opening <span className="text-gray-100">{uncPreview}</span>. If Windows prompts for credentials, sign in and retry the test.</li>
               <li>The share must allow <span className="text-gray-100">read + write</span> for the Windows user running GadgetBoy POS (it creates a temp file to test).</li>
               <li>If you want a specific subfolder, click <span className="text-gray-100">Browse…</span> (or enable <span className="text-gray-100">Use custom server path (advanced)</span>) and pick/enter a full UNC folder path.</li>
+              <li>Remote access: if you need this from outside your LAN, use a VPN (WireGuard/Tailscale) so <span className="text-gray-100">\\SERVER\SHARE</span> is reachable, then configure the same way.</li>
             </ul>
           </div>
         </div>
@@ -1206,7 +1225,7 @@ const BackupWindow: React.FC = () => {
                       <label className="text-[11px] text-gray-400 shrink-0">NAS IP</label>
                       <input
                         className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs"
-                        placeholder="192.168.1.50"
+                        placeholder="192.168.1.50 (or zimaos.local, or \\SERVER\\Share)"
                         value={serverHost}
                         onChange={(e) => setServerHost(e.target.value)}
                         disabled={serverBusy || !serverSyncEnabled || useCustomServerPath}
@@ -1216,7 +1235,7 @@ const BackupWindow: React.FC = () => {
                       <label className="text-[11px] text-gray-400 shrink-0">Share</label>
                       <input
                         className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs"
-                        placeholder="POS (share name)"
+                        placeholder="POS (SMB share name)"
                         value={serverShare}
                         onChange={(e) => setServerShare(e.target.value)}
                         disabled={serverBusy || !serverSyncEnabled || useCustomServerPath}
@@ -1225,7 +1244,7 @@ const BackupWindow: React.FC = () => {
                   </div>
 
                   <div className="mt-1 text-[11px] text-gray-400">
-                    Share is the Windows/SMB share name (not a folder path). Use Browse… or custom path to pick a subfolder.
+                    Share is the Windows/SMB share name (not a folder path). You can also paste <span className="text-gray-200">smb://SERVER/SHARE</span> or <span className="text-gray-200">\\SERVER\SHARE</span> into either field.
                   </div>
 
                   <div className="mt-2 flex items-center gap-2">
