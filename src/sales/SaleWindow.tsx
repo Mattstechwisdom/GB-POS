@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
-import { computeTotals } from '@/lib/calc';
+import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 
@@ -222,6 +222,7 @@ const SaleWindow: React.FC = () => {
               internalCost: typeof found.internalCost === 'number' ? found.internalCost : undefined,
               condition: (found as any).condition || 'New',
               productUrl: (found as any).productUrl,
+              category: (found as any).category,
             } as any;
             setSale({ ...found, items: [row] });
           } else {
@@ -233,6 +234,13 @@ const SaleWindow: React.FC = () => {
   }, [payload]);
 
   const itemTotal = (row: SaleItemRow) => (Number(row.qty) || 0) * (Number(row.price) || 0);
+
+  const isConsultationItem = (row: Partial<SaleItemRow> | null | undefined) => {
+    const cat = (row as any)?.category;
+    const s = (cat == null ? '' : String(cat)).trim().toLowerCase();
+    return s === 'consultation' || s.startsWith('consult');
+  };
+
   const total = useMemo(() => {
     const rows = sale.items || [];
     if (rows.length > 0) return rows.reduce((sum, r) => sum + itemTotal(r), 0);
@@ -242,19 +250,28 @@ const SaleWindow: React.FC = () => {
     return (q > 0 && p > 0) ? (q * p) : 0;
   }, [sale.items, (sale as any).quantity, (sale as any).price]);
 
+  const consultationTotal = useMemo(() => {
+    const rows = Array.isArray(sale.items) ? sale.items : [];
+    return rows.reduce((sum, r) => (isConsultationItem(r) ? sum + itemTotal(r) : sum), 0);
+  }, [sale.items]);
+
   // Recompute partCosts and totals like the Work Order window, treating sales as parts-only
   useEffect(() => {
-    const partCosts = total;
+    const partCosts = Number(total || 0) || 0;
     const laborCost = 0;
-    const totals = computeTotals({
-      laborCost,
-      partCosts,
-      discount: sale.discount || 0,
-      taxRate: sale.taxRate || 0,
-      amountPaid: sale.amountPaid || 0,
-    });
+    const taxRate = Number(sale.taxRate || 0) || 0;
+    const amountPaid = Number(sale.amountPaid || 0) || 0;
+
+    // Consultation items are NOT taxed.
+    const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
+    const subTotal = round2(partCosts);
+    const tax = round2(taxableParts * taxRate / 100);
+    const totalWithTax = round2(subTotal + tax);
+    const remaining = Math.max(0, round2(totalWithTax - amountPaid));
+    const totals = { subTotal, tax, total: totalWithTax, remaining };
+
     setSale(s => ({ ...s, partCosts, laborCost, totals }));
-  }, [total, sale.discount, sale.taxRate, sale.amountPaid]);
+  }, [total, consultationTotal, sale.taxRate, sale.amountPaid]);
 
   // Per-item internal cost editing and pricing handled inside SaleItemsTable edit flow.
 
@@ -540,13 +557,14 @@ const SaleWindow: React.FC = () => {
       }
 
       // Persist the full sale record so Customer Overview, EOD, etc. always see it.
-      const updatedTotals = computeTotals({
-        laborCost: 0,
-        partCosts: total,
-        discount: sale.discount || 0,
-        taxRate: sale.taxRate || 0,
-        amountPaid: newAmountPaid,
-      });
+      const partCosts = Number(total || 0) || 0;
+      const taxRate = Number(sale.taxRate || 0) || 0;
+      const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
+      const subTotal = round2(partCosts);
+      const tax = round2(taxableParts * taxRate / 100);
+      const totalWithTax = round2(subTotal + tax);
+      const remaining = Math.max(0, round2(totalWithTax - (Number(newAmountPaid || 0) || 0)));
+      const updatedTotals = { subTotal, tax, total: totalWithTax, remaining };
 
       const recordBase = buildSaleRecordBase();
       const recordToPersist: SaleRecord = {
@@ -556,7 +574,7 @@ const SaleWindow: React.FC = () => {
         payments,
         status: status as any,
         checkoutDate,
-        partCosts: total,
+        partCosts,
         laborCost: 0,
         totals: updatedTotals,
         total: updatedTotals.total,
@@ -651,6 +669,7 @@ const SaleWindow: React.FC = () => {
         internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
         condition: picked.condition || 'New',
         productUrl: picked.productUrl || picked.url || picked.link || '',
+        category: picked.category,
       };
       setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
     }
@@ -669,6 +688,7 @@ const SaleWindow: React.FC = () => {
             internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
             condition: picked.condition || 'New',
             productUrl: picked.productUrl || picked.url || picked.link || '',
+            category: picked.category,
           };
           setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
         });

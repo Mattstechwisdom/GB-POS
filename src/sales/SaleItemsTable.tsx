@@ -12,6 +12,7 @@ export type SaleItemRow = {
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair';
   inStock?: boolean; // whether this specific item is in stock
   productUrl?: string;
+  category?: 'Device' | 'Accessory' | 'Consultation' | 'Other' | string;
 };
 
 interface Props {
@@ -112,6 +113,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           condition: picked.condition || 'New',
           inStock: !!picked.inStock,
           productUrl: picked.productUrl || picked.url || picked.link || '',
+          category: picked.category,
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);
