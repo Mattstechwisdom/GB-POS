@@ -37,6 +37,30 @@ declare global {
 	}
 }
 
+function applyVersionToDocumentTitle() {
+	try {
+		const api: any = (window as any).api;
+		if (!api?.getAppInfo) return;
+		Promise.resolve(api.getAppInfo())
+			.then((info: any) => {
+				const version = String(info?.version || '').trim();
+				if (!version) return;
+				const base = `GadgetBoy POS v${version}`;
+				const current = String(document.title || '').trim();
+				// If the app title is already set, don't duplicate it.
+				if (!current || /gadgetboy\s*pos/i.test(current)) {
+					document.title = base;
+					return;
+				}
+				if (current.includes(base)) return;
+				document.title = `${current} — ${base}`;
+			})
+			.catch(() => {});
+	} catch {
+		// ignore
+	}
+}
+
 if (typeof window !== 'undefined') {
 	window.addEventListener('error', (ev: any) => {
 		try {
@@ -52,6 +76,10 @@ if (typeof window !== 'undefined') {
 			// ignore
 		}
 	});
+}
+
+if (typeof window !== 'undefined') {
+	applyVersionToDocumentTitle();
 }
 
 function getNewWorkOrderPayload() {

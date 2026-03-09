@@ -72,10 +72,26 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         return;
       }
       if (!res?.ok) {
-        // Never block startup for update-check failures.
-        console.warn('[UpdateGate] update check failed (non-fatal):', res?.error);
-        setState({ kind: 'ok' });
+        const msg = String(res?.error || 'Update check failed');
+        console.warn('[UpdateGate] update check failed:', msg);
+        // In production, surface the failure so the user knows updates aren't working.
+        if (shouldEnforceGate) {
+          setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
+        } else {
+          setState({ kind: 'ok' });
+        }
         return;
+      }
+
+      if (res?.warning) {
+        const warn = String(res.warning || '').trim();
+        if (warn) {
+          console.warn('[UpdateGate] update check warning:', warn);
+          if (shouldEnforceGate) {
+            setState({ kind: 'error', message: `Could not check for updates: ${warn}` });
+            return;
+          }
+        }
       }
 
       if (res?.updateAvailable && res?.latestVersion) {
@@ -93,9 +109,9 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
     } catch (e: any) {
       const msg = String(e?.message || e);
 
-      // Never block startup for update-check failures.
-      console.warn('[UpdateGate] update check threw (non-fatal):', msg);
-      setState({ kind: 'ok' });
+      console.warn('[UpdateGate] update check threw:', msg);
+      if (shouldEnforceGate) setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
+      else setState({ kind: 'ok' });
     }
   }
 

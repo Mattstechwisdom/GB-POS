@@ -5,11 +5,26 @@ import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notificatio
 const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void }> = ({ mode, onModeChange }) => {
 
   const [isFull, setIsFull] = useState<boolean>(false);
+  const [appVersion, setAppVersion] = useState<string>('');
 
   useEffect(() => {
     (async () => {
       try { const v = await (window as any).api.getFullScreen?.(); setIsFull(!!v); } catch {}
     })();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const info = await (window as any).api?.getAppInfo?.();
+        const v = String(info?.version || '').trim();
+        if (alive) setAppVersion(v);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { alive = false; };
   }, []);
   const [showTechs, setShowTechs] = useState(false);
   const [unread, setUnread] = useState<number>(0);
@@ -49,7 +64,10 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-zinc-900 relative">
       {/* Left side: App title */}
       <div className="flex items-center gap-3">
-        <div className="text-xl font-bold tracking-wide text-[#39FF14]">Gadgetboy POS</div>
+        <div className="text-xl font-bold tracking-wide text-[#39FF14] flex items-baseline gap-2">
+          <span>Gadgetboy POS</span>
+          {appVersion ? <span className="text-xs font-semibold text-zinc-300">v{appVersion}</span> : null}
+        </div>
         <button
           className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded shadow-sm border border-[#39FF14] hover:brightness-110 text-sm"
           onClick={async () => {
