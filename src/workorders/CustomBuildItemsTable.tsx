@@ -168,26 +168,6 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={addItem}>
           Add line item
         </button>
-        <button
-          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50"
-          onClick={() => {
-            const row = items.find((x) => x.id === selected);
-            if (row) editItem(row);
-          }}
-          disabled={!selected}
-        >
-          Edit selected
-        </button>
-        <button
-          className="px-3 py-1 bg-red-700 text-white rounded disabled:opacity-50"
-          onClick={() => {
-            const row = items.find((x) => x.id === selected);
-            if (row) removeItem(row);
-          }}
-          disabled={!selected}
-        >
-          Remove selected
-        </button>
       </div>
 
       <ContextMenu

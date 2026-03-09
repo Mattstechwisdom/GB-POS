@@ -21,6 +21,16 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
 
+  useEffect(() => {
+    if (items.length === 0) {
+      setSelected(null);
+      return;
+    }
+    if (!selected || !items.some(i => i.id === selected)) {
+      setSelected(items[0].id);
+    }
+  }, [items, selected]);
+
   const ctx = useContextMenu<WorkOrderItemRow>();
   const ctxRow = ctx.state.data;
 
@@ -39,7 +49,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
         label: 'Duplicate',
         onClick: () => {
           const copy: WorkOrderItemRow = { ...ctxRow, id: crypto.randomUUID() };
-          onChange([...items, copy].slice(0, MAX_ITEMS));
+          const idx = items.findIndex(i => i.id === ctxRow.id);
+          const next = [...items];
+          next.splice(idx >= 0 ? idx + 1 : next.length, 0, copy);
+          if (next.length > MAX_ITEMS) next.pop();
+          onChange(next);
           setSelected(copy.id);
         },
       },
@@ -55,8 +69,6 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
       },
     ];
   }, [ctxRow, items, onChange, selected, editing?.id]);
-
-  useEffect(() => { if (items.length === 0) setSelected(null); }, [items]);
 
   async function newItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -83,6 +95,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
         note: selected.model || selected.modelNumber || '',
       };
       onChange([...items, row].slice(0, MAX_ITEMS));
+      setSelected(row.id);
       return;
     }
     // Fallback: open legacy picker window
@@ -98,17 +111,6 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
   // No IPC handler here; handled in parent
-
-  function removeSelected() {
-    if (!selected) return;
-    onChange(items.filter(i => i.id !== selected));
-    setSelected(null);
-  }
-
-  function editSelected() {
-    const f = items.find(i => i.id === selected);
-    if (f) setEditing(f);
-  }
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
@@ -133,6 +135,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 <tr
                   key={it.id}
                   onClick={() => setSelected(it.id)}
+                  onDoubleClick={() => setEditing(it)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -161,8 +164,6 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
 
       <div className="flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={editSelected} disabled={!selected}>Edit selected</button>
-        <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={removeSelected} disabled={!selected}>Remove selected</button>
       </div>
 
       {editing && (
@@ -170,8 +171,8 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
           <label className="block text-xs text-zinc-400">Repair</label>
           <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.repair} onChange={e => setEditing({ ...editing, repair: e.target.value })} />
           <div className="flex gap-2 mt-2">
-            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" value={editing.parts} onChange={e => setEditing({ ...editing, parts: Number(e.target.value) })} />
-            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" value={editing.labor} onChange={e => setEditing({ ...editing, labor: Number(e.target.value) })} />
+            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" type="number" inputMode="decimal" min={0} step={0.01} value={Number(editing.parts || 0)} onChange={e => setEditing({ ...editing, parts: Number(e.target.value) || 0 })} />
+            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" type="number" inputMode="decimal" min={0} step={0.01} value={Number(editing.labor || 0)} onChange={e => setEditing({ ...editing, labor: Number(e.target.value) || 0 })} />
           </div>
           <div className="flex gap-2 mt-2 justify-end">
             <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setEditing(null)}>Cancel</button>

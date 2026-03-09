@@ -852,10 +852,21 @@ function QuoteGeneratorWindow(): JSX.Element {
                               var blob = null;
                               try { blob = (window).__gbLastPdfBlob || null; } catch(_) { blob = null; }
                               if (!blob) { try { alert('Share is not available yet. Please use Open PDF.'); } catch(_) {} return; }
+                              var name = safeFile;
+                              try {
+                                name = String(name || 'Signed-Quote.pdf');
+                                if (!/\.pdf$/i.test(name)) name = name + '.pdf';
+                              } catch(_) { name = 'Signed-Quote.pdf'; }
                               var f = null;
-                              try { f = new File([blob], safeFile, { type: 'application/pdf' }); } catch(_) { f = null; }
+                              try { f = new File([blob], name, { type: 'application/pdf' }); } catch(_) { f = null; }
                               if (!f) { try { alert('Sharing is not supported in this browser.'); } catch(_) {} return; }
-                              await navigator.share({ files: [f], title: safeFile });
+                              try {
+                                if (navigator && navigator.canShare && !navigator.canShare({ files: [f] })) {
+                                  try { alert('Sharing is not supported in this browser. Please use Download PDF.'); } catch(_) {}
+                                  return;
+                                }
+                              } catch(_) {}
+                              await navigator.share({ files: [f] });
                             } catch(_) { }
                           });
                           actions.appendChild(shareBtn);
@@ -970,7 +981,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                         var file = null;
                         try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
                         if (navigator && navigator.share && file) {
-                          try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                          try {
+                            if (navigator.canShare && !navigator.canShare({ files: [file] })) throw new Error('cannot-share-files');
+                          } catch(_) {}
+                          try { await navigator.share({ files: [file] }); showThankYou(filename); return; } catch(_) {}
                         }
                       } catch(_) {}
 
@@ -1353,10 +1367,12 @@ function QuoteGeneratorWindow(): JSX.Element {
                     var shareBtn = mkBtn('Share PDF');
                     shareBtn.addEventListener('click', async function(){
                       try {
-                        var f = new File([blob], filename, { type: 'application/pdf' });
+                        var name = filename;
+                        try { name = String(name || 'Signed-Quote.pdf'); if (!/\.pdf$/i.test(name)) name = name + '.pdf'; } catch(_) { name = 'Signed-Quote.pdf'; }
+                        var f = new File([blob], name, { type: 'application/pdf' });
                         var canShare = !!(navigator && navigator.share && navigator.canShare && navigator.canShare({ files: [f] }));
                         if (!canShare) { alert('Sharing is not supported in this browser. Use Download PDF instead.'); return; }
-                        await navigator.share({ files: [f], title: filename, text: 'Please send this PDF to ' + SHOP_EMAIL + '.' });
+                        await navigator.share({ files: [f] });
                       } catch(e) { try { alert('Could not open share sheet. Use Download PDF instead.'); } catch(_) {} }
                     });
 
@@ -1740,10 +1756,21 @@ function QuoteGeneratorWindow(): JSX.Element {
                         var blob = null;
                         try { blob = (window).__gbLastPdfBlob || null; } catch(_) { blob = null; }
                         if (!blob) { try { alert('Share is not available yet. Please use Open PDF.'); } catch(_) {} return; }
+                        var name = safeFile;
+                        try {
+                          name = String(name || 'Signed-Quote.pdf');
+                          if (!/\.pdf$/i.test(name)) name = name + '.pdf';
+                        } catch(_) { name = 'Signed-Quote.pdf'; }
                         var f = null;
-                        try { f = new File([blob], safeFile, { type: 'application/pdf' }); } catch(_) { f = null; }
+                        try { f = new File([blob], name, { type: 'application/pdf' }); } catch(_) { f = null; }
                         if (!f) { try { alert('Sharing is not supported in this browser.'); } catch(_) {} return; }
-                        await navigator.share({ files: [f], title: safeFile });
+                        try {
+                          if (navigator && navigator.canShare && !navigator.canShare({ files: [f] })) {
+                            try { alert('Sharing is not supported in this browser. Please use Download PDF.'); } catch(_) {}
+                            return;
+                          }
+                        } catch(_) {}
+                        await navigator.share({ files: [f] });
                       } catch(_) { }
                     });
                     actions.appendChild(shareBtn);
@@ -1874,7 +1901,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                   var file = null;
                   try { file = new File([blob], filename, { type: 'application/pdf' }); } catch(_) { file = null; }
                   if (navigator && navigator.share && file) {
-                    try { await navigator.share({ files: [file], title: filename }); showThankYou(filename); return; } catch(_) {}
+                    try {
+                      if (navigator.canShare && !navigator.canShare({ files: [file] })) throw new Error('cannot-share-files');
+                    } catch(_) {}
+                    try { await navigator.share({ files: [file] }); showThankYou(filename); return; } catch(_) {}
                   }
                 } catch(_) {}
 
@@ -2247,14 +2277,12 @@ function QuoteGeneratorWindow(): JSX.Element {
                 const shareBtn = mkBtn('Share PDF');
                 shareBtn.addEventListener('click', async function(){
                   try {
-                    const f = new File([blob], filename, { type: 'application/pdf' });
+                    let name = filename;
+                    try { name = String(name || 'Signed-Quote.pdf'); if (!/\.pdf$/i.test(name)) name = name + '.pdf'; } catch { name = 'Signed-Quote.pdf'; }
+                    const f = new File([blob], name, { type: 'application/pdf' });
                     const canShare = !!(navigator && navigator.share && navigator.canShare && navigator.canShare({ files: [f] }));
                     if (!canShare) { alert('Sharing is not supported in this browser. Use Download PDF instead.'); return; }
-                    await navigator.share({
-                      files: [f],
-                      title: filename,
-                      text: 'Please send this PDF to ' + SHOP_EMAIL + '. You can add notes to the email if needed.'
-                    });
+                    await navigator.share({ files: [f] });
                   } catch(e) {
                     try { alert('Could not open share sheet. Use Download PDF instead.'); } catch {}
                   }

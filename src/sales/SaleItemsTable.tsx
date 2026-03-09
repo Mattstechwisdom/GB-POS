@@ -26,12 +26,23 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
 
+  useEffect(() => {
+    if (items.length === 0) {
+      setSelected(null);
+      return;
+    }
+    if (!selected || !items.some(i => i.id === selected)) {
+      setSelected(items[0].id);
+    }
+  }, [items, selected]);
+
   const ctx = useContextMenu<SaleItemRow>();
   const ctxRow = ctx.state.data;
 
   const ctxItems = useMemo<ContextMenuItem[]>(() => {
     if (!ctxRow) return [];
     const lineTotal = (Number(ctxRow.qty) || 0) * (Number(ctxRow.price) || 0);
+    const url = (ctxRow.productUrl || '').trim();
     return [
       { type: 'header', label: ctxRow.description || 'Item' },
       { label: 'Edit…', onClick: () => { setSelected(ctxRow.id); setEditing(ctxRow); } },
@@ -39,10 +50,36 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         label: 'Duplicate',
         onClick: () => {
           const copy: SaleItemRow = { ...ctxRow, id: crypto.randomUUID() };
-          onChange([...items, copy].slice(0, MAX_ITEMS));
+          const idx = items.findIndex(i => i.id === ctxRow.id);
+          const next = [...items];
+          next.splice(idx >= 0 ? idx + 1 : next.length, 0, copy);
+          if (next.length > MAX_ITEMS) next.pop();
+          onChange(next);
           setSelected(copy.id);
         },
       },
+      ...(url
+        ? ([
+            { type: 'separator' as const },
+            {
+              label: 'Open product URL',
+              hint: url.length > 24 ? url.slice(0, 24) + '…' : url,
+              onClick: () => {
+                try {
+                  (window as any).api?.openUrl ? (window as any).api.openUrl(url) : window.open(url, '_blank');
+                } catch {
+                  window.open(url, '_blank');
+                }
+              },
+            },
+            {
+              label: 'Copy product URL',
+              onClick: async () => {
+                try { await navigator.clipboard.writeText(url); } catch {}
+              },
+            },
+          ] as ContextMenuItem[])
+        : ([] as ContextMenuItem[])),
       { type: 'separator' },
       { label: 'Copy line total', hint: `$${lineTotal.toFixed(2)}`, onClick: async () => { try { await navigator.clipboard.writeText(String(lineTotal.toFixed(2))); } catch {} } },
       { type: 'separator' },
@@ -57,8 +94,6 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       },
     ];
   }, [ctxRow, items, onChange, selected, editing?.id]);
-
-  useEffect(() => { if (items.length === 0) setSelected(null); }, [items]);
 
   async function newItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -79,6 +114,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           productUrl: picked.productUrl || picked.url || picked.link || '',
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
+        setSelected(row.id);
         return;
       } catch (e) {
         console.error('[SaleItemsTable] pickSaleProduct failed', e);
@@ -87,17 +123,6 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
     // Fallback: open Products window in picker mode via URL param
     const url = window.location.origin + '/?products=true&picker=sale';
     window.open(url, '_blank', 'width=1280,height=800');
-  }
-
-  function removeSelected() {
-    if (!selected) return;
-    onChange(items.filter(i => i.id !== selected));
-    setSelected(null);
-  }
-
-  function editSelected() {
-    const f = items.find(i => i.id === selected);
-    if (f) setEditing(f);
   }
 
   return (
@@ -128,6 +153,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
                 <tr
                   key={it.id}
                   onClick={() => setSelected(it.id)}
+                  onDoubleClick={() => setEditing(it)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -169,18 +195,6 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
 
       <div className="flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={editSelected} disabled={!selected}>Edit selected</button>
-        <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={removeSelected} disabled={!selected}>Remove selected</button>
-        <button
-          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded"
-          onClick={() => {
-            const row = items.find(i => i.id === selected);
-            const url = row?.productUrl;
-            if (!url) return;
-            try { (window as any).api?.openUrl ? (window as any).api.openUrl(url) : window.open(url, '_blank'); } catch { window.open(url, '_blank'); }
-          }}
-          disabled={!selected || !items.find(i => i.id === selected)?.productUrl}
-        >Go to product</button>
       </div>
 
       {editing && (
