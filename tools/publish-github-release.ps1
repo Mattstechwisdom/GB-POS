@@ -117,7 +117,7 @@ if (-not $Notes) {
 }
 
 $headers = @{
-  Authorization = "token $env:GITHUB_TOKEN"
+  Authorization = "Bearer $env:GITHUB_TOKEN"
   'User-Agent'  = 'gbpos-release'
   Accept        = 'application/vnd.github+json'
 }
