@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
+import { listTechnicians } from '../lib/admin';
 
 type RangeKey = 'today' | 'yesterday' | 'last7' | 'custom';
 
@@ -49,6 +50,91 @@ function formatDate(input: string | Date | null | undefined) {
   const d = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString();
+}
+
+function round2(n: number) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function normalizeSaleItems(sale: any): Array<{ description: string; qty: number; price: number; category?: string }> {
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  if (items.length) {
+    return items.map((it: any) => ({
+      description: (it?.description || it?.name || it?.title || '').toString(),
+      qty: Number(it?.qty ?? it?.quantity ?? 1) || 1,
+      price: Number(it?.price ?? it?.unitPrice ?? 0) || 0,
+      category: it?.category,
+    }));
+  }
+  const desc = (sale?.itemDescription || sale?.description || '').toString();
+  const qty = Number(sale?.quantity ?? 1) || 1;
+  const price = Number(sale?.price ?? 0) || 0;
+  if (!desc && !(qty || price)) return [];
+  return [{ description: desc, qty, price, category: sale?.category }];
+}
+
+function normalizeCategory(cat: any): string {
+  const s = (cat == null ? '' : String(cat)).trim();
+  if (!s) return 'Uncategorized';
+  const lower = s.toLowerCase();
+  if (lower === 'consultation' || lower.startsWith('consult')) return 'Consultation';
+  if (lower === 'device') return 'Device';
+  if (lower === 'accessory') return 'Accessory';
+  if (lower === 'other') return 'Other';
+  return s;
+}
+
+function normalizeTechKey(v: any) {
+  return (v == null ? '' : String(v)).trim().toLowerCase();
+}
+
+function isConsultationCategory(cat: any) {
+  return normalizeCategory(cat).toLowerCase() === 'consultation';
+}
+
+function saleGross(items: Array<{ qty: number; price: number }>) {
+  return items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+}
+
+function computeSaleBreakdown(sale: any, commissionRate: number) {
+  const items = normalizeSaleItems(sale);
+  const discount = Math.max(0, Number(sale?.discount || 0) || 0);
+  const gross = saleGross(items);
+  const net = Math.max(0, gross - discount);
+
+  const byCategoryGross = new Map<string, number>();
+  const byCategoryNet = new Map<string, number>();
+
+  for (const it of items) {
+    const cat = normalizeCategory(it.category);
+    const line = (Number(it.qty) || 0) * (Number(it.price) || 0);
+    if (!Number.isFinite(line) || line === 0) continue;
+    byCategoryGross.set(cat, (byCategoryGross.get(cat) || 0) + line);
+  }
+
+  // Allocate discount proportionally across categories (so mixed tickets behave well).
+  const denom = gross > 0 ? gross : 0;
+  for (const [cat, catGross] of byCategoryGross.entries()) {
+    const share = denom > 0 ? (catGross / denom) : 0;
+    const catNet = Math.max(0, catGross - discount * share);
+    byCategoryNet.set(cat, catNet);
+  }
+
+  const consultationNet = Array.from(byCategoryNet.entries()).reduce((sum, [cat, amt]) => (isConsultationCategory(cat) ? sum + amt : sum), 0);
+  const commissionableNet = Math.max(0, net - consultationNet);
+  const commission = round2(commissionableNet * commissionRate);
+
+  return {
+    items,
+    gross: round2(gross),
+    net: round2(net),
+    discount: round2(discount),
+    byCategoryGross,
+    byCategoryNet,
+    consultationNet: round2(consultationNet),
+    commissionableNet: round2(commissionableNet),
+    commission,
+  };
 }
 
 function renderTemplate(template: string, data: Record<string, string>) {
@@ -299,6 +385,69 @@ const EODWindow: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [viewMode, setViewMode] = useState<'reports' | 'trends'>('reports');
 
+  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [techSummary, setTechSummary] = useState<string>('');
+
+  useEffect(() => {
+    let disposed = false;
+    async function refresh() {
+      try {
+        const list = await listTechnicians();
+        if (!disposed) setTechnicians(Array.isArray(list) ? list : []);
+      } catch (e) {
+        console.error('Failed loading technicians', e);
+      }
+    }
+    refresh();
+    const off = (window as any).api?.onTechniciansChanged?.(() => refresh());
+    return () => { disposed = true; try { off && off(); } catch {} };
+  }, []);
+
+  const technicianOptions = useMemo(() => {
+    return (technicians || []).filter((t: any) => t && (t.active !== false)).map((t: any) => {
+      const value = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
+      const label = [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.nickname || `Tech ${t.id}`;
+      return { value, label };
+    });
+  }, [technicians]);
+
+  const techAliasToCanonical = useMemo(() => {
+    const map = new Map<string, string>();
+    const labelMap = new Map<string, string>();
+
+    for (const t of (technicians || [])) {
+      if (!t || (t.active === false)) continue;
+      const canonicalDisplay = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
+      const canonicalKey = normalizeTechKey(canonicalDisplay);
+      const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ').trim();
+      const label = fullName || t.nickname || `Tech ${t.id}`;
+
+      labelMap.set(canonicalKey, label);
+
+      const aliases = new Set<string>();
+      aliases.add(canonicalDisplay);
+      if (t.id) aliases.add(String(t.id));
+      if (t.nickname) aliases.add(String(t.nickname));
+      if (t.firstName) aliases.add(String(t.firstName));
+      if (fullName) aliases.add(fullName);
+      if (fullName) aliases.add(fullName.split(' ')[0]);
+
+      for (const a of aliases) {
+        const k = normalizeTechKey(a);
+        if (!k) continue;
+        map.set(k, canonicalKey);
+      }
+    }
+
+    return { map, labelMap };
+  }, [technicians]);
+
+  const canonicalizeAssignedTo = (raw: any): string => {
+    const k = normalizeTechKey(raw);
+    if (!k) return '';
+    return techAliasToCanonical.map.get(k) || k;
+  };
+
   useEffect(() => {
     let disposed = false;
     async function load() {
@@ -416,6 +565,114 @@ const EODWindow: React.FC = () => {
     return { woTotals: wo, saTotals: sa, grandTotal, grandPaid, grandRemaining };
   }, [unified]);
 
+  const COMMISSION_RATE = 0.05;
+
+  const salesInRange = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
+    return (sales || []).filter(sa => {
+      const d = extractRecordDate(sa);
+      if (!d) return false;
+      const ts = d.getTime();
+      return ts >= min && ts <= max;
+    });
+  }, [sales, rangeKey]);
+
+  const salesCategoryTotals = useMemo(() => {
+    const map = new Map<string, { count: number; gross: number; net: number }>();
+    for (const sa of salesInRange) {
+      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
+      for (const [cat, gross] of b.byCategoryGross.entries()) {
+        const net = b.byCategoryNet.get(cat) || 0;
+        const prev = map.get(cat) || { count: 0, gross: 0, net: 0 };
+        prev.count += 1;
+        prev.gross += gross;
+        prev.net += net;
+        map.set(cat, prev);
+      }
+    }
+    const rows = Array.from(map.entries()).map(([category, v]) => ({ category, count: v.count, gross: round2(v.gross), net: round2(v.net) }));
+    rows.sort((a, b) => b.net - a.net);
+    return rows;
+  }, [salesInRange]);
+
+  const commissionSummary = useMemo(() => {
+    let commissionableNet = 0;
+    let commission = 0;
+    let consultationNet = 0;
+    for (const sa of salesInRange) {
+      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
+      commissionableNet += b.commissionableNet;
+      consultationNet += b.consultationNet;
+      commission += b.commission;
+    }
+    return {
+      commissionableNet: round2(commissionableNet),
+      consultationNet: round2(consultationNet),
+      commission: round2(commission),
+    };
+  }, [salesInRange]);
+
+  const commissionByTechnician = useMemo(() => {
+    const map = new Map<string, { salesCount: number; commissionableNet: number; commission: number }>();
+    for (const sa of salesInRange) {
+      const tech = canonicalizeAssignedTo(sa?.assignedTo);
+      if (!tech) continue;
+      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
+      const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, commission: 0 };
+      prev.salesCount += 1;
+      prev.commissionableNet += b.commissionableNet;
+      prev.commission += b.commission;
+      map.set(tech, prev);
+    }
+    return map;
+  }, [salesInRange, techAliasToCanonical]);
+
+  const technicianCommissionRows = useMemo(() => {
+    const rows = Array.from(commissionByTechnician.entries()).map(([tech, v]) => ({
+      tech,
+      salesCount: v.salesCount,
+      commissionableNet: round2(v.commissionableNet),
+      commission: round2(v.commission),
+    }));
+    rows.sort((a, b) => b.commission - a.commission);
+    return rows;
+  }, [commissionByTechnician]);
+
+  const techSummaryKey = useMemo(() => normalizeTechKey(techSummary), [techSummary]);
+
+  const techSummarySales = useMemo(() => {
+    if (!techSummaryKey) return [] as Array<{ id: any; date: Date; title: string; totalNet: number; commission: number }>;
+    const rows: Array<{ id: any; date: Date; title: string; totalNet: number; commission: number }> = [];
+    for (const sa of salesInRange) {
+      if (canonicalizeAssignedTo(sa?.assignedTo) !== techSummaryKey) continue;
+      const date = extractRecordDate(sa) || new Date(0);
+      const items = normalizeSaleItems(sa);
+      const title = (items.find(it => (it.description || '').trim())?.description || sa?.itemDescription || 'Sale').toString();
+      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
+      rows.push({ id: sa?.id, date, title, totalNet: b.net, commission: b.commission });
+    }
+    rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return rows;
+  }, [salesInRange, techSummaryKey, techAliasToCanonical]);
+
+  const techSummaryWorkOrders = useMemo(() => {
+    if (!techSummaryKey) return [] as UnifiedRow[];
+    const rows = unified.filter(r => r.kind === 'work' && canonicalizeAssignedTo(r.assignedTo) === techSummaryKey);
+    rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return rows;
+  }, [unified, techSummaryKey, techAliasToCanonical]);
+
+  const techSummaryTotals = useMemo(() => {
+    if (!techSummaryKey) return null;
+    const salesCount = techSummarySales.length;
+    const salesNet = round2(techSummarySales.reduce((sum, r) => sum + (Number(r.totalNet) || 0), 0));
+    const commission = round2(techSummarySales.reduce((sum, r) => sum + (Number(r.commission) || 0), 0));
+    const workCount = techSummaryWorkOrders.length;
+    const workTotal = round2(techSummaryWorkOrders.reduce((sum, r) => sum + (Number(r.total) || 0), 0));
+    return { salesCount, salesNet, commission, workCount, workTotal };
+  }, [techSummaryKey, techSummarySales, techSummaryWorkOrders]);
+
   const paymentSummary = useMemo(() => {
     let cashTender = 0;
     let cashChange = 0;
@@ -531,13 +788,18 @@ const EODWindow: React.FC = () => {
     lines.push(`Cash to deposit: ${formatCurrency(paymentSummary.cashNet)}`);
     const grandIntake = paymentSummary.cashTender + paymentSummary.card + paymentSummary.other;
     lines.push(`Grand totals: Card ${formatCurrency(paymentSummary.card + paymentSummary.other)} · Cash ${formatCurrency(paymentSummary.cashTender)} · Combined ${formatCurrency(grandIntake)}`);
+    if (salesInRange.length) {
+      lines.push(`Commissionable sales (non-consultation): ${formatCurrency(commissionSummary.commissionableNet)}`);
+      lines.push(`Consultation sales (excluded): ${formatCurrency(commissionSummary.consultationNet)}`);
+      lines.push(`Commission @ ${(COMMISSION_RATE * 100).toFixed(0)}%: ${formatCurrency(commissionSummary.commission)}`);
+    }
     if (settings.includeBatchInfo && batchInfo) {
       const last = batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run';
       const backup = batchInfo?.lastBackupPath ? `Backup: ${batchInfo.lastBackupPath}` : '';
       lines.push(`Batch Out: ${last}${backup ? ` — ${backup}` : ''}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, paymentSummary.cashChange, paymentSummary.cashNet, paymentSummary.cashTender, paymentSummary.card, paymentSummary.other, settings.includeBatchInfo, workStatusCounts.closed, workStatusCounts.open, workStatusCounts.total]);
+  }, [batchInfo, commissionSummary.commission, commissionSummary.commissionableNet, commissionSummary.consultationNet, paymentSummary.cashChange, paymentSummary.cashNet, paymentSummary.cashTender, paymentSummary.card, paymentSummary.other, salesInRange.length, settings.includeBatchInfo, workStatusCounts.closed, workStatusCounts.open, workStatusCounts.total]);
 
   const presetBody = useMemo(() => {
     return [`Daily batch for ${rangeLabel(range, start, end)}`, reportLines].filter(Boolean).join('\n\n');
@@ -821,6 +1083,176 @@ const EODWindow: React.FC = () => {
                   <div className="pt-2 border-t border-zinc-800 text-xs text-zinc-400">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
                 </div>
               </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Commission</h3>
+                  <div className="text-xs text-zinc-500">{(COMMISSION_RATE * 100).toFixed(0)}% (non-consultation)</div>
+                </div>
+                <div className="mt-2 space-y-2 text-sm">
+                  <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable sales</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation (excluded)</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
+                  <div className="flex items-center justify-between text-[#39FF14]"><span className="text-zinc-100">Commission</span><span className="font-semibold">{formatCurrency(commissionSummary.commission)}</span></div>
+                </div>
+                <div className="text-[11px] text-zinc-500 mt-2">Uses sales item categories. Discount is allocated proportionally across categories.</div>
+              </div>
+
+              <div className="col-span-8 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold">Sales by Category</h3>
+                  <div className="text-xs text-zinc-500">{salesInRange.length} sale record{salesInRange.length === 1 ? '' : 's'}</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                        <th className="py-2 pr-4">Category</th>
+                        <th className="py-2 pr-4 text-right">Tickets</th>
+                        <th className="py-2 pr-4 text-right">Gross</th>
+                        <th className="py-2 text-right">Net (after discount)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {salesCategoryTotals.map(r => (
+                        <tr key={r.category} className="hover:bg-zinc-800/40">
+                          <td className="py-2 pr-4">{r.category}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{r.count}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.gross)}</td>
+                          <td className="py-2 text-right tabular-nums font-semibold">{formatCurrency(r.net)}</td>
+                        </tr>
+                      ))}
+                      {!salesCategoryTotals.length && (
+                        <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No sales in range.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h3 className="text-lg font-semibold">Technician Summary</h3>
+                  <div className="text-xs text-zinc-500">Sales + work orders for a technician (commission from sales only)</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-zinc-400">Technician</label>
+                  <select
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm min-w-[220px]"
+                    value={techSummary}
+                    onChange={e => setTechSummary(e.target.value)}
+                  >
+                    <option value="">All technicians</option>
+                    {technicianOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {!techSummaryKey ? (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                        <th className="py-2 pr-4">Technician</th>
+                        <th className="py-2 pr-4 text-right">Sales</th>
+                        <th className="py-2 pr-4 text-right">Commissionable</th>
+                        <th className="py-2 text-right">Commission</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {technicianCommissionRows.map(r => (
+                        <tr key={r.tech} className="hover:bg-zinc-800/40">
+                          <td className="py-2 pr-4">{techAliasToCanonical.labelMap.get(r.tech) || r.tech}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{r.salesCount}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.commissionableNet)}</td>
+                          <td className="py-2 text-right tabular-nums font-semibold text-[#39FF14]">{formatCurrency(r.commission)}</td>
+                        </tr>
+                      ))}
+                      {!technicianCommissionRows.length && (
+                        <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No commissionable sales in range.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="mt-3 grid grid-cols-12 gap-3">
+                  <div className="col-span-12 md:col-span-4 bg-zinc-800 border border-zinc-700 rounded p-3">
+                    <div className="text-xs text-zinc-400">Sales (net)</div>
+                    <div className="text-2xl font-semibold">{formatCurrency(techSummaryTotals?.salesNet || 0)}</div>
+                    <div className="text-[11px] text-zinc-400">{techSummaryTotals?.salesCount || 0} sale record{(techSummaryTotals?.salesCount || 0) === 1 ? '' : 's'}</div>
+                    <div className="mt-3 text-xs text-zinc-400">Commission</div>
+                    <div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(techSummaryTotals?.commission || 0)}</div>
+                    <div className="mt-3 text-xs text-zinc-400">Work orders</div>
+                    <div className="text-xl font-semibold">{techSummaryTotals?.workCount || 0}</div>
+                    <div className="text-[11px] text-zinc-400">{formatCurrency(techSummaryTotals?.workTotal || 0)} total</div>
+                  </div>
+
+                  <div className="col-span-12 md:col-span-8 grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
+                      <div className="text-sm font-semibold mb-2">Recent Sales</div>
+                      <div className="max-h-[260px] overflow-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-xs uppercase tracking-wide text-zinc-400">
+                              <th className="py-1 pr-2 text-left">Invoice</th>
+                              <th className="py-1 pr-2 text-left">Date</th>
+                              <th className="py-1 pr-2 text-right">Net</th>
+                              <th className="py-1 text-right">Comm</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-700">
+                            {techSummarySales.slice(0, 15).map(r => (
+                              <tr key={String(r.id)} className="hover:bg-zinc-900/40">
+                                <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
+                                <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
+                                <td className="py-1 pr-2 text-right tabular-nums">{formatCurrency(r.totalNet)}</td>
+                                <td className="py-1 text-right tabular-nums text-[#39FF14]">{formatCurrency(r.commission)}</td>
+                              </tr>
+                            ))}
+                            {!techSummarySales.length && (
+                              <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No sales for this tech in range.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
+                      <div className="text-sm font-semibold mb-2">Recent Work Orders</div>
+                      <div className="max-h-[260px] overflow-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-xs uppercase tracking-wide text-zinc-400">
+                              <th className="py-1 pr-2 text-left">Invoice</th>
+                              <th className="py-1 pr-2 text-left">Date</th>
+                              <th className="py-1 pr-2 text-left">Status</th>
+                              <th className="py-1 text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-700">
+                            {techSummaryWorkOrders.slice(0, 15).map(r => (
+                              <tr key={String(r.id)} className="hover:bg-zinc-900/40">
+                                <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
+                                <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
+                                <td className="py-1 pr-2">{(r.status || '').toString()}</td>
+                                <td className="py-1 text-right tabular-nums">{formatCurrency(r.total)}</td>
+                              </tr>
+                            ))}
+                            {!techSummaryWorkOrders.length && (
+                              <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No work orders for this tech in range.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {listMeta ? (

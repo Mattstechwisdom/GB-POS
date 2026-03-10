@@ -65,9 +65,12 @@ function New-Release([hashtable]$Headers, [string]$RepoSlug, [string]$TagName, [
     body        = $Body
     draft       = $false
     prerelease  = $false
-  } | ConvertTo-Json
+  }
 
-  return Invoke-RestMethod -Method Post -Headers $Headers -Uri "https://api.github.com/repos/$RepoSlug/releases" -Body $payload -ContentType 'application/json'
+  # Windows PowerShell can send string bodies as UTF-16; GitHub expects UTF-8 JSON.
+  $json = ($payload | ConvertTo-Json -Compress)
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+  return Invoke-RestMethod -Method Post -Headers $Headers -Uri "https://api.github.com/repos/$RepoSlug/releases" -Body $bytes -ContentType 'application/json; charset=utf-8'
 }
 
 function Send-ReleaseAsset([hashtable]$Headers, [string]$UploadUrlBase, [string]$FilePath) {

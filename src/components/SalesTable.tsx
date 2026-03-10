@@ -8,9 +8,10 @@ type Props = {
   technicianFilter?: string;
   dateFrom?: string;
   dateTo?: string;
+  invoiceQuery?: string;
 };
 
-const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
+const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dateTo = '', invoiceQuery = '' }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
@@ -67,7 +68,16 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
   const filtered = useMemo(() => {
     const from = dateFrom ? new Date(dateFrom) : null;
     const to = dateTo ? new Date(dateTo) : null;
+    const qRaw = (invoiceQuery || '').trim().toLowerCase();
+    const qDigits = qRaw.replace(/\D/g, '');
     return rows.filter((s: any) => {
+      if (qRaw) {
+        const idNum = typeof s.id === 'number' ? s.id : Number(s.id);
+        const formatted = Number.isFinite(idNum) ? `gb${String(idNum).padStart(7, '0')}` : '';
+        const idStr = Number.isFinite(idNum) ? String(idNum) : (s.id == null ? '' : String(s.id));
+        const ok = (qDigits ? idStr.includes(qDigits) : false) || (formatted && formatted.includes(qRaw)) || (idStr && idStr.toLowerCase().includes(qRaw));
+        if (!ok) return false;
+      }
       if (technicianFilter) {
         const at = (s.assignedTo || '').toString();
         if (technicianFilter === '__unassigned') { if (at) return false; }
@@ -85,7 +95,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
       const bd = new Date(b.checkInAt || b.createdAt || 0).getTime();
       return bd - ad;
     });
-  }, [rows, technicianFilter, dateFrom, dateTo]);
+  }, [rows, technicianFilter, dateFrom, dateTo, techIndex, invoiceQuery]);
 
   useEffect(() => {
     const MAX_PAGES = 10;

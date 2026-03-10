@@ -64,6 +64,12 @@ const AppInner: React.FC<{
   setMode,
 }) => {
   const { setPage } = usePagination();
+  const [invoiceQuery, setInvoiceQuery] = useState<string>('');
+
+  useEffect(() => {
+    // Keep invoice search scoped to Sales mode.
+    if (mode !== 'sales' && invoiceQuery) setInvoiceQuery('');
+  }, [mode, invoiceQuery]);
 
   useEffect(() => {
     setPage(1);
@@ -83,6 +89,8 @@ const AppInner: React.FC<{
             onOpenCustomerSearch={() => setShowCustomerSearch(true)}
             mode={mode}
             onModeChange={setMode}
+            invoiceQuery={invoiceQuery}
+            onInvoiceQueryChange={setInvoiceQuery}
           />
           <div>
             <RecentCustomers />
@@ -95,7 +103,7 @@ const AppInner: React.FC<{
               <WorkOrdersTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
             )}
             {mode === 'sales' && (
-              <SalesTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
+              <SalesTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} />
             )}
             {mode === 'all' && (
               <UnifiedList technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />

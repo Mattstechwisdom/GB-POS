@@ -12,9 +12,11 @@ interface Props {
   onOpenCustomerSearch?: () => void;
   mode?: 'workorders' | 'sales' | 'all';
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
+  invoiceQuery?: string;
+  onInvoiceQueryChange?: (v: string) => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
   useEffect(() => {
@@ -123,6 +125,18 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           })}
         </select>
       </div>
+      {mode === 'sales' && (
+        <div>
+          <label className="block text-xs mb-1 leading-none">Invoice #</label>
+          <input
+            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+            placeholder="GB0000123 or 123"
+            value={invoiceQuery}
+            onChange={e => onInvoiceQueryChange && onInvoiceQueryChange(e.target.value)}
+          />
+          <div className="text-[11px] text-zinc-500 mt-1">Filters the Sales list by invoice number.</div>
+        </div>
+      )}
       {mode !== 'sales' && (
       <div>
         <label className="block text-xs mb-1 leading-none">Checked-in between</label>
