@@ -130,7 +130,10 @@ if (-not $release) {
   Write-Host "GitHub Release already exists: $($release.html_url)"
 }
 
-$uploadUrlBase = ($release.upload_url -replace '\{\?name,label\}$', '')
+$uploadUrlBase = ([string]$release.upload_url).Trim()
+# GitHub returns an RFC6570 URL template like: .../assets{?name,label}
+# Strip any template portion to get a valid base URL.
+$uploadUrlBase = ($uploadUrlBase -replace '\{.*$', '')
 if (-not $uploadUrlBase) {
   throw 'Missing upload_url from GitHub release response.'
 }
