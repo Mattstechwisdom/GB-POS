@@ -73,7 +73,7 @@ function New-Release([hashtable]$Headers, [string]$RepoSlug, [string]$TagName, [
 function Send-ReleaseAsset([hashtable]$Headers, [string]$UploadUrlBase, [string]$FilePath) {
   $name = [System.IO.Path]::GetFileName($FilePath)
   $nameEsc = [uri]::EscapeDataString($name)
-  $u = "$UploadUrlBase?name=$nameEsc"
+  $u = "${UploadUrlBase}?name=$nameEsc"
 
   Write-Host "Uploading: $name"
   Invoke-WebRequest -Method Post -Headers $Headers -ContentType 'application/octet-stream' -InFile $FilePath -Uri $u | Out-Null
