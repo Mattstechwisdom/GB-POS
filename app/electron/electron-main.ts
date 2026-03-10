@@ -2,6 +2,7 @@ const electron = require('electron');
 const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electron;
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const { pathToFileURL } = require('url');
 const os = require('os');
 const { spawn } = require('child_process');
@@ -700,6 +701,72 @@ function compareVersions(aRaw: string, bRaw: string): number {
   return 0;
 }
 
+function getGitHubRepoSlug(): string | null {
+  try {
+    const pkg = require(path.join(app.getAppPath(), 'package.json'));
+    const repoUrl = pkg?.repository?.url;
+    if (typeof repoUrl !== 'string' || !repoUrl.trim()) return null;
+    const cleaned = repoUrl.trim().replace(/\.git$/i, '');
+    const m = cleaned.match(/github\.com[:/](?<slug>[^/]+\/[^/.]+)$/i);
+    return m?.groups?.slug || null;
+  } catch {
+    return null;
+  }
+}
+
+function getGitHubFeedConfig(): { provider: 'github'; owner: string; repo: string; private: false } | null {
+  const slug = getGitHubRepoSlug();
+  if (!slug || !slug.includes('/')) return null;
+  const [owner, repo] = slug.split('/');
+  if (!owner || !repo) return null;
+  return { provider: 'github', owner, repo, private: false };
+}
+
+async function fetchLatestGitHubReleaseVersion(): Promise<{ version?: string; releaseName?: string } | null> {
+  const slug = getGitHubRepoSlug();
+  if (!slug) return null;
+
+  const url = `https://api.github.com/repos/${slug}/releases/latest`;
+  return new Promise((resolve) => {
+    try {
+      const req = https.get(url, {
+        headers: {
+          'User-Agent': 'gbpos-updater',
+          Accept: 'application/vnd.github+json',
+        },
+      }, (res: any) => {
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => { raw += chunk; });
+        res.on('end', () => {
+          try {
+            if (!raw || Number(res.statusCode || 0) >= 400) {
+              appendStartupLog(`github latest release check failed status=${String(res.statusCode || '')}`);
+              resolve(null);
+              return;
+            }
+            const json = JSON.parse(raw);
+            const version = normalizeVersion(json?.tag_name || json?.name || '');
+            const releaseName = typeof json?.name === 'string' ? json.name : undefined;
+            resolve(version ? { version, releaseName } : null);
+          } catch (e: any) {
+            appendStartupLog(`github latest release parse failed: ${String(e?.message || e)}`);
+            resolve(null);
+          }
+        });
+      });
+      req.on('error', (e: any) => {
+        appendStartupLog(`github latest release request failed: ${String(e?.message || e)}`);
+        resolve(null);
+      });
+      req.end();
+    } catch (e: any) {
+      appendStartupLog(`github latest release setup failed: ${String(e?.message || e)}`);
+      resolve(null);
+    }
+  });
+}
+
 function readUpdateConfig(): { skippedVersion?: string } {
   try {
     const p = path.join(resolveDataRoot(), 'update-config.json');
@@ -784,6 +851,17 @@ function setupAutoUpdater() {
   try {
     if (!autoUpdater) return;
     // electron-updater uses electron-builder publish config in packaged builds.
+    const feed = getGitHubFeedConfig();
+    if (feed && typeof autoUpdater.setFeedURL === 'function') {
+      try {
+        autoUpdater.setFeedURL(feed);
+        appendStartupLog(`autoUpdater feed set github ${feed.owner}/${feed.repo}`);
+      } catch (e: any) {
+        appendStartupLog(`autoUpdater setFeedURL failed: ${String(e?.message || e)}`);
+      }
+    } else {
+      appendStartupLog('autoUpdater feed not explicitly configured; falling back to packaged publish metadata');
+    }
     autoUpdater.autoDownload = false;
     autoUpdater.on('checking-for-update', () => broadcastUpdateEvent({ kind: 'checking' }));
     autoUpdater.on('update-available', (info: any) => broadcastUpdateEvent({
@@ -1347,12 +1425,22 @@ ipcMain.handle('update:check', async () => {
       latestVersion = res?.updateInfo?.version ? normalizeVersion(res.updateInfo.version) : undefined;
       releaseName = res?.updateInfo?.releaseName;
       releaseNotes = res?.updateInfo?.releaseNotes;
+      appendStartupLog(`update:check current=${currentVersion} latest=${String(latestVersion || '')}`);
     } catch (e: any) {
       // Update checks should never block the POS from starting.
       // Common case: GitHub 404 for private repos or missing auth. Treat as “no update”.
       const msg = String(e?.message || e);
       appendStartupLog(`update:check failed (non-fatal): ${msg}`);
       return { ok: true, updateAvailable: false, currentVersion, warning: msg };
+    }
+
+    if (!latestVersion) {
+      const gh = await fetchLatestGitHubReleaseVersion();
+      if (gh?.version) {
+        latestVersion = gh.version;
+        releaseName = releaseName || gh.releaseName;
+        appendStartupLog(`update:check fallback github latest=${latestVersion}`);
+      }
     }
 
     const updateAvailable = !!(latestVersion && compareVersions(currentVersion, latestVersion) < 0);
