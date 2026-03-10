@@ -76,7 +76,8 @@ function Send-ReleaseAsset([hashtable]$Headers, [string]$UploadUrlBase, [string]
   $u = "${UploadUrlBase}?name=$nameEsc"
 
   Write-Host "Uploading: $name"
-  Invoke-WebRequest -Method Post -Headers $Headers -ContentType 'application/octet-stream' -InFile $FilePath -Uri $u | Out-Null
+  # -UseBasicParsing prevents Windows PowerShell 5.1 from prompting about the IE engine.
+  Invoke-WebRequest -Method Post -Headers $Headers -ContentType 'application/octet-stream' -InFile $FilePath -Uri $u -UseBasicParsing | Out-Null
 }
 
 Read-GitHubTokenToEnv

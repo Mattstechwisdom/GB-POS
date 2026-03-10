@@ -27,6 +27,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
 
+  const selectedRow = useMemo(() => {
+    if (!selected) return null;
+    return items.find(i => i.id === selected) || null;
+  }, [items, selected]);
+
   useEffect(() => {
     if (items.length === 0) {
       setSelected(null);
@@ -36,6 +41,15 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       setSelected(items[0].id);
     }
   }, [items, selected]);
+
+  // Keep an always-available inline editor for the currently selected row.
+  useEffect(() => {
+    if (!selectedRow) {
+      setEditing(null);
+      return;
+    }
+    setEditing(prev => (prev?.id === selectedRow.id ? prev : { ...selectedRow }));
+  }, [selectedRow?.id]);
 
   const ctx = useContextMenu<SaleItemRow>();
   const ctxRow = ctx.state.data;
@@ -201,7 +215,12 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
 
       {editing && (
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
-          <label className="block text-xs text-zinc-400">Item</label>
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
+            <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={editing.description || ''}>{editing.description || ''}</div>
+          </div>
+
+          <label className="block text-xs text-zinc-400 mt-2">Item</label>
           <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
           <div className="flex gap-2 mt-2">
             <div className="w-1/3">
@@ -217,6 +236,36 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               />
             </div>
           </div>
+
+          <div className="flex gap-2 mt-2">
+            <div className="w-1/2">
+              <label className="block text-xs text-zinc-400">Category</label>
+              <select
+                className="w-full bg-zinc-900 rounded px-2 py-1"
+                value={(editing.category || '') as any}
+                onChange={e => setEditing({ ...editing, category: (e.target.value || undefined) as any })}
+              >
+                <option value="">—</option>
+                <option value="Device">Device</option>
+                <option value="Accessory">Accessory</option>
+                <option value="Consultation">Consultation</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="w-1/2">
+              <label className="block text-xs text-zinc-400">In stock</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={!!editing.inStock}
+                  onChange={e => setEditing({ ...editing, inStock: e.target.checked })}
+                />
+                <span className="text-xs text-zinc-400">Available immediately</span>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2 mt-2">
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Condition</label>
@@ -248,8 +297,22 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
             />
           </div>
           <div className="flex gap-2 mt-2 justify-end">
-            <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setEditing(null)}>Cancel</button>
-            <button className="px-3 py-1 bg-brand text-black rounded" onClick={() => { onChange(items.map(i => i.id === editing.id ? editing : i)); setEditing(null); }}>Save</button>
+            <button
+              className="px-3 py-1 bg-zinc-800 rounded"
+              onClick={() => setEditing(selectedRow ? { ...selectedRow } : null)}
+              disabled={!selectedRow}
+            >
+              Reset
+            </button>
+            <button
+              className="px-3 py-1 bg-brand text-black rounded"
+              onClick={() => {
+                onChange(items.map(i => (i.id === editing.id ? editing : i)));
+                // Keep editor open on the selected row
+              }}
+            >
+              Save
+            </button>
           </div>
         </div>
       )}

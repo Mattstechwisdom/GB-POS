@@ -39,6 +39,7 @@ type SaleRecord = {
   repairCompletionDate?: string | null;
   checkoutDate?: string | null;
   clientPickupDate?: string | null;
+  intakeSource?: string;
   discount?: number;
   amountPaid?: number;
   taxRate?: number;
@@ -88,6 +89,7 @@ const SaleWindow: React.FC = () => {
     checkInAt: new Date().toISOString(),
     repairCompletionDate: null,
     checkoutDate: null,
+    intakeSource: '',
     discount: 0,
     amountPaid: 0,
     taxRate: 8,
@@ -510,7 +512,7 @@ const SaleWindow: React.FC = () => {
       password: '',
       model: '',
       serial: '',
-      intakeSource: '',
+      intakeSource: (sale as any).intakeSource || '',
       discount: sale.discount || 0,
       amountPaid: sale.amountPaid || 0,
       taxRate: sale.taxRate || 0,

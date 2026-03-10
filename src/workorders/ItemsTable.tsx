@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import MoneyInput from '@/components/MoneyInput';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -21,6 +22,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
 
+  const selectedRow = useMemo(() => {
+    if (!selected) return null;
+    return items.find(i => i.id === selected) || null;
+  }, [items, selected]);
+
   useEffect(() => {
     if (items.length === 0) {
       setSelected(null);
@@ -30,6 +36,15 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
       setSelected(items[0].id);
     }
   }, [items, selected]);
+
+  // Keep an always-available inline editor for the currently selected row.
+  useEffect(() => {
+    if (!selectedRow) {
+      setEditing(null);
+      return;
+    }
+    setEditing(prev => (prev?.id === selectedRow.id ? prev : { ...selectedRow }));
+  }, [selectedRow?.id]);
 
   const ctx = useContextMenu<WorkOrderItemRow>();
   const ctxRow = ctx.state.data;
@@ -168,15 +183,82 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
 
       {editing && (
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
-          <label className="block text-xs text-zinc-400">Repair</label>
-          <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.repair} onChange={e => setEditing({ ...editing, repair: e.target.value })} />
-          <div className="flex gap-2 mt-2">
-            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" type="number" inputMode="decimal" min={0} step={0.01} value={Number(editing.parts || 0)} onChange={e => setEditing({ ...editing, parts: Number(e.target.value) || 0 })} />
-            <input className="w-1/2 bg-zinc-900 rounded px-2 py-1" type="number" inputMode="decimal" min={0} step={0.01} value={Number(editing.labor || 0)} onChange={e => setEditing({ ...editing, labor: Number(e.target.value) || 0 })} />
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
+            <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div>
+              <label className="block text-xs text-zinc-400">Device</label>
+              <input
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={editing.device || ''}
+                onChange={e => setEditing({ ...editing, device: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Status</label>
+              <select
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={(editing.status as any) || 'pending'}
+                onChange={e => setEditing({ ...editing, status: e.target.value })}
+              >
+                <option value="pending">pending</option>
+                <option value="done">done</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-zinc-400">Repair</label>
+              <input
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={editing.repair || ''}
+                onChange={e => setEditing({ ...editing, repair: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Parts</label>
+              <MoneyInput
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={Number(editing.parts || 0)}
+                onValueChange={(v) => setEditing({ ...editing, parts: Number(v || 0) || 0 })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Labor</label>
+              <MoneyInput
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={Number(editing.labor || 0)}
+                onValueChange={(v) => setEditing({ ...editing, labor: Number(v || 0) || 0 })}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-zinc-400">Note</label>
+              <input
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={editing.note || ''}
+                onChange={e => setEditing({ ...editing, note: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
           </div>
           <div className="flex gap-2 mt-2 justify-end">
-            <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setEditing(null)}>Cancel</button>
-            <button className="px-3 py-1 bg-brand text-black rounded" onClick={() => { onChange(items.map(i => i.id === editing.id ? editing : i)); setEditing(null); }}>Save</button>
+            <button
+              className="px-3 py-1 bg-zinc-800 rounded"
+              onClick={() => setEditing(selectedRow ? { ...selectedRow } : null)}
+              disabled={!selectedRow}
+            >
+              Reset
+            </button>
+            <button
+              className="px-3 py-1 bg-brand text-black rounded"
+              onClick={() => {
+                onChange(items.map(i => (i.id === editing.id ? editing : i)));
+                // Keep editor open on the selected row
+              }}
+            >
+              Save
+            </button>
           </div>
         </div>
       )}
