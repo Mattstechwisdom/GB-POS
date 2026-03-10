@@ -67,7 +67,7 @@ function New-Release([hashtable]$Headers, [string]$RepoSlug, [string]$TagName, [
     prerelease  = $false
   } | ConvertTo-Json
 
-  return Invoke-RestMethod -Method Post -Headers $Headers -Uri "https://api.github.com/repos/$RepoSlug/releases" -Body $payload
+  return Invoke-RestMethod -Method Post -Headers $Headers -Uri "https://api.github.com/repos/$RepoSlug/releases" -Body $payload -ContentType 'application/json'
 }
 
 function Send-ReleaseAsset([hashtable]$Headers, [string]$UploadUrlBase, [string]$FilePath) {
