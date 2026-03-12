@@ -7,6 +7,8 @@ const { pathToFileURL } = require('url');
 const os = require('os');
 const { spawn } = require('child_process');
 
+const DEFAULT_GITHUB_REPO_SLUG = 'Mattstechwisdom/GB-POS';
+
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
@@ -701,17 +703,32 @@ function compareVersions(aRaw: string, bRaw: string): number {
   return 0;
 }
 
+function getRecordActivityAt(it: any): string {
+  if (!it || typeof it !== 'object') return '';
+  return String(
+    it.updatedAt
+    || it.checkoutDate
+    || it.repairCompletionDate
+    || it.clientPickupDate
+    || it.checkInAt
+    || it.createdAt
+    || ''
+  );
+}
+
 function getGitHubRepoSlug(): string | null {
   try {
     const pkg = require(path.join(app.getAppPath(), 'package.json'));
     const repoUrl = pkg?.repository?.url;
-    if (typeof repoUrl !== 'string' || !repoUrl.trim()) return null;
-    const cleaned = repoUrl.trim().replace(/\.git$/i, '');
-    const m = cleaned.match(/github\.com[:/](?<slug>[^/]+\/[^/.]+)$/i);
-    return m?.groups?.slug || null;
+    if (typeof repoUrl === 'string' && repoUrl.trim()) {
+      const cleaned = repoUrl.trim().replace(/\.git$/i, '');
+      const m = cleaned.match(/github\.com[:/](?<slug>[^/]+\/[^/.]+)$/i);
+      if (m?.groups?.slug) return m.groups.slug;
+    }
   } catch {
-    return null;
+    // ignore
   }
+  return DEFAULT_GITHUB_REPO_SLUG;
 }
 
 function getGitHubFeedConfig(): { provider: 'github'; owner: string; repo: string; private: false } | null {
@@ -722,7 +739,7 @@ function getGitHubFeedConfig(): { provider: 'github'; owner: string; repo: strin
   return { provider: 'github', owner, repo, private: false };
 }
 
-async function fetchLatestGitHubReleaseVersion(): Promise<{ version?: string; releaseName?: string } | null> {
+async function fetchLatestGitHubReleaseInfo(): Promise<{ version?: string; releaseName?: string; releaseNotes?: string; htmlUrl?: string } | null> {
   const slug = getGitHubRepoSlug();
   if (!slug) return null;
 
@@ -748,7 +765,9 @@ async function fetchLatestGitHubReleaseVersion(): Promise<{ version?: string; re
             const json = JSON.parse(raw);
             const version = normalizeVersion(json?.tag_name || json?.name || '');
             const releaseName = typeof json?.name === 'string' ? json.name : undefined;
-            resolve(version ? { version, releaseName } : null);
+            const releaseNotes = typeof json?.body === 'string' ? json.body : undefined;
+            const htmlUrl = typeof json?.html_url === 'string' ? json.html_url : undefined;
+            resolve(version ? { version, releaseName, releaseNotes, htmlUrl } : null);
           } catch (e: any) {
             appendStartupLog(`github latest release parse failed: ${String(e?.message || e)}`);
             resolve(null);
@@ -1413,34 +1432,39 @@ ipcMain.handle('update:check', async () => {
   try {
     const currentVersion = normalizeVersion(app.getVersion());
     if (!app.isPackaged) return { ok: true, notPackaged: true, updateAvailable: false, currentVersion };
-    if (!autoUpdater) return { ok: true, updateAvailable: false, currentVersion, warning: 'Updater unavailable on this machine.' };
 
     const cfg = readUpdateConfig();
 
     let latestVersion: string | undefined;
     let releaseName: string | undefined;
     let releaseNotes: any;
-    try {
-      const res = await autoUpdater.checkForUpdates();
-      latestVersion = res?.updateInfo?.version ? normalizeVersion(res.updateInfo.version) : undefined;
-      releaseName = res?.updateInfo?.releaseName;
-      releaseNotes = res?.updateInfo?.releaseNotes;
-      appendStartupLog(`update:check current=${currentVersion} latest=${String(latestVersion || '')}`);
-    } catch (e: any) {
-      // Update checks should never block the POS from starting.
-      // Common case: GitHub 404 for private repos or missing auth. Treat as “no update”.
-      const msg = String(e?.message || e);
-      appendStartupLog(`update:check failed (non-fatal): ${msg}`);
-      return { ok: true, updateAvailable: false, currentVersion, warning: msg };
+    let warning: string | undefined;
+
+    // Primary source of truth for startup gating: GitHub latest release.
+    const gh = await fetchLatestGitHubReleaseInfo();
+    if (gh?.version) {
+      latestVersion = gh.version;
+      releaseName = gh.releaseName;
+      releaseNotes = gh.releaseNotes;
+      appendStartupLog(`update:check github current=${currentVersion} latest=${latestVersion}`);
     }
 
-    if (!latestVersion) {
-      const gh = await fetchLatestGitHubReleaseVersion();
-      if (gh?.version) {
-        latestVersion = gh.version;
-        releaseName = releaseName || gh.releaseName;
-        appendStartupLog(`update:check fallback github latest=${latestVersion}`);
+    // Secondary source: electron-updater provider metadata. Helpful for download/install flow.
+    if (autoUpdater) {
+      try {
+        const res = await autoUpdater.checkForUpdates();
+        const providerVersion = res?.updateInfo?.version ? normalizeVersion(res.updateInfo.version) : undefined;
+        if (!latestVersion && providerVersion) latestVersion = providerVersion;
+        if (!releaseName && res?.updateInfo?.releaseName) releaseName = res.updateInfo.releaseName;
+        if (!releaseNotes && res?.updateInfo?.releaseNotes) releaseNotes = res.updateInfo.releaseNotes;
+        appendStartupLog(`update:check provider current=${currentVersion} latest=${String(providerVersion || '')}`);
+      } catch (e: any) {
+        const msg = String(e?.message || e);
+        appendStartupLog(`update:check provider failed (non-fatal): ${msg}`);
+        warning = msg;
       }
+    } else {
+      warning = 'Updater unavailable on this machine.';
     }
 
     const updateAvailable = !!(latestVersion && compareVersions(currentVersion, latestVersion) < 0);
@@ -1453,6 +1477,7 @@ ipcMain.handle('update:check', async () => {
       skippedVersion: cfg?.skippedVersion,
       releaseName,
       releaseNotes,
+      ...(!latestVersion && warning ? { warning } : {}),
     };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
@@ -2065,11 +2090,11 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
   let out = list.slice();
 
   // If limiting without an explicit sortBy, apply a sensible default for time-ordered collections.
-  const effectiveSortBy = sortBy || ((key === 'workOrders' || key === 'sales') ? 'checkInAt' : 'id');
+  const effectiveSortBy = sortBy || ((key === 'workOrders' || key === 'sales') ? 'activityAt' : 'id');
   if (effectiveSortBy) {
     out.sort((a: any, b: any) => {
-      const av = a?.[effectiveSortBy];
-      const bv = b?.[effectiveSortBy];
+      const av = effectiveSortBy === 'activityAt' ? getRecordActivityAt(a) : a?.[effectiveSortBy];
+      const bv = effectiveSortBy === 'activityAt' ? getRecordActivityAt(b) : b?.[effectiveSortBy];
 
       const ai = Number(a?.id ?? 0);
       const bi = Number(b?.id ?? 0);
@@ -2103,6 +2128,10 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
 ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   const db = readDb();
   db[key] = db[key] || [];
+  const nowIso = new Date().toISOString();
+  if (!item || typeof item !== 'object') item = {};
+  if (!item.createdAt) item.createdAt = nowIso;
+  if (!item.updatedAt) item.updatedAt = nowIso;
   // Assign global invoice id sequence (strictly increasing by entry time) for workOrders and sales
   if (key === 'workOrders' || key === 'sales') {
     // Initialize invoiceSeq if missing by scanning both collections

@@ -275,6 +275,101 @@ function collectPayments(record: any) {
   return [];
 }
 
+function paymentAppliedAmount(p: any): number {
+  const applied = Number(p?.applied);
+  if (Number.isFinite(applied) && applied > 0) return applied;
+  const amount = Number(p?.amount ?? p?.tender ?? p?.paid ?? 0);
+  const change = Number(p?.change ?? p?.changeDue ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (Number.isFinite(change) && change > 0) return Math.max(0, amount - change);
+  return amount;
+}
+
+function paymentEventDate(p: any): Date | null {
+  return parseDateValue(p?.at ?? p?.date ?? p?.createdAt ?? p?.timestamp ?? null);
+}
+
+function isDateWithin(date: Date | null, startMs: number, endMs: number) {
+  if (!date) return false;
+  const ts = date.getTime();
+  return ts >= startMs && ts <= endMs;
+}
+
+function getTimelineDate(record: any): Date | null {
+  const payments = collectPayments(record)
+    .map((p: any) => paymentEventDate(p))
+    .filter(Boolean) as Date[];
+  if (payments.length) {
+    payments.sort((a, b) => b.getTime() - a.getTime());
+    return payments[0];
+  }
+
+  const orderedKeys = [
+    'checkoutDate',
+    'repairCompletionDate',
+    'clientPickupDate',
+    'updatedAt',
+    'checkInAt',
+    'createdAt',
+  ];
+  for (const key of orderedKeys) {
+    const d = parseDateValue(record?.[key]);
+    if (d) return d;
+  }
+  return extractRecordDate(record);
+}
+
+function collectedAmountInRange(record: any, startMs: number, endMs: number, fallbackDate?: Date | null): number {
+  const payments = collectPayments(record);
+  if (payments.length) {
+    return round2(payments.reduce((sum: number, p: any) => {
+      const d = paymentEventDate(p);
+      if (!isDateWithin(d, startMs, endMs)) return sum;
+      return sum + paymentAppliedAmount(p);
+    }, 0));
+  }
+
+  const date = fallbackDate || getTimelineDate(record);
+  if (!isDateWithin(date, startMs, endMs)) return 0;
+  const { paid, total } = resolveTotals(record);
+  const value = Number(paid || 0) || Number(total || 0) || 0;
+  return round2(Math.max(0, value));
+}
+
+function latestPaymentDateInRange(record: any, startMs: number, endMs: number): Date | null {
+  const dates = collectPayments(record)
+    .map((p: any) => paymentEventDate(p))
+    .filter((d: Date | null) => isDateWithin(d, startMs, endMs)) as Date[];
+  if (!dates.length) return null;
+  dates.sort((a, b) => b.getTime() - a.getTime());
+  return dates[0];
+}
+
+function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number, commissionRate: number) {
+  const breakdown = computeSaleBreakdown(sale, commissionRate);
+  const net = Number(breakdown.net || 0) || 0;
+  const commissionableRatio = net > 0 ? Math.min(1, Math.max(0, (Number(breakdown.commissionableNet || 0) || 0) / net)) : 0;
+  const consultationRatio = net > 0 ? Math.min(1, Math.max(0, (Number(breakdown.consultationNet || 0) || 0) / net)) : 0;
+
+  const collected = collectedAmountInRange(sale, startMs, endMs, getTimelineDate(sale));
+  if (!(collected > 0)) return null;
+
+  const commissionableCollected = round2(collected * commissionableRatio);
+  const consultationCollected = round2(collected * consultationRatio);
+  const commission = round2(commissionableCollected * commissionRate);
+  const date = latestPaymentDateInRange(sale, startMs, endMs) || getTimelineDate(sale) || new Date(0);
+
+  return {
+    sale,
+    date,
+    collected: round2(collected),
+    commissionableCollected,
+    consultationCollected,
+    commission,
+    breakdown,
+  };
+}
+
 function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null {
   if (!record) return null;
   const enriched = kind === 'sale' && record && typeof record === 'object'
@@ -286,7 +381,7 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
       }
     : record;
 
-  const date = extractRecordDate(enriched);
+  const date = getTimelineDate(enriched);
   if (!date) return null;
   const { total, paid, remaining } = resolveTotals(enriched);
   const payments = collectPayments(enriched);
@@ -550,20 +645,23 @@ const EODWindow: React.FC = () => {
   }, [workOrders, sales]);
 
   const summary = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
     const wo = { count: 0, total: 0, paid: 0, remaining: 0 };
     const sa = { count: 0, total: 0, paid: 0, remaining: 0 };
     unified.forEach(row => {
       const bucket = row.kind === 'work' ? wo : sa;
+      const collected = collectedAmountInRange(row, min, max, row.date);
       bucket.count += 1;
-      bucket.total += row.total;
-      bucket.paid += row.paid;
+      bucket.total += collected;
+      bucket.paid += collected;
       bucket.remaining += row.remaining;
     });
     const grandTotal = wo.total + sa.total;
     const grandPaid = wo.paid + sa.paid;
     const grandRemaining = wo.remaining + sa.remaining;
     return { woTotals: wo, saTotals: sa, grandTotal, grandPaid, grandRemaining };
-  }, [unified]);
+  }, [unified, rangeKey]);
 
   const COMMISSION_RATE = 0.05;
 
@@ -597,36 +695,54 @@ const EODWindow: React.FC = () => {
   }, [salesInRange]);
 
   const commissionSummary = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
     let commissionableNet = 0;
     let commission = 0;
     let consultationNet = 0;
-    for (const sa of salesInRange) {
-      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
-      commissionableNet += b.commissionableNet;
-      consultationNet += b.consultationNet;
-      commission += b.commission;
+    for (const sa of sales || []) {
+      const row = computeSaleCommissionInRange(sa, min, max, COMMISSION_RATE);
+      if (!row) continue;
+      commissionableNet += row.commissionableCollected;
+      consultationNet += row.consultationCollected;
+      commission += row.commission;
     }
     return {
       commissionableNet: round2(commissionableNet),
       consultationNet: round2(consultationNet),
       commission: round2(commission),
     };
-  }, [salesInRange]);
+  }, [sales, rangeKey]);
+
+  const salesCommissionInRange = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
+    const rows = (sales || []).map(sa => computeSaleCommissionInRange(sa, min, max, COMMISSION_RATE)).filter(Boolean) as Array<{
+      sale: any;
+      date: Date;
+      collected: number;
+      commissionableCollected: number;
+      consultationCollected: number;
+      commission: number;
+      breakdown: ReturnType<typeof computeSaleBreakdown>;
+    }>;
+    rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return rows;
+  }, [sales, rangeKey]);
 
   const commissionByTechnician = useMemo(() => {
     const map = new Map<string, { salesCount: number; commissionableNet: number; commission: number }>();
-    for (const sa of salesInRange) {
-      const tech = canonicalizeAssignedTo(sa?.assignedTo);
+    for (const row of salesCommissionInRange) {
+      const tech = canonicalizeAssignedTo(row.sale?.assignedTo);
       if (!tech) continue;
-      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
       const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, commission: 0 };
       prev.salesCount += 1;
-      prev.commissionableNet += b.commissionableNet;
-      prev.commission += b.commission;
+      prev.commissionableNet += row.commissionableCollected;
+      prev.commission += row.commission;
       map.set(tech, prev);
     }
     return map;
-  }, [salesInRange, techAliasToCanonical]);
+  }, [salesCommissionInRange, techAliasToCanonical]);
 
   const technicianCommissionRows = useMemo(() => {
     const rows = Array.from(commissionByTechnician.entries()).map(([tech, v]) => ({
@@ -644,17 +760,16 @@ const EODWindow: React.FC = () => {
   const techSummarySales = useMemo(() => {
     if (!techSummaryKey) return [] as Array<{ id: any; date: Date; title: string; totalNet: number; commission: number }>;
     const rows: Array<{ id: any; date: Date; title: string; totalNet: number; commission: number }> = [];
-    for (const sa of salesInRange) {
+    for (const row of salesCommissionInRange) {
+      const sa = row.sale;
       if (canonicalizeAssignedTo(sa?.assignedTo) !== techSummaryKey) continue;
-      const date = extractRecordDate(sa) || new Date(0);
       const items = normalizeSaleItems(sa);
       const title = (items.find(it => (it.description || '').trim())?.description || sa?.itemDescription || 'Sale').toString();
-      const b = computeSaleBreakdown(sa, COMMISSION_RATE);
-      rows.push({ id: sa?.id, date, title, totalNet: b.net, commission: b.commission });
+      rows.push({ id: sa?.id, date: row.date, title, totalNet: row.collected, commission: row.commission });
     }
     rows.sort((a, b) => b.date.getTime() - a.date.getTime());
     return rows;
-  }, [salesInRange, techSummaryKey, techAliasToCanonical]);
+  }, [salesCommissionInRange, techSummaryKey, techAliasToCanonical]);
 
   const techSummaryWorkOrders = useMemo(() => {
     if (!techSummaryKey) return [] as UnifiedRow[];
@@ -674,6 +789,8 @@ const EODWindow: React.FC = () => {
   }, [techSummaryKey, techSummarySales, techSummaryWorkOrders]);
 
   const paymentSummary = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
     let cashTender = 0;
     let cashChange = 0;
     let card = 0;
@@ -681,6 +798,8 @@ const EODWindow: React.FC = () => {
     let paymentsCount = 0;
 
     const addPayment = (p: any) => {
+      const d = paymentEventDate(p);
+      if (!isDateWithin(d, min, max)) return;
       const amt = Number(p?.amount || p?.tender || p?.paid || 0);
       if (!Number.isFinite(amt)) return;
       const change = Number(p?.change || p?.changeDue || 0);
@@ -699,12 +818,15 @@ const EODWindow: React.FC = () => {
     unified.forEach(row => {
       const payments = Array.isArray(row.payments) ? row.payments : [];
       payments.forEach(addPayment);
-      if (!payments.length && row.paid > 0) addPayment({ amount: row.paid, paymentType: 'unknown', change: 0 });
+      if (!payments.length) {
+        const collected = collectedAmountInRange(row, min, max, row.date);
+        if (collected > 0) addPayment({ amount: collected, paymentType: 'unknown', change: 0, at: row.date });
+      }
     });
 
     const cashNet = cashTender - cashChange;
     return { cashTender, cashChange, cashNet, card, other, paymentsCount };
-  }, [unified]);
+  }, [unified, rangeKey]);
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -788,9 +910,9 @@ const EODWindow: React.FC = () => {
     lines.push(`Cash to deposit: ${formatCurrency(paymentSummary.cashNet)}`);
     const grandIntake = paymentSummary.cashTender + paymentSummary.card + paymentSummary.other;
     lines.push(`Grand totals: Card ${formatCurrency(paymentSummary.card + paymentSummary.other)} · Cash ${formatCurrency(paymentSummary.cashTender)} · Combined ${formatCurrency(grandIntake)}`);
-    if (salesInRange.length) {
-      lines.push(`Commissionable sales (non-consultation): ${formatCurrency(commissionSummary.commissionableNet)}`);
-      lines.push(`Consultation sales (excluded): ${formatCurrency(commissionSummary.consultationNet)}`);
+    if (salesCommissionInRange.length) {
+      lines.push(`Commissionable collected (non-consultation): ${formatCurrency(commissionSummary.commissionableNet)}`);
+      lines.push(`Consultation collected (excluded): ${formatCurrency(commissionSummary.consultationNet)}`);
       lines.push(`Commission @ ${(COMMISSION_RATE * 100).toFixed(0)}%: ${formatCurrency(commissionSummary.commission)}`);
     }
     if (settings.includeBatchInfo && batchInfo) {
@@ -799,7 +921,7 @@ const EODWindow: React.FC = () => {
       lines.push(`Batch Out: ${last}${backup ? ` — ${backup}` : ''}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, commissionSummary.commission, commissionSummary.commissionableNet, commissionSummary.consultationNet, paymentSummary.cashChange, paymentSummary.cashNet, paymentSummary.cashTender, paymentSummary.card, paymentSummary.other, salesInRange.length, settings.includeBatchInfo, workStatusCounts.closed, workStatusCounts.open, workStatusCounts.total]);
+  }, [batchInfo, commissionSummary.commission, commissionSummary.commissionableNet, commissionSummary.consultationNet, paymentSummary.cashChange, paymentSummary.cashNet, paymentSummary.cashTender, paymentSummary.card, paymentSummary.other, salesCommissionInRange.length, settings.includeBatchInfo, workStatusCounts.closed, workStatusCounts.open, workStatusCounts.total]);
 
   const presetBody = useMemo(() => {
     return [`Daily batch for ${rangeLabel(range, start, end)}`, reportLines].filter(Boolean).join('\n\n');
@@ -1027,7 +1149,7 @@ const EODWindow: React.FC = () => {
                   >
                     <div className="text-xs text-zinc-500">Work orders</div>
                     <div className="text-xl font-semibold">{summary.woTotals.count}</div>
-                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.woTotals.total)} total</div>
+                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.woTotals.total)} collected</div>
                   </button>
                   <button
                     type="button"
@@ -1036,7 +1158,7 @@ const EODWindow: React.FC = () => {
                   >
                     <div className="text-xs text-zinc-500">Sales</div>
                     <div className="text-xl font-semibold">{summary.saTotals.count}</div>
-                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.saTotals.total)} total</div>
+                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.saTotals.total)} collected</div>
                   </button>
                   <button
                     type="button"
@@ -1092,8 +1214,8 @@ const EODWindow: React.FC = () => {
                   <div className="text-xs text-zinc-500">{(COMMISSION_RATE * 100).toFixed(0)}% (non-consultation)</div>
                 </div>
                 <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable sales</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation (excluded)</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable collected</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation collected</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
                   <div className="flex items-center justify-between text-[#39FF14]"><span className="text-zinc-100">Commission</span><span className="font-semibold">{formatCurrency(commissionSummary.commission)}</span></div>
                 </div>
                 <div className="text-[11px] text-zinc-500 mt-2">Uses sales item categories. Discount is allocated proportionally across categories.</div>
@@ -1102,7 +1224,7 @@ const EODWindow: React.FC = () => {
               <div className="col-span-8 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-semibold">Sales by Category</h3>
-                  <div className="text-xs text-zinc-500">{salesInRange.length} sale record{salesInRange.length === 1 ? '' : 's'}</div>
+                  <div className="text-xs text-zinc-500">{salesCommissionInRange.length} sale record{salesCommissionInRange.length === 1 ? '' : 's'} with collected payments</div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">

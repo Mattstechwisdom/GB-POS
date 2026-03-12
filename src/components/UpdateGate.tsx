@@ -83,17 +83,6 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      if (res?.warning) {
-        const warn = String(res.warning || '').trim();
-        if (warn) {
-          console.warn('[UpdateGate] update check warning:', warn);
-          if (shouldEnforceGate) {
-            setState({ kind: 'error', message: `Could not check for updates: ${warn}` });
-            return;
-          }
-        }
-      }
-
       if (res?.updateAvailable && res?.latestVersion) {
         setState({
           kind: 'updateAvailable',
@@ -103,6 +92,17 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
           releaseNotes: res?.releaseNotes,
         });
         return;
+      }
+
+      if (res?.warning) {
+        const warn = String(res.warning || '').trim();
+        if (warn) {
+          console.warn('[UpdateGate] update check warning:', warn);
+          if (shouldEnforceGate) {
+            setState({ kind: 'error', message: `Could not check for updates: ${warn}` });
+            return;
+          }
+        }
       }
 
       setState({ kind: 'ok' });
