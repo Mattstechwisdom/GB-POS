@@ -37,14 +37,14 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
     }
   }, [items, selected]);
 
-  // Keep an always-available inline editor for the currently selected row.
+  // Keep the inline editor in sync only after the user explicitly opens it.
   useEffect(() => {
     if (!selectedRow) {
       setEditing(null);
       return;
     }
-    setEditing(prev => (prev?.id === selectedRow.id ? prev : { ...selectedRow }));
-  }, [selectedRow?.id]);
+    setEditing(prev => (prev ? (prev.id === selectedRow.id ? prev : { ...selectedRow }) : null));
+  }, [selectedRow]);
 
   const ctx = useContextMenu<WorkOrderItemRow>();
   const ctxRow = ctx.state.data;
@@ -70,6 +70,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
           if (next.length > MAX_ITEMS) next.pop();
           onChange(next);
           setSelected(copy.id);
+          setEditing(null);
         },
       },
       { type: 'separator' },
@@ -111,6 +112,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
       };
       onChange([...items, row].slice(0, MAX_ITEMS));
       setSelected(row.id);
+      setEditing(null);
       return;
     }
     // Fallback: open legacy picker window
@@ -150,7 +152,6 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 <tr
                   key={it.id}
                   onClick={() => setSelected(it.id)}
-                  onDoubleClick={() => setEditing(it)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -179,13 +180,17 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
 
       <div className="flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
+        <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
       {editing && (
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
-            <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
+            <div className="flex items-center gap-2 max-w-[75%]">
+              <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
+              <button className="px-2 py-0.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Close</button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 mt-2">
@@ -275,4 +280,4 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   );
 }
 
-export default ItemsTable;
+export default React.memo(ItemsTable);

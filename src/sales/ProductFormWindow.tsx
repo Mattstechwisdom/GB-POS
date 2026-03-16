@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
+import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
 function getPayload() {
@@ -28,7 +28,7 @@ const ProductFormWindow: React.FC = () => {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const src = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+      const src = (await fetchPublicAssetAsDataUrlCached('logo.png')) || (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) || '';
       if (!alive) return;
       setLogoSrc(src);
     })();
@@ -42,14 +42,14 @@ const ProductFormWindow: React.FC = () => {
       if (didAutoPrintRef.current) return;
       didAutoPrintRef.current = true;
       try { window.print(); } catch {}
-    }, 900);
+    }, 250);
 
     if (logoSrc) {
       window.clearTimeout(fallback);
       didAutoPrintRef.current = true;
       const immediate = window.setTimeout(() => {
         try { window.print(); } catch {}
-      }, 150);
+      }, 40);
       return () => window.clearTimeout(immediate);
     }
 
@@ -152,8 +152,8 @@ const ProductFormWindow: React.FC = () => {
                   let html = document.documentElement.outerHTML;
                   if (!logoSrc) {
                     const embeddedLogo =
-                      (await fetchPublicAssetAsDataUrl('logo.png')) ||
-                      (await fetchPublicAssetAsDataUrl('logo-spin.gif')) ||
+                      (await fetchPublicAssetAsDataUrlCached('logo.png')) ||
+                      (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) ||
                       '';
                     if (embeddedLogo) {
                       html = html.replace(/src=\"[^\"]*logo\.png\"/gi, `src=\"${embeddedLogo}\"`);

@@ -237,4 +237,4 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
   );
 }
 
-export default WorkOrderSidebar;
+export default React.memo(WorkOrderSidebar);

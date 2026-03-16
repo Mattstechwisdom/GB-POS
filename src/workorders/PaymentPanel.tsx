@@ -148,4 +148,21 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
   );
 }
 
-export default PaymentPanel;
+export default React.memo(PaymentPanel, (prev, next) => {
+  const a = prev.workOrder;
+  const b = next.workOrder;
+  const at = a.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+  const bt = b.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+  return prev.salesMode === next.salesMode
+    && String(a.discountType || '') === String(b.discountType || '')
+    && Number(a.discountPctValue || 0) === Number(b.discountPctValue || 0)
+    && Number(a.discountCustomAmount || 0) === Number(b.discountCustomAmount || 0)
+    && Number(a.discount || 0) === Number(b.discount || 0)
+    && Number(a.amountPaid || 0) === Number(b.amountPaid || 0)
+    && Number(a.taxRate || 0) === Number(b.taxRate || 0)
+    && Number(a.laborCost || 0) === Number(b.laborCost || 0)
+    && Number(a.partCosts || 0) === Number(b.partCosts || 0)
+    && Number(at.tax || 0) === Number(bt.tax || 0)
+    && Number(at.total || 0) === Number(bt.total || 0)
+    && Number(at.remaining || 0) === Number(bt.remaining || 0);
+});

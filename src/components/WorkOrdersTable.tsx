@@ -9,9 +9,16 @@ import { useContextMenu } from '../lib/useContextMenu';
 import { usePagination } from '../lib/pagination';
 
 interface WorkOrderRow {
-  id: number; status?: string; assignedTo?: string | null; checkInAt?: string; customerId?: number;
+  id: number; status?: string; assignedTo?: string | null; checkInAt?: string; updatedAt?: string; checkoutDate?: string | null; repairCompletionDate?: string | null; customerId?: number;
   totals?: { total?: number; remaining?: number }; amountPaid?: number; productDescription?: string; productCategory?: string; problemInfo?: string;
   items?: any[];
+}
+
+function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date | null {
+  const raw = r.updatedAt || r.checkoutDate || r.repairCompletionDate || r.checkInAt || r.createdAt;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
@@ -36,13 +43,14 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     try {
       const api = (window as any).api;
       const list = await (api?.getWorkOrders
-        ? api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' })
-        : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }) : Promise.resolve([]))
+        ? api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'activityAt', sortDir: 'desc' })
+        : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_ITEMS, sortBy: 'activityAt', sortDir: 'desc' }) : Promise.resolve([]))
       );
-      // Sort newest first by checkInAt or id
+      // Sort newest first by latest activity, falling back to original check-in date or id.
       list.sort((a: any, b: any) => {
-        const ad = a.checkInAt || ''; const bd = b.checkInAt || '';
-        return (bd.localeCompare(ad)) || (b.id - a.id);
+        const ad = getActivityDate(a)?.getTime() || 0;
+        const bd = getActivityDate(b)?.getTime() || 0;
+        return (bd - ad) || (b.id - a.id);
       });
       setRows(list.slice(0, MAX_ITEMS));
     } catch (e) { console.error('Failed loading work orders', e); }
@@ -102,12 +110,12 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
         return false;
       })
       .filter(r => {
-        // Date range filter: inclusive between dateFrom and dateTo (YYYY-MM-DD). If either missing, skip that bound.
+        // Date range filter uses latest activity so later payments/edits show in the current range.
         if (!dateFrom && !dateTo) return true;
-        const ci = r.checkInAt ? new Date(r.checkInAt) : null;
-        if (!ci) return false;
-        const fromOk = dateFrom ? ci >= new Date(dateFrom + 'T00:00:00') : true;
-        const toOk = dateTo ? ci <= new Date(dateTo + 'T23:59:59.999') : true;
+        const activity = getActivityDate(r);
+        if (!activity) return false;
+        const fromOk = dateFrom ? activity >= new Date(dateFrom + 'T00:00:00') : true;
+        const toOk = dateTo ? activity <= new Date(dateTo + 'T23:59:59.999') : true;
         return fromOk && toOk;
       });
   }, [rows, technicianFilter, dateFrom, dateTo, techIndex]);
@@ -292,7 +300,10 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
                 className={`odd:bg-zinc-900 even:bg-zinc-800/40 cursor-pointer transition-colors border-l-4 ${selectedId === r.id ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_6px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/70'}`}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1">{r.checkInAt ? r.checkInAt.split('T')[0] : ''}</td>
+                <td className="px-2 py-1" title={r.checkInAt ? `Checked in: ${r.checkInAt.split('T')[0]}` : undefined}>{(() => {
+                  const activity = getActivityDate(r);
+                  return activity ? activity.toISOString().slice(0,10) : '';
+                })()}</td>
                 <td className="px-2 py-1 capitalize">{computedStatus}</td>
                 <td className="px-2 py-1 font-semibold">WO</td>
                 <td className="px-2 py-1">{(() => {

@@ -68,6 +68,14 @@ interface Props {
   mode?: 'standard' | 'customBuild';
 }
 
+function sameValidationFlags(a?: WorkOrderValidationFlags, b?: WorkOrderValidationFlags) {
+  return !!a?.productDescription === !!b?.productDescription
+    && !!a?.problemInfo === !!b?.problemInfo
+    && !!a?.password === !!b?.password
+    && !!a?.model === !!b?.model
+    && !!a?.serial === !!b?.serial;
+}
+
 const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, mode = 'standard' }) => {
   const needsProductDescription = !!validationFlags?.productDescription;
   const needsProblem = !!validationFlags?.problemInfo;
@@ -168,7 +176,21 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
   );
 };
 
-export default WorkOrderForm;
+export default React.memo(WorkOrderForm, (prev, next) => {
+  const a = prev.workOrder;
+  const b = next.workOrder;
+  const patternA = Array.isArray((a as any).patternSequence) ? ((a as any).patternSequence as any[]).join(',') : '';
+  const patternB = Array.isArray((b as any).patternSequence) ? ((b as any).patternSequence as any[]).join(',') : '';
+  return prev.mode === next.mode
+    && sameValidationFlags(prev.validationFlags, next.validationFlags)
+    && String(a.productCategory || '') === String(b.productCategory || '')
+    && String(a.productDescription || '') === String(b.productDescription || '')
+    && String(a.problemInfo || '') === String(b.problemInfo || '')
+    && String(a.password || '') === String(b.password || '')
+    && String(a.model || '') === String(b.model || '')
+    && String(a.serial || '') === String(b.serial || '')
+    && patternA === patternB;
+});
 
 const PatternSection: React.FC<{ workOrder: WorkOrderFull; onChange: (patch: Partial<WorkOrderFull>) => void }> = ({ workOrder, onChange }) => {
   const [enabled, setEnabled] = useState<boolean>(() => Array.isArray((workOrder as any).patternSequence) && (workOrder as any).patternSequence.length > 0);

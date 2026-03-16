@@ -83,6 +83,17 @@ function Send-ReleaseAsset([hashtable]$Headers, [string]$UploadUrlBase, [string]
   Invoke-WebRequest -Method Post -Headers $Headers -ContentType 'application/octet-stream' -InFile $FilePath -Uri $u -UseBasicParsing | Out-Null
 }
 
+function Remove-ReleaseAsset([hashtable]$Headers, $Asset) {
+  try {
+    if ($Asset -and $Asset.url) {
+      Write-Host "Deleting existing asset: $($Asset.name)"
+      Invoke-RestMethod -Method Delete -Headers $Headers -Uri $Asset.url | Out-Null
+    }
+  } catch {
+    throw "Failed deleting release asset '$($Asset.name)': $($_.Exception.Message)"
+  }
+}
+
 Read-GitHubTokenToEnv
 
 if (-not $env:GITHUB_TOKEN) {
@@ -143,9 +154,18 @@ if (-not $uploadUrlBase) {
 }
 
 $releaseDir = Join-Path $PSScriptRoot '..\release'
+$setupPath = Join-Path $releaseDir "GadgetBoy-POS-Setup-$Version.exe"
+$setupBlockmapPath = Join-Path $releaseDir "GadgetBoy-POS-Setup-$Version.exe.blockmap"
+$updatePath = Join-Path $releaseDir "GadgetBoy-POS-Update-$Version.exe"
+
+if (-not (Test-Path $updatePath) -and (Test-Path $setupPath)) {
+  Copy-Item -Force $setupPath $updatePath
+}
+
 $assetPaths = @(
-  (Join-Path $releaseDir "GadgetBoy-POS-Setup-$Version.exe"),
-  (Join-Path $releaseDir "GadgetBoy-POS-Setup-$Version.exe.blockmap"),
+  $setupPath,
+  $setupBlockmapPath,
+  $updatePath,
   (Join-Path $releaseDir 'latest.yml')
 )
 
@@ -158,6 +178,22 @@ foreach ($p in $assetPaths) {
 # Refresh release to get current assets list before uploading
 $release = Get-ReleaseByTag -Headers $headers -RepoSlug $Repo -TagName $Tag
 
+$expectedAssetNames = @{}
+foreach ($p in $assetPaths) {
+  $expectedAssetNames[[System.IO.Path]::GetFileName($p)] = $true
+}
+
+foreach ($asset in @($release.assets)) {
+  if (-not $asset) { continue }
+  $isSourceArchive = ($asset.name -like 'Source code*')
+  if ($isSourceArchive) { continue }
+  if (-not $expectedAssetNames.ContainsKey([string]$asset.name)) {
+    Remove-ReleaseAsset -Headers $headers -Asset $asset
+  }
+}
+
+$release = Get-ReleaseByTag -Headers $headers -RepoSlug $Repo -TagName $Tag
+
 foreach ($p in $assetPaths) {
   $name = [System.IO.Path]::GetFileName($p)
   $existing = $null
@@ -168,8 +204,7 @@ foreach ($p in $assetPaths) {
   }
 
   if ($existing -and $existing.url) {
-    Write-Host "Deleting existing asset: $name"
-    Invoke-RestMethod -Method Delete -Headers $headers -Uri $existing.url | Out-Null
+    Remove-ReleaseAsset -Headers $headers -Asset $existing
   }
 
   Send-ReleaseAsset -Headers $headers -UploadUrlBase $uploadUrlBase -FilePath $p

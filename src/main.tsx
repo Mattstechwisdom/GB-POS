@@ -1,35 +1,49 @@
-﻿import React from 'react';
+﻿import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
-import CalendarWindow from './components/CalendarWindow';
-import CustomerOverviewWindow from './components/CustomerOverviewWindow';
-import NewWorkOrderWindow from './workorders/NewWorkOrderWindow';
-import DeviceCategoriesWindow from './components/DeviceCategoriesWindow';
-import RepairCategoriesWindow from './repairs/RepairCategoriesWindow';
-import WorkOrderRepairPickerWindow from './workorders/WorkOrderRepairPickerWindow';
-import CheckoutWindow from './workorders/CheckoutWindow';
-import DevMenuWindow from './components/DevMenuWindow';
-import DataToolsWindow from './components/DataToolsWindow';
-import ReportingWindow from './components/ReportingWindow';
-import ReleaseFormWindow from './workorders/ReleaseFormWindow';
-import CustomerReceiptWindow from './workorders/CustomerReceiptWindow';
-import SaleWindow from './sales/SaleWindow';
-import ProductFormWindow from './sales/ProductFormWindow';
-import ProductsWindow from './components/ProductsWindow';
-import ChartsWindow from './components/ChartsWindow';
-import BackupWindow from './components/BackupWindow';
-import ClearDatabaseWindow from './components/ClearDatabaseWindow';
-import ClockInWindow from './components/ClockInWindow';
-import QuoteGeneratorWindow from './components/QuoteGeneratorWindow';
-import QuickSaleWindow from './components/QuickSaleWindow';
-import EODWindow from './components/EODWindow';
-import NotificationsWindow from './components/NotificationsWindow';
-import NotificationSettingsWindow from './components/NotificationSettingsWindow';
-import ReportEmailWindow from './components/ReportEmailWindow';
-import CustomBuildItemWindow from './workorders/CustomBuildItemWindow';
-import UpdateGate from './components/UpdateGate';
-import DataPathGate from './components/DataPathGate';
 import './styles/index.css';
+
+const App = lazy(() => import('./App'));
+const CalendarWindow = lazy(() => import('./components/CalendarWindow'));
+const loadCustomerOverviewWindow = () => import('./components/CustomerOverviewWindow');
+const CustomerOverviewWindow = lazy(loadCustomerOverviewWindow);
+const loadNewWorkOrderWindow = () => import('./workorders/NewWorkOrderWindow');
+const NewWorkOrderWindow = lazy(loadNewWorkOrderWindow);
+const loadDeviceCategoriesWindow = () => import('./components/DeviceCategoriesWindow');
+const DeviceCategoriesWindow = lazy(loadDeviceCategoriesWindow);
+const loadRepairCategoriesWindow = () => import('./repairs/RepairCategoriesWindow');
+const RepairCategoriesWindow = lazy(loadRepairCategoriesWindow);
+const WorkOrderRepairPickerWindow = lazy(() => import('./workorders/WorkOrderRepairPickerWindow'));
+const CheckoutWindow = lazy(() => import('./workorders/CheckoutWindow'));
+const DevMenuWindow = lazy(() => import('./components/DevMenuWindow'));
+const DataToolsWindow = lazy(() => import('./components/DataToolsWindow'));
+const loadReportingWindow = () => import('./components/ReportingWindow');
+const ReportingWindow = lazy(loadReportingWindow);
+const loadReleaseFormWindow = () => import('./workorders/ReleaseFormWindow');
+const ReleaseFormWindow = lazy(loadReleaseFormWindow);
+const loadCustomerReceiptWindow = () => import('./workorders/CustomerReceiptWindow');
+const CustomerReceiptWindow = lazy(loadCustomerReceiptWindow);
+const loadSaleWindow = () => import('./sales/SaleWindow');
+const SaleWindow = lazy(loadSaleWindow);
+const loadProductFormWindow = () => import('./sales/ProductFormWindow');
+const ProductFormWindow = lazy(loadProductFormWindow);
+const loadProductsWindow = () => import('./components/ProductsWindow');
+const ProductsWindow = lazy(loadProductsWindow);
+const ChartsWindow = lazy(() => import('./components/ChartsWindow'));
+const BackupWindow = lazy(() => import('./components/BackupWindow'));
+const ClearDatabaseWindow = lazy(() => import('./components/ClearDatabaseWindow'));
+const loadClockInWindow = () => import('./components/ClockInWindow');
+const ClockInWindow = lazy(loadClockInWindow);
+const loadQuoteGeneratorWindow = () => import('./components/QuoteGeneratorWindow');
+const QuoteGeneratorWindow = lazy(loadQuoteGeneratorWindow);
+const loadQuickSaleWindow = () => import('./components/QuickSaleWindow');
+const QuickSaleWindow = lazy(loadQuickSaleWindow);
+const EODWindow = lazy(() => import('./components/EODWindow'));
+const NotificationsWindow = lazy(() => import('./components/NotificationsWindow'));
+const NotificationSettingsWindow = lazy(() => import('./components/NotificationSettingsWindow'));
+const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
+const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
+const UpdateGate = lazy(() => import('./components/UpdateGate'));
+const DataPathGate = lazy(() => import('./components/DataPathGate'));
 
 declare global {
 	interface Window {
@@ -93,6 +107,71 @@ function getNewWorkOrderPayload() {
 	}
 }
 
+function LoadingScreen() {
+	return (
+		<div className="min-h-screen bg-zinc-900 text-zinc-300 flex items-center justify-center text-sm">
+			Loading…
+		</div>
+	);
+}
+
+function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
+	root.render(
+		<Suspense fallback={<LoadingScreen />}>
+			{node}
+		</Suspense>
+	);
+}
+
+let commonWindowPreloadsScheduled = false;
+
+function scheduleCommonWindowPreloads() {
+	if (commonWindowPreloadsScheduled || typeof window === 'undefined') return;
+	commonWindowPreloadsScheduled = true;
+
+	const runWhenIdle = (cb: () => void, timeout: number) => {
+		const idle = (window as any).requestIdleCallback;
+		if (typeof idle === 'function') {
+			idle(() => cb(), { timeout });
+			return;
+		}
+		window.setTimeout(cb, Math.min(timeout, 1200));
+	};
+
+	const queueImports = (loaders: Array<() => Promise<unknown>>, gapMs: number) => {
+		loaders.forEach((loader, index) => {
+			window.setTimeout(() => {
+				loader().catch(() => {});
+			}, index * gapMs);
+		});
+	};
+
+	runWhenIdle(() => {
+		queueImports([
+			loadNewWorkOrderWindow,
+			loadSaleWindow,
+			loadQuickSaleWindow,
+			loadCustomerOverviewWindow,
+		], 180);
+	}, 1500);
+
+	window.setTimeout(() => {
+		runWhenIdle(() => {
+			queueImports([
+				loadProductsWindow,
+				loadReportingWindow,
+				loadCustomerReceiptWindow,
+				loadReleaseFormWindow,
+				loadProductFormWindow,
+				loadDeviceCategoriesWindow,
+				loadRepairCategoriesWindow,
+				loadClockInWindow,
+				loadQuoteGeneratorWindow,
+			], 180);
+		}, 2500);
+	}, 1800);
+}
+
 if (typeof window !== 'undefined') {
 	if (typeof (window as any).api?.onRepairSelected === 'function') {
 		(window as any).api.onRepairSelected((repair: any) => {
@@ -135,45 +214,45 @@ try {
 	const root = createRoot(rootEl);
 	
 	if (showDeviceCategories) {
-		root.render(<DeviceCategoriesWindow />);
+		renderWithSuspense(root, <DeviceCategoriesWindow />);
 	} else if (showEod) {
-		root.render(<EODWindow />);
+		renderWithSuspense(root, <EODWindow />);
 	} else if (showWorkOrderRepairPicker) {
-		root.render(<WorkOrderRepairPickerWindow />);
+		renderWithSuspense(root, <WorkOrderRepairPickerWindow />);
 	} else if (showRepairCategories) {
 		const modeParam = params.get('mode');
 		const mode = modeParam === 'admin' || modeParam === 'workorder' ? modeParam : 'admin';
-		root.render(<RepairCategoriesWindow mode={mode} />);
+		renderWithSuspense(root, <RepairCategoriesWindow mode={mode} />);
 	} else if (showCheckout) {
-		root.render(<CheckoutWindow />);
+		renderWithSuspense(root, <CheckoutWindow />);
 	} else if (showCustomerOverview) {
-		root.render(<CustomerOverviewWindow onClose={() => window.close()} />);
+		renderWithSuspense(root, <CustomerOverviewWindow onClose={() => window.close()} />);
 	} else if (showDevMenu) {
-		root.render(<DevMenuWindow />);
+		renderWithSuspense(root, <DevMenuWindow />);
 	} else if (showDataTools) {
-		root.render(<DataToolsWindow />);
+		renderWithSuspense(root, <DataToolsWindow />);
 	} else if (showReporting) {
-		root.render(<ReportingWindow />);
+		renderWithSuspense(root, <ReportingWindow />);
 	} else if (showReportEmail) {
-		root.render(<ReportEmailWindow />);
+		renderWithSuspense(root, <ReportEmailWindow />);
 	} else if (showCharts) {
-		root.render(<ChartsWindow />);
+		renderWithSuspense(root, <ChartsWindow />);
 	} else if (showBackup) {
-		root.render(<BackupWindow />);
+		renderWithSuspense(root, <BackupWindow />);
 	} else if (showClearDb) {
-		root.render(<ClearDatabaseWindow />);
+		renderWithSuspense(root, <ClearDatabaseWindow />);
 	} else if (showClockIn) {
-		root.render(<ClockInWindow />);
+		renderWithSuspense(root, <ClockInWindow />);
 		} else if (showNotifications) {
-			root.render(<NotificationsWindow />);
+			renderWithSuspense(root, <NotificationsWindow />);
 		} else if (showNotificationSettings) {
-			root.render(<NotificationSettingsWindow />);
+			renderWithSuspense(root, <NotificationSettingsWindow />);
 		} else if (showCustomBuildItem) {
-			root.render(<CustomBuildItemWindow />);
+			renderWithSuspense(root, <CustomBuildItemWindow />);
 	} else if (showQuote) {
 		const hasElectronApi = !!(window as any)?.api;
 		if (!hasElectronApi) {
-			root.render(
+			renderWithSuspense(root,
 				<div style={{ padding: 16, fontFamily: 'system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial', color: '#111' }}>
 					<h2 style={{ margin: 0, marginBottom: 8 }}>Quote Generator requires the Electron app</h2>
 					<div style={{ color: '#333', lineHeight: 1.45 }}>
@@ -184,26 +263,27 @@ try {
 				</div>
 			);
 		} else {
-			root.render(<QuoteGeneratorWindow />);
+			renderWithSuspense(root, <QuoteGeneratorWindow />);
 		}
 	} else if (showReleaseForm) {
-		root.render(<ReleaseFormWindow />);
+		renderWithSuspense(root, <ReleaseFormWindow />);
 	} else if (showCustomerReceipt) {
-		root.render(<CustomerReceiptWindow />);
+		renderWithSuspense(root, <CustomerReceiptWindow />);
 	} else if (showCalendar) {
-		root.render(<CalendarWindow />);
+		renderWithSuspense(root, <CalendarWindow />);
 	} else if (showProductForm) {
-		root.render(<ProductFormWindow />);
+		renderWithSuspense(root, <ProductFormWindow />);
 	} else if (showProducts) {
-		root.render(<ProductsWindow />);
+		renderWithSuspense(root, <ProductsWindow />);
 	} else if (showNewSale) {
-		root.render(<SaleWindow />);
+		renderWithSuspense(root, <SaleWindow />);
 	} else if (showQuickSale) {
-		root.render(<QuickSaleWindow />);
+		renderWithSuspense(root, <QuickSaleWindow />);
 	} else if (payload) {
-		root.render(<NewWorkOrderWindow />);
+		renderWithSuspense(root, <NewWorkOrderWindow />);
 	} else {
-		root.render(
+		scheduleCommonWindowPreloads();
+		renderWithSuspense(root,
 			<DataPathGate>
 				<UpdateGate>
 					<App />

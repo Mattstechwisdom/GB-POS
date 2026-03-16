@@ -739,12 +739,26 @@ function getGitHubFeedConfig(): { provider: 'github'; owner: string; repo: strin
   return { provider: 'github', owner, repo, private: false };
 }
 
-async function fetchLatestGitHubReleaseInfo(): Promise<{ version?: string; releaseName?: string; releaseNotes?: string; htmlUrl?: string } | null> {
+const UPDATE_HTTP_TIMEOUT_MS = 5000;
+
+async function fetchLatestGitHubReleaseDetails(): Promise<{
+  version: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  htmlUrl?: string;
+  assets: Array<{ name: string; downloadUrl: string; size?: number }>;
+} | null> {
   const slug = getGitHubRepoSlug();
   if (!slug) return null;
 
   const url = `https://api.github.com/repos/${slug}/releases/latest`;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: any) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
     try {
       const req = https.get(url, {
         headers: {
@@ -759,31 +773,62 @@ async function fetchLatestGitHubReleaseInfo(): Promise<{ version?: string; relea
           try {
             if (!raw || Number(res.statusCode || 0) >= 400) {
               appendStartupLog(`github latest release check failed status=${String(res.statusCode || '')}`);
-              resolve(null);
+              finish(null);
               return;
             }
             const json = JSON.parse(raw);
             const version = normalizeVersion(json?.tag_name || json?.name || '');
-            const releaseName = typeof json?.name === 'string' ? json.name : undefined;
-            const releaseNotes = typeof json?.body === 'string' ? json.body : undefined;
-            const htmlUrl = typeof json?.html_url === 'string' ? json.html_url : undefined;
-            resolve(version ? { version, releaseName, releaseNotes, htmlUrl } : null);
+            if (!version) {
+              finish(null);
+              return;
+            }
+            const assets = Array.isArray(json?.assets)
+              ? json.assets
+                  .map((asset: any) => ({
+                    name: String(asset?.name || '').trim(),
+                    downloadUrl: String(asset?.browser_download_url || '').trim(),
+                    size: Number.isFinite(Number(asset?.size)) ? Number(asset.size) : undefined,
+                  }))
+                  .filter((asset: any) => asset.name && asset.downloadUrl)
+              : [];
+            finish({
+              version,
+              releaseName: typeof json?.name === 'string' ? json.name : undefined,
+              releaseNotes: typeof json?.body === 'string' ? json.body : undefined,
+              htmlUrl: typeof json?.html_url === 'string' ? json.html_url : undefined,
+              assets,
+            });
           } catch (e: any) {
             appendStartupLog(`github latest release parse failed: ${String(e?.message || e)}`);
-            resolve(null);
+            finish(null);
           }
         });
       });
+      req.setTimeout(UPDATE_HTTP_TIMEOUT_MS, () => {
+        appendStartupLog(`github latest release request timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`);
+        req.destroy(new Error('GitHub latest release request timed out'));
+      });
       req.on('error', (e: any) => {
         appendStartupLog(`github latest release request failed: ${String(e?.message || e)}`);
-        resolve(null);
+        finish(null);
       });
       req.end();
     } catch (e: any) {
       appendStartupLog(`github latest release setup failed: ${String(e?.message || e)}`);
-      resolve(null);
+      finish(null);
     }
   });
+}
+
+async function fetchLatestGitHubReleaseInfo(): Promise<{ version?: string; releaseName?: string; releaseNotes?: string; htmlUrl?: string } | null> {
+  const details = await fetchLatestGitHubReleaseDetails();
+  if (!details) return null;
+  return {
+    version: details.version,
+    releaseName: details.releaseName,
+    releaseNotes: details.releaseNotes,
+    htmlUrl: details.htmlUrl,
+  };
 }
 
 function readUpdateConfig(): { skippedVersion?: string } {
@@ -805,6 +850,113 @@ function writeUpdateConfig(cfg: { skippedVersion?: string }) {
   } catch {
     // ignore
   }
+}
+
+let downloadedInstallerPath: string | null = null;
+let downloadedInstallerVersion: string | null = null;
+
+function selectGitHubInstallerAsset(release: { version: string; assets: Array<{ name: string; downloadUrl: string; size?: number }> }) {
+  const version = normalizeVersion(release.version);
+  const exeAssets = (release.assets || []).filter((asset) => /\.exe$/i.test(String(asset.name || '')));
+  if (!exeAssets.length) return null;
+
+  const preferredNames = [
+    `GadgetBoy-POS-Update-${version}.exe`,
+    `GadgetBoy-POS-Setup-${version}.exe`,
+  ];
+  for (const preferredName of preferredNames) {
+    const exact = exeAssets.find((asset) => asset.name.toLowerCase() === preferredName.toLowerCase());
+    if (exact) return exact;
+  }
+  return exeAssets.find((asset) => /update/i.test(asset.name)) || exeAssets[0] || null;
+}
+
+function downloadFileFromUrl(url: string, destinationPath: string, onProgress?: (payload: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const request = https.get(url, {
+      headers: {
+        'User-Agent': 'gbpos-updater',
+        Accept: 'application/octet-stream,application/vnd.github+json',
+      },
+    }, (res: any) => {
+      const status = Number(res.statusCode || 0);
+      const redirect = String(res.headers?.location || '').trim();
+      if (status >= 300 && status < 400 && redirect) {
+        res.resume();
+        downloadFileFromUrl(redirect, destinationPath, onProgress).then(resolve).catch(reject);
+        return;
+      }
+      if (status >= 400) {
+        res.resume();
+        reject(new Error(`Download failed with status ${status}`));
+        return;
+      }
+
+      const total = Number(res.headers?.['content-length'] || 0) || 0;
+      let transferred = 0;
+      const file = fs.createWriteStream(destinationPath);
+
+      const fail = (error: any) => {
+        try { file.close(); } catch {}
+        try { if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath); } catch {}
+        reject(error instanceof Error ? error : new Error(String(error)));
+      };
+
+      file.on('error', fail);
+      res.on('error', fail);
+      res.on('data', (chunk: any) => {
+        transferred += chunk?.length || 0;
+        if (onProgress) {
+          const elapsedSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000);
+          onProgress({
+            percent: total > 0 ? (transferred / total) * 100 : 0,
+            transferred,
+            total,
+            bytesPerSecond: transferred / elapsedSeconds,
+          });
+        }
+      });
+      file.on('finish', () => {
+        file.close(() => resolve());
+      });
+      res.pipe(file);
+    });
+
+    request.on('error', (error: any) => {
+      try { if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath); } catch {}
+      reject(error instanceof Error ? error : new Error(String(error)));
+    });
+  });
+}
+
+async function downloadLatestGitHubReleaseInstaller(versionHint?: string) {
+  const release = await fetchLatestGitHubReleaseDetails();
+  if (!release?.version) return { ok: false, error: 'Could not resolve the latest GitHub release.' };
+  if (versionHint && compareVersions(release.version, versionHint) < 0) {
+    return { ok: false, error: `Latest GitHub release ${release.version} is older than requested ${versionHint}.` };
+  }
+
+  const asset = selectGitHubInstallerAsset(release);
+  if (!asset) return { ok: false, error: 'No Windows installer asset was found on the latest GitHub release.' };
+
+  const updateDir = path.join(resolveDataRoot(), 'updates');
+  fs.mkdirSync(updateDir, { recursive: true });
+  const destinationPath = path.join(updateDir, asset.name);
+  try {
+    if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath);
+  } catch {}
+
+  broadcastUpdateEvent({ kind: 'progress', percent: 0, transferred: 0, total: Number(asset.size || 0), bytesPerSecond: 0 });
+  await downloadFileFromUrl(asset.downloadUrl, destinationPath, (progress) => {
+    broadcastUpdateEvent({ kind: 'progress', ...progress });
+  });
+
+  downloadedInstallerPath = destinationPath;
+  downloadedInstallerVersion = release.version;
+  broadcastUpdateEvent({ kind: 'downloaded', version: release.version, releaseName: release.releaseName, source: 'github' });
+  appendStartupLog(`update installer downloaded from GitHub: ${asset.name}`);
+  return { ok: true, version: release.version, releaseName: release.releaseName, installerPath: destinationPath, source: 'github' };
 }
 
 // -------------------------------------------------------------
@@ -854,6 +1006,38 @@ function decryptAppPassword(cfg: any): string | null {
   } catch {
     return null;
   }
+}
+
+async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[] }) {
+  const cfg = readEmailConfig();
+  const appPass = decryptAppPassword(cfg);
+  if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
+
+  const to = String(payload?.to || '').trim();
+  if (!to) return { ok: false, error: 'Missing recipient email' };
+
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: 'gadgetboysc@gmail.com',
+      pass: appPass,
+    },
+  });
+
+  const fromName = String(cfg.fromName || 'GadgetBoy Repair & Retail').trim() || 'GadgetBoy Repair & Retail';
+  const from = `${fromName} <gadgetboysc@gmail.com>`;
+
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject: String(payload?.subject || 'GadgetBoy POS Report'),
+    text: String(payload?.text || ''),
+    html: payload?.html ? String(payload.html) : undefined,
+    attachments: Array.isArray(payload?.attachments) ? payload.attachments : undefined,
+  });
+
+  return { ok: true, messageId: info?.messageId || null };
 }
 
 function broadcastUpdateEvent(payload: any) {
@@ -924,15 +1108,16 @@ function getReleasesUrl(): string {
   return 'https://github.com/Mattstechwisdom/GB-POS/releases';
 }
 
-function runInstallerExe(installerPathRaw: string, opts?: { silent?: boolean }) {
+function runInstallerExe(installerPathRaw: string, opts?: { silent?: boolean; forceRunAfter?: boolean }) {
   try {
     if (!installerPathRaw) return { ok: false, error: 'Missing installer path.' };
     const installerPath = path.resolve(String(installerPathRaw));
     if (!fs.existsSync(installerPath)) return { ok: false, error: 'Installer file not found.' };
     if (path.extname(installerPath).toLowerCase() !== '.exe') return { ok: false, error: 'Please select a .exe installer.' };
 
-    // For NSIS installers, /S performs a silent install.
-    const args = opts?.silent ? ['/S'] : [];
+    const args: string[] = ['--updated'];
+    if (opts?.silent) args.push('/S');
+    if (opts?.forceRunAfter !== false) args.push('--force-run');
     const child = spawn(installerPath, args, { detached: true, stdio: 'ignore' });
     child.unref();
 
@@ -979,6 +1164,55 @@ function centerWindow(win: any) {
   } catch (_e) {
     // best-effort; ignore positioning errors
   }
+}
+
+function showWindowFast(win: any, onBeforeShow?: () => void, opts?: { focus?: boolean; fallbackDelayMs?: number }) {
+  let shown = false;
+  const reveal = () => {
+    if (shown) return;
+    shown = true;
+    try { onBeforeShow?.(); } catch {}
+    try { if (!win.isDestroyed()) win.show(); } catch {}
+    if (opts?.focus !== false) {
+      try { if (!win.isDestroyed()) win.focus(); } catch {}
+    }
+  };
+
+  const fallbackDelayMs = opts?.fallbackDelayMs ?? (app.isPackaged ? 120 : 220);
+  win.once('ready-to-show', reveal);
+  try {
+    win.webContents.once('dom-ready', () => {
+      setTimeout(reveal, 0);
+    });
+  } catch {}
+  setTimeout(reveal, fallbackDelayMs);
+}
+
+function scheduleSilentPrint(win: any, opts?: { delayMs?: number; fallbackDelayMs?: number; onDone?: () => void }) {
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    const delayMs = opts?.delayMs ?? 60;
+    setTimeout(() => {
+      try {
+        if (win.isDestroyed()) return;
+        win.webContents.print({ silent: true, printBackground: true }, (_success: boolean, failureReason: string) => {
+          if (failureReason) {
+            console.warn('[SilentPrint] failed:', failureReason);
+          }
+          try { opts?.onDone?.(); } catch {}
+        });
+      } catch (e: any) {
+        console.warn('[SilentPrint] threw:', e?.message || String(e));
+        try { opts?.onDone?.(); } catch {}
+      }
+    }, delayMs);
+  };
+
+  try { win.webContents.once('did-stop-loading', start); } catch {}
+  try { win.webContents.once('dom-ready', start); } catch {}
+  setTimeout(start, opts?.fallbackDelayMs ?? (app.isPackaged ? 700 : 1200));
 }
 
 // Global context menu: enable Cut/Copy/Paste/Select All and Inspect (dev)
@@ -1186,7 +1420,7 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
       show: false,
       title: windowTitle('Add Repair to Work Order'),
     });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+    showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
     const url = isDev
       ? `${DEV_SERVER_URL}/?workOrderRepairPicker=true`
@@ -1319,34 +1553,14 @@ ipcMain.handle('email:clearGmailAppPassword', async () => {
 
 ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
   try {
-    const cfg = readEmailConfig();
-    const appPass = decryptAppPassword(cfg);
-    if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
-
-    const to = String(payload?.to || '').trim();
-    if (!to) return { ok: false, error: 'Missing recipient email' };
     const subject = String(payload?.subject || 'Gadgetboy Quote');
     const bodyText = String(payload?.bodyText || '');
     const htmlAttachment = String(payload?.html || '');
     if (!htmlAttachment) return { ok: false, error: 'Missing HTML attachment content' };
     const filename = String(payload?.filename || 'gadgetboy-quote.html').trim() || 'gadgetboy-quote.html';
 
-    // Lazy require to keep startup fast
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: 'gadgetboysc@gmail.com',
-        pass: appPass,
-      },
-    });
-
-    const fromName = String(cfg.fromName || 'GadgetBoy Repair & Retail').trim() || 'GadgetBoy Repair & Retail';
-    const from = `${fromName} <gadgetboysc@gmail.com>`;
-
-    const info = await transporter.sendMail({
-      from,
-      to,
+    return await sendConfiguredEmail({
+      to: String(payload?.to || '').trim(),
       subject,
       text: bodyText,
       attachments: [
@@ -1357,8 +1571,6 @@ ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
         },
       ],
     });
-
-    return { ok: true, messageId: info?.messageId || null };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -1366,33 +1578,14 @@ ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
 
 ipcMain.handle('email:sendReportCsv', async (_e: any, payload: any) => {
   try {
-    const cfg = readEmailConfig();
-    const appPass = decryptAppPassword(cfg);
-    if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
-
-    const to = String(payload?.to || '').trim();
-    if (!to) return { ok: false, error: 'Missing recipient email' };
     const subject = String(payload?.subject || 'GadgetBoy Report');
     const bodyText = String(payload?.bodyText || '');
     const csvAttachment = String(payload?.csv || '');
     if (!csvAttachment.trim()) return { ok: false, error: 'Missing report CSV content' };
     const filename = String(payload?.filename || 'gadgetboy-report.csv').trim() || 'gadgetboy-report.csv';
 
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: 'gadgetboysc@gmail.com',
-        pass: appPass,
-      },
-    });
-
-    const fromName = String(cfg.fromName || 'GadgetBoy Repair & Retail').trim() || 'GadgetBoy Repair & Retail';
-    const from = `${fromName} <gadgetboysc@gmail.com>`;
-
-    const info = await transporter.sendMail({
-      from,
-      to,
+    return await sendConfiguredEmail({
+      to: String(payload?.to || '').trim(),
       subject,
       text: bodyText,
       attachments: [
@@ -1403,8 +1596,6 @@ ipcMain.handle('email:sendReportCsv', async (_e: any, payload: any) => {
         },
       ],
     });
-
-    return { ok: true, messageId: info?.messageId || null };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -1441,7 +1632,13 @@ ipcMain.handle('update:check', async () => {
     let warning: string | undefined;
 
     // Primary source of truth for startup gating: GitHub latest release.
-    const gh = await fetchLatestGitHubReleaseInfo();
+    const ghDetails = await fetchLatestGitHubReleaseDetails();
+    const gh = ghDetails ? {
+      version: ghDetails.version,
+      releaseName: ghDetails.releaseName,
+      releaseNotes: ghDetails.releaseNotes,
+      htmlUrl: ghDetails.htmlUrl,
+    } : null;
     if (gh?.version) {
       latestVersion = gh.version;
       releaseName = gh.releaseName;
@@ -1477,6 +1674,8 @@ ipcMain.handle('update:check', async () => {
       skippedVersion: cfg?.skippedVersion,
       releaseName,
       releaseNotes,
+      installSource: autoUpdater ? 'electron-updater' : 'github',
+      canAutoInstall: !!(autoUpdater || (ghDetails && selectGitHubInstallerAsset(ghDetails))),
       ...(!latestVersion && warning ? { warning } : {}),
     };
   } catch (e: any) {
@@ -1487,9 +1686,25 @@ ipcMain.handle('update:check', async () => {
 ipcMain.handle('update:download', async () => {
   try {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
-    if (!autoUpdater) return { ok: false, error: 'Updater unavailable on this machine.' };
-    await autoUpdater.downloadUpdate();
-    return { ok: true };
+    const gh = await fetchLatestGitHubReleaseInfo();
+    const currentVersion = normalizeVersion(app.getVersion());
+    const targetVersion = gh?.version;
+    if (targetVersion && compareVersions(currentVersion, targetVersion) >= 0) {
+      return { ok: true, upToDate: true, currentVersion, latestVersion: targetVersion };
+    }
+
+    if (autoUpdater) {
+      try {
+        downloadedInstallerPath = null;
+        downloadedInstallerVersion = null;
+        await autoUpdater.downloadUpdate();
+        return { ok: true, source: 'electron-updater', latestVersion: targetVersion };
+      } catch (e: any) {
+        appendStartupLog(`update:download provider failed, falling back to GitHub: ${String(e?.message || e)}`);
+      }
+    }
+
+    return await downloadLatestGitHubReleaseInstaller(targetVersion);
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -1498,10 +1713,13 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:quitAndInstall', async () => {
   try {
     if (!app.isPackaged) return { ok: false, error: 'Updates are only available in the packaged app.' };
+    if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+      if (downloadedInstallerVersion) appendStartupLog(`update:quitAndInstall running GitHub installer ${downloadedInstallerVersion}`);
+      return runInstallerExe(downloadedInstallerPath, { silent: true, forceRunAfter: true });
+    }
     if (!autoUpdater) return { ok: false, error: 'Updater unavailable on this machine.' };
-    // quits and installs immediately
-    autoUpdater.quitAndInstall(false, true);
-    return { ok: true };
+    autoUpdater.quitAndInstall(true, true);
+    return { ok: true, source: 'electron-updater' };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -1538,7 +1756,7 @@ function createWindow() {
     show: false,
     title: windowTitle(),
   });
-  win.once('ready-to-show', () => { try { win.maximize(); } catch {} win.show(); });
+  showWindowFast(win, () => { try { win.maximize(); } catch {} });
   mainWindow = win;
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
@@ -1653,12 +1871,9 @@ ipcMain.handle('open-calendar', async () => {
   try { if (typeof child.setFullScreenable === 'function') child.setFullScreenable(true); } catch {}
   // Ensure bounds are set to full display bounds prior to showing
   try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
-  // Show when ready; dev server might delay first paint
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
     try { child.maximize(); } catch {}
-    child.show();
-    try { child.focus(); } catch {}
   });
   child.on('show', () => { try { child.maximize(); child.focus(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -1692,7 +1907,7 @@ ipcMain.handle('open-notifications', async (event: any) => {
     show: false,
     title: windowTitle('Notifications'),
   });
-  child.once('ready-to-show', () => { try { centerWindow(child); } catch {} child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?notifications=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notifications=true`;
   child.loadURL(url).catch((e: any) => console.error('[Notifications] loadURL failed', e));
@@ -1723,7 +1938,7 @@ ipcMain.handle('open-notification-settings', async (event: any) => {
     show: false,
     title: windowTitle('Notification Settings'),
   });
-  child.once('ready-to-show', () => { try { centerWindow(child); } catch {} child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?notificationSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notificationSettings=true`;
   child.loadURL(url).catch((e: any) => console.error('[NotificationSettings] loadURL failed', e));
@@ -1748,7 +1963,7 @@ ipcMain.handle('open-backup', async () => {
     show: false,
     title: windowTitle('Data Management'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?backup=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?backup=true`;
   child.loadURL(url);
@@ -1849,8 +2064,7 @@ ipcMain.handle('open-clock-in', async () => {
     show: false,
     title: windowTitle('Employee Clock In/Out'),
   });
-  // Center and show when ready; dev server might delay first paint
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?clockIn=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?clockIn=true`;
   console.log('[ClockIn] Loading URL:', url);
@@ -1905,11 +2119,9 @@ ipcMain.handle('open-quote-generator', async () => {
   try { if (typeof child.setFullScreenable === 'function') child.setFullScreenable(true); } catch {}
   // Ensure bounds are set to full display bounds prior to showing
   try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
     try { child.maximize(); } catch {}
-    child.show();
-    try { child.focus(); } catch {}
   });
   child.on('show', () => { try { child.maximize(); child.focus(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2384,7 +2596,7 @@ ipcMain.handle('open-products', async (event: any) => {
     show: false,
     title: windowTitle('Products'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?products=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?products=true`;
   child.loadURL(url);
@@ -2409,7 +2621,7 @@ ipcMain.handle('open-dev-menu', async () => {
     show: false,
     title: windowTitle('Dev Menu'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?devMenu=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?devMenu=true`;
   child.loadURL(url);
@@ -2592,7 +2804,7 @@ ipcMain.handle('open-data-tools', async () => {
     show: false,
     title: windowTitle('Data Tools'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?dataTools=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?dataTools=true`;
   child.loadURL(url);
@@ -2618,7 +2830,7 @@ ipcMain.handle('open-clear-database', async (event: any) => {
     show: false,
     title: windowTitle('Clear Database'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?clearDb=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?clearDb=true`;
   child.loadURL(url);
@@ -2643,7 +2855,7 @@ ipcMain.handle('open-charts', async () => {
     show: false,
     title: windowTitle('Charts'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?charts=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?charts=true`;
   child.loadURL(url);
@@ -2879,12 +3091,13 @@ ipcMain.handle('open-release-form', async (_event: any, payload: any) => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
     title: windowTitle('Release Form'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));
   const url = isDev ? `${DEV_SERVER_URL}/?releaseForm=${encoded}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?releaseForm=${encoded}`;
@@ -2922,16 +3135,15 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
     title: windowTitle('Customer Receipt'),
   });
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     if (!showWindow) return;
     centerWindow(child);
-    child.show();
-    try { child.focus(); } catch {}
   });
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2944,21 +3156,14 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
 
   // Silent auto-print to the OS default printer.
   if (autoPrint && silent) {
-    child.webContents.once('did-finish-load', () => {
-      setTimeout(() => {
-        try {
-          child.webContents.print({ silent: true, printBackground: true }, (_success: boolean, failureReason: string) => {
-            if (failureReason) {
-              console.warn('[CustomerReceipt] silent print failed:', failureReason);
-            }
-            if (autoCloseMs > 0) {
-              setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
-            }
-          });
-        } catch (e: any) {
-          console.warn('[CustomerReceipt] print threw:', e?.message || String(e));
+    scheduleSilentPrint(child, {
+      delayMs: 60,
+      fallbackDelayMs: app.isPackaged ? 700 : 1200,
+      onDone: () => {
+        if (autoCloseMs > 0) {
+          setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
         }
-      }, 350);
+      },
     });
   }
   return { ok: true };
@@ -2978,12 +3183,13 @@ ipcMain.handle('open-product-form', async (event: any, payload: any) => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
     title: windowTitle('Product Form'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { centerWindow(child); });
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));
@@ -3116,11 +3322,9 @@ ipcMain.handle('open-new-workorder', async (_event: any, payload: any) => {
     show: false,
     title: windowTitle('New Work Order'),
   });
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
     try { child.maximize(); } catch {}
-    child.show();
-    try { child.focus(); } catch {}
   });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   // Load renderer with query params carrying payload
@@ -3146,7 +3350,7 @@ ipcMain.handle('open-device-categories', async (_event: any) => {
     show: false,
     title: windowTitle('Device Categories'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?deviceCategories=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?deviceCategories=true`;
   child.loadURL(url);
@@ -3171,10 +3375,9 @@ ipcMain.handle('open-eod', async (_event: any) => {
     show: false,
     title: windowTitle('End of Day'),
   });
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     centerWindow(child);
     if (typeof child.center === 'function') child.center();
-    child.show();
   });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?eod=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?eod=true`;
@@ -3199,7 +3402,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
     show: false,
     title: windowTitle('Work Order Item'),
   });
-  child.once('ready-to-show', () => child.show());
+  showWindowFast(child);
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?repairCategories=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?repairCategories=true`;
   child.loadURL(url);
@@ -3224,7 +3427,7 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
     show: false,
     title: windowTitle('Add Repair to Work Order'),
   });
-  child.once('ready-to-show', () => child.show());
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev
     ? `${DEV_SERVER_URL}/?workOrderRepairPicker=true`
@@ -3294,7 +3497,7 @@ ipcMain.handle('open-customer-overview', async (_event: any, customerId: number)
     show: false,
     title: windowTitle('Customer Overview'),
   });
-  child.once('ready-to-show', () => child.show());
+  showWindowFast(child);
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev
     ? `${DEV_SERVER_URL}/?customerOverview=${customerId}`
@@ -3339,11 +3542,9 @@ ipcMain.handle('open-new-sale', async (event: any, payload: any) => {
     show: false,
     title: windowTitle('New Sale'),
   });
-  child.once('ready-to-show', () => {
+  showWindowFast(child, () => {
     try { child.setBounds({ x: (bounds as any).x ?? 0, y: (bounds as any).y ?? 0, width: (bounds as any).width, height: (bounds as any).height }); } catch {}
     try { child.maximize(); } catch {}
-    child.show();
-    try { child.focus(); } catch {}
   });
   child.on('closed', () => {
     try {
@@ -3386,7 +3587,7 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
     show: false,
     title: windowTitle('Quick Sale'),
   });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev
     ? `${DEV_SERVER_URL}/?quickSale=1&t=${Date.now()}`
@@ -3416,7 +3617,7 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
       title: 'Checkout',
       alwaysOnTop: false,
     });
-  child.once('ready-to-show', () => { centerWindow(child); child.show(); try { child.focus(); } catch {} });
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const url = isDev
@@ -3476,10 +3677,8 @@ ipcMain.handle('customBuild:openItem', async (event: any, payload: any) => {
       alwaysOnTop: false,
     });
 
-    child.once('ready-to-show', () => {
+    showWindowFast(child, () => {
       try { centerWindow(child); } catch {}
-      child.show();
-      try { child.focus(); } catch {}
     });
     if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
 
@@ -3528,7 +3727,7 @@ ipcMain.handle('customBuild:openItem', async (event: any, payload: any) => {
 
 const BACKUP_CONFIG_PATH = () => path.join(resolveDataRoot(), 'backup-config.json');
 
-type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string };
+type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string; lastAutoEmailDate?: string };
 
 function readBackupConfig(): BackupConfig {
   try {
@@ -3606,26 +3805,337 @@ function parseHhMm(str?: string): { h: number; m: number } {
   return { h: Number.isFinite(h) ? h : 0, m: Number.isFinite(m) ? m : 0 };
 }
 
+function scheduleAllowsToday(schedule: string | undefined, date: Date) {
+  const mode = String(schedule || 'daily').trim().toLowerCase();
+  if (mode === 'manual') return false;
+  if (mode === 'weekly') return date.getDay() === 0;
+  return true;
+}
+
+function reportParseDateValue(value: any): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const normalized = value > 1e12 ? value : value * 1000;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const date = new Date(trimmed);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function reportReadNumber(record: any, key: string): number | undefined {
+  const raw = record?.[key];
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function reportRound2(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function reportResolveTotals(record: any) {
+  const total = reportReadNumber(record, 'total')
+    ?? reportReadNumber(record, 'grandTotal')
+    ?? reportReadNumber(record, 'invoiceTotal')
+    ?? reportReadNumber(record, 'amountDue')
+    ?? reportReadNumber(record, 'totalDue')
+    ?? reportReadNumber(record, 'balanceDue')
+    ?? Number(record?.totals?.total || 0)
+    ?? 0;
+  const paid = reportReadNumber(record, 'amountPaid')
+    ?? reportReadNumber(record, 'paid')
+    ?? reportReadNumber(record, 'totalPaid')
+    ?? Number(record?.totals?.paid || 0)
+    ?? 0;
+  const remaining = reportReadNumber(record, 'remaining')
+    ?? reportReadNumber(record, 'balance')
+    ?? reportReadNumber(record, 'amountDue')
+    ?? Number(record?.totals?.remaining || 0)
+    ?? Math.max(0, total - paid);
+  return {
+    total: reportRound2(Number(total || 0)),
+    paid: reportRound2(Number(paid || 0)),
+    remaining: reportRound2(Number(remaining || 0)),
+  };
+}
+
+function reportCollectPayments(record: any) {
+  if (Array.isArray(record?.payments)) return record.payments;
+  if (Array.isArray(record?.paymentHistory)) return record.paymentHistory;
+  if (Array.isArray(record?.paymentLogs)) return record.paymentLogs;
+  return [];
+}
+
+function reportPaymentEventDate(payment: any): Date | null {
+  return reportParseDateValue(payment?.at ?? payment?.date ?? payment?.createdAt ?? payment?.timestamp ?? null);
+}
+
+function reportPaymentAppliedAmount(payment: any) {
+  const applied = Number(payment?.applied);
+  if (Number.isFinite(applied) && applied > 0) return applied;
+  const amount = Number(payment?.amount ?? payment?.tender ?? payment?.paid ?? 0);
+  const change = Number(payment?.change ?? payment?.changeDue ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (Number.isFinite(change) && change > 0) return Math.max(0, amount - change);
+  return amount;
+}
+
+function reportDateWithin(date: Date | null, startMs: number, endMs: number) {
+  if (!date) return false;
+  const time = date.getTime();
+  return time >= startMs && time <= endMs;
+}
+
+function reportGetTimelineDate(record: any): Date | null {
+  const paymentDates = reportCollectPayments(record)
+    .map((payment: any) => reportPaymentEventDate(payment))
+    .filter(Boolean) as Date[];
+  if (paymentDates.length) {
+    paymentDates.sort((a, b) => b.getTime() - a.getTime());
+    return paymentDates[0];
+  }
+  const keys = ['checkoutDate', 'repairCompletionDate', 'clientPickupDate', 'updatedAt', 'checkInAt', 'createdAt'];
+  for (const key of keys) {
+    const date = reportParseDateValue(record?.[key]);
+    if (date) return date;
+  }
+  return null;
+}
+
+function reportGetSaleDate(record: any): Date | null {
+  const keys = ['checkoutDate', 'checkInAt', 'invoiceDate', 'saleDate', 'transactionDate', 'createdAt', 'updatedAt'];
+  for (const key of keys) {
+    const date = reportParseDateValue(record?.[key]);
+    if (date) return date;
+  }
+  return reportGetTimelineDate(record);
+}
+
+function reportCollectedAmountInRange(record: any, startMs: number, endMs: number, fallbackDate?: Date | null) {
+  const payments = reportCollectPayments(record);
+  if (payments.length) {
+    return reportRound2(payments.reduce((sum: number, payment: any) => {
+      const date = reportPaymentEventDate(payment);
+      if (!reportDateWithin(date, startMs, endMs)) return sum;
+      return sum + reportPaymentAppliedAmount(payment);
+    }, 0));
+  }
+  const date = fallbackDate || reportGetTimelineDate(record);
+  if (!reportDateWithin(date, startMs, endMs)) return 0;
+  const totals = reportResolveTotals(record);
+  return reportRound2(Math.max(0, Number(totals.paid || 0) || Number(totals.total || 0) || 0));
+}
+
+function buildScheduledEodEmailPayload(targetDate: Date) {
+  const db = readDb();
+  const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
+  if (!settings) return null;
+
+  const recipients = String(settings?.recipients || '').split(/[;,]/).map((value: string) => value.trim()).filter(Boolean);
+  if (!recipients.length) return null;
+
+  const start = new Date(targetDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(targetDate);
+  end.setHours(23, 59, 59, 999);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  const technicians = Array.isArray((db as any)?.technicians) ? (db as any).technicians : [];
+  const aliasMap = new Map<string, string>();
+  const labelMap = new Map<string, string>();
+  const normalizeTech = (value: any) => String(value == null ? '' : value).trim().toLowerCase();
+  for (const technician of technicians) {
+    if (!technician || technician.active === false) continue;
+    const canonicalDisplay = String(technician.nickname?.trim() || technician.firstName || technician.id || '').trim();
+    const canonicalKey = normalizeTech(canonicalDisplay);
+    if (!canonicalKey) continue;
+    const fullName = [technician.firstName, technician.lastName].filter(Boolean).join(' ').trim();
+    labelMap.set(canonicalKey, fullName || technician.nickname || canonicalDisplay);
+    [canonicalDisplay, technician.id, technician.nickname, technician.firstName, fullName].filter(Boolean).forEach((alias: any) => {
+      const aliasKey = normalizeTech(alias);
+      if (aliasKey) aliasMap.set(aliasKey, canonicalKey);
+    });
+  }
+  const canonicalizeTech = (value: any) => {
+    const key = normalizeTech(value);
+    if (!key) return '';
+    return aliasMap.get(key) || key;
+  };
+
+  const technicianMap = new Map<string, { workOrders: number; sales: number; checkedOut: number; partialPaid: number; billed: number; collected: number; remaining: number }>();
+  const paymentSummary = { cash: 0, card: 0, other: 0, change: 0 };
+  const totals = { workOrders: 0, sales: 0, checkedOut: 0, partialPaid: 0, billed: 0, collected: 0, remaining: 0 };
+
+  const ingestRecord = (kind: 'work' | 'sale', record: any) => {
+    const date = kind === 'sale' ? reportGetSaleDate(record) : reportGetTimelineDate(record);
+    if (!reportDateWithin(date, startMs, endMs)) return;
+    const totalsForRecord = reportResolveTotals(record);
+    const collected = reportCollectedAmountInRange(record, startMs, endMs, date);
+    const status = String(record?.status || '').trim().toLowerCase();
+    const checkedOut = !!record?.checkoutDate || status === 'closed';
+    const partialPaid = Number(totalsForRecord.paid || 0) > 0.01 && Number(totalsForRecord.remaining || 0) > 0.01;
+    const tech = canonicalizeTech(record?.assignedTo);
+
+    if (kind === 'work') totals.workOrders += 1;
+    else totals.sales += 1;
+    if (checkedOut) totals.checkedOut += 1;
+    if (partialPaid) totals.partialPaid += 1;
+    totals.billed += Number(totalsForRecord.total || 0) || 0;
+    totals.collected += collected;
+    totals.remaining += Number(totalsForRecord.remaining || 0) || 0;
+
+    const payments = reportCollectPayments(record);
+    if (payments.length) {
+      for (const payment of payments) {
+        const paymentDate = reportPaymentEventDate(payment);
+        if (!reportDateWithin(paymentDate, startMs, endMs)) continue;
+        const amount = Number(payment?.amount ?? payment?.tender ?? payment?.paid ?? 0);
+        const change = Number(payment?.change ?? payment?.changeDue ?? 0);
+        const type = String(payment?.paymentType || payment?.method || '').toLowerCase();
+        if (type.includes('cash')) {
+          paymentSummary.cash += Number.isFinite(amount) ? amount : 0;
+          paymentSummary.change += Number.isFinite(change) && change > 0 ? change : 0;
+        } else if (type.includes('card') || type.includes('credit') || type.includes('debit')) {
+          paymentSummary.card += Number.isFinite(amount) ? amount : 0;
+        } else if (Number.isFinite(amount)) {
+          paymentSummary.other += amount;
+        }
+      }
+    } else if (collected > 0) {
+      paymentSummary.other += collected;
+    }
+
+    if (!tech) return;
+    const prev = technicianMap.get(tech) || { workOrders: 0, sales: 0, checkedOut: 0, partialPaid: 0, billed: 0, collected: 0, remaining: 0 };
+    if (kind === 'work') prev.workOrders += 1;
+    else prev.sales += 1;
+    if (checkedOut) prev.checkedOut += 1;
+    if (partialPaid) prev.partialPaid += 1;
+    prev.billed += Number(totalsForRecord.total || 0) || 0;
+    prev.collected += collected;
+    prev.remaining += Number(totalsForRecord.remaining || 0) || 0;
+    technicianMap.set(tech, prev);
+  };
+
+  (Array.isArray((db as any)?.workOrders) ? (db as any).workOrders : []).forEach((record: any) => ingestRecord('work', record));
+  (Array.isArray((db as any)?.sales) ? (db as any).sales : []).forEach((record: any) => ingestRecord('sale', record));
+
+  const techLines = Array.from(technicianMap.entries())
+    .map(([tech, value]) => ({
+      tech,
+      label: labelMap.get(tech) || tech,
+      ...value,
+      billed: reportRound2(value.billed),
+      collected: reportRound2(value.collected),
+      remaining: reportRound2(value.remaining),
+    }))
+    .sort((a, b) => b.collected - a.collected);
+
+  const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  const lines = [
+    `Daily batch report for ${dateLabel}`,
+    `Work orders: ${totals.workOrders}`,
+    `Sales: ${totals.sales}`,
+    `Checked out: ${totals.checkedOut}`,
+    `Partial paid: ${totals.partialPaid}`,
+    `Billed: ${formatCurrency(reportRound2(totals.billed))}`,
+    `Collected: ${formatCurrency(reportRound2(totals.collected))}`,
+    `Remaining: ${formatCurrency(reportRound2(totals.remaining))}`,
+    `Cash: ${formatCurrency(reportRound2(paymentSummary.cash))}`,
+    `Card: ${formatCurrency(reportRound2(paymentSummary.card))}`,
+    `Other: ${formatCurrency(reportRound2(paymentSummary.other))}`,
+    `Change: ${formatCurrency(reportRound2(paymentSummary.change))}`,
+  ];
+
+  if (techLines.length) {
+    lines.push('', 'Technician breakdown:');
+    for (const line of techLines) {
+      lines.push(`${line.label}: WO ${line.workOrders} | Sales ${line.sales} | Checked out ${line.checkedOut} | Partial ${line.partialPaid} | Collected ${formatCurrency(line.collected)} | Remaining ${formatCurrency(line.remaining)}`);
+    }
+  }
+
+  const bodyPrefix = String(settings?.emailBody || '').trim();
+  const bodyText = [bodyPrefix, lines.join('\n')].filter(Boolean).join('\n\n');
+  const html = [
+    bodyPrefix ? `<div style="margin-bottom:12px;white-space:pre-wrap;font-family:Arial,sans-serif;">${bodyPrefix.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : '',
+    '<ul style="font-family:Arial,sans-serif;font-size:13px;line-height:1.5;">',
+    ...lines.filter(Boolean).map((line) => `<li>${String(line).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`),
+    '</ul>',
+  ].join('');
+
+  return {
+    recipients,
+    subject: String(settings?.subject || 'Daily batch report').trim() || 'Daily batch report',
+    bodyText,
+    html,
+  };
+}
+
+async function trySendScheduledEodEmail(targetDate: Date) {
+  const payload = buildScheduledEodEmailPayload(targetDate);
+  if (!payload) return { ok: false, skipped: true, error: 'No recipients or settings configured.' };
+  for (const recipient of payload.recipients) {
+    const sent = await sendConfiguredEmail({
+      to: recipient,
+      subject: payload.subject,
+      text: payload.bodyText,
+      html: payload.html,
+    });
+    if (!sent?.ok) return sent;
+  }
+
+  const db = readDb();
+  if (Array.isArray((db as any).eodSettings) && (db as any).eodSettings[0]) {
+    (db as any).eodSettings[0].lastSentAt = new Date().toISOString();
+    writeDb(db);
+  }
+  return { ok: true };
+}
+
 async function checkBatchOutSchedule() {
   try {
     const cfg = readBackupConfig();
     if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = (cfg.lastBatchOutDate || '').slice(0, 10) || null;
     const db = readDb();
     const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
+    const autoEmailDate = (cfg as any)?.lastAutoEmailDate ? String((cfg as any).lastAutoEmailDate).slice(0, 10) : null;
     const autoBackup = settings?.autoBackup !== false; // default enabled
+    const scheduleMode = String(settings?.schedule || 'daily');
     const batchOutTime = settings?.batchOutTime || settings?.sendTime || '21:00';
-    if (!autoBackup) return;
+    const sendTime = settings?.sendTime || batchOutTime || '21:00';
+    const now = new Date();
+    if (!scheduleAllowsToday(scheduleMode, now)) return;
 
     const { h, m } = parseHhMm(batchOutTime);
-    const now = new Date();
-    const target = new Date();
-    target.setHours(h, m, 0, 0);
-    const todayKey = target.toISOString().slice(0, 10);
-    if (lastBatchOutDate === todayKey) return;
-    if (now >= target) {
+    const batchTarget = new Date();
+    batchTarget.setHours(h, m, 0, 0);
+    const todayKey = batchTarget.toISOString().slice(0, 10);
+    if (autoBackup && lastBatchOutDate !== todayKey && now >= batchTarget) {
       const res = await runBatchOutBackup('batchout');
       if (res.ok) {
         lastBatchOutDate = todayKey;
+      }
+    }
+
+    const { h: sendHour, m: sendMinute } = parseHhMm(sendTime);
+    const emailTarget = new Date();
+    emailTarget.setHours(sendHour, sendMinute, 0, 0);
+    if (autoEmailDate !== todayKey && now >= emailTarget) {
+      const sent = await trySendScheduledEodEmail(now);
+      if (sent?.ok) {
+        writeBackupConfig({ lastAutoEmailDate: new Date().toISOString() });
+        appendStartupLog(`scheduled EOD email sent for ${todayKey}`);
+      } else if (!(sent as any)?.skipped) {
+        appendStartupLog(`scheduled EOD email failed: ${String((sent as any)?.error || 'unknown error')}`);
       }
     }
   } catch (e) {

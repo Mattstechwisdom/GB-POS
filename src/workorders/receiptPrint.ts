@@ -1,5 +1,5 @@
 import type { WorkOrder } from './releasePrint';
-import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
+import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
 function htmlEscape(s: string): string {
@@ -279,7 +279,7 @@ function iframeFallback(html: string) {
 export async function printCustomerReceipt(workOrder: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): Promise<void> {
   let resolvedLogoSrc = opts?.logoSrc;
   if (!resolvedLogoSrc) {
-    resolvedLogoSrc = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+    resolvedLogoSrc = (await fetchPublicAssetAsDataUrlCached('logo.png')) || (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) || '';
   }
   const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc });
   const ok = openPopupAndPrint(html);

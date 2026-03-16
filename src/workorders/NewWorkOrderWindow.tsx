@@ -10,7 +10,7 @@ export type WorkOrderItemRow = {
   note?: string;
 };
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAutosave } from '../lib/useAutosave';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
@@ -276,7 +276,22 @@ const NewWorkOrderWindow: React.FC = () => {
       taxRate: wo.taxRate || 0,
       amountPaid: wo.amountPaid || 0,
     });
-    setWo(w => ({ ...w, partCosts, laborCost, totals }));
+    setWo(w => {
+      const existing = w.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+      const totalsUnchanged =
+        Number(existing.subTotal || 0) === Number(totals.subTotal || 0) &&
+        Number(existing.tax || 0) === Number(totals.tax || 0) &&
+        Number(existing.total || 0) === Number(totals.total || 0) &&
+        Number(existing.remaining || 0) === Number(totals.remaining || 0);
+      if (
+        Number(w.partCosts || 0) === Number(partCosts || 0) &&
+        Number(w.laborCost || 0) === Number(laborCost || 0) &&
+        totalsUnchanged
+      ) {
+        return w;
+      }
+      return { ...w, partCosts, laborCost, totals };
+    });
   }, [wo.items, wo.discount, wo.taxRate, wo.amountPaid, (wo as any).discountType, (wo as any).discountPctValue, (wo as any).discountCustomAmount]);
 
   useEffect(() => {
@@ -512,21 +527,38 @@ const NewWorkOrderWindow: React.FC = () => {
 
   // Removed local onNewItemClick; ItemsTable owns New Item adding via picker
 
-  // Helper to map our local wo (with WorkOrderItemRow[]) to a WorkOrderFull for child components
-  function toWorkOrderFull(): WorkOrderFull {
-    // Map WorkOrderItemRow[] to WorkOrderItem[] (minimal, for compatibility)
+  const workOrderFull = useMemo<WorkOrderFull>(() => {
     const items = wo.items.map(row => ({
       id: row.id,
       status: row.status as any || 'pending',
       description: row.repair,
       qty: 1,
-      // Keep unitPrice for legacy consumers, but also carry granular fields for printing
       unitPrice: (row.parts || 0) + (row.labor || 0),
       parts: row.parts,
       labor: row.labor,
     })) as any;
     return { ...wo, items } as unknown as WorkOrderFull;
-  }
+  }, [wo]);
+
+  const handleSidebarChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    setWo(w => ({ ...w, ...patch, items: w.items }));
+  }, []);
+
+  const handleFormChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    setWo(w => ({ ...w, ...patch, items: w.items }));
+  }, []);
+
+  const handleItemsChange = useCallback((items: WorkOrderItemRow[]) => {
+    setWo(w => ({ ...w, items }));
+  }, []);
+
+  const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    setWo(w => ({ ...w, ...patch, items: w.items }));
+  }, []);
+
+  const handlePaymentChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    setWo(w => ({ ...w, ...patch, items: w.items }));
+  }, []);
 
   async function handleCheckout() {
     if (!ensureRequired('checkout', 'checking out')) return;
@@ -710,7 +742,7 @@ const NewWorkOrderWindow: React.FC = () => {
         </div>
       )}
       <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-        <WorkOrderSidebar workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} validationFlags={sidebarValidationFlags} />
+        <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} validationFlags={sidebarValidationFlags} />
         <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="flex items-center justify-between">
@@ -756,16 +788,16 @@ const NewWorkOrderWindow: React.FC = () => {
           </div>
 
           <WorkOrderForm
-            workOrder={toWorkOrderFull()}
-            onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))}
+            workOrder={workOrderFull}
+            onChange={handleFormChange}
             validationFlags={formValidationFlags}
             mode={isCustomBuild ? 'customBuild' : 'standard'}
           />
 
           {isCustomBuild ? (
-            <CustomBuildItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
+            <CustomBuildItemsTable items={wo.items} onChange={handleItemsChange} />
           ) : (
-            <ItemsTable items={wo.items} onChange={items => { setWo(w => ({ ...w, items })); }} />
+            <ItemsTable items={wo.items} onChange={handleItemsChange} />
           )}
           {/* Parts dates + order URL (under line items) */}
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
@@ -836,8 +868,8 @@ const NewWorkOrderWindow: React.FC = () => {
           />
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={toWorkOrderFull()} customerSummary={customerSummary} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} />
-          <PaymentPanel workOrder={toWorkOrderFull()} onChange={patch => setWo(w => ({ ...w, ...patch, items: w.items }))} onCheckout={handleCheckout} />
+          <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
+          <PaymentPanel workOrder={workOrderFull} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>
 

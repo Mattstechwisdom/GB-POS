@@ -41,10 +41,13 @@ jobs:
       - name: Create "Update" installer alias
         shell: pwsh
         run: |
-          $setup = Get-ChildItem -Path release -Filter 'GadgetBoy-POS-Setup-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $version = node -p "require('./package.json').version"
+          $setup = Join-Path 'release' "GadgetBoy-POS-Setup-$version.exe"
           if (-not $setup) { throw 'Setup installer not found in release/*.exe' }
-          $updateName = $setup.Name -replace '^GadgetBoy-POS-Setup-', 'GadgetBoy-POS-Update-'
-          Copy-Item -Force $setup.FullName (Join-Path $setup.DirectoryName $updateName)
+          if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
+          $update = Join-Path 'release' "GadgetBoy-POS-Update-$version.exe"
+          Copy-Item -Force $setup $update
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: List release artifacts
         run: |
@@ -56,8 +59,9 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
-            release/*.exe
-            release/*.yml
-            release/*.blockmap
+            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe
+            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe.blockmap
+            release/GadgetBoy-POS-Update-${{ env.RELEASE_VERSION }}.exe
+            release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

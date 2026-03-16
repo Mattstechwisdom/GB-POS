@@ -18,21 +18,30 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
   const timerRef = useRef<any>(null);
   const lastSavedRef = useRef<T | null>(null);
   const mountedRef = useRef(true);
+  const saveRef = useRef(save);
+  const shouldSaveRef = useRef(shouldSave);
+  const onSavedRef = useRef(onSaved);
+  const equalsRef = useRef(equals);
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  useEffect(() => { saveRef.current = save; }, [save]);
+  useEffect(() => { shouldSaveRef.current = shouldSave; }, [shouldSave]);
+  useEffect(() => { onSavedRef.current = onSaved; }, [onSaved]);
+  useEffect(() => { equalsRef.current = equals; }, [equals]);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   useEffect(() => {
     if (!enabled) return;
-    // If nothing changed since last save, skip
-    if (lastSavedRef.current && equals(lastSavedRef.current, value)) return;
     // Guard via predicate
-    if (shouldSave && !shouldSave(value)) return;
+    if (shouldSaveRef.current && !shouldSaveRef.current(value)) return;
     if (timerRef.current) clearTimeout(timerRef.current);
+    const pendingValue = value;
     timerRef.current = setTimeout(async () => {
       try {
-        await save(value);
-        lastSavedRef.current = value;
-        if (onSaved) onSaved(value);
+        if (lastSavedRef.current && equalsRef.current(lastSavedRef.current, pendingValue)) return;
+        await saveRef.current(pendingValue);
+        lastSavedRef.current = pendingValue;
+        if (onSavedRef.current) onSavedRef.current(pendingValue);
       } catch (e) {
         // swallow; caller can handle their own notifications/logging
         // intentionally no retry loop

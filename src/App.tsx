@@ -13,6 +13,11 @@ import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
 
+function getActivityDate(record: any): Date {
+  const raw = record?.updatedAt || record?.checkoutDate || record?.repairCompletionDate || record?.clientPickupDate || record?.checkInAt || record?.createdAt || 0;
+  return new Date(raw);
+}
+
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
@@ -138,7 +143,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
     try {
       setLoading(true);
       const [wos, sales] = await Promise.all([
-        (window as any).api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }),
+        (window as any).api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'activityAt', sortDir: 'desc' }),
         (window as any).api.dbGet('sales', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
       ]);
       setWo(Array.isArray(wos) ? wos : []);
@@ -195,7 +200,8 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
         type: 'workorder' as const,
         id: w.id,
         customerId: (w as any).customerId as number | undefined,
-        date: new Date(w.checkInAt || w.createdAt || 0),
+        date: getActivityDate(w),
+        originalDate: new Date(w.checkInAt || w.createdAt || 0),
         status: (Math.max(0, Number(w.totals?.total || w.total || 0) - Number(w.amountPaid || 0)) <= 0 ? 'closed' : 'open') as 'open'|'closed',
         desc: w.productDescription || w.summary || '',
         items: (() => {
@@ -284,7 +290,11 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
         if (to && r.date > to) return false;
         return true;
       })
-      .sort((a, b) => b.id - a.id);
+      .sort((a, b) => {
+        const bd = b.date?.getTime?.() || 0;
+        const ad = a.date?.getTime?.() || 0;
+        return (bd - ad) || (b.id - a.id);
+      });
   }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
   React.useEffect(() => {
@@ -443,7 +453,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
                 }}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1">{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
+                <td className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
                 <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
                 <td className="px-2 py-1">{r.tech}</td>

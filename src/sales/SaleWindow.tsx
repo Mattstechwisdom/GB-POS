@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
@@ -48,7 +48,10 @@ type SaleRecord = {
   totals?: { subTotal: number; tax: number; total: number; remaining: number };
   internalCost?: number; // deprecated: moved per-item; kept for old records
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair'; // deprecated: moved per-item
+  consultationHours?: number; // legacy mirror of first consultation item
 };
+
+const CONSULTATION_HOURLY_RATE = 75;
 
 type SaleRequiredKey = 'assignedTo' | 'itemDetails';
 
@@ -221,6 +224,7 @@ const SaleWindow: React.FC = () => {
               description: found.itemDescription || 'Item',
               qty: Number(found.quantity || 1) || 1,
               price: Number(found.price || 0) || 0,
+              consultationHours: typeof found.consultationHours === 'number' ? found.consultationHours : undefined,
               internalCost: typeof found.internalCost === 'number' ? found.internalCost : undefined,
               condition: (found as any).condition || 'New',
               productUrl: (found as any).productUrl,
@@ -235,7 +239,16 @@ const SaleWindow: React.FC = () => {
     })();
   }, [payload]);
 
-  const itemTotal = (row: SaleItemRow) => (Number(row.qty) || 0) * (Number(row.price) || 0);
+  const itemUnits = (row: Partial<SaleItemRow> | null | undefined) => {
+    if (isConsultationItem(row)) {
+      const hours = Number((row as any)?.consultationHours ?? row?.qty ?? 0);
+      return Number.isFinite(hours) && hours > 0 ? hours : 0;
+    }
+    const qty = Number(row?.qty ?? 0);
+    return Number.isFinite(qty) && qty > 0 ? qty : 0;
+  };
+
+  const itemTotal = (row: SaleItemRow) => itemUnits(row) * (Number(row.price) || 0);
 
   const isConsultationItem = (row: Partial<SaleItemRow> | null | undefined) => {
     const cat = (row as any)?.category;
@@ -272,7 +285,22 @@ const SaleWindow: React.FC = () => {
     const remaining = Math.max(0, round2(totalWithTax - amountPaid));
     const totals = { subTotal, tax, total: totalWithTax, remaining };
 
-    setSale(s => ({ ...s, partCosts, laborCost, totals }));
+    setSale(s => {
+      const currentTotals = s.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+      const totalsUnchanged =
+        Number(currentTotals.subTotal || 0) === Number(totals.subTotal || 0) &&
+        Number(currentTotals.tax || 0) === Number(totals.tax || 0) &&
+        Number(currentTotals.total || 0) === Number(totals.total || 0) &&
+        Number(currentTotals.remaining || 0) === Number(totals.remaining || 0);
+      if (
+        Number((s as any).partCosts || 0) === Number(partCosts || 0) &&
+        Number((s as any).laborCost || 0) === Number(laborCost || 0) &&
+        totalsUnchanged
+      ) {
+        return s;
+      }
+      return { ...s, partCosts, laborCost, totals };
+    });
   }, [total, consultationTotal, sale.taxRate, sale.amountPaid]);
 
   // Per-item internal cost editing and pricing handled inside SaleItemsTable edit flow.
@@ -320,7 +348,10 @@ const SaleWindow: React.FC = () => {
     } else {
       rows.forEach((r, idx) => {
         if (!r.description || !r.description.toString().trim()) errs.push(`Row ${idx + 1}: description required`);
-        if (!(Number(r.qty) > 0)) errs.push(`Row ${idx + 1}: qty must be >= 1`);
+        if (isConsultationItem(r)) {
+          if (!(Number(r.consultationHours ?? r.qty) > 0)) errs.push(`Row ${idx + 1}: consultation hours must be greater than 0`);
+          if (!(Number(r.price) > 0)) errs.push(`Row ${idx + 1}: consultation hourly rate must be greater than 0`);
+        } else if (!(Number(r.qty) > 0)) errs.push(`Row ${idx + 1}: qty must be >= 1`);
         if (!(Number(r.price) >= 0)) errs.push(`Row ${idx + 1}: price must be ≥ 0`);
       });
     }
@@ -346,7 +377,9 @@ const SaleWindow: React.FC = () => {
     }
     for (const r of rows) {
       if (!r.description || !r.description.toString().trim()) return false;
-      if (!(Number(r.qty) > 0)) return false;
+      if (isConsultationItem(r)) {
+        if (!(Number(r.consultationHours ?? r.qty) > 0)) return false;
+      } else if (!(Number(r.qty) > 0)) return false;
       if (!(Number(r.price) >= 0)) return false;
     }
     return true;
@@ -358,8 +391,11 @@ const SaleWindow: React.FC = () => {
       ...sale,
       // legacy fields: mirror first row for compatibility
       itemDescription: sale.items && sale.items[0] ? sale.items[0].description : (sale as any).itemDescription,
-      quantity: sale.items && sale.items[0] ? sale.items[0].qty : (sale as any).quantity,
-        price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
+      quantity: sale.items && sale.items[0] ? itemUnits(sale.items[0]) : (sale as any).quantity,
+      price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
+      consultationHours: sale.items && sale.items[0] && isConsultationItem(sale.items[0])
+        ? Number(sale.items[0].consultationHours ?? itemUnits(sale.items[0])) || undefined
+        : (sale as any).consultationHours,
       // If inStock, null out order/delivery fields to avoid confusion
       orderedDate: sale.inStock ? null : sale.orderedDate || null,
       estimatedDeliveryDate: sale.inStock ? null : sale.estimatedDeliveryDate || null,
@@ -486,15 +522,14 @@ const SaleWindow: React.FC = () => {
     }
   }
 
-  function toWorkOrderFull(): WorkOrderFull {
-    // Map sale to a WorkOrderFull-like shape for shared panels
+  const sharedWorkOrder = useMemo<WorkOrderFull>(() => {
     const rows = (sale.items || []) as SaleItemRow[];
     const items = (rows.length ? rows : [{ id: 'sale-item', description: sale.itemDescription || 'Retail item', qty: sale.quantity || 1, price: sale.price || 0 } as any]).map((r: any) => ({
       id: r.id || crypto.randomUUID(),
       description: r.description,
-      qty: r.qty || 1,
+      qty: itemUnits(r) || 1,
       unitPrice: r.price,
-      parts: (Number(r.qty) || 0) * (Number(r.price) || 0),
+      parts: itemTotal(r),
       labor: 0,
       status: 'pending',
     }));
@@ -522,7 +557,73 @@ const SaleWindow: React.FC = () => {
       items: items,
       clientPickupDate: (sale as any).clientPickupDate || null,
     } as unknown as WorkOrderFull;
-  }
+  }, [sale]);
+
+  const intakeCustomerSummary = useMemo(() => ({ name: sale.customerName, phone: sale.customerPhone }), [sale.customerName, sale.customerPhone]);
+
+  const handleSidebarChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    const { items: _ignore, ...rest } = (patch as any) || {};
+    setSale(s => ({ ...s, ...rest }));
+  }, []);
+
+  const handleSaleItemsChange = useCallback((items: SaleItemRow[]) => {
+    setSale(s => ({ ...s, items }));
+  }, []);
+
+  const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    const { items: _ignore, ...rest } = (patch as any) || {};
+    setSale(s => ({ ...s, ...rest }));
+  }, []);
+
+  const handlePaymentChange = useCallback((patch: Partial<WorkOrderFull>) => {
+    const { items: _ignore, ...rest } = (patch as any) || {};
+    setSale(s => ({ ...s, ...rest }));
+  }, []);
+
+  const renderSidebarActions = useCallback(() => (
+    <>
+      <button
+        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+        onClick={async () => {
+          const rows = (sale.items || []) as SaleItemRow[];
+          const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
+            id: r.id,
+            description: r.description,
+            qty: itemUnits(r) || 1,
+            price: Number(r.price) || 0,
+          }));
+          const partCosts = Number(sale.partCosts ?? 0) || 0;
+          const laborCost = Number(sale.laborCost ?? 0) || 0;
+          const payload = {
+            receiptType: 'sale',
+            id: (sale as any).id,
+            customerId: sale.customerId,
+            customerName: sale.customerName,
+            customerPhone: sale.customerPhone,
+            customerEmail: (sale as any).customerEmail || '',
+            productCategory: 'Retail',
+            productDescription: (rows[0]?.description) || sale.itemDescription || 'Sale',
+            items: receiptItems,
+            partCosts,
+            laborCost,
+            discount: sale.discount || 0,
+            taxRate: sale.taxRate || 0,
+            totals: sale.totals,
+            amountPaid: sale.amountPaid || 0,
+          };
+          await (window as any).api.openCustomerReceipt({
+            data: payload,
+            autoPrint: true,
+            silent: true,
+            autoCloseMs: 900,
+            show: false,
+          });
+        }}
+      >
+        Print Customer Receipt
+      </button>
+    </>
+  ), [sale]);
 
   async function handleCheckout() {
     if (!validate('checking out this sale')) return;
@@ -606,7 +707,7 @@ const SaleWindow: React.FC = () => {
           const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
             id: r.id,
             description: r.description,
-            qty: Number(r.qty) || 1,
+            qty: itemUnits(r) || 1,
             price: Number(r.price) || 0,
           }));
 
@@ -667,7 +768,8 @@ const SaleWindow: React.FC = () => {
         id: crypto.randomUUID(),
         description: picked.itemDescription || picked.title || picked.name || 'Item',
         qty: Number(picked.quantity ?? 1) || 1,
-        price: Number(picked.price ?? 0) || 0,
+        price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_HOURLY_RATE : 0),
+        consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
         internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
         condition: picked.condition || 'New',
         productUrl: picked.productUrl || picked.url || picked.link || '',
@@ -686,7 +788,8 @@ const SaleWindow: React.FC = () => {
             id: crypto.randomUUID(),
             description: picked.itemDescription || picked.title || picked.name || 'Item',
             qty: Number(picked.quantity ?? 1) || 1,
-            price: Number(picked.price ?? 0) || 0,
+            price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_HOURLY_RATE : 0),
+            consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
             internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
             condition: picked.condition || 'New',
             productUrl: picked.productUrl || picked.url || picked.link || '',
@@ -717,67 +820,20 @@ const SaleWindow: React.FC = () => {
       )}
       <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
     <WorkOrderSidebar
-      workOrder={toWorkOrderFull()}
-      onChange={patch => {
-        const { items: _ignore, ...rest } = (patch as any) || {};
-        // If patch contains assignedTo from WorkOrderSidebar selection, it will be technician id string
-        setSale(s => ({ ...s, ...rest }));
-      }}
+      workOrder={sharedWorkOrder}
+      onChange={handleSidebarChange}
       hideStatus
       saleDates
       hideOrderDeliveryDates
       validationFlags={sidebarValidationFlags}
-      renderActions={() => (
-        <>
-          <button
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
-            onClick={async () => {
-              const rows = (sale.items || []) as SaleItemRow[];
-              const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
-                id: r.id,
-                description: r.description,
-                qty: Number(r.qty) || 1,
-                price: Number(r.price) || 0,
-              }));
-              const partCosts = Number(sale.partCosts ?? 0) || 0;
-              const laborCost = Number(sale.laborCost ?? 0) || 0;
-              const payload = {
-                receiptType: 'sale',
-                id: (sale as any).id,
-                customerId: sale.customerId,
-                customerName: sale.customerName,
-                customerPhone: sale.customerPhone,
-                customerEmail: (sale as any).customerEmail || '',
-                productCategory: 'Retail',
-                productDescription: (rows[0]?.description) || sale.itemDescription || 'Sale',
-                items: receiptItems,
-                partCosts,
-                laborCost,
-                discount: sale.discount || 0,
-                taxRate: sale.taxRate || 0,
-                totals: sale.totals,
-                amountPaid: sale.amountPaid || 0,
-              };
-              await (window as any).api.openCustomerReceipt({
-                data: payload,
-                autoPrint: true,
-                silent: true,
-                autoCloseMs: 900,
-                show: false,
-              });
-            }}
-          >
-            Print Customer Receipt
-          </button>
-        </>
-      )}
+      renderActions={renderSidebarActions}
     />
   <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <h1 className="text-xl font-semibold mb-2">New Sale</h1>
           <div className="grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
             <SaleItemsTable
               items={(sale.items || []) as SaleItemRow[]}
-              onChange={items => setSale(s => ({ ...s, items }))}
+              onChange={handleSaleItemsChange}
               showRequiredIndicator={itemsSectionNeedsAttention}
             />
 
@@ -852,14 +908,8 @@ const SaleWindow: React.FC = () => {
         </div>
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={toWorkOrderFull()} customerSummary={{ name: sale.customerName, phone: sale.customerPhone }} onChange={patch => {
-            const { items: _ignore, ...rest } = (patch as any) || {};
-            setSale(s => ({ ...s, ...rest }));
-          }} />
-          <PaymentPanel salesMode workOrder={toWorkOrderFull()} onChange={patch => {
-            const { items: _ignore, ...rest } = (patch as any) || {};
-            setSale(s => ({ ...s, ...rest }));
-          }} onCheckout={handleCheckout} />
+          <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
+          <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>
       <div className="fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">

@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
+const GITHUB_REPO = 'Mattstechwisdom/GB-POS';
+const UPDATE_CHECK_TIMEOUT_MS = 5000;
+
 type AppInfo = {
   version: string;
   platform: string;
@@ -33,6 +36,63 @@ function fmtBytes(n: number) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function normalizeVersion(v: string) {
+  return String(v || '0.0.0').trim().replace(/^v/i, '');
+}
+
+function compareVersions(aRaw: string, bRaw: string) {
+  const a = normalizeVersion(aRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
+  const b = normalizeVersion(bRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
+  for (let i = 0; i < 3; i += 1) {
+    const av = Number.isFinite(a[i]) ? a[i] : 0;
+    const bv = Number.isFinite(b[i]) ? b[i] : 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+async function fetchGitHubLatestRelease() {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: {
+        'User-Agent': 'gbpos-update-gate',
+        Accept: 'application/vnd.github+json',
+      },
+      cache: 'no-store',
+      signal: controller?.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (!res.ok) throw new Error(`GitHub latest release check failed: ${res.status}`);
+  const json = await res.json();
+  const latestVersion = normalizeVersion(json?.tag_name || json?.name || '');
+  if (!latestVersion) return null;
+  return {
+    latestVersion,
+    releaseName: typeof json?.name === 'string' ? json.name : undefined,
+    releaseNotes: json?.body,
+  };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId != null) window.clearTimeout(timeoutId);
+  }
+}
+
 export default function UpdateGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'checking' });
 
@@ -59,14 +119,22 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       }
 
       const appInfo = (await api.getAppInfo()) as AppInfo;
+      let fallbackRelease: { latestVersion: string; releaseName?: string; releaseNotes?: any } | null = null;
 
       // If the packaged app has update support, ask the main process to check.
       if (typeof api.updateCheck !== 'function') {
+        try {
+          fallbackRelease = await fetchGitHubLatestRelease();
+        } catch {}
+        if (fallbackRelease && compareVersions(appInfo.version, fallbackRelease.latestVersion) < 0) {
+          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: fallbackRelease.latestVersion, releaseName: fallbackRelease.releaseName, releaseNotes: fallbackRelease.releaseNotes });
+          return;
+        }
         setState({ kind: 'ok' });
         return;
       }
 
-      const res = await api.updateCheck();
+      const res = await withTimeout(Promise.resolve(api.updateCheck()), UPDATE_CHECK_TIMEOUT_MS, 'Update check');
       if (res?.notPackaged) {
         setState({ kind: 'ok' });
         return;
@@ -74,6 +142,13 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       if (!res?.ok) {
         const msg = String(res?.error || 'Update check failed');
         console.warn('[UpdateGate] update check failed:', msg);
+        try {
+          fallbackRelease = await fetchGitHubLatestRelease();
+          if (fallbackRelease && compareVersions(appInfo.version, fallbackRelease.latestVersion) < 0) {
+            setState({ kind: 'updateAvailable', app: appInfo, latestVersion: fallbackRelease.latestVersion, releaseName: fallbackRelease.releaseName, releaseNotes: fallbackRelease.releaseNotes });
+            return;
+          }
+        } catch {}
         // In production, surface the failure so the user knows updates aren't working.
         if (shouldEnforceGate) {
           setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
@@ -124,7 +199,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (state.kind === 'ok') return <>{children}</>;
+  if (state.kind === 'ok' || state.kind === 'checking') return <>{children}</>;
 
   const cardClass = 'w-full max-w-xl rounded-lg bg-zinc-900 border border-zinc-700 p-6';
   const titleClass = 'text-xl font-semibold text-gray-100';
@@ -137,13 +212,6 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-zinc-950 text-gray-100 flex items-center justify-center p-6">
       <div className={cardClass}>
-        {state.kind === 'checking' && (
-          <>
-            <div className={titleClass}>Checking for updates…</div>
-            <div className={subClass}>Looking for a newer version of GadgetBoy POS.</div>
-          </>
-        )}
-
         {state.kind === 'updateAvailable' && (
           <>
             <div className={titleClass}>Update available</div>
@@ -205,6 +273,16 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
                 onClick={() => setState({ kind: 'ok' })}
               >
                 Later
+              </button>
+              <button
+                className={btnClass}
+                onClick={async () => {
+                  try {
+                    await (window as any)?.api?.updateOpenReleases?.();
+                  } catch {}
+                }}
+              >
+                Open releases
               </button>
             </div>
           </>

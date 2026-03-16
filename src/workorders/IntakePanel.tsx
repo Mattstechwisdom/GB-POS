@@ -97,4 +97,12 @@ const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary }) 
   );
 }
 
-export default IntakePanel;
+export default React.memo(IntakePanel, (prev, next) => {
+  const a = prev.workOrder;
+  const b = next.workOrder;
+  return Number(a.customerId || 0) === Number(b.customerId || 0)
+    && String(a.checkInAt || '') === String(b.checkInAt || '')
+    && String(a.intakeSource || '') === String(b.intakeSource || '')
+    && String(prev.customerSummary?.name || '') === String(next.customerSummary?.name || '')
+    && String(prev.customerSummary?.phone || '') === String(next.customerSummary?.phone || '');
+});

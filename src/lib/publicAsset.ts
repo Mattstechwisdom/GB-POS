@@ -7,6 +7,8 @@ export function publicAsset(path: string): string {
   return `${base}/${clean}`;
 }
 
+const dataUrlCache = new Map<string, Promise<string | null>>();
+
 export async function fetchPublicAssetAsDataUrl(path: string): Promise<string | null> {
   try {
     const res = await fetch(publicAsset(path));
@@ -21,4 +23,15 @@ export async function fetchPublicAssetAsDataUrl(path: string): Promise<string | 
   } catch {
     return null;
   }
+}
+
+export function fetchPublicAssetAsDataUrlCached(path: string): Promise<string | null> {
+  const key = String(path || '').trim();
+  if (!key) return Promise.resolve(null);
+  let pending = dataUrlCache.get(key);
+  if (!pending) {
+    pending = fetchPublicAssetAsDataUrl(key).catch(() => null);
+    dataUrlCache.set(key, pending);
+  }
+  return pending;
 }

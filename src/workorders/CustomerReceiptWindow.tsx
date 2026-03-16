@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchPublicAssetAsDataUrl, publicAsset } from '../lib/publicAsset';
+import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
 function getPayload() {
@@ -38,7 +38,7 @@ const CustomerReceiptWindow: React.FC = () => {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const src = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+      const src = (await fetchPublicAssetAsDataUrlCached('logo.png')) || (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) || '';
       if (!alive) return;
       setLogoSrc(src);
     })();
@@ -57,7 +57,7 @@ const CustomerReceiptWindow: React.FC = () => {
       if (flags.autoCloseMs && flags.autoCloseMs > 0) {
         window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
       }
-    }, 900);
+    }, 250);
 
     if (logoSrc) {
       window.clearTimeout(fallback);
@@ -67,7 +67,7 @@ const CustomerReceiptWindow: React.FC = () => {
         if (flags.autoCloseMs && flags.autoCloseMs > 0) {
           window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
         }
-      }, 150);
+      }, 40);
       return () => window.clearTimeout(immediate);
     }
 
@@ -181,8 +181,8 @@ const CustomerReceiptWindow: React.FC = () => {
               try {
                 const embeddedLogo =
                   logoSrc ||
-                  (await fetchPublicAssetAsDataUrl('logo.png')) ||
-                  (await fetchPublicAssetAsDataUrl('logo-spin.gif')) ||
+                  (await fetchPublicAssetAsDataUrlCached('logo.png')) ||
+                  (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) ||
                   '';
 
                 let html = document.documentElement.outerHTML;

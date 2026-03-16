@@ -24,7 +24,7 @@ export type WorkOrder = {
   notes?: string;
 };
 
-import { fetchPublicAssetAsDataUrl } from '../lib/publicAsset';
+import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
 function buildPatternSvg(seq: number[], size: number = 140): string {
@@ -360,7 +360,7 @@ function iframeFallback(html: string) {
 export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): Promise<void> {
   let resolvedLogoSrc = opts?.logoSrc;
   if (!resolvedLogoSrc) {
-    resolvedLogoSrc = (await fetchPublicAssetAsDataUrl('logo.png')) || (await fetchPublicAssetAsDataUrl('logo-spin.gif')) || '';
+    resolvedLogoSrc = (await fetchPublicAssetAsDataUrlCached('logo.png')) || (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) || '';
   }
   const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc });
   const ok = openPopupAndPrint(html);

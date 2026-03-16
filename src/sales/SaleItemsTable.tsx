@@ -8,6 +8,7 @@ export type SaleItemRow = {
   description: string;
   qty: number;
   price: number; // unit price
+  consultationHours?: number;
   internalCost?: number;
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair';
   inStock?: boolean; // whether this specific item is in stock
@@ -22,6 +23,24 @@ interface Props {
 }
 
 const MAX_ITEMS = 20;
+
+function isConsultationItem(row: Partial<SaleItemRow> | null | undefined) {
+  const category = (row?.category || '').toString().trim().toLowerCase();
+  return category === 'consultation' || category.startsWith('consult');
+}
+
+function effectiveUnits(row: Partial<SaleItemRow> | null | undefined) {
+  if (isConsultationItem(row)) {
+    const hours = Number(row?.consultationHours ?? row?.qty ?? 0);
+    return Number.isFinite(hours) && hours > 0 ? hours : 0;
+  }
+  const qty = Number(row?.qty ?? 0);
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+}
+
+function lineTotalFor(row: Partial<SaleItemRow> | null | undefined) {
+  return effectiveUnits(row) * (Number(row?.price) || 0);
+}
 
 const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicator }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
@@ -42,21 +61,21 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
     }
   }, [items, selected]);
 
-  // Keep an always-available inline editor for the currently selected row.
+  // Keep the inline editor in sync only after the user explicitly opens it.
   useEffect(() => {
     if (!selectedRow) {
       setEditing(null);
       return;
     }
-    setEditing(prev => (prev?.id === selectedRow.id ? prev : { ...selectedRow }));
-  }, [selectedRow?.id]);
+    setEditing(prev => (prev ? (prev.id === selectedRow.id ? prev : { ...selectedRow }) : null));
+  }, [selectedRow]);
 
   const ctx = useContextMenu<SaleItemRow>();
   const ctxRow = ctx.state.data;
 
   const ctxItems = useMemo<ContextMenuItem[]>(() => {
     if (!ctxRow) return [];
-    const lineTotal = (Number(ctxRow.qty) || 0) * (Number(ctxRow.price) || 0);
+    const lineTotal = lineTotalFor(ctxRow);
     const url = (ctxRow.productUrl || '').trim();
     return [
       { type: 'header', label: ctxRow.description || 'Item' },
@@ -71,6 +90,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           if (next.length > MAX_ITEMS) next.pop();
           onChange(next);
           setSelected(copy.id);
+          setEditing(null);
         },
       },
       ...(url
@@ -123,6 +143,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           description: picked.itemDescription || picked.title || picked.name || 'Item',
           qty: Number(picked.quantity ?? 1) || 1,
           price: Number(picked.price ?? 0) || 0,
+          consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
           internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
           condition: picked.condition || 'New',
           inStock: !!picked.inStock,
@@ -131,6 +152,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);
+        setEditing(null);
         return;
       } catch (e) {
         console.error('[SaleItemsTable] pickSaleProduct failed', e);
@@ -155,7 +177,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
               <th className="px-2 py-1">Item</th>
-              <th className="px-2 py-1" style={{ width: 80 }}>Qty</th>
+              <th className="px-2 py-1" style={{ width: 80 }}>Qty / Hrs</th>
               <th className="px-2 py-1" style={{ width: 110 }}>Price</th>
               <th className="px-2 py-1" style={{ width: 120, textAlign: 'right' }}>Total</th>
               <th className="px-2 py-1" style={{ width: 90, textAlign: 'center' }}>In stock</th>
@@ -164,12 +186,12 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           <tbody>
             {items.map(it => {
               const isSel = selected === it.id;
-              const lineTotal = (Number(it.qty) || 0) * (Number(it.price) || 0);
+              const units = effectiveUnits(it);
+              const lineTotal = lineTotalFor(it);
               return (
                 <tr
                   key={it.id}
                   onClick={() => setSelected(it.id)}
-                  onDoubleClick={() => setEditing(it)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -178,7 +200,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
                   <td className="px-2 py-1 font-medium truncate" title={it.description}>{it.description}</td>
-                  <td className="px-2 py-1">{it.qty}</td>
+                  <td className="px-2 py-1">{Number.isFinite(units) ? units : ''}</td>
                   <td className="px-2 py-1">{typeof it.price === 'number' ? `$${it.price.toFixed(2)}` : ''}</td>
                   <td className="px-2 py-1" style={{ textAlign: 'right' }}>{`$${lineTotal.toFixed(2)}`}</td>
                   <td className="px-2 py-1" style={{ textAlign: 'center' }}>
@@ -211,24 +233,43 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
 
       <div className="flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
+        <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
       {editing && (
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
-            <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={editing.description || ''}>{editing.description || ''}</div>
+            <div className="flex items-center gap-2 max-w-[75%]">
+              <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={editing.description || ''}>{editing.description || ''}</div>
+              <button className="px-2 py-0.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Close</button>
+            </div>
           </div>
 
           <label className="block text-xs text-zinc-400 mt-2">Item</label>
           <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
           <div className="flex gap-2 mt-2">
             <div className="w-1/3">
-              <label className="block text-xs text-zinc-400">Qty</label>
-              <input className="w-full bg-zinc-900 rounded px-2 py-1" type="number" min={1} value={editing.qty} onChange={e => setEditing({ ...editing, qty: Number(e.target.value) || 1 })} />
+              <label className="block text-xs text-zinc-400">{isConsultationItem(editing) ? 'Hours' : 'Qty'}</label>
+              <input
+                className="w-full bg-zinc-900 rounded px-2 py-1"
+                type="number"
+                min={0.25}
+                step={isConsultationItem(editing) ? 0.25 : 1}
+                value={isConsultationItem(editing) ? (editing.consultationHours ?? editing.qty) : editing.qty}
+                onChange={e => {
+                  const nextValue = Number(e.target.value);
+                  if (isConsultationItem(editing)) {
+                    const hours = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1;
+                    setEditing({ ...editing, consultationHours: hours, qty: hours });
+                    return;
+                  }
+                  setEditing({ ...editing, qty: Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1 });
+                }}
+              />
             </div>
             <div className="w-2/3">
-              <label className="block text-xs text-zinc-400">Price</label>
+              <label className="block text-xs text-zinc-400">{isConsultationItem(editing) ? 'Hourly rate' : 'Price'}</label>
               <MoneyInput
                 className="w-full bg-zinc-900 rounded px-2 py-1"
                 value={Number(editing.price || 0)}
@@ -243,7 +284,16 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               <select
                 className="w-full bg-zinc-900 rounded px-2 py-1"
                 value={(editing.category || '') as any}
-                onChange={e => setEditing({ ...editing, category: (e.target.value || undefined) as any })}
+                onChange={e => {
+                  const nextCategory = (e.target.value || undefined) as any;
+                  if (isConsultationItem({ category: nextCategory })) {
+                    const hours = Number(editing.consultationHours ?? editing.qty ?? 1) || 1;
+                    const rate = Number(editing.price || 0) > 0 ? Number(editing.price || 0) : 75;
+                    setEditing({ ...editing, category: nextCategory, consultationHours: hours, qty: hours, price: rate });
+                    return;
+                  }
+                  setEditing({ ...editing, category: nextCategory });
+                }}
               >
                 <option value="">—</option>
                 <option value="Device">Device</option>
@@ -286,6 +336,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               />
             </div>
           </div>
+          {isConsultationItem(editing) ? (
+            <div className="mt-2 text-[11px] text-zinc-400">
+              Consultation totals use hours multiplied by the hourly rate. Technician payout is tracked separately in EOD reporting.
+            </div>
+          ) : null}
           <div className="mt-2">
             <label className="block text-xs text-zinc-400">Product URL</label>
             <input
@@ -329,4 +384,4 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
   );
 };
 
-export default SaleItemsTable;
+export default React.memo(SaleItemsTable);
