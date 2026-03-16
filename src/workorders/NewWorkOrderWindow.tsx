@@ -107,6 +107,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
+  const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -560,168 +561,170 @@ const NewWorkOrderWindow: React.FC = () => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
 
-  async function handleCheckout() {
-    if (!ensureRequired('checkout', 'checking out')) return;
-    if (!isCustomBuild && (!wo.productCategory || !wo.productCategory.trim())) {
-      triggerWarningBanner('Device category is missing', 'Select a device category, then click Checkout again.');
-      return;
-    }
-    if (!wo.customerId) {
-      triggerWarningBanner('Customer is missing', 'Select a customer, then click Checkout again.');
-      return;
-    }
-    try {
-      const amountDue = wo.totals?.remaining || 0;
-
-      // Provide parts/labor breakdown so checkout can accept partial payments.
-      const partCosts = Number(wo.partCosts || 0) || 0;
-      const laborCost = Number(wo.laborCost || 0) || 0;
-      const discount = Number(wo.discount || 0) || 0;
-      const taxRate = Number(wo.taxRate || 0) || 0;
-      const laborAfterDiscount = Math.max(0, laborCost - discount);
-      const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
-
-      const result = await (window as any).api.openCheckout({
-        amountDue,
-        partsDue: Math.min(partsWithTax, amountDue),
-        laborDue: Math.min(laborAfterDiscount, amountDue),
-        title: isCustomBuild ? 'Custom Build Checkout' : 'Work Order Checkout',
-      });
-      if (!result) return; // user cancelled
-      const additionalPaid = Number(result.amountPaid || 0);
-      // Add to existing amountPaid to allow partial payments accumulation
-      let newAmountPaid = (wo.amountPaid || 0) + additionalPaid;
-      if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = wo.amountPaid || 0;
-
-      const updatedTotals = computeTotals({
-        laborCost: Number(wo.laborCost || 0) || 0,
-        partCosts: Number(wo.partCosts || 0) || 0,
-        discount: Number(wo.discount || 0) || 0,
-        taxRate: Number(wo.taxRate || 0) || 0,
-        amountPaid: newAmountPaid,
-      });
-
-      // Prepare updated items if marking closed
-      let updatedItems = wo.items;
-      let status = wo.status;
-      let checkoutDate = wo.checkoutDate;
-      if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
-        status = 'closed';
-        checkoutDate = new Date().toISOString();
-        updatedItems = wo.items.map(it => ({ ...it, status: 'done' }));
+  useEffect(() => {
+    handleCheckoutRef.current = async () => {
+      if (!ensureRequired('checkout', 'checking out')) return;
+      if (!isCustomBuild && (!wo.productCategory || !wo.productCategory.trim())) {
+        triggerWarningBanner('Device category is missing', 'Select a device category, then click Checkout again.');
+        return;
       }
+      if (!wo.customerId) {
+        triggerWarningBanner('Customer is missing', 'Select a customer, then click Checkout again.');
+        return;
+      }
+      try {
+        const amountDue = wo.totals?.remaining || 0;
 
-      const prevPayments = Array.isArray((wo as any).payments) ? (wo as any).payments : [];
-      const payments = (() => {
-        if (!(additionalPaid > 0)) return prevPayments;
-        const now = new Date().toISOString();
-        const pt = String(result.paymentType || '');
-        const isCash = pt.toLowerCase().includes('cash');
-        const tendered = Number(result.tendered ?? additionalPaid);
-        const change = Number(result.changeDue || 0);
-        const entry: any = {
-          amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
-          applied: additionalPaid,
-          paymentType: pt,
-          at: now,
-        };
-        if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-        if (result?.payFor) entry.payFor = result.payFor;
-        if (typeof result?.appliedParts === 'number') entry.appliedParts = result.appliedParts;
-        if (typeof result?.appliedLabor === 'number') entry.appliedLabor = result.appliedLabor;
-        return [...prevPayments, entry];
-      })();
+        const partCosts = Number(wo.partCosts || 0) || 0;
+        const laborCost = Number(wo.laborCost || 0) || 0;
+        const discount = Number(wo.discount || 0) || 0;
+        const taxRate = Number(wo.taxRate || 0) || 0;
+        const laborAfterDiscount = Math.max(0, laborCost - discount);
+        const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
 
-      const nextWo = {
-        ...wo,
-        amountPaid: newAmountPaid,
-        paymentType: result.paymentType,
-        payments,
-        status,
-        checkoutDate,
-        items: updatedItems,
-        totals: updatedTotals,
-      };
+        const result = await (window as any).api.openCheckout({
+          amountDue,
+          partsDue: Math.min(partsWithTax, amountDue),
+          laborDue: Math.min(laborAfterDiscount, amountDue),
+          title: isCustomBuild ? 'Custom Build Checkout' : 'Work Order Checkout',
+        });
+        if (!result) return;
+        const additionalPaid = Number(result.amountPaid || 0);
+        let newAmountPaid = (wo.amountPaid || 0) + additionalPaid;
+        if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = wo.amountPaid || 0;
 
-      setWo(() => nextWo);
+        const updatedTotals = computeTotals({
+          laborCost: Number(wo.laborCost || 0) || 0,
+          partCosts: Number(wo.partCosts || 0) || 0,
+          discount: Number(wo.discount || 0) || 0,
+          taxRate: Number(wo.taxRate || 0) || 0,
+          amountPaid: newAmountPaid,
+        });
 
-      // Persist if already saved (id > 0)
-      if (wo.id && wo.id > 0) {
-        try {
-          await (window as any).api.update('workOrders', { ...nextWo });
-        } catch (e) {
-          console.error('Failed persisting checkout update', e);
+        let updatedItems = wo.items;
+        let status = wo.status;
+        let checkoutDate = wo.checkoutDate;
+        if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
+          status = 'closed';
+          checkoutDate = new Date().toISOString();
+          updatedItems = wo.items.map(it => ({ ...it, status: 'done' }));
         }
-      }
 
-      if (result.printReceipt) {
-        try {
-          let customerName = (wo as any).customerName || '';
-          let customerPhone = (wo as any).customerPhone || '';
-          let customerEmail = (wo as any).customerEmail || '';
-          try {
-            const id = (wo as any).customerId;
-            if (id && (window as any).api?.findCustomers) {
-              const list = await (window as any).api.findCustomers({ id });
-              const c = Array.isArray(list) && list.length ? list[0] : null;
-              if (c) {
-                const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
-                customerName = full || customerName;
-                customerPhone = c.phone || customerPhone;
-                customerEmail = c.email || customerEmail;
-              }
-            }
-          } catch {}
-
-          const payload = {
-            id: (wo as any).id,
-            customerId: (wo as any).customerId,
-            customerName,
-            customerPhone,
-            customerEmail,
-            productCategory: wo.productCategory,
-            productDescription: wo.productDescription,
-            model: (wo as any).model,
-            serial: (wo as any).serial,
-            problemInfo: wo.problemInfo,
-            items: (nextWo as any).items || [],
-            partCosts: (nextWo as any).partCosts,
-            laborCost: (nextWo as any).laborCost,
-            discount: (nextWo as any).discount,
-            taxRate: (nextWo as any).taxRate,
-            totals: (nextWo as any).totals,
-            amountPaid: (nextWo as any).amountPaid,
+        const prevPayments = Array.isArray((wo as any).payments) ? (wo as any).payments : [];
+        const payments = (() => {
+          if (!(additionalPaid > 0)) return prevPayments;
+          const now = new Date().toISOString();
+          const pt = String(result.paymentType || '');
+          const isCash = pt.toLowerCase().includes('cash');
+          const tendered = Number(result.tendered ?? additionalPaid);
+          const change = Number(result.changeDue || 0);
+          const entry: any = {
+            amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
+            applied: additionalPaid,
+            paymentType: pt,
+            at: now,
           };
-          if ((window as any).api?.openCustomerReceipt) {
-            await (window as any).api.openCustomerReceipt({
-              data: payload,
-              autoPrint: true,
-              silent: true,
-              autoCloseMs: 900,
-              show: false,
-            });
-          } else {
-            const u = new URL(window.location.href);
-            u.search = `?customerReceipt=${encodeURIComponent(JSON.stringify(payload))}`;
-            window.open(u.toString(), '_blank');
-          }
-        } catch (e) { console.error('openCustomerReceipt failed', e); }
-      }
-      if (result.closeParent) {
-        const delayMs = result.printReceipt ? 1300 : 0;
-        setTimeout(() => {
+          if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+          if (result?.payFor) entry.payFor = result.payFor;
+          if (typeof result?.appliedParts === 'number') entry.appliedParts = result.appliedParts;
+          if (typeof result?.appliedLabor === 'number') entry.appliedLabor = result.appliedLabor;
+          return [...prevPayments, entry];
+        })();
+
+        const nextWo = {
+          ...wo,
+          amountPaid: newAmountPaid,
+          paymentType: result.paymentType,
+          payments,
+          status,
+          checkoutDate,
+          items: updatedItems,
+          totals: updatedTotals,
+        };
+
+        setWo(() => nextWo);
+
+        if (wo.id && wo.id > 0) {
           try {
-            const api = (window as any).api;
-            if (api?.closeSelfWindow) api.closeSelfWindow({ focusMain: true });
-            else window.close();
-          } catch { try { window.close(); } catch {} }
-        }, delayMs);
+            await (window as any).api.update('workOrders', { ...nextWo });
+          } catch (e) {
+            console.error('Failed persisting checkout update', e);
+          }
+        }
+
+        if (result.printReceipt) {
+          try {
+            let customerName = (wo as any).customerName || '';
+            let customerPhone = (wo as any).customerPhone || '';
+            let customerEmail = (wo as any).customerEmail || '';
+            try {
+              const id = (wo as any).customerId;
+              if (id && (window as any).api?.findCustomers) {
+                const list = await (window as any).api.findCustomers({ id });
+                const c = Array.isArray(list) && list.length ? list[0] : null;
+                if (c) {
+                  const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+                  customerName = full || customerName;
+                  customerPhone = c.phone || customerPhone;
+                  customerEmail = c.email || customerEmail;
+                }
+              }
+            } catch {}
+
+            const payload = {
+              id: (wo as any).id,
+              customerId: (wo as any).customerId,
+              customerName,
+              customerPhone,
+              customerEmail,
+              productCategory: wo.productCategory,
+              productDescription: wo.productDescription,
+              model: (wo as any).model,
+              serial: (wo as any).serial,
+              problemInfo: wo.problemInfo,
+              items: (nextWo as any).items || [],
+              partCosts: (nextWo as any).partCosts,
+              laborCost: (nextWo as any).laborCost,
+              discount: (nextWo as any).discount,
+              taxRate: (nextWo as any).taxRate,
+              totals: (nextWo as any).totals,
+              amountPaid: (nextWo as any).amountPaid,
+            };
+            if ((window as any).api?.openCustomerReceipt) {
+              await (window as any).api.openCustomerReceipt({
+                data: payload,
+                autoPrint: true,
+                silent: true,
+                autoCloseMs: 900,
+                show: false,
+              });
+            } else {
+              const u = new URL(window.location.href);
+              u.search = `?customerReceipt=${encodeURIComponent(JSON.stringify(payload))}`;
+              window.open(u.toString(), '_blank');
+            }
+          } catch (e) { console.error('openCustomerReceipt failed', e); }
+        }
+        if (result.closeParent) {
+          const delayMs = result.printReceipt ? 1300 : 0;
+          setTimeout(() => {
+            try {
+              const api = (window as any).api;
+              if (api?.closeSelfWindow) api.closeSelfWindow({ focusMain: true });
+              else window.close();
+            } catch { try { window.close(); } catch {} }
+          }, delayMs);
+        }
+      } catch (e) {
+        console.error('Checkout failed', e);
+        alert('Checkout failed. See console.');
       }
-    } catch (e) {
-      console.error('Checkout failed', e);
-      alert('Checkout failed. See console.');
-    }
-  }
+    };
+  });
+
+  const handleCheckout = useCallback(() => {
+    void handleCheckoutRef.current();
+  }, []);
 
   // (removed legacy printCustomerReceipt stub in favor of shared HTML builder)
 

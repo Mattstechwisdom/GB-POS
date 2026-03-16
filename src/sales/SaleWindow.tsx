@@ -111,6 +111,7 @@ const SaleWindow: React.FC = () => {
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
+  const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -625,129 +626,132 @@ const SaleWindow: React.FC = () => {
     </>
   ), [sale]);
 
-  async function handleCheckout() {
-    if (!validate('checking out this sale')) return;
-    try {
-      const amountDue = (sale.totals?.remaining || 0);
-      const result = await (window as any).api.openCheckout({ amountDue });
-      if (!result) return; // cancelled
-      const additionalPaid = Number(result.amountPaid || 0);
-      let newAmountPaid = (sale.amountPaid || 0) + additionalPaid;
-      if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = sale.amountPaid || 0;
+  useEffect(() => {
+    handleCheckoutRef.current = async () => {
+      if (!validate('checking out this sale')) return;
+      try {
+        const amountDue = (sale.totals?.remaining || 0);
+        const result = await (window as any).api.openCheckout({ amountDue });
+        if (!result) return;
+        const additionalPaid = Number(result.amountPaid || 0);
+        let newAmountPaid = (sale.amountPaid || 0) + additionalPaid;
+        if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = sale.amountPaid || 0;
 
-      const prevPayments = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
-      const payments = (() => {
-        if (!(additionalPaid > 0)) return prevPayments;
-        const now = new Date().toISOString();
-        const pt = String(result.paymentType || '');
-        const isCash = pt.toLowerCase().includes('cash');
-        const tendered = Number(result.tendered ?? additionalPaid);
-        const change = Number(result.changeDue || 0);
-        const entry: any = {
-          amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
-          applied: additionalPaid,
-          paymentType: pt,
-          at: now,
-        };
-        if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-        return [...prevPayments, entry];
-      })();
-      let status = sale.status;
-      let checkoutDate = sale.checkoutDate as string | null;
-      if ((sale.totals?.remaining || 0) - additionalPaid <= 0 || result.markClosed) {
-        status = 'closed';
-        checkoutDate = new Date().toISOString();
-      }
-
-      // Persist the full sale record so Customer Overview, EOD, etc. always see it.
-      const partCosts = Number(total || 0) || 0;
-      const taxRate = Number(sale.taxRate || 0) || 0;
-      const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
-      const subTotal = round2(partCosts);
-      const tax = round2(taxableParts * taxRate / 100);
-      const totalWithTax = round2(subTotal + tax);
-      const remaining = Math.max(0, round2(totalWithTax - (Number(newAmountPaid || 0) || 0)));
-      const updatedTotals = { subTotal, tax, total: totalWithTax, remaining };
-
-      const recordBase = buildSaleRecordBase();
-      const recordToPersist: SaleRecord = {
-        ...recordBase,
-        amountPaid: newAmountPaid,
-        paymentType: result.paymentType,
-        payments,
-        status: status as any,
-        checkoutDate,
-        partCosts,
-        laborCost: 0,
-        totals: updatedTotals,
-        total: updatedTotals.total,
-      } as any;
-
-      let saved: any = null;
-      let currentId = (sale as any).id as number | undefined;
-      if (currentId) {
-        saved = await (window as any).api.dbUpdate('sales', currentId, { ...recordToPersist, id: currentId });
-      } else {
-        saved = await (window as any).api.dbAdd('sales', recordToPersist);
-        currentId = saved?.id;
-      }
-      if (saved) {
-        setSale(saved);
-        try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
-      } else {
-        // Fallback: at least update local state
-        setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
-      }
-      try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
-
-      if (result.printReceipt) {
-        // Reuse customer receipt for now, mapping fields
-        try {
-          const rows = (sale.items || []) as SaleItemRow[];
-          const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
-            id: r.id,
-            description: r.description,
-            qty: itemUnits(r) || 1,
-            price: Number(r.price) || 0,
-          }));
-
-          const payload = {
-            receiptType: 'sale',
-            id: currentId || (sale as any).id,
-            customerId: recordToPersist.customerId,
-            customerName: recordToPersist.customerName,
-            customerPhone: recordToPersist.customerPhone,
-            customerEmail: (recordToPersist as any).customerEmail || '',
-            productCategory: 'Retail',
-            productDescription: (recordToPersist.items && (recordToPersist.items as any)[0]?.description) || recordToPersist.itemDescription || 'Sale',
-            items: receiptItems,
-            partCosts: total,
-            laborCost: 0,
-            discount: recordToPersist.discount || 0,
-            taxRate: recordToPersist.taxRate || 0,
-            totals: updatedTotals,
-            amountPaid: newAmountPaid,
+        const prevPayments = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
+        const payments = (() => {
+          if (!(additionalPaid > 0)) return prevPayments;
+          const now = new Date().toISOString();
+          const pt = String(result.paymentType || '');
+          const isCash = pt.toLowerCase().includes('cash');
+          const tendered = Number(result.tendered ?? additionalPaid);
+          const change = Number(result.changeDue || 0);
+          const entry: any = {
+            amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
+            applied: additionalPaid,
+            paymentType: pt,
+            at: now,
           };
-          if ((window as any).api?.openCustomerReceipt) {
-            await (window as any).api.openCustomerReceipt({
-              data: payload,
-              autoPrint: true,
-              silent: true,
-              autoCloseMs: 900,
-              show: false,
-            });
-          }
-        } catch (e) { console.error('openCustomerReceipt failed', e); }
+          if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+          return [...prevPayments, entry];
+        })();
+        let status = sale.status;
+        let checkoutDate = sale.checkoutDate as string | null;
+        if ((sale.totals?.remaining || 0) - additionalPaid <= 0 || result.markClosed) {
+          status = 'closed';
+          checkoutDate = new Date().toISOString();
+        }
+
+        const partCosts = Number(total || 0) || 0;
+        const taxRate = Number(sale.taxRate || 0) || 0;
+        const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
+        const subTotal = round2(partCosts);
+        const tax = round2(taxableParts * taxRate / 100);
+        const totalWithTax = round2(subTotal + tax);
+        const remaining = Math.max(0, round2(totalWithTax - (Number(newAmountPaid || 0) || 0)));
+        const updatedTotals = { subTotal, tax, total: totalWithTax, remaining };
+
+        const recordBase = buildSaleRecordBase();
+        const recordToPersist: SaleRecord = {
+          ...recordBase,
+          amountPaid: newAmountPaid,
+          paymentType: result.paymentType,
+          payments,
+          status: status as any,
+          checkoutDate,
+          partCosts,
+          laborCost: 0,
+          totals: updatedTotals,
+          total: updatedTotals.total,
+        } as any;
+
+        let saved: any = null;
+        let currentId = (sale as any).id as number | undefined;
+        if (currentId) {
+          saved = await (window as any).api.dbUpdate('sales', currentId, { ...recordToPersist, id: currentId });
+        } else {
+          saved = await (window as any).api.dbAdd('sales', recordToPersist);
+          currentId = saved?.id;
+        }
+        if (saved) {
+          setSale(saved);
+          try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
+        } else {
+          setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+        }
+        try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
+
+        if (result.printReceipt) {
+          try {
+            const rows = (sale.items || []) as SaleItemRow[];
+            const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
+              id: r.id,
+              description: r.description,
+              qty: itemUnits(r) || 1,
+              price: Number(r.price) || 0,
+            }));
+
+            const payload = {
+              receiptType: 'sale',
+              id: currentId || (sale as any).id,
+              customerId: recordToPersist.customerId,
+              customerName: recordToPersist.customerName,
+              customerPhone: recordToPersist.customerPhone,
+              customerEmail: (recordToPersist as any).customerEmail || '',
+              productCategory: 'Retail',
+              productDescription: (recordToPersist.items && (recordToPersist.items as any)[0]?.description) || recordToPersist.itemDescription || 'Sale',
+              items: receiptItems,
+              partCosts: total,
+              laborCost: 0,
+              discount: recordToPersist.discount || 0,
+              taxRate: recordToPersist.taxRate || 0,
+              totals: updatedTotals,
+              amountPaid: newAmountPaid,
+            };
+            if ((window as any).api?.openCustomerReceipt) {
+              await (window as any).api.openCustomerReceipt({
+                data: payload,
+                autoPrint: true,
+                silent: true,
+                autoCloseMs: 900,
+                show: false,
+              });
+            }
+          } catch (e) { console.error('openCustomerReceipt failed', e); }
+        }
+        if (result.closeParent) {
+          const delayMs = result.printReceipt ? 1300 : 0;
+          setTimeout(() => { void closeThisWindow({ focusMain: true }); }, delayMs);
+        }
+      } catch (e) {
+        console.error('Checkout failed', e);
+        alert('Checkout failed. See console.');
       }
-      if (result.closeParent) {
-        const delayMs = result.printReceipt ? 1300 : 0;
-        setTimeout(() => { void closeThisWindow({ focusMain: true }); }, delayMs);
-      }
-    } catch (e) {
-      console.error('Checkout failed', e);
-      alert('Checkout failed. See console.');
-    }
-  }
+    };
+  });
+
+  const handleCheckout = useCallback(() => {
+    void handleCheckoutRef.current();
+  }, []);
 
   function onCancel() {
     if (!(sale as any).id && !hasMeaningfulInput) {

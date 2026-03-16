@@ -154,6 +154,8 @@ export default React.memo(PaymentPanel, (prev, next) => {
   const at = a.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
   const bt = b.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
   return prev.salesMode === next.salesMode
+    && prev.onChange === next.onChange
+    && prev.onCheckout === next.onCheckout
     && String(a.discountType || '') === String(b.discountType || '')
     && Number(a.discountPctValue || 0) === Number(b.discountPctValue || 0)
     && Number(a.discountCustomAmount || 0) === Number(b.discountCustomAmount || 0)
