@@ -741,6 +741,10 @@ function getGitHubFeedConfig(): { provider: 'github'; owner: string; repo: strin
 
 const UPDATE_HTTP_TIMEOUT_MS = 5000;
 
+function hasGitHubReleaseMetadataAsset(release: { assets?: Array<{ name?: string }> } | null | undefined) {
+  return !!(release?.assets || []).some((asset) => /(^|[\\/])latest\.yml$/i.test(String(asset?.name || '')));
+}
+
 async function fetchLatestGitHubReleaseDetails(): Promise<{
   version: string;
   releaseName?: string;
@@ -751,7 +755,7 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
   const slug = getGitHubRepoSlug();
   if (!slug) return null;
 
-  const url = `https://api.github.com/repos/${slug}/releases?per_page=10`;
+  const url = `https://api.github.com/repos/${slug}/releases?per_page=10&t=${Date.now()}`;
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: any) => {
@@ -764,6 +768,8 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
         headers: {
           'User-Agent': 'gbpos-updater',
           Accept: 'application/vnd.github+json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
         },
       }, (res: any) => {
         let raw = '';
@@ -799,11 +805,17 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
                   assets,
                 };
               })
-              .filter((release: any) => !!release.version)
+              .filter((release: any) => {
+                if (!release?.version) return false;
+                const hasInstaller = !!selectGitHubInstallerAsset(release);
+                const hasMetadata = hasGitHubReleaseMetadataAsset(release);
+                return hasInstaller || hasMetadata;
+              })
               .sort((a: any, b: any) => compareVersions(b.version, a.version));
 
             const best = ranked[0];
             if (!best?.version) {
+              appendStartupLog('github releases check found no published installer release');
               finish(null);
               return;
             }
@@ -1198,7 +1210,7 @@ function showWindowFast(win: any, onBeforeShow?: () => void, opts?: { focus?: bo
   setTimeout(reveal, fallbackDelayMs);
 }
 
-function scheduleSilentPrint(win: any, opts?: { delayMs?: number; fallbackDelayMs?: number; onDone?: () => void }) {
+function scheduleSilentPrint(win: any, opts?: { delayMs?: number; onDone?: () => void }) {
   let started = false;
   const start = () => {
     if (started) return;
@@ -1219,10 +1231,6 @@ function scheduleSilentPrint(win: any, opts?: { delayMs?: number; fallbackDelayM
       }
     }, delayMs);
   };
-
-  try { win.webContents.once('did-stop-loading', start); } catch {}
-  try { win.webContents.once('dom-ready', start); } catch {}
-  setTimeout(start, opts?.fallbackDelayMs ?? (app.isPackaged ? 700 : 1200));
   return start;
 }
 
@@ -1640,9 +1648,8 @@ ipcMain.handle('update:check', async () => {
     let latestVersion: string | undefined;
     let releaseName: string | undefined;
     let releaseNotes: any;
-    let warning: string | undefined;
 
-    // Primary source of truth for startup gating: GitHub latest release.
+    // Source of truth for startup gating: a live GitHub releases query.
     const ghDetails = await fetchLatestGitHubReleaseDetails();
     const gh = ghDetails ? {
       version: ghDetails.version,
@@ -1655,24 +1662,8 @@ ipcMain.handle('update:check', async () => {
       releaseName = gh.releaseName;
       releaseNotes = gh.releaseNotes;
       appendStartupLog(`update:check github current=${currentVersion} latest=${latestVersion}`);
-    }
-
-    // Secondary source: electron-updater provider metadata. Helpful for download/install flow.
-    if (autoUpdater) {
-      try {
-        const res = await autoUpdater.checkForUpdates();
-        const providerVersion = res?.updateInfo?.version ? normalizeVersion(res.updateInfo.version) : undefined;
-        if (!latestVersion && providerVersion) latestVersion = providerVersion;
-        if (!releaseName && res?.updateInfo?.releaseName) releaseName = res.updateInfo.releaseName;
-        if (!releaseNotes && res?.updateInfo?.releaseNotes) releaseNotes = res.updateInfo.releaseNotes;
-        appendStartupLog(`update:check provider current=${currentVersion} latest=${String(providerVersion || '')}`);
-      } catch (e: any) {
-        const msg = String(e?.message || e);
-        appendStartupLog(`update:check provider failed (non-fatal): ${msg}`);
-        warning = msg;
-      }
     } else {
-      warning = 'Updater unavailable on this machine.';
+      appendStartupLog(`update:check github current=${currentVersion} latest=<none>`);
     }
 
     const updateAvailable = !!(latestVersion && compareVersions(currentVersion, latestVersion) < 0);
@@ -1685,9 +1676,9 @@ ipcMain.handle('update:check', async () => {
       skippedVersion: cfg?.skippedVersion,
       releaseName,
       releaseNotes,
-      installSource: autoUpdater ? 'electron-updater' : 'github',
-      canAutoInstall: !!(autoUpdater || (ghDetails && selectGitHubInstallerAsset(ghDetails))),
-      ...(!latestVersion && warning ? { warning } : {}),
+      installSource: 'github',
+      canAutoInstall: !!(ghDetails && selectGitHubInstallerAsset(ghDetails)),
+      ...(latestVersion ? {} : { warning: 'Could not find a published GitHub installer release.' }),
     };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
@@ -1704,6 +1695,12 @@ ipcMain.handle('update:download', async () => {
       return { ok: true, upToDate: true, currentVersion, latestVersion: targetVersion };
     }
 
+    try {
+      return await downloadLatestGitHubReleaseInstaller(targetVersion);
+    } catch (e: any) {
+      appendStartupLog(`update:download github direct failed: ${String(e?.message || e)}`);
+    }
+
     if (autoUpdater) {
       try {
         downloadedInstallerPath = null;
@@ -1711,11 +1708,11 @@ ipcMain.handle('update:download', async () => {
         await autoUpdater.downloadUpdate();
         return { ok: true, source: 'electron-updater', latestVersion: targetVersion };
       } catch (e: any) {
-        appendStartupLog(`update:download provider failed, falling back to GitHub: ${String(e?.message || e)}`);
+        appendStartupLog(`update:download provider fallback failed: ${String(e?.message || e)}`);
       }
     }
 
-    return await downloadLatestGitHubReleaseInstaller(targetVersion);
+    return { ok: false, error: 'Could not download the latest installer from GitHub.' };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -3152,10 +3149,11 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     show: false,
     title: windowTitle('Customer Receipt'),
   });
-  showWindowFast(child, () => {
-    if (!showWindow) return;
-    centerWindow(child);
-  });
+  if (showWindow) {
+    showWindowFast(child, () => {
+      centerWindow(child);
+    });
+  }
   child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const encoded = encodeURIComponent(JSON.stringify(data || {}));
@@ -3169,13 +3167,13 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
   if (autoPrint && silent) {
     const startSilentPrint = scheduleSilentPrint(child, {
       delayMs: 60,
-      fallbackDelayMs: app.isPackaged ? 700 : 1200,
       onDone: () => {
         if (autoCloseMs > 0) {
           setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
         }
       },
     });
+    const fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 2200 : 3200);
 
     const handleReceiptReady = (readyEvent: any) => {
       if (readyEvent?.sender !== child.webContents) return;
@@ -3184,6 +3182,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     };
 
     const cleanupReceiptReadyListener = () => {
+      try { clearTimeout(fallbackTimer); } catch {}
       try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
     };
 

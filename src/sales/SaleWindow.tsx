@@ -739,7 +739,7 @@ const SaleWindow: React.FC = () => {
           } catch (e) { console.error('openCustomerReceipt failed', e); }
         }
         if (result.closeParent) {
-          const delayMs = result.printReceipt ? 1300 : 0;
+          const delayMs = 0;
           setTimeout(() => { void closeThisWindow({ focusMain: true }); }, delayMs);
         }
       } catch (e) {

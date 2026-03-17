@@ -57,10 +57,12 @@ async function fetchGitHubLatestRelease() {
   const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10`, {
+    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10&t=${Date.now()}`, {
       headers: {
         'User-Agent': 'gbpos-update-gate',
         Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
       },
       cache: 'no-store',
       signal: controller?.signal,
@@ -73,12 +75,25 @@ async function fetchGitHubLatestRelease() {
   const releases = Array.isArray(json) ? json : [];
   const candidate = releases
     .filter((release: any) => !release?.draft && !release?.prerelease)
-    .map((release: any) => ({
-      latestVersion: normalizeVersion(release?.tag_name || release?.name || ''),
-      releaseName: typeof release?.name === 'string' ? release.name : undefined,
-      releaseNotes: release?.body,
-    }))
-    .filter((release: any) => !!release.latestVersion)
+    .map((release: any) => {
+      const assets = Array.isArray(release?.assets)
+        ? release.assets
+            .map((asset: any) => ({
+              name: String(asset?.name || '').trim(),
+              downloadUrl: String(asset?.browser_download_url || '').trim(),
+            }))
+            .filter((asset: any) => asset.name && asset.downloadUrl)
+        : [];
+      const hasInstaller = assets.some((asset: any) => /\.exe$/i.test(asset.name));
+      const hasMetadata = assets.some((asset: any) => /(^|[\\/])latest\.yml$/i.test(asset.name));
+      return {
+        latestVersion: normalizeVersion(release?.tag_name || release?.name || ''),
+        releaseName: typeof release?.name === 'string' ? release.name : undefined,
+        releaseNotes: release?.body,
+        hasPublishedAssets: hasInstaller || hasMetadata,
+      };
+    })
+    .filter((release: any) => !!release.latestVersion && release.hasPublishedAssets)
     .sort((a: any, b: any) => compareVersions(b.latestVersion, a.latestVersion))[0];
   if (!candidate?.latestVersion) return null;
   return {
