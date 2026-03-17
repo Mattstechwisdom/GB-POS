@@ -189,7 +189,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
             </div>
             {/* Combined list with pagination */}
             <CombinedHistory
-              customerId={(local as any).id}
+              customer={local as any}
               mode={historyMode}
             />
             {/* Completed Quotes: signed-off PDFs linked to this customer */}
@@ -214,25 +214,57 @@ export default CustomerOverviewWindow;
 // Combined history (Work Orders + Sales) with pagination and filters
 const PAGE_SIZE = 6;
 
-const CombinedHistory: React.FC<{ customerId?: number; mode: 'workorders'|'sales'|'all' }> = ({ customerId, mode }) => {
+function normalizeCustomerName(value: any) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeCustomerPhone(value: any) {
+  return String(value || '').replace(/\D+/g, '').slice(-10);
+}
+
+function saleMatchesCustomer(sale: any, customer: any) {
+  const customerId = Number(customer?.id || 0);
+  const saleCustomerId = Number(sale?.customerId || 0);
+  if (customerId > 0 && saleCustomerId > 0 && saleCustomerId === customerId) return true;
+
+  const customerName = normalizeCustomerName(customer?.name || `${customer?.firstName || ''} ${customer?.lastName || ''}`);
+  const customerPhone = normalizeCustomerPhone(customer?.phone);
+  const saleName = normalizeCustomerName(sale?.customerName);
+  const salePhone = normalizeCustomerPhone(sale?.customerPhone);
+
+  const hasCustomerName = !!customerName;
+  const hasCustomerPhone = !!customerPhone;
+  const nameMatches = hasCustomerName && !!saleName && saleName === customerName;
+  const phoneMatches = hasCustomerPhone && !!salePhone && salePhone === customerPhone;
+
+  if (hasCustomerName && hasCustomerPhone) return nameMatches && phoneMatches;
+  if (hasCustomerName) return nameMatches;
+  if (hasCustomerPhone) return phoneMatches;
+  return false;
+}
+
+const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'workorders'|'sales'|'all' }> = ({ customer, mode }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<{ type: 'workorder'|'sale'; id: number } | null>(null);
 
+  const customerId = Number((customer as any)?.id || 0);
+
   const load = useCallback(async () => {
-    if (!customerId) { setOrders([]); setSales([]); return; }
+    const hasIdentity = !!customerId || !!normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`) || !!normalizeCustomerPhone((customer as any)?.phone);
+    if (!hasIdentity) { setOrders([]); setSales([]); return; }
     try {
       const [wo, allSales] = await Promise.all([
-        (window as any).api.findWorkOrders({ customerId }).catch(() => []),
+        customerId ? (window as any).api.findWorkOrders({ customerId }).catch(() => []) : Promise.resolve([]),
         (window as any).api.dbGet('sales').catch(() => []),
       ]);
       setOrders(Array.isArray(wo) ? wo : []);
-      setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => Number(s.customerId) === Number(customerId)));
+      setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, customer)));
     } catch (e) {
       setOrders([]); setSales([]);
     }
-  }, [customerId]);
+  }, [customer, customerId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

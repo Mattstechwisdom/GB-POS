@@ -575,8 +575,6 @@ const EODWindow: React.FC = () => {
   const [loadingData, setLoadingData] = useState(true);
   const [settingsReady, setSettingsReady] = useState(false);
   const [batchInfo, setBatchInfo] = useState<any>(null);
-  const [emailBody, setEmailBody] = useState('');
-  const [bodyTouched, setBodyTouched] = useState(false);
   const [sending, setSending] = useState(false);
   const [viewMode, setViewMode] = useState<'reports' | 'trends'>('reports');
   const [showCommissionPanel, setShowCommissionPanel] = useState(false);
@@ -679,9 +677,6 @@ const EODWindow: React.FC = () => {
         const storedSettings = Array.isArray(stored) ? stored[0] : stored;
         if (storedSettings && typeof storedSettings === 'object') {
           setSettings(prev => ({ ...prev, ...storedSettings }));
-          if (storedSettings.emailBody) {
-            setEmailBody(storedSettings.emailBody);
-          }
         }
 
         const batchRecord = Array.isArray(batch) ? batch[0] : batch;
@@ -700,7 +695,7 @@ const EODWindow: React.FC = () => {
     };
   }, []);
 
-  const settingsPayload = useMemo(() => ({ ...settings, emailBody }), [settings, emailBody]);
+  const settingsPayload = useMemo(() => ({ ...settings }), [settings]);
 
   useAutosave(settingsPayload, async payload => {
     if (!settingsReady) return;
@@ -1168,18 +1163,13 @@ const EODWindow: React.FC = () => {
     return [`Daily batch for ${rangeLabel(range, start, end)}`, reportLines].filter(Boolean).join('\n\n');
   }, [range, reportLines, start, end]);
 
-
-  useEffect(() => {
-    if (!bodyTouched && !emailBody) {
-      setEmailBody(presetBody);
-    }
-  }, [presetBody, bodyTouched, emailBody]);
-
   const emailHtml = useMemo(() => {
-    const lines = reportLines.split('\n').filter(Boolean).map(l => `<li>${l}</li>`).join('');
-    const bodyBlock = emailBody ? `<div style="margin-bottom:12px;white-space:pre-wrap;font-family:Arial, sans-serif;">${emailBody}</div>` : '';
-    return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;">${bodyBlock}<ul style="padding-left:16px;">${lines}</ul></div>`;
-  }, [emailBody, reportLines]);
+    const bodyBlock = presetBody
+      .split('\n')
+      .map(line => line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+      .join('<br/>');
+    return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;">${bodyBlock}</div>`;
+  }, [presetBody]);
 
   const subject = useMemo(() => {
     return settings.subject || 'Daily batch report';
@@ -1260,7 +1250,7 @@ const EODWindow: React.FC = () => {
         alert('Email sending not configured in this build.');
         return;
       }
-      const text = [emailBody, reportLines].filter(Boolean).join('\n\n');
+      const text = presetBody;
       for (const to of recipients) {
         await api.emailSendQuoteHtml({ to, subject, bodyText: text, filename: 'reports.html', html: emailHtml });
       }
@@ -1759,10 +1749,6 @@ const EODWindow: React.FC = () => {
                     <h3 className="text-lg font-semibold">Email report</h3>
                     <div className="text-xs text-zinc-500">Subject: {subject}</div>
                   </div>
-                  <div className="flex gap-2 text-xs">
-                    <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEmailBody(presetBody); setBodyTouched(true); }}>Use preset</button>
-                    <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEmailBody(''); setBodyTouched(true); }}>Clear</button>
-                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1786,18 +1772,11 @@ const EODWindow: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Message body</label>
-                  <textarea
-                    rows={4}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-2 text-sm"
-                    value={emailBody}
-                    onChange={e => { setEmailBody(e.target.value); setBodyTouched(true); }}
-                  />
-                  <div className="text-[11px] text-zinc-500 mt-1">Batch totals will be appended below this message.</div>
-                </div>
-                <div className="bg-zinc-800 border border-zinc-700 rounded p-3 text-xs text-zinc-200 space-y-2">
-                  <div className="font-semibold text-zinc-100">Batch totals preview</div>
-                  <pre className="whitespace-pre-wrap text-[12px] text-zinc-300">{reportLines || 'No data in range.'}</pre>
+                  <label className="block text-xs text-zinc-400 mb-1">Generated message body</label>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-3 text-xs text-zinc-200 space-y-2">
+                    <div className="font-semibold text-zinc-100">Email body preview</div>
+                    <pre className="whitespace-pre-wrap text-[12px] text-zinc-300">{presetBody || 'No data in range.'}</pre>
+                  </div>
                 </div>
               </div>
 

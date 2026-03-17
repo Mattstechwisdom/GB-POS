@@ -3,17 +3,38 @@ import Button from './Button';
 
 interface Props {
   customerId?: number;
+  customerName?: string;
+  customerPhone?: string;
 }
 
-const CustomerSales: React.FC<Props> = ({ customerId }) => {
+function normalizeCustomerName(value: any) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeCustomerPhone(value: any) {
+  return String(value || '').replace(/\D+/g, '').slice(-10);
+}
+
+const CustomerSales: React.FC<Props> = ({ customerId, customerName, customerPhone }) => {
   const [sales, setSales] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    if (!customerId) { setSales([]); return; }
+    const normalizedName = normalizeCustomerName(customerName);
+    const normalizedPhone = normalizeCustomerPhone(customerPhone);
+    if (!customerId && !normalizedName && !normalizedPhone) { setSales([]); return; }
     const all = await (window as any).api.dbGet('sales').catch(() => []);
-    setSales((all || []).filter((s: any) => Number(s.customerId) === Number(customerId)));
-  }, [customerId]);
+    setSales((all || []).filter((s: any) => {
+      const saleCustomerId = Number(s?.customerId || 0);
+      if (customerId && saleCustomerId === Number(customerId)) return true;
+      const saleName = normalizeCustomerName(s?.customerName);
+      const salePhone = normalizeCustomerPhone(s?.customerPhone);
+      if (normalizedName && normalizedPhone) return saleName === normalizedName && salePhone === normalizedPhone;
+      if (normalizedName) return saleName === normalizedName;
+      if (normalizedPhone) return salePhone === normalizedPhone;
+      return false;
+    }));
+  }, [customerId, customerName, customerPhone]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

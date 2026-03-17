@@ -1,5 +1,5 @@
 ﻿import { publicAsset } from '../lib/publicAsset';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
@@ -141,6 +141,50 @@ function useAutosave<T>(value: T, cb: () => void, opts?: { debounceMs?: number; 
   }, [JSON.stringify(value), opts?.debounceMs, opts?.enabled]);
 }
 
+function normalizeQuoteSnapshot(record: any) {
+  if (!record) return '';
+  if ((record.type ?? 'sales') === 'sales') {
+    return JSON.stringify({
+      type: 'sales',
+      customerName: record.customerName || '',
+      customerPhone: record.customerPhone || '',
+      customerEmail: record.customerEmail || '',
+      notes: record.notes || '',
+      items: Array.isArray(record.items) ? record.items : [],
+      totals: record.totals || { subtotal: 0, total: 0 },
+    });
+  }
+  return JSON.stringify({
+    type: 'repairs',
+    customerName: record.customerName || '',
+    customerPhone: record.customerPhone || '',
+    customerEmail: record.customerEmail || '',
+    notes: record.notes || '',
+    lines: Array.isArray(record.lines) ? record.lines : [],
+    totals: record.totals || { parts: 0, labor: 0, total: 0 },
+  });
+}
+
+function getQuoteActivityIso(record: any) {
+  return String(record?.contentUpdatedAt || record?.updatedAt || record?.createdAt || '');
+}
+
+function getQuoteMonthKey(record: any) {
+  const raw = getQuoteActivityIso(record);
+  const date = raw ? new Date(raw) : new Date(0);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function formatQuoteMonthLabel(key: string) {
+  const [yearRaw, monthRaw] = String(key || '').split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 'Older';
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
 function QuoteGeneratorWindow(): JSX.Element {
   // Mode: sales-only UI, but keep repairs code path intact
   const [mode, setMode] = useState<'sales' | 'repairs'>('sales');
@@ -167,6 +211,9 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [emailSettingsErr, setEmailSettingsErr] = useState<string | null>(null);
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<number | undefined>(undefined);
+  const [expandedQuoteMonths, setExpandedQuoteMonths] = useState<Record<string, boolean>>({});
+  const quoteMetaRef = useRef<{ createdAt?: string; contentUpdatedAt?: string }>({});
+  const quoteSnapshotRef = useRef('');
   // Track expanded categories per item for Custom PC (keyed by item index string)
   const [openCats, setOpenCats] = useState<Record<string, Record<string, boolean>>>({});
 
@@ -197,6 +244,31 @@ function QuoteGeneratorWindow(): JSX.Element {
       return { parts, labor, total } as any;
     } catch { return { parts: 0, labor: 0, total: 0 } as any; }
   }, [repairs]);
+
+  const currentQuoteRecord = useMemo(() => {
+    if (mode === 'sales') {
+      return {
+        type: 'sales' as const,
+        customerName: sales.customerName || '',
+        customerPhone: sales.customerPhone || '',
+        customerEmail: sales.customerEmail || '',
+        notes: sales.notes || '',
+        items: sales.items || [],
+        totals: { ...salesTotals },
+      };
+    }
+    return {
+      type: 'repairs' as const,
+      customerName: repairs.customerName || '',
+      customerPhone: repairs.customerPhone || '',
+      customerEmail: repairs.customerEmail || '',
+      notes: repairs.notes || '',
+      lines: repairs.lines || [],
+      totals: { ...repairTotals },
+    };
+  }, [mode, repairs, repairTotals, sales, salesTotals]);
+
+  const currentQuoteSnapshot = useMemo(() => normalizeQuoteSnapshot(currentQuoteRecord), [currentQuoteRecord]);
 
   function getBuiltInQuoteEmailBody(): string {
     return (
@@ -3295,10 +3367,10 @@ function QuoteGeneratorWindow(): JSX.Element {
       const arr = Array.isArray(list) ? list : [];
       // This window is sales-only: only show 'sales' (or missing type treated as sales)
       const filtered = arr.filter((q: any) => (q?.type ?? 'sales') === 'sales');
-      // Sort newest first by createdAt if available
+      // Sort newest first by meaningful edit timestamp.
       filtered.sort((a: any, b: any) => {
-        const ta = new Date(a?.createdAt || 0).getTime();
-        const tb = new Date(b?.createdAt || 0).getTime();
+        const ta = new Date(getQuoteActivityIso(a) || 0).getTime();
+        const tb = new Date(getQuoteActivityIso(b) || 0).getTime();
         return tb - ta;
       });
       setQuotes(filtered);
@@ -3311,6 +3383,32 @@ function QuoteGeneratorWindow(): JSX.Element {
   useEffect(() => {
     openSavedQuotes();
   }, []);
+
+  const groupedQuotes = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    for (const quote of quotes || []) {
+      const key = getQuoteMonthKey(quote);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(quote);
+    }
+    return Array.from(groups.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, items]) => ({ key, label: formatQuoteMonthLabel(key), items }));
+  }, [quotes]);
+
+  useEffect(() => {
+    setExpandedQuoteMonths((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      groupedQuotes.forEach((group, index) => {
+        if (typeof next[group.key] === 'undefined') {
+          next[group.key] = index === 0;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [groupedQuotes]);
 
   async function deleteSavedQuote(q: any) {
     try {
@@ -3885,32 +3983,25 @@ function QuoteGeneratorWindow(): JSX.Element {
     try {
       setSaving(true);
       setSaveMsg(null);
-      const payload =
-        mode === 'sales'
-          ? {
-              type: 'sales' as const,
-              createdAt: new Date().toISOString(),
-              customerName: sales.customerName,
-              customerPhone: sales.customerPhone,
-              customerEmail: sales.customerEmail,
-              notes: sales.notes,
-              items: sales.items,
-              totals: { ...salesTotals },
-            }
-          : {
-              type: 'repairs' as const,
-              createdAt: new Date().toISOString(),
-              customerName: repairs.customerName,
-              customerPhone: repairs.customerPhone,
-              customerEmail: repairs.customerEmail,
-              lines: repairs.lines,
-              notes: repairs.notes,
-              totals: { ...repairTotals },
-            };
-      const saved = await window.api.dbAdd('quotes', payload);
+      const nowIso = new Date().toISOString();
+      const payload = {
+        ...currentQuoteRecord,
+        createdAt: quoteMetaRef.current.createdAt || nowIso,
+        contentUpdatedAt: nowIso,
+      };
+      const saved = quoteId
+        ? await window.api.dbUpdate('quotes', quoteId, { ...payload, id: quoteId })
+        : await window.api.dbAdd('quotes', payload);
       const idText = saved?.id != null ? ` #${saved.id}` : '';
       setSaveMsg(`Saved quote${idText}`);
-      if (saved?.id != null) setQuoteId(saved.id);
+      if (saved?.id != null) {
+        setQuoteId(saved.id);
+        quoteMetaRef.current = {
+          createdAt: saved.createdAt || payload.createdAt,
+          contentUpdatedAt: saved.contentUpdatedAt || payload.contentUpdatedAt,
+        };
+        quoteSnapshotRef.current = currentQuoteSnapshot;
+      }
       // Refresh sidebar list
       openSavedQuotes();
     } catch (e: any) {
@@ -3927,38 +4018,34 @@ function QuoteGeneratorWindow(): JSX.Element {
     const hasRepairsData = !!(repairs.customerName || repairs.customerPhone || repairs.customerEmail || (repairs.lines && repairs.lines.length));
     if (mode === 'sales' && !hasSalesData) return;
     if (mode === 'repairs' && !hasRepairsData) return;
-    const payload =
-      mode === 'sales'
-        ? {
-            id: quoteId || undefined,
-            type: 'sales' as const,
-            createdAt: new Date().toISOString(),
-            customerName: sales.customerName,
-            customerPhone: sales.customerPhone,
-            customerEmail: sales.customerEmail,
-            notes: sales.notes,
-            items: sales.items,
-            totals: { ...salesTotals },
-          }
-        : {
-            id: quoteId || undefined,
-            type: 'repairs' as const,
-            createdAt: new Date().toISOString(),
-            customerName: repairs.customerName,
-            customerPhone: repairs.customerPhone,
-            customerEmail: repairs.customerEmail,
-            lines: repairs.lines,
-            notes: repairs.notes,
-            totals: { ...repairTotals },
-          };
+    const currentSnapshot = currentQuoteSnapshot;
+    if (quoteId && currentSnapshot === quoteSnapshotRef.current) return;
+    const nowIso = new Date().toISOString();
+    const payload = {
+      ...currentQuoteRecord,
+      id: quoteId || undefined,
+      createdAt: quoteMetaRef.current.createdAt || nowIso,
+      contentUpdatedAt: nowIso,
+    };
     try {
       if (quoteId) {
         const updated = await (window as any).api.dbUpdate('quotes', quoteId, payload);
         if (!updated?.id) return;
+        quoteMetaRef.current = {
+          createdAt: updated.createdAt || payload.createdAt,
+          contentUpdatedAt: updated.contentUpdatedAt || payload.contentUpdatedAt,
+        };
       } else {
         const saved = await (window as any).api.dbAdd('quotes', payload);
-        if (saved?.id) setQuoteId(saved.id);
+        if (saved?.id) {
+          setQuoteId(saved.id);
+          quoteMetaRef.current = {
+            createdAt: saved.createdAt || payload.createdAt,
+            contentUpdatedAt: saved.contentUpdatedAt || payload.contentUpdatedAt,
+          };
+        }
       }
+      quoteSnapshotRef.current = currentSnapshot;
       // Refresh sidebar list after autosave commits
       openSavedQuotes();
       try { window.opener?.postMessage({ type: 'sales:changed' }, '*'); } catch {}
@@ -6589,37 +6676,72 @@ function QuoteGeneratorWindow(): JSX.Element {
           </div>
           <div className="text-[10px] text-zinc-400 mb-2">Click a customer to load their quote.</div>
           <div className="flex-1 overflow-hidden space-y-2">
-            {quotes.length === 0 ? (
+            {groupedQuotes.length === 0 ? (
               <div className="text-xs text-zinc-400">No saved quotes.</div>
             ) : (
-              quotes.map((q: any) => (
-                <div key={q.id ?? Math.random()} className="p-2 rounded border border-zinc-700 hover:bg-zinc-700/50 cursor-pointer">
-                  <div className="flex items-start justify-between gap-2" onClick={() => {
-                    try {
-                      setMode('sales');
-                      setSales({
-                        customerName: q.customerName || '',
-                        customerPhone: q.customerPhone || '',
-                        notes: q.notes || '',
-                        items: Array.isArray(q.items) ? q.items : [],
-                      });
-                      if (q.id != null) setQuoteId(q.id);
-                      setSaveMsg(`Loaded quote #${q.id ?? ''}`);
-                      setTimeout(() => setSaveMsg(null), 1800);
-                    } catch {}
-                  }}>
-                    <div className="flex-1">
-                      <div className="text-xs font-medium truncate">{q.customerName || '-'}</div>
-                      <div className="text-[10px] text-zinc-400">{fmtWhen(q.createdAt)}</div>
-                    </div>
+              groupedQuotes.map((group) => {
+                const expanded = expandedQuoteMonths[group.key] !== false;
+                return (
+                  <div key={group.key} className="rounded border border-zinc-700 overflow-hidden">
                     <button
-                      className="px-1.5 py-0.5 text-[10px] border rounded border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                      disabled={q.id == null}
-                      onClick={(e) => { e.stopPropagation(); deleteSavedQuote(q); }}
-                    >Delete</button>
+                      className="w-full px-2 py-1.5 bg-zinc-900 border-b border-zinc-700 flex items-center justify-between text-left hover:bg-zinc-700/40"
+                      onClick={() => setExpandedQuoteMonths((prev) => ({ ...prev, [group.key]: !expanded }))}
+                    >
+                      <div>
+                        <div className="text-[11px] font-semibold text-zinc-200 uppercase tracking-wide">{group.label}</div>
+                        <div className="text-[10px] text-zinc-400">{group.items.length} quote{group.items.length === 1 ? '' : 's'}</div>
+                      </div>
+                      <div className="text-xs text-zinc-400">{expanded ? 'Hide' : 'Show'}</div>
+                    </button>
+                    {expanded ? (
+                      <div className="divide-y divide-zinc-700/70">
+                        {group.items.map((q: any) => (
+                          <div key={q.id ?? q.createdAt ?? Math.random()} className="p-2 hover:bg-zinc-700/40 cursor-pointer">
+                            <div className="flex items-start justify-between gap-2" onClick={() => {
+                              try {
+                                setMode((q?.type ?? 'sales') === 'repairs' ? 'repairs' : 'sales');
+                                setSales({
+                                  customerName: q.customerName || '',
+                                  customerPhone: q.customerPhone || '',
+                                  customerEmail: q.customerEmail || '',
+                                  notes: q.notes || '',
+                                  items: Array.isArray(q.items) ? q.items : [],
+                                });
+                                setRepairs({
+                                  customerName: q.customerName || '',
+                                  customerPhone: q.customerPhone || '',
+                                  customerEmail: q.customerEmail || '',
+                                  notes: q.notes || '',
+                                  lines: Array.isArray(q.lines) ? q.lines : [],
+                                });
+                                quoteMetaRef.current = {
+                                  createdAt: q.createdAt,
+                                  contentUpdatedAt: q.contentUpdatedAt || q.updatedAt || q.createdAt,
+                                };
+                                quoteSnapshotRef.current = normalizeQuoteSnapshot(q);
+                                if (q.id != null) setQuoteId(q.id);
+                                setSaveMsg(`Loaded quote #${q.id ?? ''}`);
+                                setTimeout(() => setSaveMsg(null), 1800);
+                              } catch {}
+                            }}>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium truncate text-zinc-100">{q.customerName || '-'}</div>
+                                <div className="text-[10px] text-zinc-400">Edited {fmtWhen(getQuoteActivityIso(q))}</div>
+                                <div className="text-[10px] text-zinc-500 truncate">Created {fmtWhen(q.createdAt)}</div>
+                              </div>
+                              <button
+                                className="px-1.5 py-0.5 text-[10px] border rounded border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                                disabled={q.id == null}
+                                onClick={(e) => { e.stopPropagation(); deleteSavedQuote(q); }}
+                              >Delete</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </aside>
