@@ -21,13 +21,16 @@ export default function ContextMenu(props: {
 }) {
 	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu' } = props;
 	const menuRef = useRef<HTMLDivElement | null>(null);
-	const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+	const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
 	const hasItems = useMemo(() => items.some(it => (it as any)?.type !== 'separator'), [items]);
 
 	useLayoutEffect(() => {
-		if (!open) return;
-		// Start with the raw click position, then clamp after measuring.
+		if (!open) {
+			setPos(null);
+			return;
+		}
+		// Start from the latest click position so the first open does not render at 0,0.
 		setPos({ left: x, top: y });
 	}, [open, x, y]);
 
@@ -40,12 +43,14 @@ export default function ContextMenu(props: {
 		const vw = typeof window !== 'undefined' ? window.innerWidth : rect.width;
 		const vh = typeof window !== 'undefined' ? window.innerHeight : rect.height;
 		const pad = 8;
+		const currentLeft = pos?.left ?? x;
+		const currentTop = pos?.top ?? y;
 
-		const left = Math.max(pad, Math.min(pos.left, vw - rect.width - pad));
-		const top = Math.max(pad, Math.min(pos.top, vh - rect.height - pad));
+		const left = Math.max(pad, Math.min(currentLeft, vw - rect.width - pad));
+		const top = Math.max(pad, Math.min(currentTop, vh - rect.height - pad));
 
-		if (left !== pos.left || top !== pos.top) setPos({ left, top });
-	}, [open, pos.left, pos.top]);
+		if (left !== currentLeft || top !== currentTop) setPos({ left, top });
+	}, [open, pos, x, y]);
 
 	useLayoutEffect(() => {
 		if (!open) return;
@@ -58,6 +63,8 @@ export default function ContextMenu(props: {
 
 	if (!open || !hasItems) return null;
 
+	const displayPos = pos || { left: x, top: y };
+
 	return createPortal(
 		<>
 			<div className="fixed inset-0 z-40" onMouseDown={onClose} />
@@ -65,7 +72,7 @@ export default function ContextMenu(props: {
 				id={id}
 				ref={menuRef}
 				className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1"
-				style={{ left: pos.left, top: pos.top, minWidth }}
+				style={{ left: displayPos.left, top: displayPos.top, minWidth }}
 				role="menu"
 			>
 				{items.map((it, idx) => {

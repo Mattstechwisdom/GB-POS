@@ -954,6 +954,7 @@ const EODWindow: React.FC = () => {
         tech,
         workOrders: operational?.workOrders || 0,
         sales: operational?.sales || 0,
+        commissionSales: commission?.salesCount || 0,
         checkedOut: operational?.checkedOut || 0,
         partialPaid: operational?.partialPaid || 0,
         billed: operational?.billed || 0,
@@ -1540,7 +1541,7 @@ const EODWindow: React.FC = () => {
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div>
                         <h3 className="text-lg font-semibold">Technician Summary</h3>
-                        <div className="text-xs text-zinc-500">Raw technician numbers plus payouts for checked-out and partially-paid work in the selected ranges.</div>
+                        <div className="text-xs text-zinc-500">Report-range activity plus commission-period payout totals, so payout rows show the sales that generated them.</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="text-xs text-zinc-400">Technician</label>
@@ -1563,7 +1564,8 @@ const EODWindow: React.FC = () => {
                           <thead>
                             <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                               <th className="py-2 pr-4">Technician</th>
-                              <th className="py-2 pr-4 text-right">Sales</th>
+                              <th className="py-2 pr-4 text-right">Report sales</th>
+                              <th className="py-2 pr-4 text-right">Commission sales</th>
                               <th className="py-2 pr-4 text-right">Checked out</th>
                               <th className="py-2 pr-4 text-right">Partial paid</th>
                               <th className="py-2 pr-4 text-right">Collected</th>
@@ -1577,6 +1579,7 @@ const EODWindow: React.FC = () => {
                               <tr key={r.tech} className="hover:bg-zinc-800/40">
                                 <td className="py-2 pr-4">{techAliasToCanonical.labelMap.get(r.tech) || r.tech}</td>
                                 <td className="py-2 pr-4 text-right tabular-nums">{r.sales}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{r.commissionSales}</td>
                                 <td className="py-2 pr-4 text-right tabular-nums">{r.checkedOut}</td>
                                 <td className="py-2 pr-4 text-right tabular-nums">{r.partialPaid}</td>
                                 <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.collected)}</td>
@@ -1586,7 +1589,7 @@ const EODWindow: React.FC = () => {
                               </tr>
                             ))}
                             {!technicianSummaryRows.length && (
-                              <tr><td colSpan={8} className="py-6 text-center text-zinc-500">No technician activity in range.</td></tr>
+                              <tr><td colSpan={9} className="py-6 text-center text-zinc-500">No technician activity in range.</td></tr>
                             )}
                           </tbody>
                         </table>
