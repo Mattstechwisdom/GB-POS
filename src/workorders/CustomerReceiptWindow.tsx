@@ -34,6 +34,7 @@ const CustomerReceiptWindow: React.FC = () => {
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const didAutoPrintRef = useRef(false);
+  const logoImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -73,6 +74,57 @@ const CustomerReceiptWindow: React.FC = () => {
 
     return () => window.clearTimeout(fallback);
   }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
+
+  useEffect(() => {
+    if (!flags.autoPrint || !flags.silent) return;
+
+    let cancelled = false;
+    let fallbackTimer: number | undefined;
+
+    const waitForImage = async () => {
+      const img = logoImgRef.current;
+      if (!img || img.complete) return;
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          try { img.removeEventListener('load', finish); } catch {}
+          try { img.removeEventListener('error', finish); } catch {}
+          resolve();
+        };
+        try { img.addEventListener('load', finish, { once: true }); } catch {}
+        try { img.addEventListener('error', finish, { once: true }); } catch {}
+        fallbackTimer = window.setTimeout(finish, 500);
+      });
+    };
+
+    const signalReady = async () => {
+      try {
+        await waitForImage();
+        try {
+          const fontSet = (document as any).fonts;
+          if (fontSet?.ready) await fontSet.ready;
+        } catch {}
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+          });
+        });
+      } finally {
+        if (!cancelled) {
+          try { (window as any).api?.notifyCustomerReceiptReady?.(); } catch {}
+        }
+      }
+    };
+
+    void signalReady();
+
+    return () => {
+      cancelled = true;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
+  }, [flags.autoPrint, flags.silent, logoSrc]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
@@ -204,9 +256,9 @@ const CustomerReceiptWindow: React.FC = () => {
         <div className="brand">
           <div className="brand-left">
             {logoSrc ? (
-              <img src={logoSrc} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+              <img ref={logoImgRef} src={logoSrc} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
             ) : (
-              <img src={publicAsset('logo.png')} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
+              <img ref={logoImgRef} src={publicAsset('logo.png')} alt="GADGETBOY" style={{ height: 72, width: 'auto' }} />
             )}
             <div>
               <div className="brand-title">GADGETBOY Repair & Retail</div>

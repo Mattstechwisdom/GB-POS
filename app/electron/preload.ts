@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('api', {
   openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
   openReleaseForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-release-form', payload),
   openCustomerReceipt: (payload: any): Promise<any> => ipcRenderer.invoke('open-customer-receipt', payload),
+  notifyCustomerReceiptReady: (): void => ipcRenderer.send('customer-receipt:ready'),
   openProductForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-product-form', payload),
   pickSaleProduct: (): Promise<any> => ipcRenderer.invoke('pick-sale-product'),
   getDeviceCategories: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'deviceCategories'),

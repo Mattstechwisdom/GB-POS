@@ -97,6 +97,7 @@ declare global {
     openNotificationSettings: () => Promise<any>;
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
+    notifyCustomerReceiptReady: () => void;
   openProductForm: (payload: any) => Promise<any>;
   pickSaleProduct: () => Promise<any>;
   onSalesChanged: (cb: () => void) => () => void;

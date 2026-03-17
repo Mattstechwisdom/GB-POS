@@ -92,6 +92,20 @@ function normalizeTechKey(v: any) {
   return (v == null ? '' : String(v)).trim().toLowerCase();
 }
 
+function resolveAssignedTechnician(record: any) {
+  if (!record || typeof record !== 'object') return null;
+  const raw = record?.assignedTo
+    ?? record?.technician
+    ?? record?.technicianName
+    ?? record?.techName
+    ?? record?.assigned_to
+    ?? record?.assignedTech
+    ?? null;
+  if (raw === null || raw === undefined) return null;
+  const value = String(raw).trim();
+  return value ? value : null;
+}
+
 function isConsultationCategory(cat: any) {
   return normalizeCategory(cat).toLowerCase() === 'consultation';
 }
@@ -482,7 +496,7 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
     ? checkoutRaw
     : (checkoutRaw === null || checkoutRaw === undefined ? null : String(checkoutRaw));
 
-  const assignedToRaw = (enriched as any)?.assignedTo;
+  const assignedToRaw = resolveAssignedTechnician(enriched);
   const assignedTo = typeof assignedToRaw === 'string'
     ? assignedToRaw
     : (assignedToRaw === null || assignedToRaw === undefined ? null : String(assignedToRaw));
@@ -565,6 +579,7 @@ const EODWindow: React.FC = () => {
   const [bodyTouched, setBodyTouched] = useState(false);
   const [sending, setSending] = useState(false);
   const [viewMode, setViewMode] = useState<'reports' | 'trends'>('reports');
+  const [showCommissionPanel, setShowCommissionPanel] = useState(false);
   const [commissionRange, setCommissionRange] = useState<CommissionRangeKey>('currentMonth');
   const [commissionCustomFrom, setCommissionCustomFrom] = useState('');
   const [commissionCustomTo, setCommissionCustomTo] = useState('');
@@ -638,8 +653,16 @@ const EODWindow: React.FC = () => {
       try {
         setLoadingData(true);
         const api = (window as any).api ?? {};
-        const woPromise = api.getWorkOrders ? api.getWorkOrders().catch(() => []) : Promise.resolve([]);
-        const saPromise = api.getSales ? api.getSales().catch(() => []) : Promise.resolve([]);
+        const woPromise = api.getWorkOrders
+          ? api.getWorkOrders().catch(() => [])
+          : api.dbGet
+            ? api.dbGet('workOrders').catch(() => [])
+            : Promise.resolve([]);
+        const saPromise = api.getSales
+          ? api.getSales().catch(() => [])
+          : api.dbGet
+            ? api.dbGet('sales').catch(() => [])
+            : Promise.resolve([]);
         const settingsPromise = api.dbGet ? api.dbGet('eodSettings').catch(() => []) : Promise.resolve([]);
         const batchPromise = api.getBatchOutInfo
           ? api.getBatchOutInfo().catch(() => null)
@@ -840,7 +863,7 @@ const EODWindow: React.FC = () => {
   const commissionByTechnician = useMemo(() => {
     const map = new Map<string, { salesCount: number; commissionableNet: number; salesCommission: number; consultationPayout: number; commission: number }>();
     for (const row of salesCommissionInRange) {
-      const tech = canonicalizeAssignedTo(row.sale?.assignedTo);
+      const tech = canonicalizeAssignedTo(resolveAssignedTechnician(row.sale));
       if (!tech) continue;
       const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, salesCommission: 0, consultationPayout: 0, commission: 0 };
       prev.salesCount += 1;
@@ -957,7 +980,7 @@ const EODWindow: React.FC = () => {
     const rows: Array<{ id: any; date: Date; title: string; totalNet: number; salesCommission: number; consultationPayout: number; commission: number }> = [];
     for (const row of salesCommissionInRange) {
       const sa = row.sale;
-      if (canonicalizeAssignedTo(sa?.assignedTo) !== techSummaryKey) continue;
+      if (canonicalizeAssignedTo(resolveAssignedTechnician(sa)) !== techSummaryKey) continue;
       const items = normalizeSaleItems(sa);
       const title = (items.find(it => (it.description || '').trim())?.description || sa?.itemDescription || 'Sale').toString();
       rows.push({ id: sa?.id, date: row.date, title, totalNet: row.collected, salesCommission: row.salesCommission, consultationPayout: row.consultationPayout, commission: row.commission });
@@ -1295,6 +1318,10 @@ const EODWindow: React.FC = () => {
               <>
                 <button
                   className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
+                  onClick={() => setShowCommissionPanel(true)}
+                >Commission</button>
+                <button
+                  className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
                   onClick={() => handleSend()}
                   disabled={sending}
                 >{sending ? 'Sending…' : 'Send report'}</button>
@@ -1425,224 +1452,242 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Commission</h3>
-                  <div className="text-xs text-zinc-500">{(COMMISSION_RATE * 100).toFixed(0)}% (non-consultation)</div>
-                </div>
-                <div className="mt-3 space-y-2">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Commission period</label>
-                    <select
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
-                      value={commissionRange}
-                      onChange={e => setCommissionRange(e.target.value as CommissionRangeKey)}
-                    >
-                      <option value="currentMonth">This month</option>
-                      <option value="previousMonth">Previous month</option>
-                      <option value="currentYear">This year</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                  </div>
-                  {commissionRange === 'custom' ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs text-zinc-400 mb-1">From</label>
-                        <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={commissionCustomFrom} onChange={e => setCommissionCustomFrom(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-zinc-400 mb-1">To</label>
-                        <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={commissionCustomTo} onChange={e => setCommissionCustomTo(e.target.value)} />
-                      </div>
+            {showCommissionPanel ? (
+              <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 p-4" onClick={() => setShowCommissionPanel(false)}>
+                <div className="mt-10 w-full max-w-6xl max-h-[calc(100vh-5rem)] overflow-auto rounded-xl border border-zinc-700 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.6)]" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-zinc-100">Commission & Technician Summary</h3>
+                      <div className="text-xs text-zinc-500 mt-1">Monthly commission stays out of the main report flow so ticket drill-downs stay visible underneath the summary cards.</div>
                     </div>
-                  ) : null}
-                  <div className="text-[11px] text-zinc-500">Uses collected payments during {commissionLabel}. Non-consult sales pay {Math.round(COMMISSION_RATE * 100)}%. Consultations pay ${CONSULTATION_TECH_RATE} from each ${CONSULTATION_HOURLY_RATE} billed hour.</div>
-                </div>
-                <div className="mt-2 space-y-2 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable collected</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Sales commission</span><span className="font-semibold">{formatCurrency(commissionSummary.salesCommission)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation collected</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation payout</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationPayout)}</span></div>
-                  <div className="flex items-center justify-between text-[#39FF14]"><span className="text-zinc-100">Total payout</span><span className="font-semibold">{formatCurrency(commissionSummary.commission)}</span></div>
-                </div>
-                <div className="text-[11px] text-zinc-500 mt-2">Uses sales item categories. Discount is allocated proportionally across categories.</div>
-              </div>
-
-              <div className="col-span-8 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold">Sales by Category</h3>
-                  <div className="text-xs text-zinc-500">{salesCommissionInRange.length} sale record{salesCommissionInRange.length === 1 ? '' : 's'} with collected payments in {commissionLabel}</div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                        <th className="py-2 pr-4">Category</th>
-                        <th className="py-2 pr-4 text-right">Tickets</th>
-                        <th className="py-2 pr-4 text-right">Collected</th>
-                        <th className="py-2 pr-4 text-right">Commissionable</th>
-                        <th className="py-2 text-right">Consult payout</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {salesCategoryTotals.map(r => (
-                        <tr key={r.category} className="hover:bg-zinc-800/40">
-                          <td className="py-2 pr-4">{r.category}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{r.count}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.collected)}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.commissionableCollected)}</td>
-                          <td className="py-2 text-right tabular-nums font-semibold">{formatCurrency(r.consultationPayout)}</td>
-                        </tr>
-                      ))}
-                      {!salesCategoryTotals.length && (
-                        <tr><td colSpan={5} className="py-6 text-center text-zinc-500">No sales with collected payments in this commission period.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h3 className="text-lg font-semibold">Technician Summary</h3>
-                  <div className="text-xs text-zinc-500">Raw technician numbers plus payouts for checked-out and partially-paid work in the selected ranges.</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-zinc-400">Technician</label>
-                  <select
-                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm min-w-[220px]"
-                    value={techSummary}
-                    onChange={e => setTechSummary(e.target.value)}
-                  >
-                    <option value="">All technicians</option>
-                    {technicianOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {!techSummaryKey ? (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                        <th className="py-2 pr-4">Technician</th>
-                        <th className="py-2 pr-4 text-right">Sales</th>
-                        <th className="py-2 pr-4 text-right">Checked out</th>
-                        <th className="py-2 pr-4 text-right">Partial paid</th>
-                        <th className="py-2 pr-4 text-right">Collected</th>
-                        <th className="py-2 pr-4 text-right">Remaining</th>
-                        <th className="py-2 pr-4 text-right">Consult payout</th>
-                        <th className="py-2 text-right">Total payout</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {technicianSummaryRows.map(r => (
-                        <tr key={r.tech} className="hover:bg-zinc-800/40">
-                          <td className="py-2 pr-4">{techAliasToCanonical.labelMap.get(r.tech) || r.tech}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{r.sales}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{r.checkedOut}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{r.partialPaid}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.collected)}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.remaining)}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.consultationPayout)}</td>
-                          <td className="py-2 text-right tabular-nums font-semibold text-[#39FF14]">{formatCurrency(r.commission)}</td>
-                        </tr>
-                      ))}
-                      {!technicianSummaryRows.length && (
-                        <tr><td colSpan={8} className="py-6 text-center text-zinc-500">No technician activity in range.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="mt-3 grid grid-cols-12 gap-3">
-                  <div className="col-span-12 md:col-span-4 bg-zinc-800 border border-zinc-700 rounded p-3">
-                    <div className="text-xs text-zinc-400">Sales (net)</div>
-                    <div className="text-2xl font-semibold">{formatCurrency(techSummaryTotals?.salesNet || 0)}</div>
-                    <div className="text-[11px] text-zinc-400">{techSummaryTotals?.salesCount || 0} sale record{(techSummaryTotals?.salesCount || 0) === 1 ? '' : 's'}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Collected in report range</div>
-                    <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.collected || 0)}</div>
-                    <div className="text-[11px] text-zinc-400">Billed {formatCurrency(techSummaryTotals?.billed || 0)} · Remaining {formatCurrency(techSummaryTotals?.remaining || 0)}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Checked out / partial paid</div>
-                    <div className="text-xl font-semibold">{techSummaryTotals?.checkedOut || 0} / {techSummaryTotals?.partialPaid || 0}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Sales commission</div>
-                    <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.salesCommission || 0)}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Consultation payout</div>
-                    <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.consultationPayout || 0)}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Total payout</div>
-                    <div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(techSummaryTotals?.commission || 0)}</div>
-                    <div className="mt-3 text-xs text-zinc-400">Work orders</div>
-                    <div className="text-xl font-semibold">{techSummaryTotals?.workCount || 0}</div>
-                    <div className="text-[11px] text-zinc-400">{formatCurrency(techSummaryTotals?.workTotal || 0)} total</div>
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
+                      onClick={() => setShowCommissionPanel(false)}
+                    >Close</button>
                   </div>
 
-                  <div className="col-span-12 md:col-span-8 grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
-                      <div className="text-sm font-semibold mb-2">Recent Sales</div>
-                      <div className="max-h-[260px] overflow-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-xs uppercase tracking-wide text-zinc-400">
-                              <th className="py-1 pr-2 text-left">Invoice</th>
-                              <th className="py-1 pr-2 text-left">Date</th>
-                              <th className="py-1 pr-2 text-right">Collected</th>
-                              <th className="py-1 text-right">Payout</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-zinc-700">
-                            {techSummarySales.slice(0, 15).map(r => (
-                              <tr key={String(r.id)} className="hover:bg-zinc-900/40">
-                                <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
-                                <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
-                                <td className="py-1 pr-2 text-right tabular-nums">{formatCurrency(r.totalNet)}</td>
-                                <td className="py-1 text-right tabular-nums text-[#39FF14]">{formatCurrency(r.commission)}</td>
-                              </tr>
-                            ))}
-                            {!techSummarySales.length && (
-                              <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No sales for this tech in range.</td></tr>
-                            )}
-                          </tbody>
-                        </table>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">Commission</h3>
+                        <div className="text-xs text-zinc-500">{(COMMISSION_RATE * 100).toFixed(0)}% (non-consultation)</div>
                       </div>
+                      <div className="mt-3 space-y-2">
+                        <div>
+                          <label className="block text-xs text-zinc-400 mb-1">Commission period</label>
+                          <select
+                            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
+                            value={commissionRange}
+                            onChange={e => setCommissionRange(e.target.value as CommissionRangeKey)}
+                          >
+                            <option value="currentMonth">This month</option>
+                            <option value="previousMonth">Previous month</option>
+                            <option value="currentYear">This year</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+                        {commissionRange === 'custom' ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs text-zinc-400 mb-1">From</label>
+                              <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={commissionCustomFrom} onChange={e => setCommissionCustomFrom(e.target.value)} />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-zinc-400 mb-1">To</label>
+                              <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={commissionCustomTo} onChange={e => setCommissionCustomTo(e.target.value)} />
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="text-[11px] text-zinc-500">Uses collected payments during {commissionLabel}. Non-consult sales pay {Math.round(COMMISSION_RATE * 100)}%. Consultations pay ${CONSULTATION_TECH_RATE} from each ${CONSULTATION_HOURLY_RATE} billed hour.</div>
+                      </div>
+                      <div className="mt-2 space-y-2 text-sm">
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable collected</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Sales commission</span><span className="font-semibold">{formatCurrency(commissionSummary.salesCommission)}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation collected</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation payout</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationPayout)}</span></div>
+                        <div className="flex items-center justify-between text-[#39FF14]"><span className="text-zinc-100">Total payout</span><span className="font-semibold">{formatCurrency(commissionSummary.commission)}</span></div>
+                      </div>
+                      <div className="text-[11px] text-zinc-500 mt-2">Uses sales item categories. Discount is allocated proportionally across categories.</div>
                     </div>
 
-                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
-                      <div className="text-sm font-semibold mb-2">Recent Work Orders</div>
-                      <div className="max-h-[260px] overflow-auto">
-                        <table className="w-full text-sm">
+                    <div className="col-span-12 lg:col-span-8 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold">Sales by Category</h3>
+                        <div className="text-xs text-zinc-500">{salesCommissionInRange.length} sale record{salesCommissionInRange.length === 1 ? '' : 's'} with collected payments in {commissionLabel}</div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
                           <thead>
-                            <tr className="text-xs uppercase tracking-wide text-zinc-400">
-                              <th className="py-1 pr-2 text-left">Invoice</th>
-                              <th className="py-1 pr-2 text-left">Date</th>
-                              <th className="py-1 pr-2 text-left">Status</th>
-                              <th className="py-1 text-right">Total</th>
+                            <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                              <th className="py-2 pr-4">Category</th>
+                              <th className="py-2 pr-4 text-right">Tickets</th>
+                              <th className="py-2 pr-4 text-right">Collected</th>
+                              <th className="py-2 pr-4 text-right">Commissionable</th>
+                              <th className="py-2 text-right">Consult payout</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-zinc-700">
-                            {techSummaryWorkOrders.slice(0, 15).map(r => (
-                              <tr key={String(r.id)} className="hover:bg-zinc-900/40">
-                                <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
-                                <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
-                                <td className="py-1 pr-2">{(r.status || '').toString()}</td>
-                                <td className="py-1 text-right tabular-nums">{formatCurrency(r.total)}</td>
+                          <tbody className="divide-y divide-zinc-800">
+                            {salesCategoryTotals.map(r => (
+                              <tr key={r.category} className="hover:bg-zinc-800/40">
+                                <td className="py-2 pr-4">{r.category}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{r.count}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.collected)}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.commissionableCollected)}</td>
+                                <td className="py-2 text-right tabular-nums font-semibold">{formatCurrency(r.consultationPayout)}</td>
                               </tr>
                             ))}
-                            {!techSummaryWorkOrders.length && (
-                              <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No work orders for this tech in range.</td></tr>
+                            {!salesCategoryTotals.length && (
+                              <tr><td colSpan={5} className="py-6 text-center text-zinc-500">No sales with collected payments in this commission period.</td></tr>
                             )}
                           </tbody>
                         </table>
                       </div>
                     </div>
                   </div>
+
+                  <div className="mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <h3 className="text-lg font-semibold">Technician Summary</h3>
+                        <div className="text-xs text-zinc-500">Raw technician numbers plus payouts for checked-out and partially-paid work in the selected ranges.</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-zinc-400">Technician</label>
+                        <select
+                          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm min-w-[220px]"
+                          value={techSummary}
+                          onChange={e => setTechSummary(e.target.value)}
+                        >
+                          <option value="">All technicians</option>
+                          {technicianOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {!techSummaryKey ? (
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                              <th className="py-2 pr-4">Technician</th>
+                              <th className="py-2 pr-4 text-right">Sales</th>
+                              <th className="py-2 pr-4 text-right">Checked out</th>
+                              <th className="py-2 pr-4 text-right">Partial paid</th>
+                              <th className="py-2 pr-4 text-right">Collected</th>
+                              <th className="py-2 pr-4 text-right">Remaining</th>
+                              <th className="py-2 pr-4 text-right">Consult payout</th>
+                              <th className="py-2 text-right">Total payout</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800">
+                            {technicianSummaryRows.map(r => (
+                              <tr key={r.tech} className="hover:bg-zinc-800/40">
+                                <td className="py-2 pr-4">{techAliasToCanonical.labelMap.get(r.tech) || r.tech}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{r.sales}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{r.checkedOut}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{r.partialPaid}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.collected)}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.remaining)}</td>
+                                <td className="py-2 pr-4 text-right tabular-nums">{formatCurrency(r.consultationPayout)}</td>
+                                <td className="py-2 text-right tabular-nums font-semibold text-[#39FF14]">{formatCurrency(r.commission)}</td>
+                              </tr>
+                            ))}
+                            {!technicianSummaryRows.length && (
+                              <tr><td colSpan={8} className="py-6 text-center text-zinc-500">No technician activity in range.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-12 gap-3">
+                        <div className="col-span-12 lg:col-span-4 bg-zinc-800 border border-zinc-700 rounded p-3">
+                          <div className="text-xs text-zinc-400">Sales (net)</div>
+                          <div className="text-2xl font-semibold">{formatCurrency(techSummaryTotals?.salesNet || 0)}</div>
+                          <div className="text-[11px] text-zinc-400">{techSummaryTotals?.salesCount || 0} sale record{(techSummaryTotals?.salesCount || 0) === 1 ? '' : 's'}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Collected in report range</div>
+                          <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.collected || 0)}</div>
+                          <div className="text-[11px] text-zinc-400">Billed {formatCurrency(techSummaryTotals?.billed || 0)} · Remaining {formatCurrency(techSummaryTotals?.remaining || 0)}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Checked out / partial paid</div>
+                          <div className="text-xl font-semibold">{techSummaryTotals?.checkedOut || 0} / {techSummaryTotals?.partialPaid || 0}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Sales commission</div>
+                          <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.salesCommission || 0)}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Consultation payout</div>
+                          <div className="text-xl font-semibold">{formatCurrency(techSummaryTotals?.consultationPayout || 0)}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Total payout</div>
+                          <div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(techSummaryTotals?.commission || 0)}</div>
+                          <div className="mt-3 text-xs text-zinc-400">Work orders</div>
+                          <div className="text-xl font-semibold">{techSummaryTotals?.workCount || 0}</div>
+                          <div className="text-[11px] text-zinc-400">{formatCurrency(techSummaryTotals?.workTotal || 0)} total</div>
+                        </div>
+
+                        <div className="col-span-12 lg:col-span-8 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                          <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
+                            <div className="text-sm font-semibold mb-2">Recent Sales</div>
+                            <div className="max-h-[260px] overflow-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs uppercase tracking-wide text-zinc-400">
+                                    <th className="py-1 pr-2 text-left">Invoice</th>
+                                    <th className="py-1 pr-2 text-left">Date</th>
+                                    <th className="py-1 pr-2 text-right">Collected</th>
+                                    <th className="py-1 text-right">Payout</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-700">
+                                  {techSummarySales.slice(0, 15).map(r => (
+                                    <tr key={String(r.id)} className="hover:bg-zinc-900/40">
+                                      <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
+                                      <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
+                                      <td className="py-1 pr-2 text-right tabular-nums">{formatCurrency(r.totalNet)}</td>
+                                      <td className="py-1 text-right tabular-nums text-[#39FF14]">{formatCurrency(r.commission)}</td>
+                                    </tr>
+                                  ))}
+                                  {!techSummarySales.length && (
+                                    <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No sales for this tech in range.</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
+                            <div className="text-sm font-semibold mb-2">Recent Work Orders</div>
+                            <div className="max-h-[260px] overflow-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs uppercase tracking-wide text-zinc-400">
+                                    <th className="py-1 pr-2 text-left">Invoice</th>
+                                    <th className="py-1 pr-2 text-left">Date</th>
+                                    <th className="py-1 pr-2 text-left">Status</th>
+                                    <th className="py-1 text-right">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-700">
+                                  {techSummaryWorkOrders.slice(0, 15).map(r => (
+                                    <tr key={String(r.id)} className="hover:bg-zinc-900/40">
+                                      <td className="py-1 pr-2 font-mono">{typeof r.id === 'number' ? `GB${String(r.id).padStart(7,'0')}` : String(r.id || '')}</td>
+                                      <td className="py-1 pr-2">{r.date.toISOString().slice(0,10)}</td>
+                                      <td className="py-1 pr-2">{(r.status || '').toString()}</td>
+                                      <td className="py-1 text-right tabular-nums">{formatCurrency(r.total)}</td>
+                                    </tr>
+                                  ))}
+                                  {!techSummaryWorkOrders.length && (
+                                    <tr><td colSpan={4} className="py-6 text-center text-zinc-500">No work orders for this tech in range.</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : null}
 
             {listMeta ? (
               <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">

@@ -1213,6 +1213,7 @@ function scheduleSilentPrint(win: any, opts?: { delayMs?: number; fallbackDelayM
   try { win.webContents.once('did-stop-loading', start); } catch {}
   try { win.webContents.once('dom-ready', start); } catch {}
   setTimeout(start, opts?.fallbackDelayMs ?? (app.isPackaged ? 700 : 1200));
+  return start;
 }
 
 // Global context menu: enable Cut/Copy/Paste/Select All and Inspect (dev)
@@ -3156,7 +3157,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
 
   // Silent auto-print to the OS default printer.
   if (autoPrint && silent) {
-    scheduleSilentPrint(child, {
+    const startSilentPrint = scheduleSilentPrint(child, {
       delayMs: 60,
       fallbackDelayMs: app.isPackaged ? 700 : 1200,
       onDone: () => {
@@ -3165,6 +3166,19 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
         }
       },
     });
+
+    const handleReceiptReady = (readyEvent: any) => {
+      if (readyEvent?.sender !== child.webContents) return;
+      cleanupReceiptReadyListener();
+      startSilentPrint();
+    };
+
+    const cleanupReceiptReadyListener = () => {
+      try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
+    };
+
+    ipcMain.on('customer-receipt:ready', handleReceiptReady);
+    child.once('closed', cleanupReceiptReadyListener);
   }
   return { ok: true };
 });
