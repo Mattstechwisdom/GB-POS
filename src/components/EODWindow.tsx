@@ -439,6 +439,15 @@ function latestPaymentDateInRange(record: any, startMs: number, endMs: number): 
   return dates[0];
 }
 
+function firstDateInKeys(record: any, keys: string[]): Date | null {
+  if (!record || typeof record !== 'object') return null;
+  for (const key of keys) {
+    const value = parseDateValue((record as any)[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
 function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number, commissionRate: number) {
   const breakdown = computeSaleBreakdown(sale, commissionRate);
   const net = Number(breakdown.net || 0) || 0;
@@ -1062,6 +1071,45 @@ const EODWindow: React.FC = () => {
     return { cashTender, cashChange, cashNet, card, other, paymentsCount };
   }, [unified, rangeKey]);
 
+  const dailyBatchSummary = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
+    const cardTotal = round2(paymentSummary.card + paymentSummary.other);
+    const cashTotal = round2(paymentSummary.cashNet);
+    const totalTaken = round2(cardTotal + cashTotal);
+
+    const checkInCount = (workOrders || []).reduce((count, workOrder) => {
+      const checkInDate = firstDateInKeys(workOrder, ['checkInAt', 'checkInDate', 'check_in_at', 'createdAt', 'createdDate']);
+      return isDateWithin(checkInDate, min, max) ? count + 1 : count;
+    }, 0);
+
+    const closedTicketCount = (workOrders || []).reduce((count, workOrder) => {
+      const status = String(workOrder?.status || '').trim().toLowerCase();
+      if (status !== 'closed') return count;
+      const closedDate = firstDateInKeys(workOrder, [
+        'checkoutDate',
+        'closedAt',
+        'closedDate',
+        'closed_on',
+        'clientPickupDate',
+        'repairCompletionDate',
+        'completedAt',
+        'completedDate',
+        'finishedAt',
+        'finishedDate',
+      ]) || getTimelineDate(workOrder);
+      return isDateWithin(closedDate, min, max) ? count + 1 : count;
+    }, 0);
+
+    return {
+      totalTaken,
+      cardTotal,
+      cashTotal,
+      checkInCount,
+      closedTicketCount,
+    };
+  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, start, workOrders]);
+
   const workStatusCounts = useMemo(() => {
     let open = 0;
     let closed = 0;
@@ -1095,6 +1143,36 @@ const EODWindow: React.FC = () => {
       });
     return entries;
   }, [trendRows]);
+
+  const monthlyBatchSummary = useMemo(() => {
+    const min = commissionStart.getTime();
+    const max = commissionEnd.getTime();
+    let workCollected = 0;
+    let saleCollected = 0;
+    let workCount = 0;
+    let saleCount = 0;
+
+    trendRows.forEach(row => {
+      const ts = row.date.getTime();
+      if (ts < min || ts > max) return;
+      const collected = collectedAmountInRange(row, min, max, row.date);
+      if (row.kind === 'work') {
+        workCount += 1;
+        workCollected += collected;
+      } else {
+        saleCount += 1;
+        saleCollected += collected;
+      }
+    });
+
+    return {
+      workCount,
+      saleCount,
+      workCollected: round2(workCollected),
+      saleCollected: round2(saleCollected),
+      combinedCollected: round2(workCollected + saleCollected),
+    };
+  }, [commissionRangeKey, trendRows]);
 
   const busiestDays = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1137,28 +1215,18 @@ const EODWindow: React.FC = () => {
 
   const reportLines = useMemo(() => {
     const lines: string[] = [];
-    lines.push(`Work orders: ${workStatusCounts.total} total (open ${workStatusCounts.open} / closed ${workStatusCounts.closed})`);
-    lines.push(`Card intake: ${formatCurrency(paymentSummary.card)}${paymentSummary.other ? ` · Other: ${formatCurrency(paymentSummary.other)}` : ''}`);
-    lines.push(`Cash intake: ${formatCurrency(paymentSummary.cashTender)}`);
-    lines.push(`Change given: ${formatCurrency(paymentSummary.cashChange)}`);
-    lines.push(`Cash to deposit: ${formatCurrency(paymentSummary.cashNet)}`);
-    const grandIntake = paymentSummary.cashTender + paymentSummary.card + paymentSummary.other;
-    lines.push(`Grand totals: Card ${formatCurrency(paymentSummary.card + paymentSummary.other)} · Cash ${formatCurrency(paymentSummary.cashTender)} · Combined ${formatCurrency(grandIntake)}`);
-    if (salesCommissionInRange.length) {
-      lines.push(`Commission period (${commissionLabel})`);
-      lines.push(`Commissionable collected (non-consultation): ${formatCurrency(commissionSummary.commissionableNet)}`);
-      lines.push(`Sales commission @ ${(COMMISSION_RATE * 100).toFixed(0)}%: ${formatCurrency(commissionSummary.salesCommission)}`);
-      lines.push(`Consultation collected: ${formatCurrency(commissionSummary.consultationNet)}`);
-      lines.push(`Consultation payout @ $${CONSULTATION_TECH_RATE}/$${CONSULTATION_HOURLY_RATE}: ${formatCurrency(commissionSummary.consultationPayout)}`);
-      lines.push(`Total technician payout: ${formatCurrency(commissionSummary.commission)}`);
-    }
+    lines.push(`Total taken in: ${formatCurrency(dailyBatchSummary.totalTaken)}`);
+    lines.push(`Card: ${formatCurrency(dailyBatchSummary.cardTotal)}`);
+    lines.push(`Cash: ${formatCurrency(dailyBatchSummary.cashTotal)}`);
+    lines.push(`Check-ins: ${dailyBatchSummary.checkInCount}`);
+    lines.push(`Closed tickets: ${dailyBatchSummary.closedTicketCount}`);
     if (settings.includeBatchInfo && batchInfo) {
       const last = batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run';
       const backup = batchInfo?.lastBackupPath ? `Backup: ${batchInfo.lastBackupPath}` : '';
       lines.push(`Batch Out: ${last}${backup ? ` — ${backup}` : ''}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, commissionLabel, commissionSummary.commission, commissionSummary.commissionableNet, commissionSummary.consultationNet, commissionSummary.consultationPayout, commissionSummary.salesCommission, paymentSummary.cashChange, paymentSummary.cashNet, paymentSummary.cashTender, paymentSummary.card, paymentSummary.other, salesCommissionInRange.length, settings.includeBatchInfo, workStatusCounts.closed, workStatusCounts.open, workStatusCounts.total]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, settings.includeBatchInfo]);
 
   const presetBody = useMemo(() => {
     return [`Daily batch for ${rangeLabel(range, start, end)}`, reportLines].filter(Boolean).join('\n\n');
@@ -1300,7 +1368,7 @@ const EODWindow: React.FC = () => {
               <h1 className="text-3xl font-bold text-[#39FF14]">{viewMode === 'trends' ? 'Trends & Insights' : 'Daily & Custom Reports'}</h1>
               <p className="text-zinc-400 text-sm max-w-2xl">{viewMode === 'trends'
                 ? 'Review monthly volume, busy days, and popular devices/repairs at a glance.'
-                : 'Track work orders, cash and card intake, and totals for any range. Craft a quick report email with the data you pick.'}
+                : 'Track daily intake, check-ins, and closures for any range. Monthly totals and commission live in their own view.'}
               </p>
             </div>
           </div>
@@ -1310,7 +1378,7 @@ const EODWindow: React.FC = () => {
                 <button
                   className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
                   onClick={() => setShowCommissionPanel(true)}
-                >Commission</button>
+                >Monthly totals</button>
                 <button
                   className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
                   onClick={() => handleSend()}
@@ -1374,7 +1442,41 @@ const EODWindow: React.FC = () => {
 
               <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">At a glance</h3>
+                  <h3 className="text-lg font-semibold">Daily batch totals</h3>
+                  <span className="text-xs text-zinc-500">{loadingData ? '...' : rangeLabel(range, start, end)}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Total taken in</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.totalTaken)}</div>
+                    <div className="text-[11px] text-zinc-400">cash plus card for the selected day</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Card</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cardTotal)}</div>
+                    <div className="text-[11px] text-zinc-400">non-cash intake in range</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Cash</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cashTotal)}</div>
+                    <div className="text-[11px] text-zinc-400">after change given</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Check-ins</div>
+                    <div className="text-xl font-semibold">{dailyBatchSummary.checkInCount}</div>
+                    <div className="text-[11px] text-zinc-400">new tickets checked in</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2 col-span-2">
+                    <div className="text-xs text-zinc-500">Closed tickets</div>
+                    <div className="text-xl font-semibold">{dailyBatchSummary.closedTicketCount}</div>
+                    <div className="text-[11px] text-zinc-400">tickets closed in the selected day</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1414,31 +1516,16 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold text-orange-300">{formatCurrency(summary.grandRemaining)}</div>
                     <div className="text-[11px] text-zinc-400">{filteredLists.outstanding.length} with balance</div>
                   </button>
-
                   <button
                     type="button"
-                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
+                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition col-span-2 ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
                     onClick={() => setActiveList(prev => (prev === 'openTickets' ? null : 'openTickets'))}
                   >
                     <div className="text-xs text-zinc-500">Open tickets</div>
                     <div className="text-xl font-semibold">{filteredLists.openTickets.length}</div>
                     <div className="text-[11px] text-zinc-400">not closed / needs checkout</div>
                   </button>
-                </div>
-              </div>
-
-              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Payments</h3>
-                  <span className="text-xs text-zinc-500">{paymentSummary.paymentsCount} payments</span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between"><span>Cash received</span><span className="font-semibold">{formatCurrency(paymentSummary.cashTender)}</span></div>
-                  <div className="flex items-center justify-between text-orange-200"><span>Change given</span><span className="font-semibold">-{formatCurrency(paymentSummary.cashChange)}</span></div>
-                  <div className="flex items-center justify-between text-[#39FF14]"><span>Cash to deposit</span><span className="font-semibold">{formatCurrency(paymentSummary.cashNet)}</span></div>
-                  <div className="flex items-center justify-between"><span>Card</span><span className="font-semibold">{formatCurrency(paymentSummary.card)}</span></div>
-                  {paymentSummary.other ? <div className="flex items-center justify-between"><span>Other</span><span className="font-semibold">{formatCurrency(paymentSummary.other)}</span></div> : null}
-                  <div className="pt-2 border-t border-zinc-800 text-xs text-zinc-400">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
+                  <div className="col-span-2 pt-2 border-t border-zinc-800 text-xs text-zinc-400">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
                 </div>
               </div>
             </div>
@@ -1448,8 +1535,8 @@ const EODWindow: React.FC = () => {
                 <div className="mt-10 w-full max-w-6xl max-h-[calc(100vh-5rem)] overflow-auto rounded-xl border border-zinc-700 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.6)]" onClick={e => e.stopPropagation()}>
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <h3 className="text-xl font-semibold text-zinc-100">Commission & Technician Summary</h3>
-                      <div className="text-xs text-zinc-500 mt-1">Monthly commission stays out of the main report flow so ticket drill-downs stay visible underneath the summary cards.</div>
+                      <h3 className="text-xl font-semibold text-zinc-100">Monthly Totals & Technician Summary</h3>
+                      <div className="text-xs text-zinc-500 mt-1">Monthly sales, repairs, and commission stay out of the daily batch flow so the report stays focused on same-day intake.</div>
                     </div>
                     <button
                       type="button"
@@ -1461,7 +1548,7 @@ const EODWindow: React.FC = () => {
                   <div className="grid grid-cols-12 gap-3">
                     <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold">Commission</h3>
+                        <h3 className="text-lg font-semibold">Monthly totals</h3>
                         <div className="text-xs text-zinc-500">{(COMMISSION_RATE * 100).toFixed(0)}% (non-consultation)</div>
                       </div>
                       <div className="mt-3 space-y-2">
@@ -1493,13 +1580,18 @@ const EODWindow: React.FC = () => {
                         <div className="text-[11px] text-zinc-500">Uses collected payments during {commissionLabel}. Non-consult sales pay {Math.round(COMMISSION_RATE * 100)}%. Consultations pay ${CONSULTATION_TECH_RATE} from each ${CONSULTATION_HOURLY_RATE} billed hour.</div>
                       </div>
                       <div className="mt-2 space-y-2 text-sm">
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Repair collected</span><span className="font-semibold">{formatCurrency(monthlyBatchSummary.workCollected)}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Sales collected</span><span className="font-semibold">{formatCurrency(monthlyBatchSummary.saleCollected)}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-zinc-300">Combined collected</span><span className="font-semibold">{formatCurrency(monthlyBatchSummary.combinedCollected)}</span></div>
+                        <div className="flex items-center justify-between text-xs text-zinc-500"><span>Repair / sale records</span><span>{monthlyBatchSummary.workCount} / {monthlyBatchSummary.saleCount}</span></div>
+                        <div className="pt-2 border-t border-zinc-800" />
                         <div className="flex items-center justify-between"><span className="text-zinc-300">Commissionable collected</span><span className="font-semibold">{formatCurrency(commissionSummary.commissionableNet)}</span></div>
                         <div className="flex items-center justify-between"><span className="text-zinc-300">Sales commission</span><span className="font-semibold">{formatCurrency(commissionSummary.salesCommission)}</span></div>
                         <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation collected</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationNet)}</span></div>
                         <div className="flex items-center justify-between"><span className="text-zinc-300">Consultation payout</span><span className="font-semibold">{formatCurrency(commissionSummary.consultationPayout)}</span></div>
                         <div className="flex items-center justify-between text-[#39FF14]"><span className="text-zinc-100">Total payout</span><span className="font-semibold">{formatCurrency(commissionSummary.commission)}</span></div>
                       </div>
-                      <div className="text-[11px] text-zinc-500 mt-2">Uses sales item categories. Discount is allocated proportionally across categories.</div>
+                      <div className="text-[11px] text-zinc-500 mt-2">Uses collected payments during the selected month or custom range. Discount is allocated proportionally across sale item categories.</div>
                     </div>
 
                     <div className="col-span-12 lg:col-span-8 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
