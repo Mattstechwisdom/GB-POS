@@ -751,7 +751,7 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
   const slug = getGitHubRepoSlug();
   if (!slug) return null;
 
-  const url = `https://api.github.com/repos/${slug}/releases/latest`;
+  const url = `https://api.github.com/repos/${slug}/releases?per_page=10`;
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: any) => {
@@ -772,49 +772,59 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
         res.on('end', () => {
           try {
             if (!raw || Number(res.statusCode || 0) >= 400) {
-              appendStartupLog(`github latest release check failed status=${String(res.statusCode || '')}`);
+              appendStartupLog(`github releases check failed status=${String(res.statusCode || '')}`);
               finish(null);
               return;
             }
             const json = JSON.parse(raw);
-            const version = normalizeVersion(json?.tag_name || json?.name || '');
-            if (!version) {
+            const releases = Array.isArray(json) ? json : [];
+            const ranked = releases
+              .filter((release: any) => !release?.draft && !release?.prerelease)
+              .map((release: any) => {
+                const version = normalizeVersion(release?.tag_name || release?.name || '');
+                const assets = Array.isArray(release?.assets)
+                  ? release.assets
+                      .map((asset: any) => ({
+                        name: String(asset?.name || '').trim(),
+                        downloadUrl: String(asset?.browser_download_url || '').trim(),
+                        size: Number.isFinite(Number(asset?.size)) ? Number(asset.size) : undefined,
+                      }))
+                      .filter((asset: any) => asset.name && asset.downloadUrl)
+                  : [];
+                return {
+                  version,
+                  releaseName: typeof release?.name === 'string' ? release.name : undefined,
+                  releaseNotes: typeof release?.body === 'string' ? release.body : undefined,
+                  htmlUrl: typeof release?.html_url === 'string' ? release.html_url : undefined,
+                  assets,
+                };
+              })
+              .filter((release: any) => !!release.version)
+              .sort((a: any, b: any) => compareVersions(b.version, a.version));
+
+            const best = ranked[0];
+            if (!best?.version) {
               finish(null);
               return;
             }
-            const assets = Array.isArray(json?.assets)
-              ? json.assets
-                  .map((asset: any) => ({
-                    name: String(asset?.name || '').trim(),
-                    downloadUrl: String(asset?.browser_download_url || '').trim(),
-                    size: Number.isFinite(Number(asset?.size)) ? Number(asset.size) : undefined,
-                  }))
-                  .filter((asset: any) => asset.name && asset.downloadUrl)
-              : [];
-            finish({
-              version,
-              releaseName: typeof json?.name === 'string' ? json.name : undefined,
-              releaseNotes: typeof json?.body === 'string' ? json.body : undefined,
-              htmlUrl: typeof json?.html_url === 'string' ? json.html_url : undefined,
-              assets,
-            });
+            finish(best);
           } catch (e: any) {
-            appendStartupLog(`github latest release parse failed: ${String(e?.message || e)}`);
+            appendStartupLog(`github releases parse failed: ${String(e?.message || e)}`);
             finish(null);
           }
         });
       });
       req.setTimeout(UPDATE_HTTP_TIMEOUT_MS, () => {
-        appendStartupLog(`github latest release request timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`);
-        req.destroy(new Error('GitHub latest release request timed out'));
+        appendStartupLog(`github releases request timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`);
+        req.destroy(new Error('GitHub releases request timed out'));
       });
       req.on('error', (e: any) => {
-        appendStartupLog(`github latest release request failed: ${String(e?.message || e)}`);
+        appendStartupLog(`github releases request failed: ${String(e?.message || e)}`);
         finish(null);
       });
       req.end();
     } catch (e: any) {
-      appendStartupLog(`github latest release setup failed: ${String(e?.message || e)}`);
+      appendStartupLog(`github releases setup failed: ${String(e?.message || e)}`);
       finish(null);
     }
   });

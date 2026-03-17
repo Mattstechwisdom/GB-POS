@@ -57,7 +57,7 @@ async function fetchGitHubLatestRelease() {
   const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10`, {
       headers: {
         'User-Agent': 'gbpos-update-gate',
         Accept: 'application/vnd.github+json',
@@ -68,14 +68,23 @@ async function fetchGitHubLatestRelease() {
   } finally {
     window.clearTimeout(timeout);
   }
-  if (!res.ok) throw new Error(`GitHub latest release check failed: ${res.status}`);
+  if (!res.ok) throw new Error(`GitHub releases check failed: ${res.status}`);
   const json = await res.json();
-  const latestVersion = normalizeVersion(json?.tag_name || json?.name || '');
-  if (!latestVersion) return null;
+  const releases = Array.isArray(json) ? json : [];
+  const candidate = releases
+    .filter((release: any) => !release?.draft && !release?.prerelease)
+    .map((release: any) => ({
+      latestVersion: normalizeVersion(release?.tag_name || release?.name || ''),
+      releaseName: typeof release?.name === 'string' ? release.name : undefined,
+      releaseNotes: release?.body,
+    }))
+    .filter((release: any) => !!release.latestVersion)
+    .sort((a: any, b: any) => compareVersions(b.latestVersion, a.latestVersion))[0];
+  if (!candidate?.latestVersion) return null;
   return {
-    latestVersion,
-    releaseName: typeof json?.name === 'string' ? json.name : undefined,
-    releaseNotes: json?.body,
+    latestVersion: candidate.latestVersion,
+    releaseName: candidate.releaseName,
+    releaseNotes: candidate.releaseNotes,
   };
 }
 
