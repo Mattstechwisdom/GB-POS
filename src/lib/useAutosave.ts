@@ -6,6 +6,7 @@ type Options<T> = {
   shouldSave?: (val: T) => boolean; // additional guard
   onSaved?: (val: T) => void; // callback after successful save
   equals?: (a: T, b: T) => boolean; // custom equality
+  skipInitialSave?: boolean;
 };
 
 // Simple JSON hashing fallback for deep equality
@@ -14,7 +15,7 @@ function jsonEqual(a: any, b: any) {
 }
 
 export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, opts: Options<T> = {}) {
-  const { debounceMs = 2000, enabled = true, shouldSave, onSaved, equals = jsonEqual } = opts;
+  const { debounceMs = 2000, enabled = true, shouldSave, onSaved, equals = jsonEqual, skipInitialSave = false } = opts;
   const timerRef = useRef<any>(null);
   const lastSavedRef = useRef<T | null>(null);
   const mountedRef = useRef(true);
@@ -22,6 +23,7 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
   const shouldSaveRef = useRef(shouldSave);
   const onSavedRef = useRef(onSaved);
   const equalsRef = useRef(equals);
+  const initializedRef = useRef(false);
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   useEffect(() => { saveRef.current = save; }, [save]);
@@ -34,6 +36,13 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
     if (!enabled) return;
     // Guard via predicate
     if (shouldSaveRef.current && !shouldSaveRef.current(value)) return;
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      if (skipInitialSave) {
+        lastSavedRef.current = value;
+        return;
+      }
+    }
     if (timerRef.current) clearTimeout(timerRef.current);
     const pendingValue = value;
     timerRef.current = setTimeout(async () => {

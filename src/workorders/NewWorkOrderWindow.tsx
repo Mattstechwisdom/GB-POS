@@ -380,6 +380,7 @@ const NewWorkOrderWindow: React.FC = () => {
   }, {
     debounceMs: 2000,
     enabled: true,
+    skipInitialSave: isEditingExisting,
     // Ensure autosave does not fire for brand-new empty forms
     shouldSave: (v) => !!(isEditingExisting || (v.id && v.id !== 0) || v.productCategory || v.productDescription || v.customerId || (v.items && v.items.length)),
   });

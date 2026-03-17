@@ -14,7 +14,7 @@ import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
 
 function getActivityDate(record: any): Date {
-  const raw = record?.updatedAt || record?.checkoutDate || record?.repairCompletionDate || record?.clientPickupDate || record?.checkInAt || record?.createdAt || 0;
+  const raw = record?.activityAt || record?.checkoutDate || record?.repairCompletionDate || record?.clientPickupDate || record?.checkInAt || record?.createdAt || record?.updatedAt || 0;
   return new Date(raw);
 }
 

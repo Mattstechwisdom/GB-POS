@@ -9,13 +9,13 @@ import { useContextMenu } from '../lib/useContextMenu';
 import { usePagination } from '../lib/pagination';
 
 interface WorkOrderRow {
-  id: number; status?: string; assignedTo?: string | null; checkInAt?: string; updatedAt?: string; checkoutDate?: string | null; repairCompletionDate?: string | null; customerId?: number;
+  id: number; status?: string; assignedTo?: string | null; checkInAt?: string; updatedAt?: string; activityAt?: string; checkoutDate?: string | null; repairCompletionDate?: string | null; customerId?: number;
   totals?: { total?: number; remaining?: number }; amountPaid?: number; productDescription?: string; productCategory?: string; problemInfo?: string;
   items?: any[];
 }
 
 function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date | null {
-  const raw = r.updatedAt || r.checkoutDate || r.repairCompletionDate || r.checkInAt || r.createdAt;
+  const raw = r.activityAt || r.checkoutDate || r.repairCompletionDate || r.checkInAt || r.createdAt || r.updatedAt;
   if (!raw) return null;
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d;

@@ -703,10 +703,14 @@ function compareVersions(aRaw: string, bRaw: string): number {
   return 0;
 }
 
-function getRecordActivityAt(it: any): string {
+function stableActivityValue(value: any): string {
+  try { return JSON.stringify(value ?? null); } catch { return String(value ?? ''); }
+}
+
+function getWorkOrderActivityAt(it: any): string {
   if (!it || typeof it !== 'object') return '';
   return String(
-    it.updatedAt
+    it.activityAt
     || it.checkoutDate
     || it.repairCompletionDate
     || it.clientPickupDate
@@ -714,6 +718,48 @@ function getRecordActivityAt(it: any): string {
     || it.createdAt
     || ''
   );
+}
+
+function getSaleActivityAt(it: any): string {
+  if (!it || typeof it !== 'object') return '';
+  return String(
+    it.checkoutDate
+    || it.checkInAt
+    || it.invoiceDate
+    || it.saleDate
+    || it.transactionDate
+    || it.updatedAt
+    || it.createdAt
+    || ''
+  );
+}
+
+function isMeaningfulWorkOrderActivityChange(previous: any, next: any): boolean {
+  if (!previous || typeof previous !== 'object') return true;
+  const keys = [
+    'items',
+    'amountPaid',
+    'payments',
+    'paymentHistory',
+    'paymentLogs',
+    'discount',
+    'taxRate',
+    'partCosts',
+    'laborCost',
+    'totals',
+    'checkoutDate',
+  ];
+  return keys.some((key) => stableActivityValue(previous?.[key]) !== stableActivityValue(next?.[key]));
+}
+
+function computeWorkOrderActivityAt(previous: any, next: any, updatedAt: string): string {
+  if (next?.activityAt) return String(next.activityAt);
+  const existingActivityAt = getWorkOrderActivityAt(previous);
+  if (!previous || typeof previous !== 'object' || !previous?.id) {
+    return getWorkOrderActivityAt({ ...next, activityAt: updatedAt }) || updatedAt;
+  }
+  if (isMeaningfulWorkOrderActivityChange(previous, next)) return updatedAt;
+  return existingActivityAt || getWorkOrderActivityAt(next) || updatedAt;
 }
 
 function getGitHubRepoSlug(): string | null {
@@ -2313,8 +2359,12 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
   const effectiveSortBy = sortBy || ((key === 'workOrders' || key === 'sales') ? 'activityAt' : 'id');
   if (effectiveSortBy) {
     out.sort((a: any, b: any) => {
-      const av = effectiveSortBy === 'activityAt' ? getRecordActivityAt(a) : a?.[effectiveSortBy];
-      const bv = effectiveSortBy === 'activityAt' ? getRecordActivityAt(b) : b?.[effectiveSortBy];
+      const av = effectiveSortBy === 'activityAt'
+        ? (key === 'workOrders' ? getWorkOrderActivityAt(a) : getSaleActivityAt(a))
+        : a?.[effectiveSortBy];
+      const bv = effectiveSortBy === 'activityAt'
+        ? (key === 'workOrders' ? getWorkOrderActivityAt(b) : getSaleActivityAt(b))
+        : b?.[effectiveSortBy];
 
       const ai = Number(a?.id ?? 0);
       const bi = Number(b?.id ?? 0);
@@ -2352,6 +2402,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   if (!item || typeof item !== 'object') item = {};
   if (!item.createdAt) item.createdAt = nowIso;
   if (!item.updatedAt) item.updatedAt = nowIso;
+  if (key === 'workOrders' && !item.activityAt) item.activityAt = getWorkOrderActivityAt(item) || nowIso;
   // Assign global invoice id sequence (strictly increasing by entry time) for workOrders and sales
   if (key === 'workOrders' || key === 'sales') {
     // Initialize invoiceSeq if missing by scanning both collections
@@ -2495,7 +2546,12 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
     return false;
   });
   if (idx === -1) return null;
-  const updatedItem = { ...db[key][idx], ...incomingItem, id: targetId, updatedAt: new Date().toISOString() };
+  const updatedAt = new Date().toISOString();
+  const previousItem = db[key][idx];
+  const updatedItem = { ...previousItem, ...incomingItem, id: targetId, updatedAt };
+  if (key === 'workOrders') {
+    updatedItem.activityAt = computeWorkOrderActivityAt(previousItem, updatedItem, updatedAt);
+  }
   db[key][idx] = updatedItem;
   const ok = writeDb(db);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
