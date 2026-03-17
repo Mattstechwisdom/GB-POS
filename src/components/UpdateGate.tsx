@@ -19,6 +19,8 @@ type GateState =
       latestVersion: string;
       releaseName?: string;
       releaseNotes?: any;
+      canAutoInstall?: boolean;
+      detail?: string;
     }
   | { kind: 'downloading'; app: AppInfo; latestVersion: string; progressPct: number }
   | { kind: 'installing'; app: AppInfo; latestVersion: string }
@@ -100,7 +102,37 @@ async function fetchGitHubLatestRelease() {
     latestVersion: candidate.latestVersion,
     releaseName: candidate.releaseName,
     releaseNotes: candidate.releaseNotes,
+    canAutoInstall: true,
   };
+}
+
+async function fetchGitHubLatestTag() {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/tags?per_page=20&t=${Date.now()}`, {
+      headers: {
+        'User-Agent': 'gbpos-update-gate',
+        Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+      },
+      cache: 'no-store',
+      signal: controller?.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (!res.ok) throw new Error(`GitHub tags check failed: ${res.status}`);
+  const json = await res.json();
+  const tags = Array.isArray(json) ? json : [];
+  const candidate = tags
+    .map((tag: any) => normalizeVersion(tag?.name || ''))
+    .filter(Boolean)
+    .sort((a: string, b: string) => compareVersions(b, a))[0];
+  if (!candidate) return null;
+  return { latestVersion: candidate, canAutoInstall: false };
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -124,8 +156,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
 
   function pickNewerRelease(
     currentVersion: string,
-    primary: { latestVersion?: string; releaseName?: string; releaseNotes?: any } | null | undefined,
-    secondary: { latestVersion?: string; releaseName?: string; releaseNotes?: any } | null | undefined,
+    primary: { latestVersion?: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null | undefined,
+    secondary: { latestVersion?: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null | undefined,
   ) {
     const primaryVersion = primary?.latestVersion ? normalizeVersion(primary.latestVersion) : '';
     const secondaryVersion = secondary?.latestVersion ? normalizeVersion(secondary.latestVersion) : '';
@@ -141,6 +173,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       latestVersion: bestVersion,
       releaseName: chosen?.releaseName,
       releaseNotes: chosen?.releaseNotes,
+      canAutoInstall: chosen?.canAutoInstall,
+      detail: chosen?.detail,
     };
   }
 
@@ -166,15 +200,28 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
 
       const appInfo = (await api.getAppInfo()) as AppInfo;
       const currentVersion = normalizeVersion(appInfo.version);
-      let fallbackRelease: { latestVersion: string; releaseName?: string; releaseNotes?: any } | null = null;
+      let fallbackRelease: { latestVersion: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null = null;
+      let fallbackTag: { latestVersion: string; canAutoInstall?: boolean; detail?: string } | null = null;
 
       try {
         fallbackRelease = await fetchGitHubLatestRelease();
       } catch {}
+      try {
+        fallbackTag = await fetchGitHubLatestTag();
+      } catch {}
+
+      const tagSignal = fallbackTag && compareVersions(currentVersion, fallbackTag.latestVersion) < 0
+        ? {
+            ...fallbackTag,
+            detail: fallbackRelease?.latestVersion === fallbackTag.latestVersion
+              ? undefined
+              : `GitHub tag v${fallbackTag.latestVersion} exists, but installer assets are not published yet.`,
+          }
+        : null;
 
       // If the packaged app has update support, ask the main process to check.
       if (typeof api.updateCheck !== 'function') {
-        const bestRelease = pickNewerRelease(currentVersion, null, fallbackRelease);
+        const bestRelease = pickNewerRelease(currentVersion, fallbackRelease, tagSignal);
         if (bestRelease) {
           setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes });
           return;
@@ -191,9 +238,9 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       if (!res?.ok) {
         const msg = String(res?.error || 'Update check failed');
         console.warn('[UpdateGate] update check failed:', msg);
-        const bestRelease = pickNewerRelease(currentVersion, null, fallbackRelease);
+        const bestRelease = pickNewerRelease(currentVersion, fallbackRelease, tagSignal);
         if (bestRelease) {
-          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes });
+          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes, canAutoInstall: bestRelease.canAutoInstall, detail: bestRelease.detail });
           return;
         }
         // In production, surface the failure so the user knows updates aren't working.
@@ -209,7 +256,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         latestVersion: res?.latestVersion,
         releaseName: res?.releaseName,
         releaseNotes: res?.releaseNotes,
-      }, fallbackRelease);
+        canAutoInstall: !!res?.canAutoInstall,
+      }, pickNewerRelease(currentVersion, fallbackRelease, tagSignal));
 
       if (bestRelease) {
         setState({
@@ -218,6 +266,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
           latestVersion: bestRelease.latestVersion,
           releaseName: bestRelease.releaseName,
           releaseNotes: bestRelease.releaseNotes,
+          canAutoInstall: bestRelease.canAutoInstall,
+          detail: bestRelease.detail,
         });
         return;
       }
@@ -241,8 +291,17 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       try {
         const api = (window as any)?.api;
         const appInfo = typeof api?.getAppInfo === 'function' ? ((await api.getAppInfo()) as AppInfo) : null;
-        const fallbackRelease = await fetchGitHubLatestRelease();
-        const bestRelease = appInfo ? pickNewerRelease(normalizeVersion(appInfo.version), null, fallbackRelease) : null;
+        const fallbackRelease = await fetchGitHubLatestRelease().catch(() => null);
+        const fallbackTag = await fetchGitHubLatestTag().catch(() => null);
+        const tagSignal = appInfo && fallbackTag && compareVersions(normalizeVersion(appInfo.version), fallbackTag.latestVersion) < 0
+          ? {
+              ...fallbackTag,
+              detail: fallbackRelease?.latestVersion === fallbackTag.latestVersion
+                ? undefined
+                : `GitHub tag v${fallbackTag.latestVersion} exists, but installer assets are not published yet.`,
+            }
+          : null;
+        const bestRelease = appInfo ? pickNewerRelease(normalizeVersion(appInfo.version), fallbackRelease, tagSignal) : null;
         if (appInfo && bestRelease) {
           setState({
             kind: 'updateAvailable',
@@ -250,6 +309,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
             latestVersion: bestRelease.latestVersion,
             releaseName: bestRelease.releaseName,
             releaseNotes: bestRelease.releaseNotes,
+            canAutoInstall: bestRelease.canAutoInstall,
+            detail: bestRelease.detail,
           });
           return;
         }
@@ -268,7 +329,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (state.kind === 'ok' || state.kind === 'checking') return <>{children}</>;
+  if (state.kind === 'ok') return <>{children}</>;
 
   const cardClass = 'w-full max-w-xl rounded-lg bg-zinc-900 border border-zinc-700 p-6';
   const titleClass = 'text-xl font-semibold text-gray-100';
@@ -281,6 +342,18 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-zinc-950 text-gray-100 flex items-center justify-center p-6">
       <div className={cardClass}>
+        {state.kind === 'checking' && (
+          <>
+            <div className={titleClass}>Checking GitHub for updates…</div>
+            <div className={subClass}>Please wait before the app opens.</div>
+            <div className="mt-4">
+              <div className="h-3 bg-zinc-800 rounded overflow-hidden">
+                <div className="h-3 w-1/2 bg-[#39FF14] rounded animate-pulse" />
+              </div>
+            </div>
+          </>
+        )}
+
         {state.kind === 'updateAvailable' && (
           <>
             <div className={titleClass}>Update available</div>
@@ -297,6 +370,9 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
                   Release: <span className="text-gray-100">{state.releaseName}</span>
                 </div>
               )}
+              {state.detail && (
+                <div className="text-yellow-300">{state.detail}</div>
+              )}
             </div>
 
             <div className="mt-5 flex gap-3">
@@ -305,6 +381,10 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
                 onClick={async () => {
                   const api = (window as any)?.api;
                   try {
+                    if (state.canAutoInstall === false) {
+                      await api?.updateOpenReleases?.();
+                      return;
+                    }
                     if (!api?.updateDownload) throw new Error('Update download is unavailable.');
                     setState({ kind: 'downloading', app: state.app, latestVersion: state.latestVersion, progressPct: 0 });
 
@@ -335,7 +415,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
                   }
                 }}
               >
-                Update now
+                {state.canAutoInstall === false ? 'Open releases' : 'Update now'}
               </button>
               <button
                 className={btnClass}
