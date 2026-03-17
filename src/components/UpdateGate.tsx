@@ -107,6 +107,28 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
 
   const shouldEnforceGate = (import.meta as any).env?.PROD;
 
+  function pickNewerRelease(
+    currentVersion: string,
+    primary: { latestVersion?: string; releaseName?: string; releaseNotes?: any } | null | undefined,
+    secondary: { latestVersion?: string; releaseName?: string; releaseNotes?: any } | null | undefined,
+  ) {
+    const primaryVersion = primary?.latestVersion ? normalizeVersion(primary.latestVersion) : '';
+    const secondaryVersion = secondary?.latestVersion ? normalizeVersion(secondary.latestVersion) : '';
+    const bestVersion = [primaryVersion, secondaryVersion]
+      .filter(Boolean)
+      .sort((a, b) => compareVersions(b, a))[0];
+
+    if (!bestVersion) return null;
+    if (compareVersions(currentVersion, bestVersion) >= 0) return null;
+
+    const chosen = primaryVersion === bestVersion ? primary : secondary;
+    return {
+      latestVersion: bestVersion,
+      releaseName: chosen?.releaseName,
+      releaseNotes: chosen?.releaseNotes,
+    };
+  }
+
   async function checkNow() {
     setState({ kind: 'checking' });
 
@@ -128,15 +150,18 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       }
 
       const appInfo = (await api.getAppInfo()) as AppInfo;
+      const currentVersion = normalizeVersion(appInfo.version);
       let fallbackRelease: { latestVersion: string; releaseName?: string; releaseNotes?: any } | null = null;
+
+      try {
+        fallbackRelease = await fetchGitHubLatestRelease();
+      } catch {}
 
       // If the packaged app has update support, ask the main process to check.
       if (typeof api.updateCheck !== 'function') {
-        try {
-          fallbackRelease = await fetchGitHubLatestRelease();
-        } catch {}
-        if (fallbackRelease && compareVersions(appInfo.version, fallbackRelease.latestVersion) < 0) {
-          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: fallbackRelease.latestVersion, releaseName: fallbackRelease.releaseName, releaseNotes: fallbackRelease.releaseNotes });
+        const bestRelease = pickNewerRelease(currentVersion, null, fallbackRelease);
+        if (bestRelease) {
+          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes });
           return;
         }
         setState({ kind: 'ok' });
@@ -151,13 +176,11 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       if (!res?.ok) {
         const msg = String(res?.error || 'Update check failed');
         console.warn('[UpdateGate] update check failed:', msg);
-        try {
-          fallbackRelease = await fetchGitHubLatestRelease();
-          if (fallbackRelease && compareVersions(appInfo.version, fallbackRelease.latestVersion) < 0) {
-            setState({ kind: 'updateAvailable', app: appInfo, latestVersion: fallbackRelease.latestVersion, releaseName: fallbackRelease.releaseName, releaseNotes: fallbackRelease.releaseNotes });
-            return;
-          }
-        } catch {}
+        const bestRelease = pickNewerRelease(currentVersion, null, fallbackRelease);
+        if (bestRelease) {
+          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes });
+          return;
+        }
         // In production, surface the failure so the user knows updates aren't working.
         if (shouldEnforceGate) {
           setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
@@ -167,13 +190,19 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      if (res?.updateAvailable && res?.latestVersion) {
+      const bestRelease = pickNewerRelease(currentVersion, {
+        latestVersion: res?.latestVersion,
+        releaseName: res?.releaseName,
+        releaseNotes: res?.releaseNotes,
+      }, fallbackRelease);
+
+      if (bestRelease) {
         setState({
           kind: 'updateAvailable',
           app: appInfo,
-          latestVersion: String(res.latestVersion),
-          releaseName: res?.releaseName,
-          releaseNotes: res?.releaseNotes,
+          latestVersion: bestRelease.latestVersion,
+          releaseName: bestRelease.releaseName,
+          releaseNotes: bestRelease.releaseNotes,
         });
         return;
       }
@@ -194,6 +223,22 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       const msg = String(e?.message || e);
 
       console.warn('[UpdateGate] update check threw:', msg);
+      try {
+        const api = (window as any)?.api;
+        const appInfo = typeof api?.getAppInfo === 'function' ? ((await api.getAppInfo()) as AppInfo) : null;
+        const fallbackRelease = await fetchGitHubLatestRelease();
+        const bestRelease = appInfo ? pickNewerRelease(normalizeVersion(appInfo.version), null, fallbackRelease) : null;
+        if (appInfo && bestRelease) {
+          setState({
+            kind: 'updateAvailable',
+            app: appInfo,
+            latestVersion: bestRelease.latestVersion,
+            releaseName: bestRelease.releaseName,
+            releaseNotes: bestRelease.releaseNotes,
+          });
+          return;
+        }
+      } catch {}
       if (shouldEnforceGate) setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
       else setState({ kind: 'ok' });
     }
