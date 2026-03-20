@@ -340,14 +340,6 @@ function resolveTotals(record: any) {
   return { total: safeTotal, paid: safePaid, remaining: safeRemaining };
 }
 
-function collectPayments(record: any) {
-  if (!record || typeof record !== 'object') return [];
-  if (Array.isArray(record.payments)) return record.payments;
-  if (Array.isArray(record.paymentHistory)) return record.paymentHistory;
-  if (Array.isArray(record.paymentLogs)) return record.paymentLogs;
-  return [];
-}
-
 function paymentAppliedAmount(p: any): number {
   const applied = Number(p?.applied);
   if (Number.isFinite(applied) && applied > 0) return applied;
@@ -356,6 +348,57 @@ function paymentAppliedAmount(p: any): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (Number.isFinite(change) && change > 0) return Math.max(0, amount - change);
   return amount;
+}
+
+function paymentFallbackDate(record: any): Date | null {
+  if (!record || typeof record !== 'object') return null;
+  const keys = [
+    'checkoutDate',
+    'clientPickupDate',
+    'repairCompletionDate',
+    'completedAt',
+    'completedDate',
+    'closedAt',
+    'closedDate',
+    'invoiceDate',
+    'invoice_date',
+    'saleDate',
+    'sale_date',
+    'transactionDate',
+    'transaction_date',
+    'checkInAt',
+    'createdAt',
+    'createdDate',
+  ];
+  for (const key of keys) {
+    const date = parseDateValue(record?.[key]);
+    if (date) return date;
+  }
+  return null;
+}
+
+function collectPayments(record: any) {
+  if (!record || typeof record !== 'object') return [];
+  const existing = Array.isArray(record.payments)
+    ? [...record.payments]
+    : Array.isArray(record.paymentHistory)
+      ? [...record.paymentHistory]
+      : Array.isArray(record.paymentLogs)
+        ? [...record.paymentLogs]
+        : [];
+  const { paid } = resolveTotals(record);
+  const recorded = round2(existing.reduce((sum: number, payment: any) => sum + paymentAppliedAmount(payment), 0));
+  const missing = round2((Number(paid || 0) || 0) - recorded);
+  if (missing <= 0.009) return existing;
+  const anchor = paymentFallbackDate(record);
+  if (!anchor) return existing;
+  return [{
+    amount: missing,
+    applied: missing,
+    paymentType: String(record?.paymentType || 'Legacy'),
+    at: anchor.toISOString(),
+    inferred: true,
+  }, ...existing];
 }
 
 function paymentEventDate(p: any): Date | null {
@@ -381,7 +424,6 @@ function getTimelineDate(record: any): Date | null {
     'checkoutDate',
     'repairCompletionDate',
     'clientPickupDate',
-    'updatedAt',
     'checkInAt',
     'createdAt',
   ];
@@ -389,28 +431,27 @@ function getTimelineDate(record: any): Date | null {
     const d = parseDateValue(record?.[key]);
     if (d) return d;
   }
-  return extractRecordDate(record);
+  return paymentFallbackDate(record) || extractRecordDate(record);
 }
 
 function getSaleReportDate(record: any): Date | null {
   const orderedKeys = [
     'checkoutDate',
-    'checkInAt',
     'invoiceDate',
     'invoice_date',
     'saleDate',
     'sale_date',
     'transactionDate',
     'transaction_date',
+    'checkInAt',
     'createdAt',
     'createdDate',
-    'updatedAt',
   ];
   for (const key of orderedKeys) {
     const d = parseDateValue(record?.[key]);
     if (d) return d;
   }
-  return extractRecordDate(record);
+  return paymentFallbackDate(record) || extractRecordDate(record);
 }
 
 function collectedAmountInRange(record: any, startMs: number, endMs: number, fallbackDate?: Date | null): number {
@@ -423,7 +464,7 @@ function collectedAmountInRange(record: any, startMs: number, endMs: number, fal
     }, 0));
   }
 
-  const date = fallbackDate || getTimelineDate(record);
+  const date = paymentFallbackDate(record);
   if (!isDateWithin(date, startMs, endMs)) return 0;
   const { paid, total } = resolveTotals(record);
   const value = Number(paid || 0) || Number(total || 0) || 0;
@@ -772,20 +813,20 @@ const EODWindow: React.FC = () => {
   const summary = useMemo(() => {
     const min = start.getTime();
     const max = end.getTime();
-    const wo = { count: 0, total: 0, paid: 0, remaining: 0 };
-    const sa = { count: 0, total: 0, paid: 0, remaining: 0 };
+    const wo = { count: 0, billed: 0, collected: 0, remaining: 0 };
+    const sa = { count: 0, billed: 0, collected: 0, remaining: 0 };
     unified.forEach(row => {
       const bucket = row.kind === 'work' ? wo : sa;
       const collected = collectedAmountInRange(row, min, max, row.date);
       bucket.count += 1;
-      bucket.total += collected;
-      bucket.paid += collected;
+      bucket.billed += Number(row.total || 0) || 0;
+      bucket.collected += collected;
       bucket.remaining += row.remaining;
     });
-    const grandTotal = wo.total + sa.total;
-    const grandPaid = wo.paid + sa.paid;
+    const grandBilled = wo.billed + sa.billed;
+    const grandCollected = wo.collected + sa.collected;
     const grandRemaining = wo.remaining + sa.remaining;
-    return { woTotals: wo, saTotals: sa, grandTotal, grandPaid, grandRemaining };
+    return { woTotals: wo, saTotals: sa, grandBilled, grandCollected, grandRemaining };
   }, [unified, rangeKey]);
 
   const COMMISSION_RATE = 0.05;
@@ -1059,17 +1100,18 @@ const EODWindow: React.FC = () => {
     };
 
     unified.forEach(row => {
-      const payments = Array.isArray(row.payments) ? row.payments : [];
+      const payments = collectPayments(row);
       payments.forEach(addPayment);
       if (!payments.length) {
         const collected = collectedAmountInRange(row, min, max, row.date);
-        if (collected > 0) addPayment({ amount: collected, paymentType: 'unknown', change: 0, at: row.date });
+        const anchor = paymentFallbackDate(row) || row.date;
+        if (collected > 0) addPayment({ amount: collected, paymentType: String((row as any)?.paymentType || 'unknown'), change: 0, at: anchor });
       }
     });
 
     const cashNet = cashTender - cashChange;
     return { cashTender, cashChange, cashNet, card, other, paymentsCount };
-  }, [unified, rangeKey]);
+  }, [unified, start, end]);
 
   const dailyBatchSummary = useMemo(() => {
     const min = start.getTime();
@@ -1487,7 +1529,7 @@ const EODWindow: React.FC = () => {
                   >
                     <div className="text-xs text-zinc-500">Work orders</div>
                     <div className="text-xl font-semibold">{summary.woTotals.count}</div>
-                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.woTotals.total)} collected</div>
+                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.woTotals.collected)} collected</div>
                   </button>
                   <button
                     type="button"
@@ -1496,7 +1538,7 @@ const EODWindow: React.FC = () => {
                   >
                     <div className="text-xs text-zinc-500">Sales</div>
                     <div className="text-xl font-semibold">{summary.saTotals.count}</div>
-                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.saTotals.total)} collected</div>
+                    <div className="text-[11px] text-zinc-400">{formatCurrency(summary.saTotals.collected)} collected</div>
                   </button>
                   <button
                     type="button"

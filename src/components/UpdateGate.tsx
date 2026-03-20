@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-const GITHUB_REPO = 'Mattstechwisdom/GB-POS';
-const UPDATE_CHECK_TIMEOUT_MS = 5000;
+const UPDATE_CHECK_TIMEOUT_MS = 8000;
 
 type AppInfo = {
   version: string;
@@ -54,87 +53,6 @@ function compareVersions(aRaw: string, bRaw: string) {
   return 0;
 }
 
-async function fetchGitHubLatestRelease() {
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10&t=${Date.now()}`, {
-      headers: {
-        'User-Agent': 'gbpos-update-gate',
-        Accept: 'application/vnd.github+json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-      },
-      cache: 'no-store',
-      signal: controller?.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
-  }
-  if (!res.ok) throw new Error(`GitHub releases check failed: ${res.status}`);
-  const json = await res.json();
-  const releases = Array.isArray(json) ? json : [];
-  const candidate = releases
-    .filter((release: any) => !release?.draft && !release?.prerelease)
-    .map((release: any) => {
-      const assets = Array.isArray(release?.assets)
-        ? release.assets
-            .map((asset: any) => ({
-              name: String(asset?.name || '').trim(),
-              downloadUrl: String(asset?.browser_download_url || '').trim(),
-            }))
-            .filter((asset: any) => asset.name && asset.downloadUrl)
-        : [];
-      const hasInstaller = assets.some((asset: any) => /\.exe$/i.test(asset.name));
-      const hasMetadata = assets.some((asset: any) => /(^|[\\/])latest\.yml$/i.test(asset.name));
-      return {
-        latestVersion: normalizeVersion(release?.tag_name || release?.name || ''),
-        releaseName: typeof release?.name === 'string' ? release.name : undefined,
-        releaseNotes: release?.body,
-        hasPublishedAssets: hasInstaller || hasMetadata,
-      };
-    })
-    .filter((release: any) => !!release.latestVersion && release.hasPublishedAssets)
-    .sort((a: any, b: any) => compareVersions(b.latestVersion, a.latestVersion))[0];
-  if (!candidate?.latestVersion) return null;
-  return {
-    latestVersion: candidate.latestVersion,
-    releaseName: candidate.releaseName,
-    releaseNotes: candidate.releaseNotes,
-    canAutoInstall: true,
-  };
-}
-
-async function fetchGitHubLatestTag() {
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = window.setTimeout(() => controller?.abort(), UPDATE_CHECK_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/tags?per_page=20&t=${Date.now()}`, {
-      headers: {
-        'User-Agent': 'gbpos-update-gate',
-        Accept: 'application/vnd.github+json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-      },
-      cache: 'no-store',
-      signal: controller?.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
-  }
-  if (!res.ok) throw new Error(`GitHub tags check failed: ${res.status}`);
-  const json = await res.json();
-  const tags = Array.isArray(json) ? json : [];
-  const candidate = tags
-    .map((tag: any) => normalizeVersion(tag?.name || ''))
-    .filter(Boolean)
-    .sort((a: string, b: string) => compareVersions(b, a))[0];
-  if (!candidate) return null;
-  return { latestVersion: candidate, canAutoInstall: false };
-}
-
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: number | null = null;
   try {
@@ -153,30 +71,6 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
   const [state, setState] = useState<GateState>({ kind: 'checking' });
 
   const shouldEnforceGate = (import.meta as any).env?.PROD;
-
-  function pickNewerRelease(
-    currentVersion: string,
-    primary: { latestVersion?: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null | undefined,
-    secondary: { latestVersion?: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null | undefined,
-  ) {
-    const primaryVersion = primary?.latestVersion ? normalizeVersion(primary.latestVersion) : '';
-    const secondaryVersion = secondary?.latestVersion ? normalizeVersion(secondary.latestVersion) : '';
-    const bestVersion = [primaryVersion, secondaryVersion]
-      .filter(Boolean)
-      .sort((a, b) => compareVersions(b, a))[0];
-
-    if (!bestVersion) return null;
-    if (compareVersions(currentVersion, bestVersion) >= 0) return null;
-
-    const chosen = primaryVersion === bestVersion ? primary : secondary;
-    return {
-      latestVersion: bestVersion,
-      releaseName: chosen?.releaseName,
-      releaseNotes: chosen?.releaseNotes,
-      canAutoInstall: chosen?.canAutoInstall,
-      detail: chosen?.detail,
-    };
-  }
 
   async function checkNow() {
     setState({ kind: 'checking' });
@@ -199,34 +93,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       }
 
       const appInfo = (await api.getAppInfo()) as AppInfo;
-      const currentVersion = normalizeVersion(appInfo.version);
-      let fallbackRelease: { latestVersion: string; releaseName?: string; releaseNotes?: any; canAutoInstall?: boolean; detail?: string } | null = null;
-      let fallbackTag: { latestVersion: string; canAutoInstall?: boolean; detail?: string } | null = null;
-
-      try {
-        fallbackRelease = await fetchGitHubLatestRelease();
-      } catch {}
-      try {
-        fallbackTag = await fetchGitHubLatestTag();
-      } catch {}
-
-      const tagSignal = fallbackTag && compareVersions(currentVersion, fallbackTag.latestVersion) < 0
-        ? {
-            ...fallbackTag,
-            detail: fallbackRelease?.latestVersion === fallbackTag.latestVersion
-              ? undefined
-              : `GitHub tag v${fallbackTag.latestVersion} exists, but installer assets are not published yet.`,
-          }
-        : null;
-
-      // If the packaged app has update support, ask the main process to check.
       if (typeof api.updateCheck !== 'function') {
-        const bestRelease = pickNewerRelease(currentVersion, fallbackRelease, tagSignal);
-        if (bestRelease) {
-          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes });
-          return;
-        }
-        setState({ kind: 'ok' });
+        setState({ kind: 'error', message: 'GitHub update checking is unavailable in this build.' });
         return;
       }
 
@@ -238,36 +106,21 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       if (!res?.ok) {
         const msg = String(res?.error || 'Update check failed');
         console.warn('[UpdateGate] update check failed:', msg);
-        const bestRelease = pickNewerRelease(currentVersion, fallbackRelease, tagSignal);
-        if (bestRelease) {
-          setState({ kind: 'updateAvailable', app: appInfo, latestVersion: bestRelease.latestVersion, releaseName: bestRelease.releaseName, releaseNotes: bestRelease.releaseNotes, canAutoInstall: bestRelease.canAutoInstall, detail: bestRelease.detail });
-          return;
-        }
-        // In production, surface the failure so the user knows updates aren't working.
-        if (shouldEnforceGate) {
-          setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
-        } else {
-          setState({ kind: 'ok' });
-        }
+        setState({ kind: 'error', message: `Could not check GitHub for updates: ${msg}` });
         return;
       }
 
-      const bestRelease = pickNewerRelease(currentVersion, {
-        latestVersion: res?.latestVersion,
-        releaseName: res?.releaseName,
-        releaseNotes: res?.releaseNotes,
-        canAutoInstall: !!res?.canAutoInstall,
-      }, pickNewerRelease(currentVersion, fallbackRelease, tagSignal));
-
-      if (bestRelease) {
+      const currentVersion = normalizeVersion(appInfo.version);
+      const latestVersion = normalizeVersion(String(res?.latestVersion || ''));
+      if (latestVersion && compareVersions(currentVersion, latestVersion) < 0 && res?.updateAvailable !== false) {
         setState({
           kind: 'updateAvailable',
           app: appInfo,
-          latestVersion: bestRelease.latestVersion,
-          releaseName: bestRelease.releaseName,
-          releaseNotes: bestRelease.releaseNotes,
-          canAutoInstall: bestRelease.canAutoInstall,
-          detail: bestRelease.detail,
+          latestVersion,
+          releaseName: res?.releaseName,
+          releaseNotes: res?.releaseNotes,
+          canAutoInstall: !!res?.canAutoInstall,
+          detail: res?.warning,
         });
         return;
       }
@@ -276,10 +129,8 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
         const warn = String(res.warning || '').trim();
         if (warn) {
           console.warn('[UpdateGate] update check warning:', warn);
-          if (shouldEnforceGate) {
-            setState({ kind: 'error', message: `Could not check for updates: ${warn}` });
-            return;
-          }
+          setState({ kind: 'error', message: `Could not check GitHub for updates: ${warn}` });
+          return;
         }
       }
 
@@ -288,34 +139,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
       const msg = String(e?.message || e);
 
       console.warn('[UpdateGate] update check threw:', msg);
-      try {
-        const api = (window as any)?.api;
-        const appInfo = typeof api?.getAppInfo === 'function' ? ((await api.getAppInfo()) as AppInfo) : null;
-        const fallbackRelease = await fetchGitHubLatestRelease().catch(() => null);
-        const fallbackTag = await fetchGitHubLatestTag().catch(() => null);
-        const tagSignal = appInfo && fallbackTag && compareVersions(normalizeVersion(appInfo.version), fallbackTag.latestVersion) < 0
-          ? {
-              ...fallbackTag,
-              detail: fallbackRelease?.latestVersion === fallbackTag.latestVersion
-                ? undefined
-                : `GitHub tag v${fallbackTag.latestVersion} exists, but installer assets are not published yet.`,
-            }
-          : null;
-        const bestRelease = appInfo ? pickNewerRelease(normalizeVersion(appInfo.version), fallbackRelease, tagSignal) : null;
-        if (appInfo && bestRelease) {
-          setState({
-            kind: 'updateAvailable',
-            app: appInfo,
-            latestVersion: bestRelease.latestVersion,
-            releaseName: bestRelease.releaseName,
-            releaseNotes: bestRelease.releaseNotes,
-            canAutoInstall: bestRelease.canAutoInstall,
-            detail: bestRelease.detail,
-          });
-          return;
-        }
-      } catch {}
-      if (shouldEnforceGate) setState({ kind: 'error', message: `Could not check for updates: ${msg}` });
+      if (shouldEnforceGate) setState({ kind: 'error', message: `Could not check GitHub for updates: ${msg}` });
       else setState({ kind: 'ok' });
     }
   }
@@ -473,7 +297,7 @@ export default function UpdateGate({ children }: { children: React.ReactNode }) 
               </button>
             </div>
             <div className="mt-3 text-xs text-gray-400">
-              {shouldEnforceGate ? 'Updates may not be configured yet (electron-builder publish settings).' : 'Update checking is optional in dev.'}
+              {shouldEnforceGate ? 'The app could not verify the latest GitHub release.' : 'Update checking is optional in dev.'}
             </div>
           </>
         )}

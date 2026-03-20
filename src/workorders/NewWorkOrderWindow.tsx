@@ -19,7 +19,7 @@ import CustomBuildItemsTable from './CustomBuildItemsTable';
 import IntakePanel from './IntakePanel';
 import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
-import { computeTotals } from '../lib/calc';
+import { computeTotals, round2 } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem } from '../lib/types';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
@@ -46,6 +46,51 @@ function parsePayload() {
 
 function onlyDate(iso?: string | null) {
   return (iso || '').toString().slice(0, 10);
+}
+
+function parseCheckoutPaymentDate(value: any): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function checkoutPaymentAppliedAmount(payment: any): number {
+  const applied = Number(payment?.applied);
+  if (Number.isFinite(applied) && applied > 0) return round2(applied);
+  const amount = Number(payment?.amount ?? payment?.tender ?? payment?.paid ?? 0);
+  const change = Number(payment?.change ?? payment?.changeDue ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (Number.isFinite(change) && change > 0) return round2(Math.max(0, amount - change));
+  return round2(amount);
+}
+
+function buildNormalizedCheckoutPayments(record: any) {
+  const existing = Array.isArray(record?.payments)
+    ? [...record.payments]
+    : Array.isArray(record?.paymentHistory)
+      ? [...record.paymentHistory]
+      : Array.isArray(record?.paymentLogs)
+        ? [...record.paymentLogs]
+        : [];
+  const paid = round2(Number(record?.amountPaid || 0) || 0);
+  const recorded = round2(existing.reduce((sum: number, payment: any) => sum + checkoutPaymentAppliedAmount(payment), 0));
+  const missing = round2(paid - recorded);
+  if (missing <= 0.009) return existing;
+
+  const anchor = parseCheckoutPaymentDate(record?.checkoutDate)
+    || parseCheckoutPaymentDate(record?.clientPickupDate)
+    || parseCheckoutPaymentDate(record?.repairCompletionDate)
+    || parseCheckoutPaymentDate(record?.checkInAt)
+    || parseCheckoutPaymentDate(record?.createdAt);
+  if (!anchor) return existing;
+
+  return [{
+    amount: missing,
+    applied: missing,
+    paymentType: String(record?.paymentType || 'Legacy'),
+    at: anchor,
+    inferred: true,
+  }, ...existing];
 }
 
 const NewWorkOrderWindow: React.FC = () => {
@@ -605,13 +650,16 @@ const NewWorkOrderWindow: React.FC = () => {
         let updatedItems = wo.items;
         let status = wo.status;
         let checkoutDate = wo.checkoutDate;
+        const hadOutstandingBalance = Number(wo.totals?.remaining || 0) > 0.009;
         if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
           status = 'closed';
-          checkoutDate = new Date().toISOString();
+          if (!checkoutDate || (additionalPaid > 0 && hadOutstandingBalance)) {
+            checkoutDate = new Date().toISOString();
+          }
           updatedItems = wo.items.map(it => ({ ...it, status: 'done' }));
         }
 
-        const prevPayments = Array.isArray((wo as any).payments) ? (wo as any).payments : [];
+        const prevPayments = buildNormalizedCheckoutPayments(wo as any);
         const payments = (() => {
           if (!(additionalPaid > 0)) return prevPayments;
           const now = new Date().toISOString();

@@ -169,6 +169,27 @@ function toIsoLocal(d: Date) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
 }
 
+function calendarNotificationKey(ev: any, kind: 'consultation' | 'parts_delivery' | 'event') {
+  const source = String(ev?.source || 'calendar').trim().toLowerCase();
+  const date = String(ev?.date || '').slice(0, 10);
+  const time = String(ev?.time || '').trim();
+  const workOrderId = Number(ev?.workOrderId || 0) || 0;
+  const saleId = Number(ev?.saleId || 0) || 0;
+  const customerId = Number(ev?.customerId || 0) || 0;
+  const partsStatus = String(ev?.partsStatus || '').trim().toLowerCase();
+  const title = String(ev?.title || ev?.partName || '').trim().toLowerCase();
+  return [
+    'cal',
+    kind,
+    source,
+    workOrderId || saleId || customerId || Number(ev?.id || 0) || 0,
+    partsStatus,
+    date,
+    time,
+    title,
+  ].join(':');
+}
+
 export async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
     const list = await api()?.dbGet?.('notificationSettings');
@@ -452,7 +473,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
       if (!when) continue;
       const diff = when.getTime() - now.getTime();
       if (diff < 0 || diff > consultLeadMs) continue;
-      const key = `cal:${ev.id}:consultation`;
+      const key = calendarNotificationKey(ev, 'consultation');
       desiredKeys.add(key);
       await upsertByKeyWithCache(existingNotifications, {
         key,
@@ -481,7 +502,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
       const inLookahead = diff >= 0 && diff <= lookaheadPartsMs;
       if (!inLookahead && !(settings.includeOverduePartsDelivery && isOverdue)) continue;
 
-      const key = `cal:${ev.id}:parts_delivery`;
+      const key = calendarNotificationKey(ev, 'parts_delivery');
       desiredKeys.add(key);
       await upsertByKeyWithCache(existingNotifications, {
         key,
@@ -509,7 +530,7 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
       if (!when) continue;
       const diff = when.getTime() - now.getTime();
       if (diff < 0 || diff > eventLeadMs) continue;
-      const key = `cal:${ev.id}:event`;
+      const key = calendarNotificationKey(ev, 'event');
       desiredKeys.add(key);
       await upsertByKeyWithCache(existingNotifications, {
         key,
@@ -527,6 +548,21 @@ export async function syncNotificationsFromCalendar(): Promise<void> {
         time: ev.time || undefined,
         readAt: null,
       });
+    }
+  }
+
+  if (!quietNow) {
+    try {
+      const list = await listNotifications();
+      for (const n of list) {
+        if (n.id == null) continue;
+        if (n.source !== 'calendar') continue;
+        if (n.kind !== 'consultation' && n.kind !== 'parts_delivery' && n.kind !== 'event') continue;
+        if (desiredKeys.has(n.key)) continue;
+        await a.dbDelete('notifications', n.id).catch(() => {});
+      }
+    } catch {
+      // ignore
     }
   }
 

@@ -791,16 +791,138 @@ function hasGitHubReleaseMetadataAsset(release: { assets?: Array<{ name?: string
   return !!(release?.assets || []).some((asset) => /(^|[\\/])latest\.yml$/i.test(String(asset?.name || '')));
 }
 
-async function fetchLatestGitHubReleaseDetails(): Promise<{
+function escapeRegExp(value: string) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decodeHtmlEntities(value: string) {
+  return String(value || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function toAbsoluteGitHubUrl(value: string) {
+  const raw = decodeHtmlEntities(String(value || '').trim());
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/')) return `https://github.com${raw}`;
+  return `https://github.com/${raw.replace(/^\/+/, '')}`;
+}
+
+function decodeUrlPathSegment(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function fetchTextFromUrl(url: string, headers?: Record<string, string>, redirectCount: number = 0): Promise<{ statusCode: number; body: string; finalUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      headers: {
+        'User-Agent': 'gbpos-updater',
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        ...(headers || {}),
+      },
+    }, (res: any) => {
+      const statusCode = Number(res.statusCode || 0);
+      const location = String(res.headers?.location || '').trim();
+      if (statusCode >= 300 && statusCode < 400 && location) {
+        res.resume();
+        if (redirectCount >= 5) {
+          reject(new Error('Too many redirects while checking GitHub releases.'));
+          return;
+        }
+        fetchTextFromUrl(toAbsoluteGitHubUrl(location), headers, redirectCount + 1).then(resolve).catch(reject);
+        return;
+      }
+
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => { raw += chunk; });
+      res.on('end', () => resolve({ statusCode, body: raw, finalUrl: url }));
+    });
+
+    request.setTimeout(UPDATE_HTTP_TIMEOUT_MS, () => {
+      request.destroy(new Error(`Request timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`));
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+function parseGitHubReleaseDetailsFromHtml(slug: string, html: string): {
+  version: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  htmlUrl?: string;
+  assets: Array<{ name: string; downloadUrl: string; size?: number }>;
+} | null {
+  const safeSlug = escapeRegExp(String(slug || '').replace(/^\/+|\/+$/g, ''));
+  if (!safeSlug || !html) return null;
+
+  const releases = new Map<string, {
+    version: string;
+    releaseName?: string;
+    htmlUrl?: string;
+    assets: Array<{ name: string; downloadUrl: string; size?: number }>;
+  }>();
+
+  const ensureRelease = (versionRaw: string) => {
+    const version = normalizeVersion(versionRaw);
+    if (!version) return null;
+    let current = releases.get(version);
+    if (!current) {
+      current = { version, releaseName: `Release ${version}`, assets: [] };
+      releases.set(version, current);
+    }
+    return current;
+  };
+
+  const tagRegex = new RegExp(`href=["'](/${safeSlug}/releases/tag/(v[^"'#?<>]+))["']`, 'gi');
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(html))) {
+    const release = ensureRelease(match[2]);
+    if (!release) continue;
+    if (!release.htmlUrl) release.htmlUrl = toAbsoluteGitHubUrl(match[1]);
+  }
+
+  const assetRegex = new RegExp(`href=["'](/${safeSlug}/releases/download/(v[^/"'#?<>]+)/([^"'#?<>]+))["']`, 'gi');
+  while ((match = assetRegex.exec(html))) {
+    const release = ensureRelease(match[2]);
+    if (!release) continue;
+    const name = decodeUrlPathSegment(match[3]);
+    const downloadUrl = toAbsoluteGitHubUrl(match[1]);
+    if (!name || !downloadUrl) continue;
+    if (!release.assets.some((asset) => asset.name === name && asset.downloadUrl === downloadUrl)) {
+      release.assets.push({ name, downloadUrl });
+    }
+  }
+
+  const candidates = Array.from(releases.values())
+    .filter((release) => {
+      const hasInstaller = !!selectGitHubInstallerAsset(release as any);
+      const hasMetadata = hasGitHubReleaseMetadataAsset(release as any);
+      return hasInstaller || hasMetadata;
+    })
+    .sort((a, b) => compareVersions(b.version, a.version));
+
+  return candidates[0] || null;
+}
+
+async function fetchLatestGitHubReleaseDetailsFromApi(slug: string): Promise<{
   version: string;
   releaseName?: string;
   releaseNotes?: string;
   htmlUrl?: string;
   assets: Array<{ name: string; downloadUrl: string; size?: number }>;
 } | null> {
-  const slug = getGitHubRepoSlug();
-  if (!slug) return null;
-
   const url = `https://api.github.com/repos/${slug}/releases?per_page=10&t=${Date.now()}`;
   return new Promise((resolve) => {
     let settled = false;
@@ -824,7 +946,7 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
         res.on('end', () => {
           try {
             if (!raw || Number(res.statusCode || 0) >= 400) {
-              appendStartupLog(`github releases check failed status=${String(res.statusCode || '')}`);
+              appendStartupLog(`github releases api failed status=${String(res.statusCode || '')}`);
               finish(null);
               return;
             }
@@ -859,33 +981,63 @@ async function fetchLatestGitHubReleaseDetails(): Promise<{
               })
               .sort((a: any, b: any) => compareVersions(b.version, a.version));
 
-            const best = ranked[0];
-            if (!best?.version) {
-              appendStartupLog('github releases check found no published installer release');
-              finish(null);
-              return;
-            }
-            finish(best);
+            finish(ranked[0] || null);
           } catch (e: any) {
-            appendStartupLog(`github releases parse failed: ${String(e?.message || e)}`);
+            appendStartupLog(`github releases api parse failed: ${String(e?.message || e)}`);
             finish(null);
           }
         });
       });
       req.setTimeout(UPDATE_HTTP_TIMEOUT_MS, () => {
-        appendStartupLog(`github releases request timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`);
-        req.destroy(new Error('GitHub releases request timed out'));
+        appendStartupLog(`github releases api timed out after ${UPDATE_HTTP_TIMEOUT_MS}ms`);
+        req.destroy(new Error('GitHub releases API request timed out'));
       });
       req.on('error', (e: any) => {
-        appendStartupLog(`github releases request failed: ${String(e?.message || e)}`);
+        appendStartupLog(`github releases api request failed: ${String(e?.message || e)}`);
         finish(null);
       });
       req.end();
     } catch (e: any) {
-      appendStartupLog(`github releases setup failed: ${String(e?.message || e)}`);
+      appendStartupLog(`github releases api setup failed: ${String(e?.message || e)}`);
       finish(null);
     }
   });
+}
+
+async function fetchLatestGitHubReleaseDetails(): Promise<{
+  version: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  htmlUrl?: string;
+  assets: Array<{ name: string; downloadUrl: string; size?: number }>;
+} | null> {
+  const slug = getGitHubRepoSlug();
+  if (!slug) return null;
+
+  try {
+    const htmlRes = await fetchTextFromUrl(`https://github.com/${slug}/releases`);
+    if (htmlRes.statusCode < 400 && htmlRes.body) {
+      const parsed = parseGitHubReleaseDetailsFromHtml(slug, htmlRes.body);
+      if (parsed?.version) {
+        appendStartupLog(`github releases html latest=${parsed.version}`);
+        return parsed;
+      }
+      appendStartupLog('github releases html parse found no published installer release');
+    } else {
+      appendStartupLog(`github releases html failed status=${htmlRes.statusCode}`);
+    }
+  } catch (e: any) {
+    appendStartupLog(`github releases html request failed: ${String(e?.message || e)}`);
+  }
+
+  const apiDetails = await fetchLatestGitHubReleaseDetailsFromApi(slug);
+  if (apiDetails?.version) {
+    appendStartupLog(`github releases api latest=${apiDetails.version}`);
+    return apiDetails;
+  }
+
+  appendStartupLog('github releases check found no published installer release');
+  return null;
 }
 
 async function fetchLatestGitHubReleaseInfo(): Promise<{ version?: string; releaseName?: string; releaseNotes?: string; htmlUrl?: string } | null> {
@@ -1747,17 +1899,6 @@ ipcMain.handle('update:download', async () => {
       appendStartupLog(`update:download github direct failed: ${String(e?.message || e)}`);
     }
 
-    if (autoUpdater) {
-      try {
-        downloadedInstallerPath = null;
-        downloadedInstallerVersion = null;
-        await autoUpdater.downloadUpdate();
-        return { ok: true, source: 'electron-updater', latestVersion: targetVersion };
-      } catch (e: any) {
-        appendStartupLog(`update:download provider fallback failed: ${String(e?.message || e)}`);
-      }
-    }
-
     return { ok: false, error: 'Could not download the latest installer from GitHub.' };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
@@ -1771,9 +1912,7 @@ ipcMain.handle('update:quitAndInstall', async () => {
       if (downloadedInstallerVersion) appendStartupLog(`update:quitAndInstall running GitHub installer ${downloadedInstallerVersion}`);
       return runInstallerExe(downloadedInstallerPath, { silent: true, forceRunAfter: true });
     }
-    if (!autoUpdater) return { ok: false, error: 'Updater unavailable on this machine.' };
-    autoUpdater.quitAndInstall(true, true);
-    return { ok: true, source: 'electron-updater' };
+    return { ok: false, error: 'No downloaded installer is available to run.' };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -3945,13 +4084,6 @@ function reportResolveTotals(record: any) {
   };
 }
 
-function reportCollectPayments(record: any) {
-  if (Array.isArray(record?.payments)) return record.payments;
-  if (Array.isArray(record?.paymentHistory)) return record.paymentHistory;
-  if (Array.isArray(record?.paymentLogs)) return record.paymentLogs;
-  return [];
-}
-
 function reportPaymentEventDate(payment: any): Date | null {
   return reportParseDateValue(payment?.at ?? payment?.date ?? payment?.createdAt ?? payment?.timestamp ?? null);
 }
@@ -3964,6 +4096,55 @@ function reportPaymentAppliedAmount(payment: any) {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (Number.isFinite(change) && change > 0) return Math.max(0, amount - change);
   return amount;
+}
+
+function reportPaymentFallbackDate(record: any): Date | null {
+  const keys = [
+    'checkoutDate',
+    'clientPickupDate',
+    'repairCompletionDate',
+    'completedAt',
+    'completedDate',
+    'closedAt',
+    'closedDate',
+    'invoiceDate',
+    'invoice_date',
+    'saleDate',
+    'sale_date',
+    'transactionDate',
+    'transaction_date',
+    'checkInAt',
+    'createdAt',
+    'createdDate',
+  ];
+  for (const key of keys) {
+    const date = reportParseDateValue(record?.[key]);
+    if (date) return date;
+  }
+  return null;
+}
+
+function reportCollectPayments(record: any) {
+  const existing = Array.isArray(record?.payments)
+    ? [...record.payments]
+    : Array.isArray(record?.paymentHistory)
+      ? [...record.paymentHistory]
+      : Array.isArray(record?.paymentLogs)
+        ? [...record.paymentLogs]
+        : [];
+  const totals = reportResolveTotals(record);
+  const recorded = reportRound2(existing.reduce((sum: number, payment: any) => sum + reportPaymentAppliedAmount(payment), 0));
+  const missing = reportRound2((Number(totals.paid || 0) || 0) - recorded);
+  if (missing <= 0.009) return existing;
+  const anchor = reportPaymentFallbackDate(record);
+  if (!anchor) return existing;
+  return [{
+    amount: missing,
+    applied: missing,
+    paymentType: String(record?.paymentType || 'Legacy'),
+    at: anchor.toISOString(),
+    inferred: true,
+  }, ...existing];
 }
 
 function reportDateWithin(date: Date | null, startMs: number, endMs: number) {
@@ -3980,21 +4161,21 @@ function reportGetTimelineDate(record: any): Date | null {
     paymentDates.sort((a, b) => b.getTime() - a.getTime());
     return paymentDates[0];
   }
-  const keys = ['checkoutDate', 'repairCompletionDate', 'clientPickupDate', 'updatedAt', 'checkInAt', 'createdAt'];
+  const keys = ['checkoutDate', 'repairCompletionDate', 'clientPickupDate', 'checkInAt', 'createdAt'];
   for (const key of keys) {
     const date = reportParseDateValue(record?.[key]);
     if (date) return date;
   }
-  return null;
+  return reportPaymentFallbackDate(record);
 }
 
 function reportGetSaleDate(record: any): Date | null {
-  const keys = ['checkoutDate', 'checkInAt', 'invoiceDate', 'saleDate', 'transactionDate', 'createdAt', 'updatedAt'];
+  const keys = ['checkoutDate', 'invoiceDate', 'saleDate', 'transactionDate', 'checkInAt', 'createdAt'];
   for (const key of keys) {
     const date = reportParseDateValue(record?.[key]);
     if (date) return date;
   }
-  return reportGetTimelineDate(record);
+  return reportPaymentFallbackDate(record) || reportGetTimelineDate(record);
 }
 
 function reportCollectedAmountInRange(record: any, startMs: number, endMs: number, fallbackDate?: Date | null) {
@@ -4006,7 +4187,7 @@ function reportCollectedAmountInRange(record: any, startMs: number, endMs: numbe
       return sum + reportPaymentAppliedAmount(payment);
     }, 0));
   }
-  const date = fallbackDate || reportGetTimelineDate(record);
+  const date = reportPaymentFallbackDate(record);
   if (!reportDateWithin(date, startMs, endMs)) return 0;
   const totals = reportResolveTotals(record);
   return reportRound2(Math.max(0, Number(totals.paid || 0) || Number(totals.total || 0) || 0));

@@ -42,7 +42,6 @@ const NotificationsWindow = lazy(() => import('./components/NotificationsWindow'
 const NotificationSettingsWindow = lazy(() => import('./components/NotificationSettingsWindow'));
 const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
 const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
-const UpdateGate = lazy(() => import('./components/UpdateGate'));
 const DataPathGate = lazy(() => import('./components/DataPathGate'));
 
 declare global {
@@ -285,9 +284,7 @@ try {
 		scheduleCommonWindowPreloads();
 		renderWithSuspense(root,
 			<DataPathGate>
-				<UpdateGate>
-					<App />
-				</UpdateGate>
+				<App />
 			</DataPathGate>
 		);
 	}

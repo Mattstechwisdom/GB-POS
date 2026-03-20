@@ -73,6 +73,52 @@ function readPayload(): SalePayload | null {
   }
 }
 
+function parseCheckoutPaymentDate(value: any): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function checkoutPaymentAppliedAmount(payment: any): number {
+  const applied = Number(payment?.applied);
+  if (Number.isFinite(applied) && applied > 0) return round2(applied);
+  const amount = Number(payment?.amount ?? payment?.tender ?? payment?.paid ?? 0);
+  const change = Number(payment?.change ?? payment?.changeDue ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (Number.isFinite(change) && change > 0) return round2(Math.max(0, amount - change));
+  return round2(amount);
+}
+
+function buildNormalizedCheckoutPayments(record: any) {
+  const existing = Array.isArray(record?.payments)
+    ? [...record.payments]
+    : Array.isArray(record?.paymentHistory)
+      ? [...record.paymentHistory]
+      : Array.isArray(record?.paymentLogs)
+        ? [...record.paymentLogs]
+        : [];
+  const paid = round2(Number(record?.amountPaid || 0) || 0);
+  const recorded = round2(existing.reduce((sum: number, payment: any) => sum + checkoutPaymentAppliedAmount(payment), 0));
+  const missing = round2(paid - recorded);
+  if (missing <= 0.009) return existing;
+
+  const anchor = parseCheckoutPaymentDate(record?.checkoutDate)
+    || parseCheckoutPaymentDate(record?.saleDate)
+    || parseCheckoutPaymentDate(record?.transactionDate)
+    || parseCheckoutPaymentDate(record?.invoiceDate)
+    || parseCheckoutPaymentDate(record?.checkInAt)
+    || parseCheckoutPaymentDate(record?.createdAt);
+  if (!anchor) return existing;
+
+  return [{
+    amount: missing,
+    applied: missing,
+    paymentType: String(record?.paymentType || 'Legacy'),
+    at: anchor,
+    inferred: true,
+  }, ...existing];
+}
+
 const SaleWindow: React.FC = () => {
   const payload = useMemo(() => readPayload() || {}, []);
   const [sale, setSale] = useState<Partial<SaleRecord>>({
@@ -637,7 +683,7 @@ const SaleWindow: React.FC = () => {
         let newAmountPaid = (sale.amountPaid || 0) + additionalPaid;
         if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = sale.amountPaid || 0;
 
-        const prevPayments = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
+        const prevPayments = buildNormalizedCheckoutPayments(sale as any);
         const payments = (() => {
           if (!(additionalPaid > 0)) return prevPayments;
           const now = new Date().toISOString();
@@ -656,9 +702,12 @@ const SaleWindow: React.FC = () => {
         })();
         let status = sale.status;
         let checkoutDate = sale.checkoutDate as string | null;
+        const hadOutstandingBalance = Number(sale.totals?.remaining || 0) > 0.009;
         if ((sale.totals?.remaining || 0) - additionalPaid <= 0 || result.markClosed) {
           status = 'closed';
-          checkoutDate = new Date().toISOString();
+          if (!checkoutDate || (additionalPaid > 0 && hadOutstandingBalance)) {
+            checkoutDate = new Date().toISOString();
+          }
         }
 
         const partCosts = Number(total || 0) || 0;

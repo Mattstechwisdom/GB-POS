@@ -271,20 +271,35 @@ const ReportingWindow: React.FC = () => {
     let cashTender = 0;
     let cashChange = 0;
     let card = 0;
+    let other = 0;
+
+    const appliedAmount = (payment: any) => {
+      const applied = Number(payment?.applied);
+      if (Number.isFinite(applied) && applied > 0) return applied;
+      const amount = Number(payment?.amount ?? payment?.tender ?? payment?.paid ?? 0);
+      const change = Number(payment?.change ?? payment?.changeDue ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) return 0;
+      if (Number.isFinite(change) && change > 0) return Math.max(0, amount - change);
+      return amount;
+    };
 
     for (const w of filtered) {
       const payments = Array.isArray((w as any).payments) ? (w as any).payments : [];
       if (payments.length) {
         for (const p of payments) {
           const pt = String((p && (p.paymentType ?? p.type)) || '').toLowerCase();
-          const amt = Number(p?.amount || 0);
+          const amt = appliedAmount(p);
           const change = Number(p?.change || p?.changeDue || 0);
           if (!Number.isFinite(amt) || amt <= 0) continue;
-          if (pt === 'cash') {
-            cashTender += amt;
+          if (pt.includes('cash')) {
+            const tendered = Number(p?.amount ?? p?.tender ?? p?.paid ?? amt);
+            cashTender += Number.isFinite(tendered) && tendered > 0 ? tendered : amt;
             if (Number.isFinite(change) && change > 0) cashChange += change;
+          } else if (pt.includes('card') || pt.includes('credit') || pt.includes('debit')) {
+            card += amt;
+          } else if (amt > 0) {
+            other += amt;
           }
-          if (pt === 'card') card += amt;
         }
         continue;
       }
@@ -292,12 +307,13 @@ const ReportingWindow: React.FC = () => {
       const pt = String((w as any).paymentType || '').toLowerCase();
       const amt = Number((w as any).amountPaid || 0);
       if (!Number.isFinite(amt) || amt <= 0) continue;
-      if (pt === 'cash') cashTender += amt;
-      if (pt === 'card') card += amt;
+      if (pt.includes('cash')) cashTender += amt;
+      else if (pt.includes('card') || pt.includes('credit') || pt.includes('debit')) card += amt;
+      else other += amt;
     }
 
     const cashNet = cashTender - cashChange;
-    return { cashTender, cashChange, cashNet, card };
+    return { cashTender, cashChange, cashNet, card, other, nonCash: card + other };
   }, [filtered]);
 
   async function downloadSummary() {
@@ -315,7 +331,7 @@ const ReportingWindow: React.FC = () => {
       totals: {
         grandTotal: Number(summary.revenue || 0),
         cashTotal: Number(paymentTotals.cashTender || 0),
-        cardTotal: Number(paymentTotals.card || 0),
+        cardTotal: Number((paymentTotals.nonCash || 0)),
         changeGiven: Number(paymentTotals.cashChange || 0),
         cashToDeposit: Number(paymentTotals.cashNet || 0),
       },
