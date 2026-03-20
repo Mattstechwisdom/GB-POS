@@ -736,18 +736,14 @@ function getSaleActivityAt(it: any): string {
 
 function isMeaningfulWorkOrderActivityChange(previous: any, next: any): boolean {
   if (!previous || typeof previous !== 'object') return true;
+  // Only bump activityAt (and therefore list position) when a payment is recorded.
+  // Editing items, notes, status, parts, labor, etc. intentionally does NOT move the
+  // work order to the top of the list — only actual money collected does.
   const keys = [
-    'items',
     'amountPaid',
     'payments',
     'paymentHistory',
     'paymentLogs',
-    'discount',
-    'taxRate',
-    'partCosts',
-    'laborCost',
-    'totals',
-    'checkoutDate',
   ];
   return keys.some((key) => stableActivityValue(previous?.[key]) !== stableActivityValue(next?.[key]));
 }
