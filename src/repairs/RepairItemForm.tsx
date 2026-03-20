@@ -169,6 +169,27 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
 
   // no date fields in this form; dates are managed in Work Order and Calendar
 
+  const clearFormFields = () => {
+    setFormData({
+      category: '',
+      repairCategory: '',
+      title: '',
+      altDescription: '',
+      partCost: 0,
+      laborCost: 0,
+      internalCost: undefined,
+      orderDate: '',
+      estDelivery: '',
+      partSource: '',
+      orderSourceUrl: '',
+      type: 'service',
+      model: '',
+    });
+    setDeviceCategoryInput('');
+    setRepairCategoryInput('');
+    setHasDeviceCategory(false);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Edit Repair button at top (admin only) */}
@@ -177,24 +198,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           <button
             type="button"
             className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-zinc-900"
-            onClick={() => {
-              setFormData({
-                category: '',
-                repairCategory: '',
-                title: '',
-                altDescription: '',
-                partCost: 0,
-                laborCost: 0,
-                internalCost: undefined,
-                orderDate: '',
-                estDelivery: '',
-                partSource: '',
-                orderSourceUrl: '',
-                type: 'service',
-                model: '',
-              });
-              setDeviceCategoryInput('');
-            }}
+            onClick={clearFormFields}
           >
             Edit Repair
           </button>
@@ -402,6 +406,13 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           >
             Cancel
           </button>
+          <button
+            type="button"
+            onClick={clearFormFields}
+            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
+          >
+            Clear
+          </button>
           {formData.id && typeof onDelete === 'function' && (
             <button
               type="button"
@@ -472,6 +483,13 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={clearFormFields}
+            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
+          >
+            Clear
           </button>
           <button
             type="button"

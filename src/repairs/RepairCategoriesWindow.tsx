@@ -146,11 +146,11 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen bg-zinc-900 text-gray-100">
+      <div className="flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
         {/* Two-column grid: 620px | 1fr with 16px gap */}
         <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4">
           {/* Left pane: Item list */}
-          <div className="flex flex-col">
+          <div className="flex flex-col min-h-0">
             <RepairItemList 
               items={repairItems}
               filteredItems={filteredItems}
@@ -166,7 +166,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           </div>
 
           {/* Right pane: Form */}
-          <div className="flex flex-col">
+          <div className="flex flex-col overflow-y-auto min-h-0">
             {/* Header actions: toggle between Repair and Device creation */}
             {mode === 'admin' && (
               <div className="flex gap-2 mb-4">
