@@ -63,12 +63,26 @@ const CustomerReceiptWindow: React.FC = () => {
     if (logoSrc) {
       window.clearTimeout(fallback);
       didAutoPrintRef.current = true;
-      const immediate = window.setTimeout(() => {
+      const doAutoPrint = () => {
         try { window.focus(); window.print(); } catch {}
         if (flags.autoCloseMs && flags.autoCloseMs > 0) {
           window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
         }
-      }, 40);
+      };
+      const img = logoImgRef.current;
+      if (img && !img.complete) {
+        let settled = false;
+        const onSettle = () => { if (settled) return; settled = true; doAutoPrint(); };
+        img.addEventListener('load', onSettle, { once: true });
+        img.addEventListener('error', onSettle, { once: true });
+        const safetyTimer = window.setTimeout(onSettle, 1500);
+        return () => {
+          img.removeEventListener('load', onSettle);
+          img.removeEventListener('error', onSettle);
+          window.clearTimeout(safetyTimer);
+        };
+      }
+      const immediate = window.setTimeout(doAutoPrint, 80);
       return () => window.clearTimeout(immediate);
     }
 

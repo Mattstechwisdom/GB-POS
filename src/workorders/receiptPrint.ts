@@ -188,11 +188,25 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         if (closeBtn) closeBtn.addEventListener('click', doClose);
         function onReady(){
           var auto = ${autoPrint ? 'true' : 'false'};
-          if (auto) {
+          if (!auto) return;
+          var fired = false;
+          function fire() {
+            if (fired) return;
+            fired = true;
             doPrint();
             var ms = ${autoCloseMs};
             if (ms && ms > 0) setTimeout(doClose, ms);
           }
+          var imgs = Array.prototype.slice.call(document.querySelectorAll('img'));
+          var pending = imgs.filter(function(i) { return !i.complete; });
+          if (pending.length === 0) { setTimeout(fire, 0); return; }
+          var done = 0;
+          pending.forEach(function(img) {
+            function settle() { done++; if (done >= pending.length) fire(); }
+            img.addEventListener('load', settle, { once: true });
+            img.addEventListener('error', settle, { once: true });
+          });
+          setTimeout(fire, 2000);
         }
         if (document.readyState === 'complete') onReady(); else window.onload = onReady;
       })();
