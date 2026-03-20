@@ -47,6 +47,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const [deviceCategoryInput, setDeviceCategoryInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Whether to show the device category field
+  const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
     repairCategory: '',
@@ -126,6 +128,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         estDelivery: selectedItem.estDelivery || ''
       });
       setDeviceCategoryInput(selectedItem.category || '');
+      setHasDeviceCategory(!!(selectedItem.category || '').trim());
     } else {
       setFormData({
         category: '',
@@ -143,6 +146,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         model: '',
       });
       setDeviceCategoryInput('');
+      setHasDeviceCategory(false);
     }
   }, [selectedItem]);
 
@@ -189,58 +193,84 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       <div className="flex-1 space-y-6">
         {/* Repair Info Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="relative">
-            <label className="block text-sm font-medium text-gray-300 mb-1">Device Category</label>
-            <input
-              id="category"
-              name="category"
-              type="text"
-              ref={inputRef}
-              value={deviceCategoryInput}
-              onChange={handleDeviceCategoryInput}
-              onFocus={() => setShowCategoryDropdown(true)}
-              onBlur={handleCategoryBlur}
-              /* always enabled */
-              autoComplete="off"
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none disabled:opacity-50 disabled:cursor-text"
-              required
-            />
-            {showCategoryDropdown && filteredCategories.length > 0 && (
-              <ul className="absolute z-10 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-1 rounded shadow-lg max-h-40 overflow-y-auto">
-                {filteredCategories.map(cat => (
-                  <li
-                    key={cat}
-                    className="px-3 py-2 hover:bg-[#39FF14] hover:text-black cursor-pointer"
-                    onMouseDown={() => handleCategorySelect(cat)}
-                  >
-                    {cat}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="relative">
-            <label className="block text-sm font-medium text-gray-300 mb-1">Repair Category</label>
+          {/* 1. Repair Category — always required, comes first */}
+          <div className="md:col-span-2 relative">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Repair Category <span className="text-red-400">*</span>
+            </label>
             <input
               type="text"
               list="gbpos-repair-type-list"
               name="repairCategory"
               value={formData.repairCategory || ''}
               onChange={handleChange}
-              placeholder="e.g. Screen Repair, Diagnostic…"
+              placeholder="e.g. Diagnostic, Screen Repair, Liquid Damage, Extra Fee…"
               className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
             />
             <datalist id="gbpos-repair-type-list">
               {repairTypes.map(rt => <option key={rt} value={rt} />)}
             </datalist>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Repair / Service</label>
-      <input type="text" value={formData.title || ''} name="title" onChange={handleChange} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
+
+          {/* 2. Device Category — optional, behind a checkbox */}
+          <div className="md:col-span-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-300 cursor-pointer select-none mb-2">
+              <input
+                type="checkbox"
+                checked={hasDeviceCategory}
+                onChange={e => {
+                  setHasDeviceCategory(e.target.checked);
+                  if (!e.target.checked) {
+                    setDeviceCategoryInput('');
+                    setFormData(prev => ({ ...prev, category: '' }));
+                  }
+                }}
+                className="w-4 h-4 rounded accent-[#39FF14]"
+              />
+              Specific to a device?
+            </label>
+            {hasDeviceCategory && (
+              <div className="relative">
+                <input
+                  id="category"
+                  name="category"
+                  type="text"
+                  ref={inputRef}
+                  value={deviceCategoryInput}
+                  onChange={handleDeviceCategoryInput}
+                  onFocus={() => setShowCategoryDropdown(true)}
+                  onBlur={handleCategoryBlur}
+                  autoComplete="off"
+                  placeholder="e.g. iPhone, Game Console, Android Tablet…"
+                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+                />
+                {showCategoryDropdown && filteredCategories.length > 0 && (
+                  <ul className="absolute z-10 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-1 rounded shadow-lg max-h-40 overflow-y-auto">
+                    {filteredCategories.map(cat => (
+                      <li
+                        key={cat}
+                        className="px-3 py-2 hover:bg-[#39FF14] hover:text-black cursor-pointer"
+                        onMouseDown={() => handleCategorySelect(cat)}
+                      >
+                        {cat}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 3. Repair Description */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Repair Description <span className="text-red-400">*</span>
+            </label>
+            <input type="text" value={formData.title || ''} name="title" onChange={handleChange} placeholder="Short name for this repair or service" className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-300 mb-1">Alt. description</label>
-      <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
+            <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
@@ -345,7 +375,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           <button
             type="button"
             disabled={
-              !formData.category ||
+              !formData.repairCategory ||
               !formData.title ||
               formData.partCost === undefined || isNaN(Number(formData.partCost)) ||
               formData.laborCost === undefined || isNaN(Number(formData.laborCost))
@@ -353,7 +383,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => {
               if (
-                formData.category &&
+                formData.repairCategory &&
                 formData.title &&
                 formData.partCost !== undefined && !isNaN(Number(formData.partCost)) &&
                 formData.laborCost !== undefined && !isNaN(Number(formData.laborCost))
@@ -383,6 +413,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     model: '',
                   });
                   setDeviceCategoryInput('');
+                  setHasDeviceCategory(false);
                 }
               }
             }}
@@ -406,7 +437,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           <button
             type="button"
             disabled={
-              !formData.category ||
+              !formData.repairCategory ||
               !formData.title ||
               formData.partCost === undefined || isNaN(Number(formData.partCost)) ||
               formData.laborCost === undefined || isNaN(Number(formData.laborCost))
@@ -414,7 +445,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => {
               if (
-                formData.category &&
+                formData.repairCategory &&
                 formData.title &&
                 formData.partCost !== undefined && !isNaN(Number(formData.partCost)) &&
                 formData.laborCost !== undefined && !isNaN(Number(formData.laborCost))
