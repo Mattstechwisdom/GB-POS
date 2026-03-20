@@ -3,6 +3,7 @@
 export type WorkOrderItemRow = {
   id: string;
   device: string;
+  repairCategory?: string;
   repair: string;
   parts: number;
   labor: number;
@@ -279,6 +280,7 @@ const NewWorkOrderWindow: React.FC = () => {
         const mappedItems: WorkOrderItemRow[] = (existing.items || []).map((it: any) => ({
           id: it.id?.toString() || Math.random().toString(36).slice(2),
           device: (it.device || existing.productDescription || existing.productCategory || ''),
+          repairCategory: it.repairCategory || '',
           repair: (it.repair || it.description || it.title || it.name || it.altDescription || ''),
           parts: typeof it.parts === 'number' ? it.parts : (typeof it.partCost === 'number' ? it.partCost : 0),
           labor: typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0)),

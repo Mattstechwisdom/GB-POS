@@ -20,8 +20,10 @@ export default function RepairItemList({
   onItemContextMenu,
 }: RepairItemListProps) {
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [repairTypeFilter, setRepairTypeFilter] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [repairTypeOptions, setRepairTypeOptions] = useState<string[]>([]);
 
   // DevicePicker pulls categories on its own; we just store selection as filter
   // Map device name (sub) -> Title (main) for filtering by Title
@@ -43,6 +45,19 @@ export default function RepairItemList({
     })();
   }, []);
 
+  // Load repair types for filter dropdown
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await (window as any).api.dbGet('repairTypes');
+        const names = (Array.isArray(list) ? list : []).map((r: any) => String(r?.name || '').trim()).filter(Boolean);
+        setRepairTypeOptions(names);
+      } catch (e) {
+        setRepairTypeOptions([]);
+      }
+    })();
+  }, []);
+
   // Apply filters
   useEffect(() => {
     let filtered = items;
@@ -56,27 +71,31 @@ export default function RepairItemList({
       });
     }
 
-    // Search filter (across title, type, model)
+    // Repair type filter
+    if (repairTypeFilter) {
+      filtered = filtered.filter(item =>
+        (item.repairCategory || '').toLowerCase() === repairTypeFilter.toLowerCase()
+      );
+    }
+
+    // Search filter (across title, type, model, repairCategory)
     if (searchText.trim()) {
       const search = searchText.toLowerCase();
       filtered = filtered.filter(item => 
         item.title.toLowerCase().includes(search) ||
         item.type.toLowerCase().includes(search) ||
-        (item.model && item.model.toLowerCase().includes(search))
+        (item.model && item.model.toLowerCase().includes(search)) ||
+        (item.repairCategory && item.repairCategory.toLowerCase().includes(search))
       );
     }
 
     onFilteredItemsChange(filtered);
     setSelectedIndex(-1);
-  }, [categoryFilter, searchText, items, onFilteredItemsChange]);
-
-  // Handle search/find
-  const handleFind = () => {
-    // Search is already applied in useEffect
-  };
+  }, [categoryFilter, repairTypeFilter, searchText, items, onFilteredItemsChange]);
 
   const handleShowAll = () => {
     setCategoryFilter('');
+    setRepairTypeFilter('');
     setSearchText('');
   };
 
@@ -130,28 +149,30 @@ export default function RepairItemList({
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex gap-2 mb-4 p-3 bg-zinc-800 rounded border border-zinc-700">
-        {/* Category filter via Titles→Devices picker */}
+      <div className="flex flex-wrap gap-2 mb-3 p-2 bg-zinc-800 rounded border border-zinc-700">
+        {/* Device filter */}
   <DevicePicker value={categoryFilter} onChange={setCategoryFilter} onTitleSelect={setCategoryFilter} />
+
+        {/* Repair type filter */}
+        <select
+          value={repairTypeFilter}
+          onChange={e => setRepairTypeFilter(e.target.value)}
+          className="bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none min-w-[140px]"
+        >
+          <option value="">All categories</option>
+          {repairTypeOptions.map(rt => <option key={rt} value={rt}>{rt}</option>)}
+        </select>
 
         {/* Search input */}
         <input
           type="text"
-          placeholder="search products and services…"
+          placeholder="Search repairs…"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
-          className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+          className="flex-1 min-w-[120px] bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
         />
 
-        {/* Find button */}
-        <button
-          onClick={handleFind}
-          className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
-        >
-          Find
-        </button>
-
-        {/* Show all button */}
+        {/* Show all */}
         <button
           onClick={handleShowAll}
           className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
@@ -167,8 +188,9 @@ export default function RepairItemList({
             <thead className="bg-zinc-800 sticky top-0">
               <tr>
                 <th className="text-left p-2 border-b border-zinc-700">Device</th>
+                <th className="text-left p-2 border-b border-zinc-700">Category</th>
                 <th className="text-left p-2 border-b border-zinc-700">Repair</th>
-                <th className="text-left p-2 border-b border-zinc-700">Repair Price</th>
+                <th className="text-right p-2 border-b border-zinc-700">Price</th>
               </tr>
             </thead>
             <tbody>
@@ -187,6 +209,7 @@ export default function RepairItemList({
                   `}
                 >
                   <td className="p-2 border-b border-zinc-800">{item.category}</td>
+                  <td className="p-2 border-b border-zinc-800 text-zinc-400 text-xs">{item.repairCategory || ''}</td>
                   <td className="p-2 border-b border-zinc-800">{item.title}</td>
                   <td className="p-2 border-b border-zinc-800 font-mono text-right">{typeof item.partCost === 'number' && typeof item.laborCost === 'number' ? (item.partCost + item.laborCost).toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : ''}</td>
                 </tr>

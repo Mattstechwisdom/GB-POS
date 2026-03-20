@@ -49,6 +49,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const inputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
+    repairCategory: '',
     title: '',
     altDescription: '',
     partCost: 0,
@@ -63,13 +64,15 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
+  // Repair types from DB
+  const [repairTypes, setRepairTypes] = useState<string[]>([]);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
     cat.toLowerCase().includes(deviceCategoryInput.toLowerCase())
   );
 
-  // Fetch device categories from DB on mount
+  // Fetch device categories and repair types from DB on mount
   useEffect(() => {
     (async () => {
       if (window.api?.dbGet) {
@@ -78,6 +81,12 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           ? Array.from(new Set(cats.map((c: any) => String(c?.title || '').trim()).filter(Boolean)))
           : [];
         setDeviceCategories(titles);
+
+        const rt = await window.api.dbGet('repairTypes').catch(() => []);
+        const rtNames = Array.isArray(rt)
+          ? rt.map((r: any) => String(r?.name || '').trim()).filter(Boolean)
+          : [];
+        setRepairTypes(rtNames);
       }
     })();
   }, []);
@@ -120,6 +129,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     } else {
       setFormData({
         category: '',
+        repairCategory: '',
         title: '',
         altDescription: '',
         partCost: 0,
@@ -149,6 +159,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             onClick={() => {
               setFormData({
                 category: '',
+                repairCategory: '',
                 title: '',
                 altDescription: '',
                 partCost: 0,
@@ -207,6 +218,21 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 ))}
               </ul>
             )}
+          </div>
+          <div className="relative">
+            <label className="block text-sm font-medium text-gray-300 mb-1">Repair Category</label>
+            <input
+              type="text"
+              list="gbpos-repair-type-list"
+              name="repairCategory"
+              value={formData.repairCategory || ''}
+              onChange={handleChange}
+              placeholder="e.g. Screen Repair, Diagnostic…"
+              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+            />
+            <datalist id="gbpos-repair-type-list">
+              {repairTypes.map(rt => <option key={rt} value={rt} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Repair / Service</label>
@@ -343,6 +369,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 if (!formData.id) {
                   setFormData({
                     category: '',
+                    repairCategory: '',
                     title: '',
                     altDescription: '',
                     partCost: 0,

@@ -46,8 +46,17 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     };
     refresh();
     const api: any = (window as any).api;
+    // Calendar / tech changes need a full sync; notification writes just refresh the badge count.
+    const refreshCountOnly = async () => {
+      try {
+        const c = await getUnreadCount();
+        if (alive) setUnread(c);
+      } catch {
+        // ignore
+      }
+    };
     const offCal = api?.onCalendarEventsChanged?.(() => refresh());
-    const offNot = api?.onNotificationsChanged?.(() => refresh());
+    const offNot = api?.onNotificationsChanged?.(() => refreshCountOnly());
     const offTech = api?.onTechniciansChanged?.(() => refresh());
     const timer = window.setInterval(() => refresh(), 60_000);
     return () => {

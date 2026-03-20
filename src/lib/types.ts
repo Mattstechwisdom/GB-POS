@@ -104,8 +104,9 @@ export interface Technician {
 
 export interface RepairItem {
   id: string;
-  category: string;
-  title: string;           // Product / Service
+  category: string;         // Device (e.g. "iPhone 15 Pro")
+  repairCategory?: string;  // Service type (e.g. "Screen Repair", "Diagnostic")
+  title: string;            // Product / Service name
   altDescription?: string;
   partCost: number;
   laborCost: number;

@@ -7,6 +7,7 @@ import MoneyInput from '@/components/MoneyInput';
 export type WorkOrderItemRow = {
   id: string;
   device: string;
+  repairCategory?: string;
   repair: string;
   parts: number;
   labor: number;
@@ -104,6 +105,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
       const row: WorkOrderItemRow = {
         id: crypto.randomUUID(),
         device: selected.category || selected.deviceCategoryName || selected.device || '',
+        repairCategory: selected.repairCategory || '',
         repair: selected.altDescription || selected.title || selected.repair || '',
         parts: Number(selected.partCost ?? 0) || 0,
         labor: Number(selected.laborCost ?? 0) || 0,
@@ -140,6 +142,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
               <th className="px-2 py-1 text-left font-semibold">Device</th>
+              <th className="px-2 py-1 text-left font-semibold">Type</th>
               <th className="px-2 py-1 text-left font-semibold">Repair</th>
               <th className="px-2 py-1 text-right font-semibold">Parts</th>
               <th className="px-2 py-1 text-right font-semibold">Labor</th>
@@ -160,6 +163,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
                   <td className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
+                  <td className="px-2 py-1 text-left text-zinc-400 text-xs">{it.repairCategory || ''}</td>
                   <td className="px-2 py-1 text-left">{it.repair}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
@@ -168,6 +172,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
             })}
             {Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }).map((_, idx) => (
               <tr key={`filler-${idx}`} className="opacity-60">
+                <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-right">&nbsp;</td>
@@ -200,6 +205,15 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
                 value={editing.device || ''}
                 onChange={e => setEditing({ ...editing, device: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Repair Category</label>
+              <input
+                className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                value={editing.repairCategory || ''}
+                onChange={e => setEditing({ ...editing, repairCategory: e.target.value })}
+                placeholder="e.g. Screen Repair, Diagnostic"
               />
             </div>
             <div>

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
-import MoneyInput from '@/components/MoneyInput';
 
 interface DeviceFormProps {
   onCancel: () => void;
@@ -12,42 +11,14 @@ interface DeviceFormProps {
   initialDeviceName?: string;
 }
 
-type AdditionalFeeRecord = {
-  id?: number;
-  category: string;
-  name: string;
-  amount?: number;
-};
-
-// Device Categories live in the 'deviceCategories' collection
-// We'll add optional 'title' (aka sub-category) on the category.
+// Device Categories live in the 'deviceCategories' collection.
 export default function DeviceForm({ onCancel, onSaved, titles, devices = [], initialTitle, initialDeviceName }: DeviceFormProps) {
-  // Repair Categories (devices): Title = device type (Laptop, Game Console), Name = a device within that type.
   const [titleText, setTitleText] = useState('');
   const [deviceNameText, setDeviceNameText] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
-
-  // Additional Fees
-  const [fees, setFees] = useState<AdditionalFeeRecord[]>([]);
-  const [feeCategoryText, setFeeCategoryText] = useState('');
-  const [feeNameText, setFeeNameText] = useState('');
-  const [feeAmount, setFeeAmount] = useState<number>(0);
-  const [selectedFeeId, setSelectedFeeId] = useState<number | undefined>(undefined);
-
   const [saving, setSaving] = useState(false);
 
   const deviceCtx = useContextMenu<{ id?: number; name: string; title?: string }>();
-  const feeCtx = useContextMenu<AdditionalFeeRecord>();
-
-  async function reloadFees() {
-    try {
-      const api: any = (window as any).api || {};
-      const list = await api.dbGet?.('additionalFees').catch(() => []);
-      setFees(Array.isArray(list) ? (list as any) : []);
-    } catch {
-      setFees([]);
-    }
-  }
 
   const effectiveTitle = useMemo(() => (titleText || '').trim(), [titleText]);
   const canSave = (effectiveTitle.length > 0) && (deviceNameText.trim().length > 0 || selectedDeviceId !== undefined);
@@ -57,7 +28,6 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     setSaving(true);
     try {
       const api: any = (window as any).api || {};
-      // If an existing device is selected, update its title (use correct signature api.update)
       if (selectedDeviceId !== undefined && typeof api.update === 'function') {
         const updated = await api.update('deviceCategories', { id: selectedDeviceId, title: effectiveTitle });
         if (updated) { onSaved(); return; }
@@ -67,7 +37,6 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         const updated = await api.dbUpdate('deviceCategories', selectedDeviceId, { ...(existing || {}), name: (existing?.name || deviceNameText).trim(), title: effectiveTitle });
         if (updated) { onSaved(); return; }
       }
-      // Else create new device with the provided name and title
       const payload: any = { name: deviceNameText.trim(), title: effectiveTitle };
       if (api.addDeviceCategory) {
         const added = await api.addDeviceCategory(payload);
@@ -92,126 +61,19 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
   }, [devices, effectiveTitle]);
 
-  const feeCategories = useMemo(() => {
-    const list = (fees || []).map(f => String((f as any).category || '').trim()).filter(Boolean);
-    return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
-  }, [fees]);
-  const feesForCategory = useMemo(() => {
-    const c = String(feeCategoryText || '').trim();
-    const list = (fees || []).filter(f => String((f as any).category || '').trim() === c).map(f => String((f as any).name || '').trim()).filter(Boolean);
-    return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
-  }, [fees, feeCategoryText]);
-
-  async function upsertFeeRepairItem(fee: AdditionalFeeRecord) {
-    const api: any = (window as any).api || {};
-    if (!api?.dbGet || !api?.dbAdd || !api?.dbUpdate) return;
-    if (fee?.id == null) return;
-
-    const id = `fee:${fee.id}`;
-    const payload: any = {
-      id,
-      category: String(fee.category || '').trim() || 'Additional Fees',
-      title: String(fee.name || '').trim() || 'Fee',
-      altDescription: '',
-      partCost: 0,
-      laborCost: Number(fee.amount ?? 0) || 0,
-      type: 'service',
-      model: '',
-    };
-
-    const list = await api.dbGet('repairCategories').catch(() => []);
-    const existing = (Array.isArray(list) ? list : []).find((r: any) => String(r?.id) === id);
-    if (existing) {
-      await api.dbUpdate('repairCategories', id, { ...existing, ...payload });
-    } else {
-      await api.dbAdd('repairCategories', payload);
-    }
-  }
-
-  async function saveFee() {
-    const api: any = (window as any).api || {};
-    if (!api?.dbAdd || !api?.dbUpdate) return;
-    const category = String(feeCategoryText || '').trim();
-    const name = String(feeNameText || '').trim();
-    const amount = Number(feeAmount || 0) || 0;
-    if (!category || !name) return;
-
-    setSaving(true);
-    try {
-      if (selectedFeeId != null) {
-        const existing = fees.find(f => Number(f.id) === Number(selectedFeeId));
-        await api.dbUpdate('additionalFees', selectedFeeId, { ...(existing || {}), category, name, amount });
-        await upsertFeeRepairItem({ id: selectedFeeId, category, name, amount });
-      } else {
-        const added = await api.dbAdd('additionalFees', { category, name, amount });
-        const newId = Number((added as any)?.id);
-        if (Number.isFinite(newId)) {
-          await upsertFeeRepairItem({ id: newId, category, name, amount });
-        }
-      }
-      await reloadFees();
-      onSaved();
-      setSelectedFeeId(undefined);
-      setFeeNameText('');
-      setFeeAmount(0);
-    } catch (e) {
-      console.error('save fee failed', e);
-      alert('Failed to save additional fee');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteFeeById(feeId: number) {
-    const f = fees.find(x => Number(x.id) === Number(feeId));
-    const label = `${String(f?.category || '').trim()}: ${String(f?.name || '').trim()}`.trim();
-    const ok = window.confirm(`Delete ${label || 'this fee'}? This cannot be undone.`);
-    if (!ok) return;
-    setSaving(true);
-    try {
-      const api: any = (window as any).api || {};
-      await api.dbDelete?.('additionalFees', feeId);
-      await api.dbDelete?.('repairCategories', `fee:${feeId}`);
-      await reloadFees();
-      onSaved();
-      setSelectedFeeId(undefined);
-      setFeeCategoryText('');
-      setFeeNameText('');
-      setFeeAmount(0);
-    } catch (e) {
-      console.error('delete fee failed', e);
-      alert('Failed to delete additional fee');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteSelectedFee() {
-    if (selectedFeeId == null) return;
-    await deleteFeeById(selectedFeeId);
-  }
-
-  // Seed from initial props (e.g., when a repair is selected on the left)
+  // Seed from initial props
   useEffect(() => {
     if (initialDeviceName) {
       setDeviceNameText(initialDeviceName);
       const found = (devices || []).find(d => d.name === initialDeviceName);
       setSelectedDeviceId(typeof found?.id === 'number' ? found!.id : undefined);
-      if (found?.title) {
-        setTitleText(found.title);
-      } else if (initialTitle) {
-        setTitleText(initialTitle);
-      }
+      if (found?.title) setTitleText(found.title);
+      else if (initialTitle) setTitleText(initialTitle);
     } else if (initialTitle) {
       setTitleText(initialTitle);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTitle, initialDeviceName]);
-
-  useEffect(() => {
-    reloadFees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function deleteDeviceById(deviceId: number) {
     const name = (devices || []).find(d => Number(d.id) === Number(deviceId))?.name || deviceNameText || 'this device';
@@ -221,20 +83,10 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
         const res = await api.dbDelete('deviceCategories', deviceId);
-        if (res) {
-          setSelectedDeviceId(undefined);
-          setDeviceNameText('');
-          onSaved();
-          return;
-        }
+        if (res) { setSelectedDeviceId(undefined); setDeviceNameText(''); onSaved(); return; }
       } else if (typeof api.deleteFromCollection === 'function') {
         const res = await api.deleteFromCollection('deviceCategories', deviceId);
-        if (res) {
-          setSelectedDeviceId(undefined);
-          setDeviceNameText('');
-          onSaved();
-          return;
-        }
+        if (res) { setSelectedDeviceId(undefined); setDeviceNameText(''); onSaved(); return; }
       }
       alert('Failed to delete device');
     } catch (e) {
@@ -255,23 +107,17 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       .filter(d => String((d as any).title || '').trim() === title)
       .map(d => (d as any).id)
       .filter((id: any) => id != null);
-    if (ids.length === 0) {
-      alert('No devices found under this category.');
-      return;
-    }
-    const ok = window.confirm(`Delete category "${title}" and all ${ids.length} devices under it? This cannot be undone.`);
+    if (ids.length === 0) { alert('No devices found under this category.'); return; }
+    const ok = window.confirm(`Delete category "${title}" and all ${ids.length} device(s) under it? This cannot be undone.`);
     if (!ok) return;
     setSaving(true);
     try {
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
-        for (const id of ids) {
-          try { await api.dbDelete('deviceCategories', id); } catch {}
-        }
+        for (const id of ids) { try { await api.dbDelete('deviceCategories', id); } catch {} }
       }
       setSelectedDeviceId(undefined);
       setDeviceNameText('');
-      // keep titleText so user sees what was deleted; clear if they start typing
       onSaved();
     } catch (e) {
       console.error('delete category failed', e);
@@ -288,63 +134,61 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   return (
     <div className="flex flex-col h-full">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-100">Repair Categories</h2>
-        <div className="text-xs text-zinc-400 mt-1">Device types (Laptop, Game Console) and the devices within them.</div>
+        <h2 className="text-lg font-semibold text-gray-100">Device Categories</h2>
+        <div className="text-xs text-zinc-400 mt-1">Device types (Laptop, Game Console) and the specific devices within them.</div>
       </div>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Category (device type)</label>
-            <input
-              type="text"
-              list="gbpos-device-type-list"
-              value={titleText}
-              onChange={e => { setTitleText(e.target.value); setSelectedDeviceId(undefined); }}
-              placeholder="Start typing… (Laptop, Game Console, Tablet)"
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
-            />
-            <datalist id="gbpos-device-type-list">
-              {effectiveTitles.map(t => <option key={t} value={t} />)}
-            </datalist>
-            <div className="text-xs text-zinc-400 mt-1">Select an existing category or type a new one.</div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Device (within category)</label>
-            <input
-              type="text"
-              list="gbpos-device-name-list"
-              value={deviceNameText}
-              onChange={e => {
-                const v = e.target.value;
-                setDeviceNameText(v);
-                const found = (devices || []).find(d => (d.name || '').trim().toLowerCase() === v.trim().toLowerCase());
-                if (found && typeof found.id === 'number') {
-                  setSelectedDeviceId(found.id);
-                  if (found.title) setTitleText(found.title);
-                } else {
-                  setSelectedDeviceId(undefined);
-                }
-              }}
-              placeholder={effectiveTitle ? `Start typing… (${effectiveTitle})` : 'Start typing…'}
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
-            />
-            <datalist id="gbpos-device-name-list">
-              {devicesForTitle.map(n => <option key={n} value={n} />)}
-            </datalist>
-            <div className="text-xs text-zinc-400 mt-1">Pick an existing device or type a new one for this category.</div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Category (device type)</label>
+          <input
+            type="text"
+            list="gbpos-device-type-list"
+            value={titleText}
+            onChange={e => { setTitleText(e.target.value); setSelectedDeviceId(undefined); }}
+            placeholder="e.g. Laptop, Game Console, Tablet"
+            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+          />
+          <datalist id="gbpos-device-type-list">
+            {effectiveTitles.map(t => <option key={t} value={t} />)}
+          </datalist>
+          <div className="text-xs text-zinc-400 mt-1">Select existing or type a new category.</div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Device</label>
+          <input
+            type="text"
+            list="gbpos-device-name-list"
+            value={deviceNameText}
+            onChange={e => {
+              const v = e.target.value;
+              setDeviceNameText(v);
+              const found = (devices || []).find(d => (d.name || '').trim().toLowerCase() === v.trim().toLowerCase());
+              if (found && typeof found.id === 'number') {
+                setSelectedDeviceId(found.id);
+                if (found.title) setTitleText(found.title);
+              } else {
+                setSelectedDeviceId(undefined);
+              }
+            }}
+            placeholder={effectiveTitle ? `e.g. a device within ${effectiveTitle}` : 'Type device name…'}
+            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+          />
+          <datalist id="gbpos-device-name-list">
+            {devicesForTitle.map(n => <option key={n} value={n} />)}
+          </datalist>
+          <div className="text-xs text-zinc-400 mt-1">Pick an existing device or enter a new one.</div>
         </div>
       </div>
 
-      {/* Devices list (5 rows tall, scrollable) */}
+      {/* Device list */}
       <div className="mt-4 border border-zinc-700 rounded overflow-hidden">
-        <div className="bg-zinc-800 px-3 py-2 text-sm font-semibold border-b border-zinc-700">Devices</div>
-        <div className="max-h-40 overflow-auto">
+        <div className="bg-zinc-800 px-3 py-2 text-sm font-semibold border-b border-zinc-700">All Devices</div>
+        <div className="max-h-60 overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-800 sticky top-0">
               <tr>
-                <th className="text-left p-2 border-b border-zinc-700">Title</th>
+                <th className="text-left p-2 border-b border-zinc-700">Category</th>
                 <th className="text-left p-2 border-b border-zinc-700">Device</th>
               </tr>
             </thead>
@@ -355,7 +199,11 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
               {(devices || []).map((d, idx) => (
                 <tr
                   key={(d.id ?? idx) + '-' + d.name}
-                  className={`${idx % 2 ? 'bg-zinc-900' : 'bg-zinc-850'} cursor-pointer ${selectedDeviceId !== undefined && d.id === selectedDeviceId ? 'outline outline-1 outline-[#39FF14]' : ''}`}
+                  className={`${idx % 2 ? 'bg-zinc-900' : ''} cursor-pointer border-l-2 ${
+                    selectedDeviceId !== undefined && d.id === selectedDeviceId
+                      ? 'border-l-[#39FF14] bg-zinc-800/40'
+                      : 'border-l-transparent hover:bg-zinc-800/30'
+                  }`}
                   onClick={() => {
                     setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
                     setDeviceNameText(d.name || '');
@@ -368,7 +216,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                   }}
                   title="Click to load into fields for editing"
                 >
-                  <td className="p-2 border-b border-zinc-800">{d.title || ''}</td>
+                  <td className="p-2 border-b border-zinc-800">{d.title || <span className="text-zinc-500 italic">—</span>}</td>
                   <td className="p-2 border-b border-zinc-800">{d.name}</td>
                 </tr>
               ))}
@@ -383,7 +231,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
             onClick={deleteSelected}
             disabled={selectedDeviceId === undefined || saving}
             className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
-            title={selectedDeviceId === undefined ? 'Select a device to delete' : 'Delete selected device'}
+            title={selectedDeviceId === undefined ? 'Select a device first' : 'Delete selected device'}
           >
             Delete Device
           </button>
@@ -391,12 +239,11 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
             onClick={deleteCategory}
             disabled={!effectiveTitle || saving}
             className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
-            title={!effectiveTitle ? 'Select or type a category (device type) first' : 'Delete the entire category (all devices under it)'}
+            title={!effectiveTitle ? 'Type a category name first' : 'Delete this entire category'}
           >
             Delete Category
           </button>
         </div>
-
         <div className="flex flex-wrap items-center gap-2 ml-auto">
           <button
             onClick={onCancel}
@@ -414,138 +261,6 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         </div>
       </div>
 
-      {/* Additional Fees */}
-      <div className="mt-6 border border-zinc-700 rounded p-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold">Additional Fees</div>
-            <div className="text-xs text-zinc-400 mt-0.5">Diagnostic, expedited service, infestation, etc. Saved here and also synced into the Repair picker.</div>
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 bg-zinc-800 border border-zinc-600 rounded text-xs"
-            onClick={async () => { await reloadFees(); }}
-          >
-            Refresh
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-          <div>
-            <label className="block text-xs text-zinc-400">Fee category</label>
-            <input
-              type="text"
-              list="gbpos-fee-category-list"
-              value={feeCategoryText}
-              onChange={e => { setFeeCategoryText(e.target.value); setSelectedFeeId(undefined); }}
-              placeholder="Start typing… (Diagnostics, Service Fees)"
-              className="w-full mt-1 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm"
-            />
-            <datalist id="gbpos-fee-category-list">
-              {feeCategories.map(c => <option key={c} value={c} />)}
-            </datalist>
-          </div>
-          <div>
-            <label className="block text-xs text-zinc-400">Fee</label>
-            <input
-              type="text"
-              list="gbpos-fee-name-list"
-              value={feeNameText}
-              onChange={e => {
-                const v = e.target.value;
-                setFeeNameText(v);
-                const found = (fees || []).find(f => String((f as any).category || '').trim().toLowerCase() === String(feeCategoryText || '').trim().toLowerCase() && String((f as any).name || '').trim().toLowerCase() === v.trim().toLowerCase());
-                if (found?.id != null) {
-                  setSelectedFeeId(Number(found.id));
-                  setFeeAmount(Number((found as any).amount ?? 0) || 0);
-                } else {
-                  setSelectedFeeId(undefined);
-                }
-              }}
-              placeholder={feeCategoryText ? `Start typing… (${feeCategoryText})` : 'Start typing…'}
-              className="w-full mt-1 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm"
-            />
-            <datalist id="gbpos-fee-name-list">
-              {feesForCategory.map(n => <option key={n} value={n} />)}
-            </datalist>
-          </div>
-          <div>
-            <label className="block text-xs text-zinc-400">Amount (labor)</label>
-            <MoneyInput
-              value={Number(feeAmount || 0)}
-              onValueChange={(v) => setFeeAmount(Number(v || 0))}
-              placeholder="0.00"
-              className="w-full mt-1 bg-yellow-200 text-black border border-yellow-300 rounded px-2 py-1 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-3">
-          <button
-            type="button"
-            className="px-3 py-1 bg-red-700 text-white rounded text-sm disabled:opacity-50"
-            disabled={selectedFeeId == null || saving}
-            onClick={deleteSelectedFee}
-          >
-            Delete fee
-          </button>
-          <button
-            type="button"
-            className="px-3 py-1 bg-[#39FF14] text-black rounded text-sm disabled:opacity-50"
-            disabled={saving || !String(feeCategoryText || '').trim() || !String(feeNameText || '').trim()}
-            onClick={saveFee}
-          >
-            {saving ? 'Saving…' : (selectedFeeId != null ? 'Update fee' : 'Save fee')}
-          </button>
-        </div>
-
-        <div className="mt-3 border border-zinc-800 rounded overflow-hidden">
-          <div className="bg-zinc-800 px-3 py-2 text-xs font-semibold border-b border-zinc-700">Saved fees</div>
-          <div className="max-h-40 overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-800 sticky top-0">
-                <tr>
-                  <th className="text-left p-2 border-b border-zinc-700">Category</th>
-                  <th className="text-left p-2 border-b border-zinc-700">Fee</th>
-                  <th className="text-right p-2 border-b border-zinc-700">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(fees || []).length === 0 && (
-                  <tr><td colSpan={3} className="p-3 text-center text-zinc-500">No additional fees yet</td></tr>
-                )}
-                {(fees || []).slice().sort((a, b) => {
-                  const ac = String((a as any).category || '').localeCompare(String((b as any).category || ''));
-                  if (ac !== 0) return ac;
-                  return String((a as any).name || '').localeCompare(String((b as any).name || ''));
-                }).map((f, idx) => (
-                  <tr
-                    key={String((f as any).id ?? idx)}
-                    className={`${idx % 2 ? 'bg-zinc-900' : 'bg-zinc-850'} cursor-pointer ${selectedFeeId != null && Number((f as any).id) === Number(selectedFeeId) ? 'outline outline-1 outline-[#39FF14]' : ''}`}
-                    onClick={() => {
-                      setSelectedFeeId((f as any).id != null ? Number((f as any).id) : undefined);
-                      setFeeCategoryText(String((f as any).category || ''));
-                      setFeeNameText(String((f as any).name || ''));
-                      setFeeAmount(Number((f as any).amount ?? 0) || 0);
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      feeCtx.openFromEvent(e, f);
-                    }}
-                    title="Click to load into fields for editing"
-                  >
-                    <td className="p-2 border-b border-zinc-800">{String((f as any).category || '')}</td>
-                    <td className="p-2 border-b border-zinc-800">{String((f as any).name || '')}</td>
-                    <td className="p-2 border-b border-zinc-800 font-mono text-right">{Number((f as any).amount ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
       <ContextMenu
         id="device-form-device-ctx"
         open={deviceCtx.state.open}
@@ -560,7 +275,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           return [
             { type: 'header', label: `${title || 'Category'} — ${name || 'Device'}` },
             {
-              label: 'Load into fields',
+              label: 'Edit / Load',
               onClick: () => {
                 setSelectedDeviceId(deviceId);
                 setDeviceNameText(d.name || '');
@@ -589,42 +304,6 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           ];
         })()}
         onClose={deviceCtx.close}
-      />
-
-      <ContextMenu
-        id="device-form-fee-ctx"
-        open={feeCtx.state.open}
-        x={feeCtx.state.x}
-        y={feeCtx.state.y}
-        items={((): ContextMenuItem[] => {
-          const f = feeCtx.state.data;
-          if (!f) return [];
-          const feeId = f.id != null ? Number(f.id) : undefined;
-          const label = `${String(f.category || '').trim()}: ${String(f.name || '').trim()}`.trim();
-          return [
-            { type: 'header', label: label || 'Fee' },
-            {
-              label: 'Load into fields',
-              onClick: () => {
-                if (feeId != null) setSelectedFeeId(feeId);
-                setFeeCategoryText(String(f.category || ''));
-                setFeeNameText(String(f.name || ''));
-                setFeeAmount(Number((f as any).amount ?? 0) || 0);
-              },
-            },
-            { type: 'separator' },
-            {
-              label: 'Delete fee…',
-              danger: true,
-              disabled: feeId == null || saving,
-              onClick: async () => {
-                if (feeId == null) return;
-                await deleteFeeById(feeId);
-              },
-            },
-          ];
-        })()}
-        onClose={feeCtx.close}
       />
     </div>
   );

@@ -340,7 +340,19 @@ async function upsertByKeyWithCache(list: NotificationRecord[], rec: Notificatio
   await api()?.dbAdd?.('notifications', rec);
 }
 
+let _syncInflight = false;
+
 export async function syncNotificationsFromCalendar(): Promise<void> {
+  if (_syncInflight) return;
+  _syncInflight = true;
+  try {
+    await _syncNotificationsFromCalendar();
+  } finally {
+    _syncInflight = false;
+  }
+}
+
+async function _syncNotificationsFromCalendar(): Promise<void> {
   const a = api();
   if (!a?.dbGet || !a?.dbAdd) return;
 

@@ -1,7 +1,7 @@
-// (removed stray top-level handleDelete)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import RepairItemList from '../repairs/RepairItemList';
 import RepairItemForm from '../repairs/RepairItemForm';
+import RepairTypeManager from '../repairs/RepairTypeManager';
 import type { RepairItem } from '../lib/types';
 import DeviceForm from '@/repairs/DeviceForm';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
@@ -36,7 +36,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const [repairItems, setRepairItems] = useState<RepairItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<RepairItem | null>(null);
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
-  const [paneMode, setPaneMode] = useState<'repair' | 'device'>('repair');
+  const [paneMode, setPaneMode] = useState<'repair' | 'device' | 'repairType'>('repair');
   const [deviceCategories, setDeviceCategories] = useState<Array<{ id: number; name: string; title?: string }>>([]);
 
   const ctx = useContextMenu<RepairItem>();
@@ -169,20 +169,27 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           <div className="flex flex-col">
             {/* Header actions: toggle between Repair and Device creation */}
             {mode === 'admin' && (
-              <div className="flex justify-end gap-2 mb-4">
+              <div className="flex gap-2 mb-4">
                 <button
                   type="button"
                   className={`px-4 py-2 rounded text-sm border ${paneMode === 'repair' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
                   onClick={() => { setPaneMode('repair'); setSelectedItem(null); }}
                 >
-                  Edit Repair
+                  Repairs
                 </button>
                 <button
                   type="button"
                   className={`px-4 py-2 rounded text-sm border ${paneMode === 'device' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
                   onClick={() => setPaneMode('device')}
                 >
-                  Edit Devices
+                  Devices
+                </button>
+                <button
+                  type="button"
+                  className={`px-4 py-2 rounded text-sm border ${paneMode === 'repairType' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
+                  onClick={() => setPaneMode('repairType')}
+                >
+                  Service Types
                 </button>
               </div>
             )}
@@ -199,6 +206,8 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                 mode={mode}
                 showCreateAction={false}
               />
+            ) : paneMode === 'repairType' ? (
+              <RepairTypeManager />
             ) : (
               (() => {
                 const initialDeviceName = selectedItem?.category;
