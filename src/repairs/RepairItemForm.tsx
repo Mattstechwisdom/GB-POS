@@ -47,6 +47,10 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const [deviceCategoryInput, setDeviceCategoryInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Repair Category search/dropdown state
+  const [repairCategoryInput, setRepairCategoryInput] = useState('');
+  const [showRepairCategoryDropdown, setShowRepairCategoryDropdown] = useState(false);
+  const repairCategoryRef = useRef<HTMLInputElement>(null);
   // Whether to show the device category field
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
@@ -66,12 +70,15 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
-  // Repair types from DB
+  // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
     cat.toLowerCase().includes(deviceCategoryInput.toLowerCase())
+  );
+  const filteredRepairTypes = repairTypes.filter(rt =>
+    rt.toLowerCase().includes(repairCategoryInput.toLowerCase())
   );
 
   // Fetch device categories and repair types from DB on mount
@@ -84,11 +91,19 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           : [];
         setDeviceCategories(titles);
 
-        const rt = await window.api.dbGet('repairTypes').catch(() => []);
-        const rtNames = Array.isArray(rt)
+        // Pull from repairTypes master list AND from existing repair items' repairCategory values
+        const [rt, repairItems] = await Promise.all([
+          window.api.dbGet('repairTypes').catch(() => []),
+          window.api.dbGet('repairCategories').catch(() => []),
+        ]);
+        const fromTypes = Array.isArray(rt)
           ? rt.map((r: any) => String(r?.name || '').trim()).filter(Boolean)
           : [];
-        setRepairTypes(rtNames);
+        const fromItems = Array.isArray(repairItems)
+          ? repairItems.map((r: any) => String(r?.repairCategory || '').trim()).filter(Boolean)
+          : [];
+        const merged = Array.from(new Set([...fromTypes, ...fromItems])).sort((a, b) => a.localeCompare(b));
+        setRepairTypes(merged);
       }
     })();
   }, []);
@@ -128,6 +143,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         estDelivery: selectedItem.estDelivery || ''
       });
       setDeviceCategoryInput(selectedItem.category || '');
+      setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
     } else {
       setFormData({
@@ -146,6 +162,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         model: '',
       });
       setDeviceCategoryInput('');
+      setRepairCategoryInput('');
       setHasDeviceCategory(false);
     }
   }, [selectedItem]);
@@ -199,17 +216,39 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               Repair Category <span className="text-red-400">*</span>
             </label>
             <input
+              ref={repairCategoryRef}
               type="text"
-              list="gbpos-repair-type-list"
-              name="repairCategory"
-              value={formData.repairCategory || ''}
-              onChange={handleChange}
-              placeholder="e.g. Diagnostic, Screen Repair, Liquid Damage, Extra Fee…"
+              autoComplete="off"
+              value={repairCategoryInput}
+              onChange={e => {
+                const v = e.target.value;
+                setRepairCategoryInput(v);
+                setFormData(prev => ({ ...prev, repairCategory: v }));
+                setShowRepairCategoryDropdown(true);
+              }}
+              onFocus={() => setShowRepairCategoryDropdown(true)}
+              onBlur={() => setTimeout(() => setShowRepairCategoryDropdown(false), 100)}
+              placeholder="e.g. Diagnostic, Screen Repair, Liquid Damage, Extra Fee\u2026"
               className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
             />
-            <datalist id="gbpos-repair-type-list">
-              {repairTypes.map(rt => <option key={rt} value={rt} />)}
-            </datalist>
+            {showRepairCategoryDropdown && filteredRepairTypes.length > 0 && (
+              <ul className="absolute z-10 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-1 rounded shadow-lg max-h-40 overflow-y-auto">
+                {filteredRepairTypes.map(rt => (
+                  <li
+                    key={rt}
+                    className="px-3 py-2 hover:bg-[#39FF14] hover:text-black cursor-pointer text-sm"
+                    onMouseDown={() => {
+                      setRepairCategoryInput(rt);
+                      setFormData(prev => ({ ...prev, repairCategory: rt }));
+                      setShowRepairCategoryDropdown(false);
+                      repairCategoryRef.current?.blur();
+                    }}
+                  >
+                    {rt}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* 2. Device Category — optional, behind a checkbox */}
