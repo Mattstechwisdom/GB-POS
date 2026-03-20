@@ -1622,8 +1622,8 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
     })();
     const child = new BrowserWindow({
-      width: 1000,
-      height: 620,
+      width: 1200,
+      height: 820,
       resizable: true,
       parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
@@ -3605,8 +3605,8 @@ ipcMain.handle('open-eod', async (_event: any) => {
 
 ipcMain.handle('open-repair-categories', async (_event: any) => {
   const child = new BrowserWindow({
-    width: 1000,
-    height: 620,
+    width: 1200,
+    height: 820,
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
@@ -3630,8 +3630,8 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
 // IPC handler for opening the WorkOrderRepairPicker window
 ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
   const child = new BrowserWindow({
-    width: 1000,
-    height: 620,
+    width: 1200,
+    height: 820,
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
