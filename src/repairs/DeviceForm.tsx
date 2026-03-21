@@ -17,6 +17,26 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const [deviceNameText, setDeviceNameText] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = (title: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title); else next.add(title);
+      return next;
+    });
+  };
+
+  // Group devices by title
+  const groupedDevices = useMemo(() => {
+    const map = new Map<string, Array<{ id?: number; name: string; title?: string }>>();
+    for (const d of (devices || [])) {
+      const key = (d.title || '').trim() || '(No Category)';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(d);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [devices]);
 
   const deviceCtx = useContextMenu<{ id?: number; name: string; title?: string }>();
 
@@ -181,47 +201,80 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         </div>
       </div>
 
-      {/* Device list */}
-      <div className="mt-4 border border-zinc-700 rounded overflow-hidden">
-        <div className="bg-zinc-800 px-3 py-2 text-sm font-semibold border-b border-zinc-700">All Devices</div>
-        <div className="max-h-60 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-800 sticky top-0">
-              <tr>
-                <th className="text-left p-2 border-b border-zinc-700">Category</th>
-                <th className="text-left p-2 border-b border-zinc-700">Device</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(!devices || devices.length === 0) && (
-                <tr><td colSpan={2} className="p-3 text-center text-zinc-500">No devices yet</td></tr>
-              )}
-              {(devices || []).map((d, idx) => (
-                <tr
-                  key={(d.id ?? idx) + '-' + d.name}
-                  className={`${idx % 2 ? 'bg-zinc-900' : ''} cursor-pointer border-l-2 ${
-                    selectedDeviceId !== undefined && d.id === selectedDeviceId
-                      ? 'border-l-[#39FF14] bg-zinc-800/40'
-                      : 'border-l-transparent hover:bg-zinc-800/30'
-                  }`}
+      {/* Device accordion list */}
+      <div className="mt-4 border border-zinc-700 rounded overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="bg-zinc-800 px-3 py-2 text-sm font-semibold border-b border-zinc-700 flex items-center justify-between">
+          <span>All Devices</span>
+          {groupedDevices.length > 0 && (
+            <span className="text-xs text-zinc-400 font-normal">{groupedDevices.length} {groupedDevices.length === 1 ? 'category' : 'categories'}</span>
+          )}
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {groupedDevices.length === 0 && (
+            <div className="p-4 text-center text-zinc-500 text-sm">No devices yet</div>
+          )}
+          {groupedDevices.map(([catTitle, catDevices]) => {
+            const isOpen = expandedCategories.has(catTitle);
+            return (
+              <div key={catTitle} className="border-b border-zinc-700 last:border-b-0">
+                {/* Category header button */}
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-left text-sm font-medium text-gray-100 focus:outline-none focus:bg-zinc-700"
+                  style={{ background: isOpen ? '#27272a' : undefined }}
                   onClick={() => {
-                    setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
-                    setDeviceNameText(d.name || '');
-                    setTitleText(d.title || '');
+                    toggleCategory(catTitle);
+                    // Also load category into title field on click
+                    setTitleText(catTitle === '(No Category)' ? '' : catTitle);
+                    setDeviceNameText('');
+                    setSelectedDeviceId(undefined);
                   }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    deviceCtx.openFromEvent(e, d);
-                  }}
-                  title="Click to load into fields for editing"
                 >
-                  <td className="p-2 border-b border-zinc-800">{d.title || <span className="text-zinc-500 italic">—</span>}</td>
-                  <td className="p-2 border-b border-zinc-800">{d.name}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <span>{catTitle}</span>
+                  <span className="flex items-center gap-2 text-xs text-zinc-400">
+                    <span>{catDevices.length} device{catDevices.length !== 1 ? 's' : ''}</span>
+                    <svg
+                      className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </button>
+                {/* Devices within category */}
+                {isOpen && (
+                  <div className="bg-zinc-900">
+                    {catDevices.sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((d, idx) => (
+                      <div
+                        key={(d.id ?? idx) + '-' + d.name}
+                        className={`flex items-center justify-between px-4 py-1.5 cursor-pointer border-l-2 text-sm ${
+                          selectedDeviceId !== undefined && d.id === selectedDeviceId
+                            ? 'border-l-[#39FF14] bg-zinc-800/60 text-white'
+                            : 'border-l-transparent hover:bg-zinc-800/40 text-zinc-300'
+                        }`}
+                        onClick={() => {
+                          setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
+                          setDeviceNameText(d.name || '');
+                          setTitleText(d.title || '');
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          deviceCtx.openFromEvent(e, d);
+                        }}
+                        title="Click to load into fields for editing"
+                      >
+                        <span>{d.name}</span>
+                        {selectedDeviceId !== undefined && d.id === selectedDeviceId && (
+                          <span className="text-[#39FF14] text-xs">selected</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
