@@ -20,8 +20,10 @@ import CustomBuildItemsTable from './CustomBuildItemsTable';
 import IntakePanel from './IntakePanel';
 import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
+import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPanel';
+import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import { computeTotals, round2 } from '../lib/calc';
-import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem } from '../lib/types';
+import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory } from '../lib/types';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -113,7 +115,7 @@ const NewWorkOrderWindow: React.FC = () => {
   type WOState = Omit<WorkOrderFull, 'items'> & {
     items: WorkOrderItemRow[];
     internalNotesLog?: { id: number; text: string; createdAt?: string }[];
-    workOrderType?: 'standard' | 'customBuild';
+    workOrderType?: 'standard' | 'customBuild' | 'drone';
   };
   const [wo, setWo] = useState<WOState>({
     id: 0,
@@ -129,7 +131,9 @@ const NewWorkOrderWindow: React.FC = () => {
     model: '',
     serial: '',
     intakeSource: '',
-    workOrderType: (payload as any)?.workOrderType === 'customBuild' || (payload as any)?.isCustomBuild ? 'customBuild' : 'standard',
+    workOrderType: (payload as any)?.workOrderType === 'customBuild' || (payload as any)?.isCustomBuild ? 'customBuild'
+      : (payload as any)?.workOrderType === 'drone' ? 'drone'
+      : 'standard',
   partsOrdered: false,
   partsEstimatedDelivery: null,
   partsDates: '',
@@ -146,6 +150,8 @@ const NewWorkOrderWindow: React.FC = () => {
   items: [] as WorkOrderItemRow[],
   internalNotes: '',
   internalNotesLog: [],
+  droneChecklist: defaultDroneChecklist(),
+  dropoffAccessories: [] as DropoffAccessory[],
   });
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
@@ -161,6 +167,7 @@ const NewWorkOrderWindow: React.FC = () => {
   });
 
   const isCustomBuild = wo.workOrderType === 'customBuild';
+  const isDrone = wo.workOrderType === 'drone';
 
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
@@ -188,13 +195,13 @@ const NewWorkOrderWindow: React.FC = () => {
     if (!assigned) missing.push('assignedTo');
     if (!(wo.productDescription || '').toString().trim()) missing.push('productDescription');
     if (!(wo.problemInfo || '').toString().trim()) missing.push('problemInfo');
-    if (!isCustomBuild) {
+    if (!isCustomBuild && !isDrone) {
       if (!(wo.password || '').toString().trim()) missing.push('password');
       if (!(wo.model || '').toString().trim()) missing.push('model');
       if (!(wo.serial || '').toString().trim()) missing.push('serial');
     }
     return missing;
-  }, [wo.assignedTo, wo.productDescription, wo.problemInfo, wo.password, wo.model, wo.serial, isCustomBuild]);
+  }, [wo.assignedTo, wo.productDescription, wo.problemInfo, wo.password, wo.model, wo.serial, isCustomBuild, isDrone]);
 
   const hasMeaningfulInput = useMemo(() => {
     return Boolean(
@@ -290,7 +297,9 @@ const NewWorkOrderWindow: React.FC = () => {
         setWo(w => ({
           ...w,
           ...existing,
-          workOrderType: ((existing as any).workOrderType === 'customBuild' || (existing as any).isCustomBuild) ? 'customBuild' : (w.workOrderType || 'standard'),
+          workOrderType: ((existing as any).workOrderType === 'customBuild' || (existing as any).isCustomBuild) ? 'customBuild'
+            : (existing as any).workOrderType === 'drone' ? 'drone'
+            : (w.workOrderType || 'standard'),
           partsOrdered: existing.partsOrdered ?? w.partsOrdered,
           partsEstimatedDelivery: existing.partsEstimatedDelivery ?? w.partsEstimatedDelivery,
           partsDates: (existing as any).partsDates ?? w.partsDates,
@@ -300,6 +309,8 @@ const NewWorkOrderWindow: React.FC = () => {
           partsEstDelivery: (existing as any).partsEstDelivery ?? w.partsEstDelivery,
           items: mappedItems.length ? mappedItems : w.items,
           totals: existing.totals || w.totals,
+          droneChecklist: (existing as any).droneChecklist ?? w.droneChecklist,
+          dropoffAccessories: Array.isArray((existing as any).dropoffAccessories) ? (existing as any).dropoffAccessories : w.dropoffAccessories,
           internalNotesLog: Array.isArray(existing.internalNotesLog) ? existing.internalNotesLog : (existing.internalNotes ? existing.internalNotes.split('\n').map((line: string, idx: number) => ({ id: idx + 1, text: line })) : []),
         }));
   setInitialCustomerId(existing.customerId || existing.customerID || existing.customer_id || 0);
@@ -805,9 +816,9 @@ const NewWorkOrderWindow: React.FC = () => {
             </div>
             <div className="flex gap-2 mt-2">
               <button
-                className={`px-3 py-1.5 rounded border text-sm ${!isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                className={`px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
-                  if (!isCustomBuild) return;
+                  if (!isCustomBuild && !isDrone) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial));
                   if (hasData && !confirm('Switch to Standard Work Order? This will clear custom-build-only fields and may clear some device fields.')) return;
                   setWo((w) => ({
@@ -838,6 +849,25 @@ const NewWorkOrderWindow: React.FC = () => {
               >
                 Custom PC Build
               </button>
+              <button
+                className={`px-3 py-1.5 rounded border text-sm ${isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                onClick={() => {
+                  if (isDrone) return;
+                  const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));
+                  if (hasData && !confirm('Switch to Drone? This will clear device fields (password/model/serial/category).')) return;
+                  setWo((w) => ({
+                    ...w,
+                    workOrderType: 'drone',
+                    productCategory: 'Drone',
+                    password: '',
+                    model: '',
+                    serial: '',
+                    patternSequence: [] as any,
+                  }));
+                }}
+              >
+                Drone
+              </button>
             </div>
           </div>
 
@@ -848,11 +878,23 @@ const NewWorkOrderWindow: React.FC = () => {
             mode={isCustomBuild ? 'customBuild' : 'standard'}
           />
 
+          {isDrone && (
+            <DroneChecklistPanel
+              checklist={wo.droneChecklist ?? defaultDroneChecklist()}
+              onChange={cl => setWo(w => ({ ...w, droneChecklist: cl }))}
+            />
+          )}
+
           {isCustomBuild ? (
             <CustomBuildItemsTable items={wo.items} onChange={handleItemsChange} />
           ) : (
             <ItemsTable items={wo.items} onChange={handleItemsChange} />
           )}
+
+          <DropoffAccessoriesPanel
+            accessories={wo.dropoffAccessories ?? []}
+            onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
+          />
           {/* Parts dates + order URL (under line items) */}
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="flex items-center justify-between mb-1">

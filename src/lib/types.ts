@@ -75,6 +75,9 @@ export interface WorkOrderFull {
 
   items: WorkOrderItem[];
   internalNotes?: string;
+
+  droneChecklist?: DroneChecklist;
+  dropoffAccessories?: DropoffAccessory[];
 }
 
 export interface Customer {
@@ -100,6 +103,24 @@ export interface Technician {
   phone?: string;
   email?: string;
   active?: boolean;
+}
+
+export interface DroneChecklist {
+  droneBody: boolean;
+  remote: boolean;
+  propellers: boolean; propellersQty: string;
+  propellerGuards: boolean; propellerGuardsQty: string;
+  batteries: boolean; batteriesQty: string;
+  chargingDockCable: boolean;
+  carryingCase: boolean;
+  microSDCard: boolean; microSDCardQty: string;
+  other: boolean; otherDescription: string;
+}
+
+export interface DropoffAccessory {
+  id: string;
+  description: string;
+  qty: string;
 }
 
 export interface RepairItem {

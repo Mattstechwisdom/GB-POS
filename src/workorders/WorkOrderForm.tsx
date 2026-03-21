@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PatternLock from '../components/PatternLock';
 import { WorkOrderFull } from '../lib/types';
 
@@ -6,57 +6,134 @@ type WorkOrderValidationFlags = Partial<Record<'productDescription' | 'problemIn
 
 type DeviceCat = { id?: number; name: string; title?: string };
 
-const DeviceCategorySelect: React.FC<{ value: string; onChange: (val: string) => void }> = ({ value, onChange }) => {
+// ── Shared hook: loads + subscribes to deviceCategories ──────────────────────
+function useDeviceCategories() {
   const [cats, setCats] = useState<DeviceCat[]>([]);
-  const listId = useId();
-
-  const loadCats = async () => {
+  const load = async () => {
     try {
       const list = await (window as any).api.getDeviceCategories();
       setCats(Array.isArray(list) ? list : []);
-    } catch {
-      setCats([]);
-    }
+    } catch { setCats([]); }
   };
-
+  useEffect(() => { load(); }, []);
   useEffect(() => {
-    loadCats();
+    const off = (window as any).api?.onDeviceCategoriesChanged?.(() => load());
+    return () => { if (typeof off === 'function') off(); };
   }, []);
+  return cats;
+}
 
-  useEffect(() => {
-    const off = (window as any).api?.onDeviceCategoriesChanged?.(() => {
-      loadCats();
-    });
-    return () => {
-      if (typeof off === 'function') off();
-    };
-  }, []);
+// ── Category dropdown (shows distinct title values) ───────────────────────────
+const DeviceCategorySelect: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  cats: DeviceCat[];
+}> = ({ value, onChange, cats }) => {
+  const [inputVal, setInputVal] = useState(value);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const options = useMemo(() => {
-    const out = new Set<string>();
-    for (const c of cats) {
-      const name = (c?.name || '').trim();
-      if (name) out.add(name);
-      const title = (c?.title || '').trim();
-      if (title) out.add(title);
-    }
-    return Array.from(out.values()).sort((a, b) => a.localeCompare(b));
+  // Keep input in sync when parent value changes (e.g. device selection)
+  useEffect(() => { setInputVal(value); }, [value]);
+
+  const titles = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of cats) { const t = (c?.title || '').trim(); if (t) s.add(t); }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [cats]);
 
+  const filtered = useMemo(() =>
+    inputVal ? titles.filter(t => t.toLowerCase().includes(inputVal.toLowerCase())) : titles
+  , [titles, inputVal]);
+
   return (
-    <div className="mt-1">
+    <div className="mt-1 relative">
       <input
-        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        list={listId}
+        ref={inputRef}
+        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+        value={inputVal}
         placeholder="Type or select…"
+        autoComplete="off"
+        onChange={e => { setInputVal(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
       />
-      <datalist id={listId}>
-        {options.map((opt) => (
-          <option key={opt} value={opt} />
-        ))}
-      </datalist>
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
+          {filtered.map(t => (
+            <li key={t}
+              className="px-3 py-1.5 text-sm hover:bg-[#39FF14] hover:text-black cursor-pointer"
+              onMouseDown={() => { onChange(t); setInputVal(t); setOpen(false); inputRef.current?.blur(); }}
+            >{t}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// ── Device field (shows names within selected category) ───────────────────────
+const DeviceSelect: React.FC<{
+  category: string;
+  value: string;
+  onChange: (deviceName: string, categoryIfNew?: string) => void;
+  cats: DeviceCat[];
+}> = ({ category, value, onChange, cats }) => {
+  const [inputVal, setInputVal] = useState(value);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setInputVal(value); }, [value]);
+
+  const devices = useMemo(() => {
+    const trimCat = category.trim().toLowerCase();
+    const filtered = cats.filter(c => (c.title || '').trim().toLowerCase() === trimCat);
+    const names = Array.from(new Set(filtered.map(c => (c.name || '').trim()).filter(Boolean)));
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [cats, category]);
+
+  const filtered = useMemo(() =>
+    inputVal ? devices.filter(d => d.toLowerCase().includes(inputVal.toLowerCase())) : devices
+  , [devices, inputVal]);
+
+  const handleSelect = (name: string) => {
+    setInputVal(name);
+    setOpen(false);
+    inputRef.current?.blur();
+    // Does this name exist in the DB? If not, don't pass a categoryIfNew
+    const exists = cats.some(c => (c.name || '').trim() === name);
+    onChange(name, exists ? undefined : category || undefined);
+  };
+
+  return (
+    <div className="mt-1 relative">
+      <input
+        ref={inputRef}
+        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+        value={inputVal}
+        placeholder={category ? `Device in ${category}…` : 'Type device name…'}
+        autoComplete="off"
+        onChange={e => {
+          const v = e.target.value;
+          setInputVal(v);
+          setOpen(true);
+          // If user clears or types something not in dropdown, still propagate
+          const exists = cats.some(c => (c.name || '').trim() === v);
+          onChange(v, exists ? undefined : (category || undefined));
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
+          {filtered.map(d => (
+            <li key={d}
+              className="px-3 py-1.5 text-sm hover:bg-[#39FF14] hover:text-black cursor-pointer"
+              onMouseDown={() => handleSelect(d)}
+            >{d}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
@@ -86,8 +163,10 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
 
   const isCustomBuild = mode === 'customBuild';
   const headerLabel = isCustomBuild ? 'Custom PC Build' : 'Item / Problem';
-  const descriptionLabel = isCustomBuild ? 'Build summary' : 'Product description';
+  const descriptionLabel = isCustomBuild ? 'Build summary' : 'Device name / description';
   const problemLabel = isCustomBuild ? 'Requirements / Additional info' : 'Problem / Additional info';
+
+  const cats = useDeviceCategories();
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
@@ -99,14 +178,40 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
         <div className="text-xs text-zinc-400">{isCustomBuild ? 'Build info' : 'Product info'}</div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        {!isCustomBuild && (
+      {!isCustomBuild && (
+        <div className="grid grid-cols-3 gap-2 mb-2">
           <div>
             <label className="block text-xs text-zinc-400">Device Category</label>
-            <DeviceCategorySelect value={workOrder.productCategory} onChange={val => onChange({ productCategory: val })} />
+            <DeviceCategorySelect
+              value={workOrder.productCategory}
+              cats={cats}
+              onChange={val => onChange({ productCategory: val })}
+            />
           </div>
-        )}
-        <div className={isCustomBuild ? 'col-span-3' : 'col-span-2'}>
+          <div className="col-span-2">
+            <label className="block text-xs text-zinc-400">
+              Device
+              {needsProductDescription && <span className="ml-1 text-red-500">*</span>}
+            </label>
+            <DeviceSelect
+              category={workOrder.productCategory}
+              value={workOrder.productDescription}
+              cats={cats}
+              onChange={(deviceName, categoryIfNew) => {
+                const patch: Partial<WorkOrderFull> = { productDescription: deviceName };
+                // If user typed a brand-new device name, also back-fill the category
+                if (categoryIfNew && !workOrder.productCategory.trim()) {
+                  patch.productCategory = categoryIfNew;
+                }
+                onChange(patch);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {isCustomBuild && (
+        <div className="mb-2">
           <label className="block text-xs text-zinc-400">
             {descriptionLabel}
             {needsProductDescription && <span className="ml-1 text-red-500">*</span>}
@@ -117,7 +222,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
             onChange={e => onChange({ productDescription: e.target.value })}
           />
         </div>
-      </div>
+      )}
 
       <div className="mb-2">
         <label className="block text-xs text-zinc-400">
@@ -145,6 +250,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
                 onChange={e => onChange({ password: e.target.value })}
               />
             </div>
+
             <div>
               <label className="block text-xs text-zinc-400">
                 Model
