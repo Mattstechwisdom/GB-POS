@@ -1619,7 +1619,7 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
     })();
     const child = new BrowserWindow({
       width: 1200,
-      height: 820,
+      height: 960,
       resizable: true,
       parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
@@ -3602,7 +3602,7 @@ ipcMain.handle('open-eod', async (_event: any) => {
 ipcMain.handle('open-repair-categories', async (_event: any) => {
   const child = new BrowserWindow({
     width: 1200,
-    height: 820,
+    height: 960,
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
@@ -3627,7 +3627,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
 ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
   const child = new BrowserWindow({
     width: 1200,
-    height: 820,
+    height: 960,
     resizable: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,

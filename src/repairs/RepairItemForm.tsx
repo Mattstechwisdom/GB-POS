@@ -204,14 +204,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </button>
         </div>
       )}
-      {/* Form header */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-100">Work Order Item</h2>
-        {!selectedItem && (
-          <p className="text-sm text-gray-400 mt-1">Select an item from the list to edit</p>
-        )}
-      </div>
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 space-y-3">
         {/* Repair Info Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 1. Repair Category — always required, comes first */}
@@ -351,8 +344,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         {/* Divider */}
         <hr className="border-zinc-700 my-2" />
 
-        {/* Part source + URL (stacked to avoid overlap in narrower windows) */}
-        <div className="grid grid-cols-1 gap-4">
+        {/* Part source + URL side by side */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -399,7 +392,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
 
       {/* Footer buttons */}
       {mode === 'admin' && (
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-zinc-700">
+        <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-zinc-700">
           <button
             onClick={onCancel}
             className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
@@ -477,7 +470,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         <div style={{ display: 'none' }} />
       )}
       {(mode === 'workorder' || mode === 'workorderpicker') && (
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-zinc-700">
+        <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-zinc-700">
           <button
             onClick={onCancel}
             className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
