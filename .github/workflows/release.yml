@@ -35,15 +35,29 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Typecheck + Build + Dist
-        run: npm run dist -- --publish never
+      - name: Generate icon
+        run: node tools/generate-icon.cjs
+
+      - name: Typecheck renderer
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Typecheck electron main
+        run: npx tsc -p tsconfig.electron.json --noEmit
+
+      - name: Build electron main
+        run: npx tsc --project tsconfig.electron.json
+
+      - name: Build renderer (Vite)
+        run: npx vite build --config vite.config.ts
+
+      - name: Package installer (electron-builder)
+        run: npx electron-builder --win nsis --publish never
 
       - name: Create "Update" installer alias
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
           $setup = Join-Path 'release' "GadgetBoy-POS-Setup-$version.exe"
-          if (-not $setup) { throw 'Setup installer not found in release/*.exe' }
           if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
           $update = Join-Path 'release' "GadgetBoy-POS-Update-$version.exe"
           Copy-Item -Force $setup $update
@@ -53,23 +67,6 @@ jobs:
         run: |
           echo "Release folder contents:"
           dir release
-
-      - name: Delete stale release assets
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
-          $assets = gh release view $tag --json assets --jq '.assets[].name' 2>$null
-          if ($LASTEXITCODE -eq 0 -and $assets) {
-            foreach ($asset in ($assets -split "`n")) {
-              $name = $asset.Trim()
-              if ($name) {
-                Write-Host "Deleting old asset: $name"
-                gh release delete-asset $tag $name --yes 2>$null
-              }
-            }
-          }
 
       - name: Upload assets to GitHub Release
         uses: softprops/action-gh-release@v2

@@ -58,11 +58,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate icon
+        run: node tools/generate-icon.cjs
+
+      - name: Typecheck renderer
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Typecheck electron main
+        run: npx tsc -p tsconfig.electron.json --noEmit
+
+      - name: Build electron main
+        run: npx tsc --project tsconfig.electron.json
+
+      - name: Build renderer (Vite)
+        run: npx vite build --config vite.config.ts
+
       - name: Build installer (NSIS)
         env:
           ELECTRON_BUILDER_LOG_LEVEL: debug
           DEBUG: electron-builder,electron-updater
-        run: npm run dist -- --publish never --debug
+        run: npx electron-builder --win nsis --publish never
 
       - name: Create "Update" installer alias
         shell: pwsh
