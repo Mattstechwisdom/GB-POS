@@ -348,44 +348,46 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <input
-                type="text"
-                name="partSource"
-                value={formData.partSource || ''}
-                onChange={handleChange}
-                className="w-full sm:flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
-                placeholder="Vendor name (auto from URL)"
-              />
-              <button
-                type="button"
-                className="px-2 py-2 text-xs bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded whitespace-nowrap"
-                onClick={() => {
-                  const v = deriveVendorLabelFromUrl(formData.orderSourceUrl || '');
-                  if (v) setFormData(prev => ({ ...prev, partSource: v }));
-                }}
-              >
-                Autofill
-              </button>
-            </div>
+            <input
+              type="text"
+              name="partSource"
+              value={formData.partSource || ''}
+              onChange={handleChange}
+              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+              placeholder="Vendor name (auto from URL)"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Order source url</label>
-            <input
-              type="url"
-              value={formData.orderSourceUrl || ''}
-              name="orderSourceUrl"
-              onChange={(e) => {
-                const url = e.target.value;
-                setFormData(prev => ({ ...prev, orderSourceUrl: url }));
-                if (!formData.partSource) {
-                  const v = deriveVendorLabelFromUrl(url);
-                  if (v) setFormData(prev => ({ ...prev, partSource: v }));
-                }
-              }}
-              placeholder="https://"
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
-            />
+            <div className="flex gap-1">
+              <input
+                type="url"
+                value={formData.orderSourceUrl || ''}
+                name="orderSourceUrl"
+                onChange={(e) => {
+                  const url = e.target.value;
+                  setFormData(prev => ({ ...prev, orderSourceUrl: url }));
+                  if (!formData.partSource) {
+                    const v = deriveVendorLabelFromUrl(url);
+                    if (v) setFormData(prev => ({ ...prev, partSource: v }));
+                  }
+                }}
+                placeholder="https://"
+                className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
+              />
+              <button
+                type="button"
+                title="Open URL"
+                disabled={!formData.orderSourceUrl}
+                onClick={() => {
+                  const url = formData.orderSourceUrl;
+                  if (url) (window as any).api?.openExternal?.(url);
+                }}
+                className="px-3 py-2 rounded text-sm border border-zinc-600 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Open
+              </button>
+            </div>
           </div>
         </div>
       </div>
