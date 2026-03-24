@@ -3357,14 +3357,23 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
   // Silent auto-print to the OS default printer.
   if (autoPrint && silent) {
     const startSilentPrint = scheduleSilentPrint(child, {
-      delayMs: 60,
+      delayMs: 200,
       onDone: () => {
         if (autoCloseMs > 0) {
           setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
         }
       },
     });
-    const fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 2200 : 3200);
+
+    // Fallback timer that only starts AFTER the page has finished loading
+    // (did-finish-load = HTML + initial JS bundle done). After that we give
+    // the lazy React chunk + component render another 1200 ms before forcing
+    // print. This prevents printing the dark "Loading…" Suspense fallback on
+    // slow disks or first-run Windows Defender scans.
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const armFallback = () => {
+      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 1200 : 2000);
+    };
 
     const handleReceiptReady = (readyEvent: any) => {
       if (readyEvent?.sender !== child.webContents) return;
@@ -3376,6 +3385,15 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
       try { clearTimeout(fallbackTimer); } catch {}
       try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
     };
+
+    // Arm the fallback once the initial page load is complete, then fall back
+    // to an absolute backstop in case did-finish-load never fires.
+    child.webContents.once('did-finish-load', armFallback);
+    const absoluteBackstop = setTimeout(() => {
+      // did-finish-load never fired (navigation failed?) — force print anyway
+      if (fallbackTimer === undefined) armFallback();
+    }, app.isPackaged ? 5000 : 7000);
+    child.once('closed', () => { try { clearTimeout(absoluteBackstop); } catch {} });
 
     ipcMain.on('customer-receipt:ready', handleReceiptReady);
     child.once('closed', cleanupReceiptReadyListener);
