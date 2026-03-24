@@ -13,12 +13,16 @@ type Product = {
   category?: 'Device' | 'Accessory' | 'Consultation' | 'Other';
   createdAt?: string;
   updatedAt?: string;
+  // Inventory / stock tracking
+  trackStock?: boolean;
+  stockCount?: number;
+  lowStockThreshold?: number;
 };
 
 const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [list, setList] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<number|undefined>(undefined);
-  const blank: Product = { itemDescription: '', price: undefined, internalCost: undefined, notes: '', condition: 'New' };
+  const blank: Product = { itemDescription: '', price: undefined, internalCost: undefined, notes: '', condition: 'New', trackStock: false, stockCount: undefined, lowStockThreshold: undefined };
   const [editing, setEditing] = useState<Product>(blank);
   const [search, setSearch] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
@@ -211,7 +215,16 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                   >
                     <div className="flex justify-between gap-3">
                       <div className="truncate">{(p.category || 'Other') + ' - ' + (p.itemDescription || '')}</div>
-                      <div className="shrink-0 text-zinc-300">{typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : '—'}</div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.trackStock && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
+                            typeof p.stockCount === 'number' && p.stockCount <= (p.lowStockThreshold ?? 1)
+                              ? 'bg-red-900 text-red-300'
+                              : 'bg-zinc-700 text-zinc-300'
+                          }`}>◆ {p.stockCount ?? 0}</span>
+                        )}
+                        <div className="text-zinc-300">{typeof p.price === 'number' ? `$${p.price.toFixed(2)}` : '—'}</div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -271,6 +284,44 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
             <label className="block text-sm">Notes</label>
             <textarea value={editing.notes || ''} onChange={e => setEditing(ed => ({ ...ed, notes: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px] mb-3" />
+
+            {/* Stock tracking */}
+            <div className="border border-zinc-700 rounded p-3 mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  id="track-stock-cb"
+                  type="checkbox"
+                  checked={!!editing.trackStock}
+                  onChange={e => setEditing(ed => ({ ...ed, trackStock: e.target.checked }))}
+                  className="accent-[#39FF14]"
+                />
+                <label htmlFor="track-stock-cb" className="text-sm font-medium cursor-pointer">Track stock</label>
+              </div>
+              {editing.trackStock && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Stock count</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editing.stockCount ?? ''}
+                      onChange={e => setEditing(ed => ({ ...ed, stockCount: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                      className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Low stock alert at</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editing.lowStockThreshold ?? ''}
+                      onChange={e => setEditing(ed => ({ ...ed, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                      className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex items-center gap-2">
               {!isPicker && (

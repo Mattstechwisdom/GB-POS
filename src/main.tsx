@@ -28,6 +28,8 @@ const loadProductFormWindow = () => import('./sales/ProductFormWindow');
 const ProductFormWindow = lazy(loadProductFormWindow);
 const loadProductsWindow = () => import('./components/ProductsWindow');
 const ProductsWindow = lazy(loadProductsWindow);
+const loadInventoryWindow = () => import('./components/InventoryWindow');
+const InventoryWindow = lazy(loadInventoryWindow);
 const ChartsWindow = lazy(() => import('./components/ChartsWindow'));
 const BackupWindow = lazy(() => import('./components/BackupWindow'));
 const ClearDatabaseWindow = lazy(() => import('./components/ClearDatabaseWindow'));
@@ -158,6 +160,7 @@ function scheduleCommonWindowPreloads() {
 		runWhenIdle(() => {
 			queueImports([
 				loadProductsWindow,
+				loadInventoryWindow,
 				loadReportingWindow,
 				loadCustomerReceiptWindow,
 				loadReleaseFormWindow,
@@ -192,6 +195,7 @@ try {
 	const showDataTools = params.get('dataTools');
 	const showCalendar = params.get('calendar');
 	const showProducts = params.get('products');
+	const showInventory = params.get('inventory');
 	const showCharts = params.get('charts');
 	const showReporting = params.get('reporting');
 	const showReportEmail = params.get('reportEmail');
@@ -274,6 +278,8 @@ try {
 		renderWithSuspense(root, <ProductFormWindow />);
 	} else if (showProducts) {
 		renderWithSuspense(root, <ProductsWindow />);
+	} else if (showInventory) {
+		renderWithSuspense(root, <InventoryWindow />);
 	} else if (showNewSale) {
 		renderWithSuspense(root, <SaleWindow />);
 	} else if (showQuickSale) {

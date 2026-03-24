@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   openQuoteGenerator: (): Promise<any> => ipcRenderer.invoke('open-quote-generator'),
   openEod: (): Promise<any> => ipcRenderer.invoke('open-eod'),
   openProducts: (): Promise<any> => ipcRenderer.invoke('open-products'),
+  openInventory: (): Promise<any> => ipcRenderer.invoke('open-inventory'),
   openWorkOrderRepairPicker: (): Promise<any> => ipcRenderer.invoke('open-workorder-repair-picker'),
   openCustomerOverview: (customerId: number): Promise<any> => ipcRenderer.invoke('open-customer-overview', customerId),
   openNewSale: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-sale', payload),

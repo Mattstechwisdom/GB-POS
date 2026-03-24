@@ -57,6 +57,11 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
               }}>Devices/Repairs</button>
               <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
                 setShowAdmin(false);
+                try { await (window as any).api.openInventory?.(); }
+                catch { window.open(window.location.origin + '/?inventory=true', '_blank', 'width=1280,height=800'); }
+              }}>Inventory</button>
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
+                setShowAdmin(false);
                 try { await (window as any).api.openProducts?.(); }
                 catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
               }}>Products</button>

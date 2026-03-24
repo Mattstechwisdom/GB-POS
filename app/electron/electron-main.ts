@@ -2802,6 +2802,36 @@ ipcMain.handle('open-products', async (event: any) => {
   return { ok: true };
 });
 
+ipcMain.handle('open-inventory', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1100,
+    minHeight: 650,
+    resizable: true,
+    parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Inventory'),
+  });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?inventory=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?inventory=true`;
+  child.loadURL(url);
+  return { ok: true };
+});
+
 // --- Dev Menu handlers ---
 ipcMain.handle('open-dev-menu', async () => {
   const child = new BrowserWindow({

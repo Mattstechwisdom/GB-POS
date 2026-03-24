@@ -33,6 +33,7 @@ declare global {
   openCalendar: () => Promise<any>;
   openClockIn: () => Promise<any>;
   openProducts: () => Promise<any>;
+  openInventory: () => Promise<any>;
   openWorkOrderRepairPicker: () => Promise<any>;
   openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;

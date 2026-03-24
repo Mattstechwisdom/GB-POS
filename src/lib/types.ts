@@ -139,4 +139,8 @@ export interface RepairItem {
   orderSourceUrl?: string;
   type: "product" | "service";
   model?: string;
+  // Inventory / stock tracking
+  trackStock?: boolean;
+  stockCount?: number;
+  lowStockThreshold?: number;
 }

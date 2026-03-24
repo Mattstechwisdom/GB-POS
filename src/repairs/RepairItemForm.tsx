@@ -68,6 +68,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     orderSourceUrl: '',
     type: 'service',
     model: '',
+    trackStock: false,
+    stockCount: undefined,
+    lowStockThreshold: undefined,
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
@@ -161,6 +164,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         orderSourceUrl: '',
         type: 'service',
         model: '',
+        trackStock: false,
+        stockCount: undefined,
+        lowStockThreshold: undefined,
       });
       setDeviceCategoryInput('');
       setRepairCategoryInput('');
@@ -185,6 +191,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       orderSourceUrl: '',
       type: 'service',
       model: '',
+      trackStock: false,
+      stockCount: undefined,
+      lowStockThreshold: undefined,
     });
     setDeviceCategoryInput('');
     setRepairCategoryInput('');
@@ -386,6 +395,44 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   <span className="text-xs text-zinc-400 whitespace-nowrap">
                     (implied: {(((formData.partCost / formData.internalCost) - 1) * 100).toFixed(1)}%)
                   </span>
+                )}
+              </div>
+
+              {/* Stock tracking (admin only) */}
+              <div className="border border-zinc-700 rounded p-3 mt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    id="repair-track-stock-cb"
+                    type="checkbox"
+                    checked={!!formData.trackStock}
+                    onChange={e => setFormData(prev => ({ ...prev, trackStock: e.target.checked }))}
+                    className="accent-[#39FF14]"
+                  />
+                  <label htmlFor="repair-track-stock-cb" className="text-sm font-medium cursor-pointer">Track part stock</label>
+                </div>
+                {formData.trackStock && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Stock count</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.stockCount ?? ''}
+                        onChange={e => setFormData(prev => ({ ...prev, stockCount: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                        className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Low stock alert at</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.lowStockThreshold ?? ''}
+                        onChange={e => setFormData(prev => ({ ...prev, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                        className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
