@@ -42,7 +42,7 @@ export default function WorkOrderRepairPickerWindow() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-900 text-gray-100">
+    <div className="flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
       <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4">
         {/* Left pane: Item list */}
         <div className="flex flex-col">
