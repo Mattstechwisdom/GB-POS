@@ -52,6 +52,7 @@ const ReportingWindow: React.FC = () => {
   const [includeRepairs, setIncludeRepairs] = useState<boolean>(true);
   const [includeSales, setIncludeSales] = useState<boolean>(true);
   const [dayMetric, setDayMetric] = useState<'orders'|'revenue'>('orders');
+  const [onlyPaid, setOnlyPaid] = useState<boolean>(true);
 
   useEffect(() => {
     // Debug marker to ensure the admin Reporting window is using the latest renderer bundle.
@@ -94,6 +95,11 @@ const ReportingWindow: React.FC = () => {
     return data.filter(w => {
       if (w.kind === 'repair' && !includeRepairs) return false;
       if (w.kind === 'sale' && !includeSales) return false;
+      // If "paid only" mode, skip work orders with no payment recorded
+      if (onlyPaid && w.kind === 'repair') {
+        const amtPaid = Number((w as any).amountPaid || 0);
+        if (amtPaid <= 0) return false;
+      }
       const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
       if (isNaN(d.getTime())) return false;
       if (fromDate && d < fromDate) return false;
@@ -105,7 +111,7 @@ const ReportingWindow: React.FC = () => {
       }
       return true;
     });
-  }, [data, from, to, tech, includeRepairs, includeSales]);
+  }, [data, from, to, tech, includeRepairs, includeSales, onlyPaid]);
 
   // Registered technicians list
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -157,18 +163,18 @@ const ReportingWindow: React.FC = () => {
   }, [filtered, excludeTax]);
 
   function sumInternalCost(w: any): number {
-    // best-effort: look for internalCost per item or on the work order
-    let sum = 0;
-    if (Array.isArray(w.items)) {
+    // If items array has entries, sum from items only (avoid double-counting with w.internalCost)
+    if (Array.isArray(w.items) && w.items.length > 0) {
+      let sum = 0;
       for (const it of w.items) {
         const val = Number((it && (it.internalCost || it.cost || 0)) || 0);
         if (Number.isFinite(val)) sum += val;
       }
+      return sum;
     }
-    // also check a direct field if ever stored
+    // Fall back to a direct field if no items array
     const direct = Number((w.internalCost || 0));
-    if (Number.isFinite(direct)) sum += direct;
-    return sum;
+    return Number.isFinite(direct) ? direct : 0;
   }
 
   const grouped = useMemo(() => {
@@ -194,7 +200,7 @@ const ReportingWindow: React.FC = () => {
       const revenue = excludeTax ? subtotal : (subtotal + tax);
       const profit = revenue - cost;
       prev.orders += 1;
-      prev.labor += labor - discount; // discount assumed against labor
+      prev.labor += labor;
       prev.parts += parts;
       prev.subtotal += subtotal;
       prev.tax += tax;
@@ -465,6 +471,9 @@ const ReportingWindow: React.FC = () => {
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" className="accent-[#39FF14]" checked={includeSales} onChange={e => setIncludeSales(e.target.checked)} /> Sales
+          </label>
+          <label className="inline-flex items-center gap-2 border-l border-zinc-700 pl-3">
+            <input type="checkbox" className="accent-[#39FF14]" checked={onlyPaid} onChange={e => setOnlyPaid(e.target.checked)} /> Paid only
           </label>
         </div>
         <button className="ml-auto px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={async () => {

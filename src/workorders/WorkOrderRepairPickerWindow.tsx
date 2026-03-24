@@ -55,7 +55,7 @@ export default function WorkOrderRepairPickerWindow() {
           />
         </div>
         {/* Right pane: Form */}
-        <div className="flex flex-col">
+        <div className="flex flex-col min-h-0">
           <RepairItemForm 
             selectedItem={selectedItem}
             onSave={(item) => finalize(item)}

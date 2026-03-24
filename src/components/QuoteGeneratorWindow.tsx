@@ -33,7 +33,7 @@ type SalesState = {
   items: SaleItem[];
 };
 
-type RepairLine = { description: string; partPrice?: string | number; laborPrice?: string | number };
+type RepairLine = { description: string; partPrice?: string | number; laborPrice?: string | number; lineCost?: string; lineMarkupPct?: string };
 type RepairsState = {
   customerName?: string;
   customerPhone?: string;
@@ -5640,11 +5640,65 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
             <div className="space-y-2">
               {repairs.lines.map((ln, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-7"><Field label="Description" value={ln.description} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, description: v } : x)) }))} /></div>
-                  <div className="col-span-2"><Field label="Part Price" value={ln.partPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, partPrice: v } : x)) }))} /></div>
-                  <div className="col-span-2"><Field label="Labor Price" value={ln.laborPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, laborPrice: v } : x)) }))} /></div>
-                  <div className="col-span-1 flex justify-end"><button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeRepairLine(idx)}>Remove</button></div>
+                <div key={idx} className="space-y-1">
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-7"><Field label="Description" value={ln.description} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, description: v } : x)) }))} /></div>
+                    <div className="col-span-2"><Field label="Part Price" value={ln.partPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, partPrice: v } : x)) }))} /></div>
+                    <div className="col-span-2"><Field label="Labor Price" value={ln.laborPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, laborPrice: v } : x)) }))} /></div>
+                    <div className="col-span-1 flex justify-end"><button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeRepairLine(idx)}>Remove</button></div>
+                  </div>
+                  <div className="flex items-center gap-2 pl-1 flex-wrap">
+                    <span className="text-xs text-zinc-500">Cost →</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={ln.lineCost ?? ''}
+                      onChange={(e) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, lineCost: e.target.value } : x)) }))}
+                      placeholder="0.00"
+                      className="w-20 bg-zinc-800 border border-zinc-600 rounded px-2 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                    />
+                    <select
+                      value={ln.lineMarkupPct ?? ''}
+                      onChange={(e) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, lineMarkupPct: e.target.value } : x)) }))}
+                      className="bg-zinc-800 border border-zinc-600 rounded px-2 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                    >
+                      <option value="">— markup —</option>
+                      <option value="5">5%</option>
+                      <option value="10">10%</option>
+                      <option value="15">15%</option>
+                      <option value="20">20%</option>
+                      <option value="25">25%</option>
+                      <option value="30">30%</option>
+                      <option value="40">40%</option>
+                      <option value="50">50%</option>
+                      <option value="100">100%</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={ln.lineMarkupPct ?? ''}
+                      onChange={(e) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, lineMarkupPct: e.target.value } : x)) }))}
+                      placeholder="%"
+                      className="w-14 bg-zinc-800 border border-zinc-600 rounded px-2 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={!ln.lineCost || !ln.lineMarkupPct}
+                      onClick={() => {
+                        const cost = Number(ln.lineCost || 0);
+                        const pct = Number(ln.lineMarkupPct || 0);
+                        if (cost > 0 && pct > 0) {
+                          const price = (Math.round(cost * (1 + pct / 100) * 100) / 100).toFixed(2);
+                          setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, partPrice: price } : x)) }));
+                        }
+                      }}
+                      className="px-2 py-0.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      → Part Price
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

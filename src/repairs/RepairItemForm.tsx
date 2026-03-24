@@ -53,6 +53,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const repairCategoryRef = useRef<HTMLInputElement>(null);
   // Whether to show the device category field
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
+  const [markupPct, setMarkupPct] = useState<string>('');
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
     repairCategory: '',
@@ -204,7 +205,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </button>
         </div>
       )}
-      <div className="flex-1 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
         {/* Repair Info Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 1. Repair Category — always required, comes first */}
@@ -337,6 +338,56 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 placeholder="0.00"
               />
               <div className="text-xs text-zinc-400 mt-1">Not shown to customers; used for reporting only.</div>
+              {/* Markup % helper — computes Part Costs from Internal Cost */}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="text-xs text-zinc-400 whitespace-nowrap">Markup %:</span>
+                <select
+                  className="bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs focus:border-[#39FF14] focus:outline-none"
+                  value={markupPct}
+                  onChange={e => setMarkupPct(e.target.value)}
+                >
+                  <option value="">— preset —</option>
+                  <option value="5">5%</option>
+                  <option value="10">10%</option>
+                  <option value="15">15%</option>
+                  <option value="20">20%</option>
+                  <option value="25">25%</option>
+                  <option value="30">30%</option>
+                  <option value="40">40%</option>
+                  <option value="50">50%</option>
+                  <option value="100">100%</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={markupPct}
+                  onChange={e => setMarkupPct(e.target.value)}
+                  placeholder="%"
+                  className="w-16 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs focus:border-[#39FF14] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!markupPct || !formData.internalCost}
+                  onClick={() => {
+                    const ic = Number(formData.internalCost || 0);
+                    const pct = Number(markupPct || 0);
+                    if (ic > 0 && pct > 0) {
+                      const newPartCost = Math.round(ic * (1 + pct / 100) * 100) / 100;
+                      setFormData(prev => ({ ...prev, partCost: newPartCost }));
+                    }
+                  }}
+                  className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  → Set Part Cost
+                </button>
+                {typeof formData.internalCost === 'number' && formData.internalCost > 0 &&
+                 typeof formData.partCost === 'number' && formData.partCost > 0 && (
+                  <span className="text-xs text-zinc-400 whitespace-nowrap">
+                    (implied: {(((formData.partCost / formData.internalCost) - 1) * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>
