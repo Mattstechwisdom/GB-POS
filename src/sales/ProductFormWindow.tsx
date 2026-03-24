@@ -24,6 +24,7 @@ const ProductFormWindow: React.FC = () => {
 
   const [logoSrc, setLogoSrc] = useState('');
   const didAutoPrintRef = useRef(false);
+  const logoImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -38,22 +39,62 @@ const ProductFormWindow: React.FC = () => {
   useEffect(() => {
     if (didAutoPrintRef.current) return;
 
-    const fallback = window.setTimeout(() => {
-      if (didAutoPrintRef.current) return;
-      didAutoPrintRef.current = true;
-      try { window.print(); } catch {}
-    }, 250);
+    let cancelled = false;
 
-    if (logoSrc) {
-      window.clearTimeout(fallback);
+    const doPrint = () => {
+      if (cancelled || didAutoPrintRef.current) return;
       didAutoPrintRef.current = true;
-      const immediate = window.setTimeout(() => {
-        try { window.print(); } catch {}
-      }, 40);
-      return () => window.clearTimeout(immediate);
+      try { window.focus(); window.print(); } catch {}
+    };
+
+    const signalReady = async () => {
+      // Wait for the logo image to finish decoding
+      const img = logoImgRef.current;
+      if (img && !img.complete) {
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            try { img.removeEventListener('load', finish); } catch {}
+            try { img.removeEventListener('error', finish); } catch {}
+            resolve();
+          };
+          try { img.addEventListener('load', finish, { once: true }); } catch {}
+          try { img.addEventListener('error', finish, { once: true }); } catch {}
+          // Safety valve: don't wait more than 800ms for the logo
+          window.setTimeout(finish, 800);
+        });
+      }
+      // Wait for all fonts to be ready
+      try {
+        const fontSet = (document as any).fonts;
+        if (fontSet?.ready) await fontSet.ready;
+      } catch {}
+      // Two rAFs to ensure paint is complete
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      });
+      doPrint();
+    };
+
+    // If logoSrc is already loaded, signal ready immediately.
+    // Otherwise wait up to 1500ms for the data URL to arrive, then signal anyway.
+    if (logoSrc) {
+      void signalReady();
+    } else {
+      const fallback = window.setTimeout(() => {
+        if (!cancelled) void signalReady();
+      }, 1500);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(fallback);
+      };
     }
 
-    return () => window.clearTimeout(fallback);
+    return () => { cancelled = true; };
   }, [logoSrc]);
 
   const fullName = data.customerName || '';
@@ -90,7 +131,7 @@ const ProductFormWindow: React.FC = () => {
         <div className="page-inner">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
+              <img ref={logoImgRef} src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR & RETAIL</div>
                 <div style={{ fontSize: 11, color: '#666' }}>Product Sales Form</div>
