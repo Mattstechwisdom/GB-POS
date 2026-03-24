@@ -22,6 +22,8 @@ type SaleItem = {
   url?: string; // new: source or ordering URL
   prompt?: string;
   price?: string | number;
+  internalCost?: string | number;
+  markupPct?: string;
   inStock?: boolean; // new: track whether this item is in stock
 };
 
@@ -5598,6 +5600,59 @@ function QuoteGeneratorWindow(): JSX.Element {
                               placeholder="0.00"
                             />
                             <div className="text-[10px] text-zinc-400 mt-0.5">Printed total is before tax</div>
+                            {/* Markup % helper */}
+                            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                              <span className="text-[10px] text-zinc-500 whitespace-nowrap">Cost →</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={it.internalCost ?? ''}
+                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, internalCost: e.target.value } : x)) }))}
+                                placeholder="0.00"
+                                className="w-18 bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                                style={{ width: '4.5rem' }}
+                              />
+                              <select
+                                value={it.markupPct ?? ''}
+                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, markupPct: e.target.value } : x)) }))}
+                                className="bg-zinc-800 border border-zinc-600 rounded px-1 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                              >
+                                <option value="">— % —</option>
+                                <option value="5">5%</option>
+                                <option value="10">10%</option>
+                                <option value="15">15%</option>
+                                <option value="20">20%</option>
+                                <option value="25">25%</option>
+                                <option value="30">30%</option>
+                                <option value="40">40%</option>
+                                <option value="50">50%</option>
+                                <option value="100">100%</option>
+                              </select>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                value={it.markupPct ?? ''}
+                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, markupPct: e.target.value } : x)) }))}
+                                placeholder="%"
+                                className="bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
+                                style={{ width: '3rem' }}
+                              />
+                              <button
+                                type="button"
+                                disabled={!it.internalCost || !it.markupPct}
+                                onClick={() => {
+                                  const cost = Number(it.internalCost || 0);
+                                  const pct = Number(it.markupPct || 0);
+                                  if (cost > 0 && pct > 0) {
+                                    const price = Math.round(cost * (1 + pct / 100) * 100) / 100;
+                                    setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, price } : x)) }));
+                                  }
+                                }}
+                                className="px-1.5 py-0.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-[10px] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                              >→ Set Price</button>
+                            </div>
                           </div>
                         </div>
                         )}
