@@ -147,7 +147,7 @@ export default function RepairItemList({
   }, [selectedIndex, filteredItems, onItemSelect]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 mb-3 p-2 bg-zinc-800 rounded border border-zinc-700">
         {/* Device filter */}
