@@ -99,11 +99,17 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     return () => { if (typeof off === 'function') off(); mounted = false; };
   }, []);
 
+  const prevSelectedIdRef = React.useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!selectedId) { setEditing(blank); return; }
+    if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; return; }
     const found = list.find(p => p.id === selectedId);
     setEditing(found ? { ...found } : blank);
-    setPriceManuallyEdited(false);
+    // Only reset the manual-edit flag when the user picks a *different* item,
+    // not when the list refreshes after saving the currently-selected item.
+    if (prevSelectedIdRef.current !== selectedId) {
+      setPriceManuallyEdited(false);
+      prevSelectedIdRef.current = selectedId;
+    }
   }, [selectedId, list]);
 
   // Auto-calc price from internalCost if not manually edited
@@ -129,23 +135,18 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       if (payload.id) {
         if (!api?.update) throw new Error('Products window is missing API bridge');
         const updated = await api.update('products', payload);
-        // Optimistically sync local list
+        // Update the list immediately from the returned record so the
+        // selectedId effect finds the correct (fresh) data when it re-runs.
+        const merged = { ...payload, ...(updated || {}) };
         setList(lst => {
-          const idx = lst.findIndex(p => p.id === updated?.id);
-          if (idx === -1) return lst;
+          const idx = lst.findIndex(p => p.id === merged.id);
+          if (idx === -1) return [...lst, merged];
           const copy = [...lst];
-          copy[idx] = { ...copy[idx], ...updated };
+          copy[idx] = merged;
           return copy;
         });
-        // Ensure fresh list and selection
-        try {
-          const fresh = await api.dbGet('products');
-          setList(Array.isArray(fresh) ? fresh : []);
-          if (updated?.id) { setSelectedId(updated.id); setEditing(updated); }
-          // Make sure filters don't hide the updated item
-          setSearch('');
-          setCategoryFilter('');
-        } catch {}
+        setEditing(merged);
+        if (merged.id) setSelectedId(merged.id);
       } else {
         const now = new Date().toISOString();
         if (!api?.dbAdd) throw new Error('Products window is missing API bridge');
@@ -195,7 +196,7 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
               {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <input type="text" placeholder="search products…" value={search} onChange={e => setSearch(e.target.value)} className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none" />
-            <button onClick={addNew} className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm">Add New</button>
+            <button onClick={addNew} className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm">Clear</button>
           </div>
           <div className="flex-1 overflow-auto rounded border border-zinc-700">
             {filtered.length === 0 ? (
