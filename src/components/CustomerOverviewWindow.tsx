@@ -119,7 +119,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       setAutoSaving(false);
     }
   }, {
-    debounceMs: 2000,
+    debounceMs: 1000,
     enabled: isCustomerValid(local) || !!(local as any)?.id,
     shouldSave: (v) => {
       if (!v) return false;

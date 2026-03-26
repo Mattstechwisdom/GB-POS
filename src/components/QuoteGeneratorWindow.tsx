@@ -137,7 +137,7 @@ const ComboInput: React.FC<{ value: string; onChange: (v: string) => void; optio
 function useAutosave<T>(value: T, cb: () => void, opts?: { debounceMs?: number; enabled?: boolean }) {
   useEffect(() => {
     if (opts && opts.enabled === false) return;
-    const t = setTimeout(() => { try { cb(); } catch {} }, opts?.debounceMs ?? 2000);
+    const t = setTimeout(() => { try { cb(); } catch {} }, opts?.debounceMs ?? 1000);
     return () => clearTimeout(t);
   // stringify as a coarse change detector
   }, [JSON.stringify(value), opts?.debounceMs, opts?.enabled]);
@@ -4054,7 +4054,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       setSaveMsg('Autosaved');
       setTimeout(() => setSaveMsg(null), 1500);
     } catch {}
-  }, { debounceMs: 2000, enabled: true });
+  }, { debounceMs: 1000, enabled: true });
 
   function buildAIPrompt(it: SaleItem) {
     const lines: string[] = [];

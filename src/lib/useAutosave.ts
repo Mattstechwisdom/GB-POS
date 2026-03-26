@@ -15,7 +15,7 @@ function jsonEqual(a: any, b: any) {
 }
 
 export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, opts: Options<T> = {}) {
-  const { debounceMs = 2000, enabled = true, shouldSave, onSaved, equals = jsonEqual, skipInitialSave = false } = opts;
+  const { debounceMs = 1000, enabled = true, shouldSave, onSaved, equals = jsonEqual, skipInitialSave = false } = opts;
   const timerRef = useRef<any>(null);
   const lastSavedRef = useRef<T | null>(null);
   const mountedRef = useRef(true);

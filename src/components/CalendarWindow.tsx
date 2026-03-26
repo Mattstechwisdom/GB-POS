@@ -471,8 +471,9 @@ const CalendarWindow: React.FC = () => {
     if (!val.ev) return;
     await saveEventSilent(val.ev);
   }, {
-    debounceMs: 2000,
+    debounceMs: 1000,
     enabled: !!editing,
+    skipInitialSave: true,
     shouldSave: () => canAutosave(editing),
     equals: (a, b) => {
       try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
