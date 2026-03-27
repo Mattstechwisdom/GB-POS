@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notifications';
 
@@ -68,14 +68,43 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     };
   }, []);
 
+  const [showAdmin, setShowAdmin] = useState(false);
+  const adminRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (adminRef.current && !adminRef.current.contains(e.target as Node)) setShowAdmin(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   return (
     <>
     <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-zinc-900 relative">
-      {/* Left side: App title */}
+      {/* Left side: Admin dropdown + action buttons */}
       <div className="flex items-center gap-3">
-        <div className="text-xl font-bold tracking-wide text-[#39FF14] flex items-baseline gap-2">
-          <span>Gadgetboy POS</span>
-          {appVersion ? <span className="text-xs font-semibold text-zinc-300">v{appVersion}</span> : null}
+        {/* Admin dropdown */}
+        <div ref={adminRef} className="relative">
+          <button
+            className="px-5 py-2 bg-zinc-800 text-zinc-100 font-semibold rounded shadow-sm border border-zinc-700 hover:border-[#BC13FE] hover:text-[#BC13FE] text-sm min-w-[110px]"
+            onClick={() => setShowAdmin(v => !v)}
+          >Admin ▾</button>
+          {showAdmin && (
+            <div className="absolute left-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
+              {[
+                { label: 'Devices/Repairs', action: async () => { try { const api = (window as any).api; if (api?.openRepairCategories) await api.openRepairCategories(); else window.open(window.location.origin + '/?repairCategories=true&mode=admin', '_blank', 'width=900,height=600'); } catch { window.open(window.location.origin + '/?repairCategories=true&mode=admin', '_blank', 'width=900,height=600'); } } },
+                { label: 'Inventory',       action: async () => { try { await (window as any).api.openInventory?.(); } catch { window.open(window.location.origin + '/?inventory=true', '_blank', 'width=1280,height=800'); } } },
+                { label: 'Products',        action: async () => { try { await (window as any).api.openProducts?.(); } catch { window.open(window.location.origin + '/?products=true', '_blank', 'width=1280,height=800'); } } },
+                { label: 'Reports',         action: async () => { try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); } catch (e) { console.error(e); } } },
+                { label: 'Data Management', action: async () => { try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else window.open(window.location.origin + '/?backup=true', '_blank', 'noopener,noreferrer'); } catch (e) { console.error(e); window.open(window.location.origin + '/?backup=true', '_blank', 'noopener,noreferrer'); } } },
+                { label: 'Notifications',   action: async () => { try { const api = (window as any).api; if (api?.openNotificationSettings) await api.openNotificationSettings(); else window.open(window.location.origin + '/?notificationSettings=true', '_blank', 'width=820,height=720'); } catch (e) { console.error(e); } } },
+                { label: 'Dev Menu',        action: async () => { try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); } catch (e) { console.error(e); } } },
+              ].map(item => (
+                <button key={item.label} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => { setShowAdmin(false); item.action(); }}>{item.label}</button>
+              ))}
+            </div>
+          )}
         </div>
         <button
           className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded shadow-sm border border-[#39FF14] hover:brightness-110 text-sm"

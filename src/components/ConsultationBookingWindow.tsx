@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatPhone } from '../lib/format';
 
 const HOURLY_RATE_DEFAULT = 75;
+const DRIVER_FEE_DEFAULT = 40;
 
 type Customer = {
   id: number;
@@ -57,6 +58,7 @@ export default function ConsultationBookingWindow() {
   const [address, setAddress] = useState('');
   const [hours, setHours] = useState(1);
   const [hourlyRate, setHourlyRate] = useState(HOURLY_RATE_DEFAULT);
+  const [driverFee, setDriverFee] = useState(0);
 
   // ── Technicians list ────────────────────────────────────────────
   const [techs, setTechs] = useState<Technician[]>([]);
@@ -126,7 +128,14 @@ export default function ConsultationBookingWindow() {
   const techLabel = (t: Technician) =>
     t.nickname || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.id;
 
-  const totalCost = hours * hourlyRate;
+  const laborCost = hours * hourlyRate;
+  const totalCost = laborCost + driverFee;
+
+  // Auto-apply driver fee when switching location type
+  const handleLocationChange = (type: 'instore' | 'athome') => {
+    setLocationType(type);
+    setDriverFee(type === 'athome' ? DRIVER_FEE_DEFAULT : 0);
+  };
 
   const canBook = !saving && date && (selectedCustomer || (showNewCustomer && newCust.firstName.trim() && newCust.lastName.trim()));
 
@@ -163,13 +172,22 @@ export default function ConsultationBookingWindow() {
         category: 'Consultation',
         inStock: true,
       };
+      const driverItem = driverFee > 0 ? {
+        id: crypto.randomUUID(),
+        description: 'Driver / On-Site Visit Fee',
+        qty: 1,
+        price: driverFee,
+        category: 'Consultation',
+        inStock: true,
+      } : null;
+      const saleItems = driverItem ? [saleItem, driverItem] : [saleItem];
 
       const saleRecord: any = {
         customerId: customer!.id,
         customerName,
         customerPhone,
         category: 'Consultation',
-        items: [saleItem],
+        items: saleItems,
         itemDescription: title.trim() || 'Consultation',
         quantity: hours,
         price: hourlyRate,
@@ -179,7 +197,8 @@ export default function ConsultationBookingWindow() {
         consultationHours: hours,
         consultationType: locationType,
         consultationAddress: locationType === 'athome' ? address.trim() : undefined,
-        laborCost: totalCost,
+        driverFee: driverFee > 0 ? driverFee : undefined,
+        laborCost: laborCost,
         partCosts: 0,
         totals: { subTotal: totalCost, tax: 0, total: totalCost, remaining: totalCost },
         total: totalCost,
@@ -459,7 +478,7 @@ export default function ConsultationBookingWindow() {
                 type="radio"
                 name="locationType"
                 checked={locationType === 'instore'}
-                onChange={() => setLocationType('instore')}
+                onChange={() => handleLocationChange('instore')}
                 className="accent-blue-500 w-4 h-4"
               />
               <span className="text-sm font-medium">In-Store</span>
@@ -469,7 +488,7 @@ export default function ConsultationBookingWindow() {
                 type="radio"
                 name="locationType"
                 checked={locationType === 'athome'}
-                onChange={() => setLocationType('athome')}
+                onChange={() => handleLocationChange('athome')}
                 className="accent-blue-500 w-4 h-4"
               />
               <span className="text-sm font-medium">At-Home / On-Site</span>
@@ -516,9 +535,32 @@ export default function ConsultationBookingWindow() {
               />
             </div>
             <div className="text-right">
-              <div className="text-xs text-zinc-400 mb-1">Estimated Total</div>
-              <div className="text-xl font-bold text-[#39FF14]">${totalCost.toFixed(2)}</div>
+              <div className="text-xs text-zinc-400 mb-1">Labor</div>
+              <div className="text-base font-semibold text-zinc-200">${laborCost.toFixed(2)}</div>
             </div>
+          </div>
+          {locationType === 'athome' && (
+            <div className="mt-3 pt-3 border-t border-zinc-700 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-zinc-300">Driver / On-Site Visit Fee</span>
+                <span className="text-xs text-zinc-500">(auto-applied for at-home calls)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  className="w-20 bg-yellow-100 text-black border border-zinc-600 rounded px-2 py-1 text-sm text-right focus:border-blue-400 focus:outline-none"
+                  value={driverFee}
+                  onChange={e => setDriverFee(Math.max(0, Number(e.target.value) || 0))}
+                />
+              </div>
+            </div>
+          )}
+          <div className="mt-3 pt-3 border-t border-zinc-700 flex items-center justify-between">
+            <span className="text-sm font-semibold text-zinc-300">Estimated Total</span>
+            <span className="text-xl font-bold text-[#39FF14]">${totalCost.toFixed(2)}</span>
           </div>
         </section>
 

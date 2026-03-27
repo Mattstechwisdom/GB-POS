@@ -18,7 +18,6 @@ interface Props {
 
 const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange }) => {
   const [techs, setTechs] = useState<any[]>([]);
-  const [showAdmin, setShowAdmin] = useState(false);
   useEffect(() => {
     let mounted = true;
     const refresh = async () => {
@@ -33,74 +32,9 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
   }, []);
   return (
     <form className="flex flex-col gap-3">
-      {/* Admin dropdown moved here and centered; dropdown opens same width below */}
-      <div className="w-full flex items-center justify-center">
-        <div className="relative w-48">
-          <button
-            type="button"
-            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm"
-            onClick={() => setShowAdmin(v => !v)}
-          >Admin ▾</button>
-          {showAdmin && (
-            <div className="absolute left-0 top-full mt-2 w-full bg-zinc-900 border border-zinc-700 rounded shadow-lg z-50">
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                const openRoute = () => {
-                  const url = window.location.origin + '/?repairCategories=true&mode=admin';
-                  window.open(url, '_blank', 'width=900,height=600');
-                };
-                try {
-                  const api = (window as any).api;
-                  if (api?.openRepairCategories) await api.openRepairCategories();
-                  else openRoute();
-                } catch { openRoute(); }
-              }}>Devices/Repairs</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { await (window as any).api.openInventory?.(); }
-                catch { window.open(window.location.origin + '/?inventory=true', '_blank', 'width=1280,height=800'); }
-              }}>Inventory</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { await (window as any).api.openProducts?.(); }
-                catch { const url = window.location.origin + '/?products=true'; window.open(url, '_blank', 'width=1280,height=800'); }
-              }}>Products</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); }
-                catch (e) { console.error(e); }
-              }}>Reports</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                const openRoute = () => { const url = window.location.origin + '/?backup=true'; window.open(url, '_blank', 'noopener,noreferrer'); };
-                try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else openRoute(); }
-                catch (e) { console.error(e); openRoute(); }
-              }}>Data Management</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try {
-                  const api = (window as any).api;
-                  if (api?.openNotificationSettings) await api.openNotificationSettings();
-                  else {
-                    const url = window.location.origin + '/?notificationSettings=true';
-                    window.open(url, '_blank', 'width=820,height=720');
-                  }
-                } catch (e) {
-                  console.error(e);
-                  try {
-                    const url = window.location.origin + '/?notificationSettings=true';
-                    window.open(url, '_blank', 'width=820,height=720');
-                  } catch {}
-                }
-              }}>Notifications</button>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-zinc-800" onClick={async () => {
-                setShowAdmin(false);
-                try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); }
-                catch (e) { console.error(e); }
-              }}>Dev Menu</button>
-            </div>
-          )}
-        </div>
+      {/* App title above logo */}
+      <div className="w-full flex items-center justify-center pt-1 pb-0">
+        <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
       </div>
       {/* Logo: smaller, centered, no border/background */}
       <div className="w-full mb-2 flex items-center justify-center">
