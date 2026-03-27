@@ -117,6 +117,25 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         >
           Quick Sale
         </button>
+
+        <button
+          className="px-4 py-2 bg-blue-600 text-white font-semibold rounded shadow-sm border border-blue-500 hover:bg-blue-500 text-sm"
+          onClick={async () => {
+            try {
+              const api = (window as any).api;
+              if (api && typeof api.openConsultation === 'function') {
+                await api.openConsultation();
+                return;
+              }
+              alert('Consultation booking requires the desktop app (update needed).');
+            } catch (e) {
+              console.error('openConsultation failed', e);
+              try { alert('Consultation booking failed to open. See console.'); } catch {}
+            }
+          }}
+        >
+          Consultation
+        </button>
       </div>
       <div className="flex items-center gap-3">
         <button

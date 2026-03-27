@@ -133,6 +133,92 @@ const ComboInput: React.FC<{ value: string; onChange: (v: string) => void; optio
   );
 };
 
+// Client search bar — lets the user pick an existing customer to pre-fill quote fields
+type ClientSearchBarProps = {
+  onSelect: (c: { firstName?: string; lastName?: string; phone?: string; email?: string }) => void;
+};
+const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect }) => {
+  const [query, setQuery] = React.useState('');
+  const [results, setResults] = React.useState<any[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [selected, setSelected] = React.useState<any | null>(null);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const search = React.useCallback(async (q: string) => {
+    const v = q.trim();
+    if (!v) { setResults([]); return; }
+    setBusy(true);
+    try {
+      const all = await (window as any).api.dbGet('customers').catch(() => []);
+      const digits = v.replace(/\D/g, '');
+      const vl = v.toLowerCase();
+      const filtered = (Array.isArray(all) ? all : []).filter((c: any) => {
+        const full = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+        if (full.includes(vl)) return true;
+        if (digits && String(c.phone || '').replace(/\D/g, '').includes(digits)) return true;
+        return false;
+      });
+      setResults(filtered.slice(0, 8));
+    } catch { setResults([]); } finally { setBusy(false); }
+  }, []);
+
+  const handleChange = (v: string) => {
+    setQuery(v);
+    setSelected(null);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => search(v), 200);
+  };
+
+  const pick = (c: any) => {
+    setSelected(c);
+    setQuery('');
+    setResults([]);
+    const name = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+    onSelect({ firstName: c.firstName, lastName: c.lastName, phone: c.phone || '', email: c.email || '' });
+    // Update query display to selected name
+    setQuery(name);
+  };
+
+  const clear = () => { setSelected(null); setQuery(''); setResults([]); };
+
+  return (
+    <div className="relative mb-1">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-sm pr-6 focus:border-blue-400 focus:outline-none placeholder-zinc-500"
+            placeholder="Look up existing client by name or phone…"
+            value={query}
+            onChange={e => handleChange(e.target.value)}
+          />
+          {busy && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500">…</span>}
+        </div>
+        {selected && (
+          <button
+            className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 whitespace-nowrap"
+            onClick={clear}
+            title="Clear selection"
+          >Clear</button>
+        )}
+      </div>
+      {results.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-40 overflow-auto">
+          {results.map((c: any) => (
+            <button
+              key={c.id}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-700 flex items-center justify-between"
+              onMouseDown={e => { e.preventDefault(); pick(c); }}
+            >
+              <span>{`${c.firstName || ''} ${c.lastName || ''}`.trim()}</span>
+              {c.phone && <span className="text-xs text-zinc-400 ml-2">{formatPhone(c.phone) || c.phone}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Simple autosave with debounce
 function useAutosave<T>(value: T, cb: () => void, opts?: { debounceMs?: number; enabled?: boolean }) {
   useEffect(() => {
@@ -5368,6 +5454,14 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         {mode === 'sales' && (
           <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
+            <ClientSearchBar
+              onSelect={(c) => setSales((s) => ({
+                ...s,
+                customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
+                customerPhone: c.phone || '',
+                customerEmail: c.email || '',
+              }))}
+            />
             <div className="grid grid-cols-3 gap-3">
               <Field label="Customer Name" value={sales.customerName} onChange={(v) => setSales((s) => ({ ...s, customerName: v }))} />
               <Field label="Customer Phone" value={sales.customerPhone} onChange={(v) => setSales((s) => ({ ...s, customerPhone: v }))} />
@@ -5669,6 +5763,14 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         {mode === 'repairs' && (
           <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
+            <ClientSearchBar
+              onSelect={(c) => setRepairs((s) => ({
+                ...s,
+                customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
+                customerPhone: c.phone || '',
+                customerEmail: c.email || '',
+              }))}
+            />
             <div className="grid grid-cols-3 gap-3">
               <Field label="Customer Name" value={repairs.customerName} onChange={(v) => setRepairs((s) => ({ ...s, customerName: v }))} />
               <Field label="Customer Phone" value={repairs.customerPhone} onChange={(v) => setRepairs((s) => ({ ...s, customerPhone: v }))} />

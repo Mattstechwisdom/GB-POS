@@ -13,7 +13,7 @@ interface Props {
 
 const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true }) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer || {});
-  const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'all'>('all');
+  const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'quotes'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
@@ -182,9 +182,19 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 title="Show sales only"
               >Sales</button>
               <button
+                className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='quotes' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
+                onClick={() => setHistoryMode('quotes')}
+                title="Show quotes only"
+              >Quotes</button>
+              <button
+                className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='consultations' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
+                onClick={() => setHistoryMode('consultations')}
+                title="Show consultations only"
+              >Consultations</button>
+              <button
                 className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='all' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
                 onClick={() => setHistoryMode('all')}
-                title="Show both work orders and sales"
+                title="Show everything"
               >All</button>
             </div>
             {/* Combined list with pagination */}
@@ -243,26 +253,38 @@ function saleMatchesCustomer(sale: any, customer: any) {
   return false;
 }
 
-const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'workorders'|'sales'|'all' }> = ({ customer, mode }) => {
+const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'workorders'|'sales'|'quotes'|'consultations'|'all' }> = ({ customer, mode }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
+  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<{ type: 'workorder'|'sale'; id: number } | null>(null);
+  const [selected, setSelected] = useState<{ type: 'workorder'|'sale'|'consultation'|'quote'; id: number } | null>(null);
 
   const customerId = Number((customer as any)?.id || 0);
 
   const load = useCallback(async () => {
     const hasIdentity = !!customerId || !!normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`) || !!normalizeCustomerPhone((customer as any)?.phone);
-    if (!hasIdentity) { setOrders([]); setSales([]); return; }
+    if (!hasIdentity) { setOrders([]); setSales([]); setQuoteFiles([]); return; }
     try {
-      const [wo, allSales] = await Promise.all([
+      const [wo, allSales, allQuoteFiles] = await Promise.all([
         customerId ? (window as any).api.findWorkOrders({ customerId }).catch(() => []) : Promise.resolve([]),
         (window as any).api.dbGet('sales').catch(() => []),
+        (window as any).api.dbGet('quoteFiles').catch(() => []),
       ]);
       setOrders(Array.isArray(wo) ? wo : []);
       setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, customer)));
+      // filter quoteFiles by this customer
+      const cid = customerId;
+      const nameNorm = normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`);
+      const phoneNorm = normalizeCustomerPhone((customer as any)?.phone);
+      setQuoteFiles((Array.isArray(allQuoteFiles) ? allQuoteFiles : []).filter((q: any) => {
+        if (cid && q.customerId === cid) return true;
+        const qName = normalizeCustomerName(q.customerName);
+        const qPhone = normalizeCustomerPhone(q.customerPhone);
+        return (!!nameNorm && qName === nameNorm) && (!!phoneNorm ? qPhone === phoneNorm : true);
+      }));
     } catch (e) {
-      setOrders([]); setSales([]);
+      setOrders([]); setSales([]); setQuoteFiles([]);
     }
   }, [customer, customerId]);
 
@@ -286,45 +308,59 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
         label: o.productDescription || o.productCategory || '',
         amountDue: total - paid,
         total: total,
+        filePath: undefined as string | undefined,
       };
     });
     const s = (sales || []).map((x: any) => {
       const total = Number(x.totals?.total || x.total || 0);
       const paid = Number(x.amountPaid || 0);
       const firstDesc = (Array.isArray(x.items) && x.items[0]?.description) || x.itemDescription || '';
+      const isConsultation = String(x.category || '').toLowerCase() === 'consultation';
       return {
         key: `sale-${x.id}`,
         id: x.id,
-        type: 'sale' as const,
+        type: isConsultation ? 'consultation' as const : 'sale' as const,
         date: (x.createdAt || x.checkInAt || '').toString().split('T')[0] || '',
         label: firstDesc,
         amountDue: total - paid,
         total: total,
+        filePath: undefined as string | undefined,
       };
     });
-    let merged = [...w, ...s];
+    const q = (quoteFiles || []).map((qf: any) => ({
+      key: `quote-${qf.id}`,
+      id: qf.id,
+      type: 'quote' as const,
+      date: (qf.createdAt || '').toString().split('T')[0] || '',
+      label: qf.title || 'Quote',
+      amountDue: 0,
+      total: 0,
+      filePath: qf.filePath as string | undefined,
+    }));
+    let merged = [...w, ...s, ...q];
     merged.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
     if (mode === 'workorders') merged = merged.filter(r => r.type === 'workorder');
     if (mode === 'sales') merged = merged.filter(r => r.type === 'sale');
+    if (mode === 'quotes') merged = merged.filter(r => r.type === 'quote');
+    if (mode === 'consultations') merged = merged.filter(r => r.type === 'consultation');
     return merged;
-  }, [orders, sales, mode]);
+  }, [orders, sales, quoteFiles, mode]);
 
   const totalPages = Math.max(1, Math.ceil((rows.length || 0) / PAGE_SIZE));
   const pageSafe = Math.min(Math.max(1, page), totalPages);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
   const paged = useMemo(() => rows.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE), [rows, pageSafe]);
 
-  // Delete selected row (work order or sale) with confirmation
+  // Delete selected row with confirmation
   const handleDeleteSelected = useCallback(async () => {
     if (!selected) return;
-    const isSale = selected.type === 'sale';
-    const label = isSale ? 'sale' : 'work order';
-    const confirmed = window.confirm(`Delete this ${label} #${selected.id}? This cannot be undone.`);
+    const typeLabel = selected.type === 'sale' ? 'sale' : selected.type === 'consultation' ? 'consultation' : selected.type === 'quote' ? 'quote' : 'work order';
+    const confirmed = window.confirm(`Delete this ${typeLabel} #${selected.id}? This cannot be undone.`);
     if (!confirmed) return;
     try {
-      await (window as any).api.dbDelete(isSale ? 'sales' : 'workOrders', selected.id);
+      const collection = selected.type === 'workorder' ? 'workOrders' : selected.type === 'quote' ? 'quoteFiles' : 'sales';
+      await (window as any).api.dbDelete(collection, selected.id);
       setSelected(null);
-      // Reload immediately; change events will also fire
       await load();
     } catch (e) {
       console.error('Delete failed', e);
@@ -357,16 +393,23 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
                   onDoubleClick={async () => {
                     if (r.type === 'workorder') {
                       await (window as any).api.openNewWorkOrder({ workOrderId: r.id });
+                    } else if (r.type === 'quote') {
+                      if (r.filePath) { try { await (window as any).api.openFile(r.filePath); } catch {} }
                     } else {
                       await (window as any).api.openNewSale({ id: r.id });
                     }
                   }}
                 >
                   <td className="px-2 py-1">{r.date}</td>
-                  <td className="px-2 py-1">{r.type === 'workorder' ? 'Work Order' : 'Sale'}</td>
+                  <td className="px-2 py-1">
+                    {r.type === 'workorder' ? 'Work Order'
+                      : r.type === 'consultation' ? 'Consultation'
+                      : r.type === 'quote' ? 'Quote'
+                      : 'Sale'}
+                  </td>
                   <td className="px-2 py-1 truncate" title={r.label}>{r.label}</td>
-                  <td className="px-2 py-1">${r.amountDue.toFixed(2)}</td>
-                  <td className="px-2 py-1">${r.total.toFixed(2)}</td>
+                  <td className="px-2 py-1">{r.type === 'quote' ? '—' : `$${r.amountDue.toFixed(2)}`}</td>
+                  <td className="px-2 py-1">{r.type === 'quote' ? '—' : `$${r.total.toFixed(2)}`}</td>
                 </tr>
               ))}
             </tbody>

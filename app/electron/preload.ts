@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   openCustomerOverview: (customerId: number): Promise<any> => ipcRenderer.invoke('open-customer-overview', customerId),
   openNewSale: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-sale', payload),
   openQuickSale: (): Promise<any> => ipcRenderer.invoke('open-quick-sale'),
+  openConsultation: (): Promise<any> => ipcRenderer.invoke('open-consultation'),
   openCheckout: (payload: { amountDue: number }): Promise<any> => ipcRenderer.invoke('workorder:openCheckout', payload),
   openDevMenu: (): Promise<any> => ipcRenderer.invoke('open-dev-menu'),
   devOpenUserDataFolder: (): Promise<any> => ipcRenderer.invoke('dev:openUserDataFolder'),

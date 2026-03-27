@@ -3250,6 +3250,39 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
   return { ok: true };
 });
 
+// IPC handler for opening a Consultation Booking window
+ipcMain.handle('open-consultation', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 820,
+    height: 700,
+    minWidth: 760,
+    minHeight: 600,
+    resizable: true,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Book Consultation'),
+  });
+  showWindowFast(child, () => { centerWindow(child); });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev
+    ? `${DEV_SERVER_URL}/?consultation=1&t=${Date.now()}`
+    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?consultation=1`;
+  child.loadURL(url).catch((e: any) => console.error('[Consultation] loadURL failed', e));
+  return { ok: true };
+});
+
 // Checkout window handler
 ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue: number }) => {
   return new Promise(resolve => {

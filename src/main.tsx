@@ -39,6 +39,7 @@ const loadQuoteGeneratorWindow = () => import('./components/QuoteGeneratorWindow
 const QuoteGeneratorWindow = lazy(loadQuoteGeneratorWindow);
 const loadQuickSaleWindow = () => import('./components/QuickSaleWindow');
 const QuickSaleWindow = lazy(loadQuickSaleWindow);
+const ConsultationBookingWindow = lazy(() => import('./components/ConsultationBookingWindow'));
 const EODWindow = lazy(() => import('./components/EODWindow'));
 const NotificationsWindow = lazy(() => import('./components/NotificationsWindow'));
 const NotificationSettingsWindow = lazy(() => import('./components/NotificationSettingsWindow'));
@@ -284,6 +285,8 @@ try {
 		renderWithSuspense(root, <SaleWindow />);
 	} else if (showQuickSale) {
 		renderWithSuspense(root, <QuickSaleWindow />);
+	} else if (params.get('consultation')) {
+		renderWithSuspense(root, <ConsultationBookingWindow />);
 	} else if (payload) {
 		renderWithSuspense(root, <NewWorkOrderWindow />);
 	} else {

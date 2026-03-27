@@ -56,7 +56,9 @@ export default function InventoryWindow() {
         _raw: p,
       }));
 
-      const repairRows: InventoryRow[] = (repairs as any[]).map((r: any) => ({
+      const repairRows: InventoryRow[] = (repairs as any[])
+        .filter((r: any) => Number(r.partCost || 0) > 0)
+        .map((r: any) => ({
         id: r.id,
         kind: 'repair',
         name: r.title || r.altDescription || '(unnamed)',
@@ -82,6 +84,19 @@ export default function InventoryWindow() {
     if (tab === 'repairs') return r.kind === 'repair';
     return true;
   });
+
+  // Build sorted category groups from the filtered rows
+  const groups = (() => {
+    const map = new Map<string, InventoryRow[]>();
+    for (const r of filteredRows) {
+      const cat = r.category || (r.kind === 'repair' ? 'Uncategorized' : 'Other');
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(r);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([category, rows]) => ({ category, rows }));
+  })();
 
   const getEdit = (r: InventoryRow) => edits[rowKey(r)] ?? {};
   const mergedRow = (r: InventoryRow): InventoryRow => ({ ...r, ...getEdit(r) } as InventoryRow);
@@ -198,17 +213,24 @@ export default function InventoryWindow() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="text-zinc-400 text-xs uppercase border-b border-zinc-700">
-                <th className="text-left pb-2 pr-3 font-medium w-[30%]">Item</th>
-                <th className="text-left pb-2 pr-3 font-medium w-[15%]">Category</th>
-                <th className="text-center pb-2 pr-3 font-medium w-[8%]">Type</th>
+                <th className="text-left pb-2 pr-3 font-medium w-[38%]">Item</th>
+                <th className="text-center pb-2 pr-3 font-medium w-[10%]">Type</th>
                 <th className="text-center pb-2 pr-3 font-medium w-[12%]">Track</th>
                 <th className="text-center pb-2 pr-3 font-medium w-[16%]">Stock</th>
                 <th className="text-center pb-2 pr-3 font-medium w-[12%]">Alert At</th>
-                <th className="text-center pb-2 font-medium w-[7%]">Save</th>
+                <th className="text-center pb-2 font-medium w-[12%]">Save</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {filteredRows.map(r => {
+            <tbody>
+              {groups.map(({ category: groupCat, rows: groupRows }) => (
+                <React.Fragment key={groupCat}>
+                  <tr className="bg-zinc-800/70 border-t border-zinc-700">
+                    <td colSpan={6} className="px-3 py-1.5 text-xs font-semibold text-zinc-300 uppercase tracking-wide">
+                      {groupCat}
+                      <span className="ml-2 font-normal text-zinc-500 normal-case">({groupRows.length})</span>
+                    </td>
+                  </tr>
+                  {groupRows.map(r => {
                 const m = mergedRow(r);
                 const k = rowKey(r);
                 const low = isLow(m);
@@ -218,7 +240,7 @@ export default function InventoryWindow() {
                 return (
                   <tr
                     key={k}
-                    className={`transition-colors ${
+                    className={`transition-colors border-b border-zinc-800 ${
                       low
                         ? 'bg-red-950/40 hover:bg-red-950/60'
                         : 'hover:bg-zinc-800/50'
@@ -226,22 +248,19 @@ export default function InventoryWindow() {
                   >
                     {/* Item name */}
                     <td className="py-2 pr-3">
-                      <div className="font-medium truncate max-w-[260px]" title={m.name}>{m.name}</div>
+                      <div className="font-medium truncate max-w-[300px]" title={m.name}>{m.name}</div>
                       {m.kind === 'repair' && m.orderSourceUrl && (
                         <a
                           href={m.orderSourceUrl}
                           target="_blank"
                           rel="noreferrer noopener"
-                          className="text-xs text-blue-400 hover:underline truncate block max-w-[260px]"
+                          className="text-xs text-blue-400 hover:underline truncate block max-w-[300px]"
                           title={m.orderSourceUrl}
                         >
                           {m.orderSourceUrl}
                         </a>
                       )}
                     </td>
-
-                    {/* Category */}
-                    <td className="py-2 pr-3 text-zinc-400 truncate max-w-[130px]" title={m.category}>{m.category}</td>
 
                     {/* Type badge */}
                     <td className="py-2 pr-3 text-center">
@@ -318,6 +337,8 @@ export default function InventoryWindow() {
                   </tr>
                 );
               })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>
