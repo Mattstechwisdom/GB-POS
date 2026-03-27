@@ -1,6 +1,72 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+
+type DeviceItem = { id?: number; name: string; title?: string };
+
+interface AccordionProps {
+  groupedDevices: Array<[string, DeviceItem[]]>;
+  selectedDeviceId: number | undefined;
+  expandedCategories: Set<string>;
+  onToggle: (title: string) => void;
+  onSelect: (d: DeviceItem) => void;
+  onContextMenu: (e: React.MouseEvent, d: DeviceItem) => void;
+}
+
+const DeviceAccordion = React.memo(function DeviceAccordion({
+  groupedDevices, selectedDeviceId, expandedCategories, onToggle, onSelect, onContextMenu,
+}: AccordionProps) {
+  if (groupedDevices.length === 0) {
+    return <div className="p-4 text-center text-zinc-500 text-sm">No devices yet</div>;
+  }
+  return (
+    <>
+      {groupedDevices.map(([catTitle, catDevices]) => {
+        const isOpen = expandedCategories.has(catTitle);
+        return (
+          <div key={catTitle} className="border-b border-zinc-700 last:border-b-0">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-left text-sm font-medium text-gray-100 focus:outline-none focus:bg-zinc-700"
+              style={{ background: isOpen ? '#27272a' : undefined }}
+              onClick={() => onToggle(catTitle)}
+            >
+              <span>{catTitle}</span>
+              <span className="flex items-center gap-2 text-xs text-zinc-400">
+                <span>{catDevices.length} device{catDevices.length !== 1 ? 's' : ''}</span>
+                <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
+            {isOpen && (
+              <div className="bg-zinc-900">
+                {catDevices.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((d, idx) => (
+                  <div
+                    key={(d.id ?? idx) + '-' + d.name}
+                    className={`flex items-center justify-between px-4 py-1.5 cursor-pointer border-l-2 text-sm ${
+                      selectedDeviceId !== undefined && d.id === selectedDeviceId
+                        ? 'border-l-[#39FF14] bg-zinc-800/60 text-white'
+                        : 'border-l-transparent hover:bg-zinc-800/40 text-zinc-300'
+                    }`}
+                    onClick={() => onSelect(d)}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, d); }}
+                    title="Click to load into fields for editing"
+                  >
+                    <span>{d.name}</span>
+                    {selectedDeviceId !== undefined && d.id === selectedDeviceId && (
+                      <span className="text-[#39FF14] text-xs">selected</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+});
 
 interface DeviceFormProps {
   onCancel: () => void;
@@ -18,14 +84,16 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  // Debounce ref so rapid typing doesn't trigger selection-lookup on every keystroke
+  const selectionDebounceRef = useRef<number | null>(null);
 
-  const toggleCategory = (title: string) => {
+  const toggleCategory = useCallback((title: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
       if (next.has(title)) next.delete(title); else next.add(title);
       return next;
     });
-  };
+  }, []);
 
   // Group devices by title
   const groupedDevices = useMemo(() => {
@@ -80,6 +148,25 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     const list = (devices || []).filter(d => (d.title || '').trim() === t).map(d => d.name).filter(Boolean) as string[];
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
   }, [devices, effectiveTitle]);
+
+  // Stable accordion callbacks — these don't change between renders so the
+  // memoized DeviceAccordion won't re-render just because deviceNameText changed.
+  const handleAccordionToggle = useCallback((catTitle: string) => {
+    toggleCategory(catTitle);
+    setTitleText(catTitle === '(No Category)' ? '' : catTitle);
+    setDeviceNameText('');
+    setSelectedDeviceId(undefined);
+  }, [toggleCategory]);
+
+  const handleAccordionSelect = useCallback((d: DeviceItem) => {
+    setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
+    setDeviceNameText(d.name || '');
+    setTitleText(d.title || '');
+  }, []);
+
+  const handleAccordionContextMenu = useCallback((e: React.MouseEvent, d: DeviceItem) => {
+    deviceCtx.openFromEvent(e, d);
+  }, [deviceCtx]);
 
   // Seed from initial props
   useEffect(() => {
@@ -183,13 +270,17 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
             onChange={e => {
               const v = e.target.value;
               setDeviceNameText(v);
-              const found = (devices || []).find(d => (d.name || '').trim().toLowerCase() === v.trim().toLowerCase());
-              if (found && typeof found.id === 'number') {
-                setSelectedDeviceId(found.id);
-                if (found.title) setTitleText(found.title);
-              } else {
-                setSelectedDeviceId(undefined);
-              }
+              // Debounce the selection lookup so rapid keystrokes don't cause
+              // the accordion to re-highlight on every character.
+              if (selectionDebounceRef.current !== null) window.clearTimeout(selectionDebounceRef.current);
+              selectionDebounceRef.current = window.setTimeout(() => {
+                selectionDebounceRef.current = null;
+                const found = devices.find(d =>
+                  (d.name || '').trim().toLowerCase() === v.trim().toLowerCase() &&
+                  (d.title || '').trim() === effectiveTitle
+                );
+                setSelectedDeviceId(found && typeof found.id === 'number' ? found.id : undefined);
+              }, 150);
             }}
             placeholder={effectiveTitle ? `e.g. a device within ${effectiveTitle}` : 'Type device name…'}
             className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
@@ -210,71 +301,14 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
           )}
         </div>
         <div className="overflow-y-auto flex-1">
-          {groupedDevices.length === 0 && (
-            <div className="p-4 text-center text-zinc-500 text-sm">No devices yet</div>
-          )}
-          {groupedDevices.map(([catTitle, catDevices]) => {
-            const isOpen = expandedCategories.has(catTitle);
-            return (
-              <div key={catTitle} className="border-b border-zinc-700 last:border-b-0">
-                {/* Category header button */}
-                <button
-                  type="button"
-                  className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-left text-sm font-medium text-gray-100 focus:outline-none focus:bg-zinc-700"
-                  style={{ background: isOpen ? '#27272a' : undefined }}
-                  onClick={() => {
-                    toggleCategory(catTitle);
-                    // Also load category into title field on click
-                    setTitleText(catTitle === '(No Category)' ? '' : catTitle);
-                    setDeviceNameText('');
-                    setSelectedDeviceId(undefined);
-                  }}
-                >
-                  <span>{catTitle}</span>
-                  <span className="flex items-center gap-2 text-xs text-zinc-400">
-                    <span>{catDevices.length} device{catDevices.length !== 1 ? 's' : ''}</span>
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </span>
-                </button>
-                {/* Devices within category */}
-                {isOpen && (
-                  <div className="bg-zinc-900">
-                    {catDevices.sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((d, idx) => (
-                      <div
-                        key={(d.id ?? idx) + '-' + d.name}
-                        className={`flex items-center justify-between px-4 py-1.5 cursor-pointer border-l-2 text-sm ${
-                          selectedDeviceId !== undefined && d.id === selectedDeviceId
-                            ? 'border-l-[#39FF14] bg-zinc-800/60 text-white'
-                            : 'border-l-transparent hover:bg-zinc-800/40 text-zinc-300'
-                        }`}
-                        onClick={() => {
-                          setSelectedDeviceId(typeof d.id === 'number' ? d.id : undefined);
-                          setDeviceNameText(d.name || '');
-                          setTitleText(d.title || '');
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          deviceCtx.openFromEvent(e, d);
-                        }}
-                        title="Click to load into fields for editing"
-                      >
-                        <span>{d.name}</span>
-                        {selectedDeviceId !== undefined && d.id === selectedDeviceId && (
-                          <span className="text-[#39FF14] text-xs">selected</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <DeviceAccordion
+            groupedDevices={groupedDevices}
+            selectedDeviceId={selectedDeviceId}
+            expandedCategories={expandedCategories}
+            onToggle={handleAccordionToggle}
+            onSelect={handleAccordionSelect}
+            onContextMenu={handleAccordionContextMenu}
+          />
         </div>
       </div>
 

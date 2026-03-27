@@ -60,8 +60,8 @@ function addDays(d: Date, days: number) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void }>
-  = ({ day, events, onPick, onEdit }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; isToday?: boolean }>
+  = ({ day, events, onPick, onEdit, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -99,7 +99,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) =
   return (
     <div className="p-2 h-full flex flex-col">
       <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
-        <div className="font-medium">{dayNum}</div>
+        <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
         <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>
           + Add
         </button>
@@ -620,7 +620,7 @@ const CalendarWindow: React.FC = () => {
           ))}
         </div>
   <div className="grid grid-cols-7 gap-1.5 mt-1.5 flex-1 overflow-hidden" style={{ gridAutoRows: '1fr' }}>
-          {monthDays.map((day, idx) => {
+          {(() => { const todayStr = fmtDate(new Date()); return monthDays.map((day, idx) => {
             const key = fmtDate(day);
             const isCurrentMonth = day.getMonth() === current.getMonth();
             return (
@@ -630,10 +630,11 @@ const CalendarWindow: React.FC = () => {
                   events={eventsByDay[key] || []}
                   onPick={onPick}
                   onEdit={onEdit}
+                  isToday={key === todayStr}
                 />
               </div>
             );
-          })}
+          }); })()}
         </div>
       </div>
 

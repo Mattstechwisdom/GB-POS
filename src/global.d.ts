@@ -12,14 +12,6 @@ declare global {
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
     storageEnsure: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string; isFirstRun?: boolean; migration?: any; error?: string }>;
     runDiagnostics: () => Promise<{ ok: boolean; dataRoot?: string; results?: any[]; error?: string }>;
-    updateCheck: () => Promise<any>;
-    updateDownload: () => Promise<any>;
-    updateQuitAndInstall: () => Promise<any>;
-    updateSkip: (version: string) => Promise<any>;
-    updateOpenReleases: () => Promise<any>;
-    updatePickInstallerAndRun: () => Promise<any>;
-    updateRunInstaller: (installerPath: string, opts?: { silent?: boolean }) => Promise<any>;
-    onUpdateEvent: (cb: (ev: any) => void) => () => void;
     getCustomers: () => Promise<any[]>;
     addCustomer: (c: any) => Promise<any>;
     findCustomers: (q: any) => Promise<any[]>;

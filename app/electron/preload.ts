@@ -7,19 +7,6 @@ contextBridge.exposeInMainWorld('api', {
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
   storageEnsure: (): Promise<any> => ipcRenderer.invoke('storage:ensure'),
   runDiagnostics: (): Promise<any> => ipcRenderer.invoke('diagnostics:run'),
-  // Updates
-  updateCheck: (): Promise<any> => ipcRenderer.invoke('update:check'),
-  updateDownload: (): Promise<any> => ipcRenderer.invoke('update:download'),
-  updateQuitAndInstall: (): Promise<any> => ipcRenderer.invoke('update:quitAndInstall'),
-  updateSkip: (version: string): Promise<any> => ipcRenderer.invoke('update:skip', version),
-  updateOpenReleases: (): Promise<any> => ipcRenderer.invoke('update:openReleases'),
-  updatePickInstallerAndRun: (): Promise<any> => ipcRenderer.invoke('update:pickInstallerAndRun'),
-  updateRunInstaller: (installerPath: string, opts?: { silent?: boolean }): Promise<any> => ipcRenderer.invoke('update:runInstaller', installerPath, opts),
-  onUpdateEvent: (cb: (ev: any) => void) => {
-    const handler = (_e: any, payload: any) => cb(payload);
-    ipcRenderer.on('update:event', handler);
-    return () => ipcRenderer.removeListener('update:event', handler);
-  },
   pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
   getCustomers: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'customers'),
   addCustomer: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'customers', c),

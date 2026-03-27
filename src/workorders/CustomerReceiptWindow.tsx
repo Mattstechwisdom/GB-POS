@@ -116,15 +116,19 @@ const CustomerReceiptWindow: React.FC = () => {
     const signalReady = async () => {
       try {
         await waitForImage();
+        // Race fonts.ready against a 100ms cap — system fonts resolve instantly,
+        // web fonts shouldn't block the print job.
         try {
           const fontSet = (document as any).fonts;
-          if (fontSet?.ready) await fontSet.ready;
+          if (fontSet?.ready) {
+            await Promise.race([
+              fontSet.ready,
+              new Promise<void>((r) => window.setTimeout(r, 100)),
+            ]);
+          }
         } catch {}
-        await new Promise<void>((resolve) => {
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => resolve());
-          });
-        });
+        // One rAF is enough to ensure the current paint cycle is flushed.
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       } finally {
         if (!cancelled) {
           try { (window as any).api?.notifyCustomerReceiptReady?.(); } catch {}
