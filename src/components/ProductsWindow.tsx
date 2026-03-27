@@ -107,7 +107,10 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     // Only reset the manual-edit flag when the user picks a *different* item,
     // not when the list refreshes after saving the currently-selected item.
     if (prevSelectedIdRef.current !== selectedId) {
-      setPriceManuallyEdited(false);
+      // Treat any price already stored in the DB as manually confirmed — prevent
+      // auto-calc from overwriting it when the item is (re-)loaded.
+      const hasStoredPrice = !!(found?.id) && typeof found?.price === 'number';
+      setPriceManuallyEdited(hasStoredPrice);
       prevSelectedIdRef.current = selectedId;
     }
   }, [selectedId, list]);

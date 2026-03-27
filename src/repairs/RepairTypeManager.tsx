@@ -109,12 +109,12 @@ export default function RepairTypeManager() {
       </div>
 
       {/* List */}
-      <div className="flex-1 border border-zinc-700 rounded overflow-hidden">
+      <div className="flex-1 border border-zinc-700 rounded overflow-hidden flex flex-col min-h-0">
         <div className="bg-zinc-800 px-3 py-2 text-sm font-semibold border-b border-zinc-700 flex items-center justify-between">
           <span>Repair Types</span>
           <span className="text-xs font-normal text-zinc-400">{types.length} defined</span>
         </div>
-        <div className="overflow-auto" style={{ maxHeight: '18rem' }}>
+        <div className="flex-1 overflow-auto">
           {types.length === 0 ? (
             <div className="p-6 text-center text-zinc-500 text-sm">
               No repair types defined yet. Add your first above.
