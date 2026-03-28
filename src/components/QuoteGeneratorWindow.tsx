@@ -4,6 +4,7 @@ import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
 import MoneyInput from './MoneyInput';
+import PercentInput from './PercentInput';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
@@ -4208,43 +4209,46 @@ function QuoteGeneratorWindow(): JSX.Element {
     const appleFamily = it.dynamic?.device ? `Apple ${it.dynamic.device}` : '';
     const deviceLabel = appleFamily || it.deviceType || 'Device';
 
-  // Objective & constraints
-  lines.push(`Write a professional, neutral, more detailed summary of the device (${deviceLabel}).`);
-  lines.push('Output exactly one paragraph with 5-7 sentences (do not exceed 7). Use plain, precise language.');
-  lines.push('Use every provided specification as-is and do not invent or infer any specifications, numbers, or version details that are not explicitly provided. If a spec is unknown, omit it.');
-  lines.push('Keep the description universal and model-agnostic: do not list features that are commonly associated with a specific brand, family, or device type unless they explicitly appear in the provided facts. Do not name proprietary technologies or hallmark features unless provided.');
-  lines.push('You may describe general qualities applicable to any device (e.g., build, portability, display size/clarity, performance, battery condition) only when those qualities are supported by the provided facts.');
-  lines.push('Strictly avoid calls to action, pricing, availability, store/customer references, warranties, or subjective hype. Never contradict provided details.');
-    lines.push('Facts you can use:');
+    // Collect confirmed specs
+    const confirmedSpecs: Array<[string, string]> = [];
+    const addSpec = (label: string, val: any) => {
+      const sv = sanitizeVal(val);
+      if (sv) confirmedSpecs.push([label, sv]);
+    };
 
-    const facts: Array<[string, string | undefined]> = [
-      ['Device Type', it.deviceType],
-      ['Apple Family', it.dynamic?.device],
-      ['Model', it.model],
-      ['Condition', it.condition],
-    ];
-    // Include dynamic spec fields (OS, CPU, RAM, Storage, Color, etc.)
+    addSpec('Device Type', deviceLabel);
+    addSpec('Brand', it.brand);
+    addSpec('Model', it.model);
+    addSpec('Condition', it.condition);
     if (it.dynamic) {
       Object.entries(it.dynamic).forEach(([k, v]) => {
-        if (k === 'device') return; // already surfaced as Apple Family
-        if (/image/i.test(k)) return; // skip any image keys
-        if (/price/i.test(k)) return; // skip price-related keys
-        if (isImageLike(v)) return; // skip data URLs or image URLs
-        if (isPriceLike(v)) return; // skip numeric/price values
-        facts.push([k, sanitizeVal(v)]);
+        if (k === 'device') return;
+        if (/image/i.test(k)) return;
+        if (/price/i.test(k)) return;
+        if (isImageLike(v)) return;
+        if (isPriceLike(v)) return;
+        addSpec(k, v);
       });
     }
-    if (it.accessories) facts.push(['Accessories', it.accessories]);
+    if (it.accessories) addSpec('Accessories', it.accessories);
 
-    facts.forEach(([k, v]) => {
-      const sv = sanitizeVal(v);
-      if (!sv) return;
-      lines.push(`- ${k}: ${sv}`);
-    });
+    const specBlock = confirmedSpecs.map(([k, v]) => `  - ${k}: ${v}`).join('\n');
+    const modelLine = title !== (it.deviceType || 'Device') ? `"${title}"` : `a ${deviceLabel}`;
 
-  // Style & format
-  lines.push('Style: comprehensive yet concise; work all relevant facts naturally into the 5-7 sentence paragraph without extrapolation.');
-  lines.push('Output format: exactly one paragraph (max 7 sentences), no title/heading, no bullets or numbered lists, no emojis, no calls to action.');
+    lines.push(`You are writing an enthusiastic sales description for ${modelLine} that we are selling to a customer.`);
+    lines.push('');
+    lines.push('== CONFIRMED SPECS (treat these as absolute truth) ==');
+    lines.push(specBlock);
+    lines.push('');
+    lines.push('== YOUR TASK ==');
+    lines.push(`1. Use your training knowledge to research the real-world highlights of the ${title}. Pull in genuine fun facts, standout features, awards, build quality, display quality, performance reputation, battery life, target audience, or anything that makes this specific model noteworthy and exciting.`);
+    lines.push('2. CRITICAL – spec consistency: ONLY mention facts from your research that are COMPATIBLE with the confirmed specs above. If a confirmed spec (e.g., "Storage: 1TB SSD") differs from a common variant (e.g., the model also shipped with 256GB), do NOT mention the conflicting variant. Every researched claim must align with or be silent about any confirmed spec.');
+    lines.push('3. Blend the confirmed specs naturally into the paragraph — do not just list them.');
+    lines.push('4. Write with energy, genuine excitement, and upsell appeal. Highlight what makes this device special and why the customer should be excited to own it.');
+    lines.push('5. Do NOT mention pricing, store names, warranties, or direct calls to action.');
+    lines.push('');
+    lines.push('== OUTPUT FORMAT ==');
+    lines.push('Exactly one paragraph, 5–7 sentences, no heading/title, no bullet points, no emojis.');
 
     return lines.join('\n');
   }
@@ -5683,70 +5687,36 @@ function QuoteGeneratorWindow(): JSX.Element {
                             <div className="text-[10px] text-zinc-400 mt-0.5">Optional link to supplier or reference</div>
                           </div>
                           <div className="col-span-4 mt-2">
-                            <label className="block text-xs text-zinc-400 mb-1">Price</label>
-                            <MoneyInput
-                              className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
-                              value={Number(it.price || 0) || 0}
-                              onValueChange={(v) => setSales((s) => ({
-                                ...s,
-                                items: s.items.map((x, i) => (i === idx ? { ...x, price: Number(v || 0) } : x)),
-                              }))}
-                              placeholder="0.00"
-                            />
-                            <div className="text-[10px] text-zinc-400 mt-0.5">Printed total is before tax</div>
-                            {/* Markup % helper */}
-                            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                              <span className="text-[10px] text-zinc-500 whitespace-nowrap">Cost →</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={it.internalCost ?? ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, internalCost: e.target.value } : x)) }))}
-                                placeholder="0.00"
-                                className="w-18 bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
-                                style={{ width: '4.5rem' }}
-                              />
-                              <select
-                                value={it.markupPct ?? ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, markupPct: e.target.value } : x)) }))}
-                                className="bg-zinc-800 border border-zinc-600 rounded px-1 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
-                              >
-                                <option value="">— % —</option>
-                                <option value="5">5%</option>
-                                <option value="10">10%</option>
-                                <option value="15">15%</option>
-                                <option value="20">20%</option>
-                                <option value="25">25%</option>
-                                <option value="30">30%</option>
-                                <option value="40">40%</option>
-                                <option value="50">50%</option>
-                                <option value="100">100%</option>
-                              </select>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.1"
-                                value={it.markupPct ?? ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, markupPct: e.target.value } : x)) }))}
-                                placeholder="%"
-                                className="bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-xs focus:border-[#39FF14] focus:outline-none"
-                                style={{ width: '3rem' }}
-                              />
-                              <button
-                                type="button"
-                                disabled={!it.internalCost || !it.markupPct}
-                                onClick={() => {
-                                  const cost = Number(it.internalCost || 0);
-                                  const pct = Number(it.markupPct || 0);
-                                  if (cost > 0 && pct > 0) {
-                                    const price = Math.round(cost * (1 + pct / 100) * 100) / 100;
-                                    setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, price } : x)) }));
-                                  }
-                                }}
-                                className="px-1.5 py-0.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-[10px] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                              >→ Set Price</button>
+                            <div className="flex gap-2 items-end">
+                              <div className="flex-1">
+                                <label className="block text-xs text-zinc-400 mb-1">Cost (pre-markup)</label>
+                                <MoneyInput
+                                  className="w-full bg-yellow-200 text-black border border-yellow-400 rounded px-2 py-1 text-sm"
+                                  value={Number(it.internalCost || 0) || 0}
+                                  onValueChange={(v) => {
+                                    const cost = Number(v || 0);
+                                    const pct = Number(it.markupPct || 0);
+                                    const price = cost > 0 && pct > 0 ? Math.round(cost * (1 + pct / 100) * 100) / 100 : cost;
+                                    setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, internalCost: v, price } : x)) }));
+                                  }}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <div className="w-24">
+                                <label className="block text-xs text-zinc-400 mb-1">Markup %</label>
+                                <PercentInput
+                                  value={it.markupPct ?? ''}
+                                  onChange={(pct) => {
+                                    const cost = Number(it.internalCost || 0);
+                                    const p = Number(pct || 0);
+                                    const price = cost > 0 && p > 0 ? Math.round(cost * (1 + p / 100) * 100) / 100 : cost;
+                                    setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, markupPct: pct, price } : x)) }));
+                                  }}
+                                  presets={[5, 10, 15, 20, 25, 30, 40, 50, 75, 100]}
+                                />
+                              </div>
                             </div>
+                            {(() => { const cost = Number(it.internalCost || 0); const pct = Number(it.markupPct || 0); const price = Number(it.price || 0); return cost > 0 && pct > 0 && price > 0 ? (<div className="text-[10px] text-[#39FF14] mt-1">Sell price: ${price.toFixed(2)} (before tax)</div>) : (<div className="text-[10px] text-zinc-400 mt-1">Printed total is before tax</div>); })()}
                           </div>
                         </div>
                         )}
