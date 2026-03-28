@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
+import MoneyInput from '@/components/MoneyInput';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
@@ -323,12 +324,14 @@ const SaleWindow: React.FC = () => {
     const laborCost = 0;
     const taxRate = Number(sale.taxRate || 0) || 0;
     const amountPaid = Number(sale.amountPaid || 0) || 0;
+    const discount = Number(sale.discount || 0) || 0;
 
     // Consultation items are NOT taxed.
-    const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
+    const discountedTotal = round2(Math.max(0, partCosts - discount));
+    const taxableParts = Math.max(0, discountedTotal - (Number(consultationTotal || 0) || 0));
     const subTotal = round2(partCosts);
     const tax = round2(taxableParts * taxRate / 100);
-    const totalWithTax = round2(subTotal + tax);
+    const totalWithTax = round2(discountedTotal + tax);
     const remaining = Math.max(0, round2(totalWithTax - amountPaid));
     const totals = { subTotal, tax, total: totalWithTax, remaining };
 
@@ -348,7 +351,7 @@ const SaleWindow: React.FC = () => {
       }
       return { ...s, partCosts, laborCost, totals };
     });
-  }, [total, consultationTotal, sale.taxRate, sale.amountPaid]);
+  }, [total, consultationTotal, sale.taxRate, sale.amountPaid, sale.discount]);
 
   // Per-item internal cost editing and pricing handled inside SaleItemsTable edit flow.
 
@@ -712,10 +715,12 @@ const SaleWindow: React.FC = () => {
 
         const partCosts = Number(total || 0) || 0;
         const taxRate = Number(sale.taxRate || 0) || 0;
-        const taxableParts = Math.max(0, partCosts - (Number(consultationTotal || 0) || 0));
+        const discount = Number(sale.discount || 0) || 0;
+        const discountedTotal = round2(Math.max(0, partCosts - discount));
+        const taxableParts = Math.max(0, discountedTotal - (Number(consultationTotal || 0) || 0));
         const subTotal = round2(partCosts);
         const tax = round2(taxableParts * taxRate / 100);
-        const totalWithTax = round2(subTotal + tax);
+        const totalWithTax = round2(discountedTotal + tax);
         const remaining = Math.max(0, round2(totalWithTax - (Number(newAmountPaid || 0) || 0)));
         const updatedTotals = { subTotal, tax, total: totalWithTax, remaining };
 
@@ -938,6 +943,20 @@ const SaleWindow: React.FC = () => {
                 />
               </div>
             </div>
+          <div className="col-span-2">
+            <label className="block text-sm text-zinc-400 mb-1">Discount</label>
+            <div className="flex items-center gap-2">
+              <MoneyInput
+                className="w-32 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                value={sale.discount || 0}
+                onValueChange={v => setSale(s => ({ ...s, discount: Number(v || 0) }))}
+              />
+              {(sale.discount || 0) > 0 && (
+                <span className="text-xs text-zinc-400">−${(sale.discount || 0).toFixed(2)} off subtotal before tax</span>
+              )}
+            </div>
+          </div>
+
           <div className="col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea

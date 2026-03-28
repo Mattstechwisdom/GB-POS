@@ -58,7 +58,7 @@ const CustomerReceiptWindow: React.FC = () => {
       if (flags.autoCloseMs && flags.autoCloseMs > 0) {
         window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
       }
-    }, 250);
+    }, 100);
 
     if (logoSrc) {
       window.clearTimeout(fallback);
@@ -75,15 +75,16 @@ const CustomerReceiptWindow: React.FC = () => {
         const onSettle = () => { if (settled) return; settled = true; doAutoPrint(); };
         img.addEventListener('load', onSettle, { once: true });
         img.addEventListener('error', onSettle, { once: true });
-        const safetyTimer = window.setTimeout(onSettle, 1500);
+        // Shorter safety timeout — logo should load in < 500ms from cache/disk.
+        const safetyTimer = window.setTimeout(onSettle, 500);
         return () => {
           img.removeEventListener('load', onSettle);
           img.removeEventListener('error', onSettle);
           window.clearTimeout(safetyTimer);
         };
       }
-      const immediate = window.setTimeout(doAutoPrint, 80);
-      return () => window.clearTimeout(immediate);
+      // Logo already loaded — single rAF to ensure it's painted before printing.
+      requestAnimationFrame(doAutoPrint);
     }
 
     return () => window.clearTimeout(fallback);

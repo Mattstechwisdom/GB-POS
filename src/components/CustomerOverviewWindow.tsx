@@ -262,8 +262,20 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
 
   const customerId = Number((customer as any)?.id || 0);
 
+  // Stable primitive strings derived from the customer's identity fields.
+  // These only change when the actual name/phone changes — NOT on every object
+  // reference created by a parent keystroke — so `load` won't re-fire mid-typing.
+  const customerNameNorm = normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`);
+  const customerPhoneNorm = normalizeCustomerPhone((customer as any)?.phone);
+
+  // Ref lets the callback always read the latest customer for filtering without
+  // including the whole object in its dependency array.
+  const customerRef = useRef(customer);
+  customerRef.current = customer;
+
   const load = useCallback(async () => {
-    const hasIdentity = !!customerId || !!normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`) || !!normalizeCustomerPhone((customer as any)?.phone);
+    const cust = customerRef.current;
+    const hasIdentity = !!customerId || !!customerNameNorm || !!customerPhoneNorm;
     if (!hasIdentity) { setOrders([]); setSales([]); setQuoteFiles([]); return; }
     try {
       const [wo, allSales, allQuoteFiles] = await Promise.all([
@@ -272,21 +284,18 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
         (window as any).api.dbGet('quoteFiles').catch(() => []),
       ]);
       setOrders(Array.isArray(wo) ? wo : []);
-      setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, customer)));
+      setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, cust)));
       // filter quoteFiles by this customer
-      const cid = customerId;
-      const nameNorm = normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`);
-      const phoneNorm = normalizeCustomerPhone((customer as any)?.phone);
       setQuoteFiles((Array.isArray(allQuoteFiles) ? allQuoteFiles : []).filter((q: any) => {
-        if (cid && q.customerId === cid) return true;
+        if (customerId && q.customerId === customerId) return true;
         const qName = normalizeCustomerName(q.customerName);
         const qPhone = normalizeCustomerPhone(q.customerPhone);
-        return (!!nameNorm && qName === nameNorm) && (!!phoneNorm ? qPhone === phoneNorm : true);
+        return (!!customerNameNorm && qName === customerNameNorm) && (!!customerPhoneNorm ? qPhone === customerPhoneNorm : true);
       }));
     } catch (e) {
       setOrders([]); setSales([]); setQuoteFiles([]);
     }
-  }, [customer, customerId]);
+  }, [customerId, customerNameNorm, customerPhoneNorm]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

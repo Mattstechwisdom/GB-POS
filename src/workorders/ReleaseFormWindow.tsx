@@ -38,19 +38,20 @@ const ReleaseFormWindow: React.FC = () => {
     // Give the logo a chance to resolve before printing, to avoid the broken-image icon.
     if (didAutoPrintRef.current) return;
 
+    // 100ms fallback — if logo hasn't loaded yet, print without it rather than waiting forever.
     const fallback = window.setTimeout(() => {
       if (didAutoPrintRef.current) return;
       didAutoPrintRef.current = true;
       try { window.print(); } catch {}
-    }, 250);
+    }, 100);
 
     if (logoSrc) {
       window.clearTimeout(fallback);
       didAutoPrintRef.current = true;
-      const immediate = window.setTimeout(() => {
+      // Single rAF is enough to ensure the logo img has been committed to DOM.
+      requestAnimationFrame(() => {
         try { window.print(); } catch {}
-      }, 40);
-      return () => window.clearTimeout(immediate);
+      });
     }
 
     return () => window.clearTimeout(fallback);

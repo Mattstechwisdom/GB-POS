@@ -168,6 +168,22 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
 
   const cats = useDeviceCategories();
 
+  // Local state for free-text inputs — prevents per-keystroke parent re-renders.
+  // Parent is updated on blur rather than on every change.
+  const [localProblemInfo, setLocalProblemInfo] = useState(workOrder.problemInfo || '');
+  const [localPassword, setLocalPassword] = useState(workOrder.password || '');
+  const [localModel, setLocalModel] = useState(workOrder.model || '');
+  const [localSerial, setLocalSerial] = useState(workOrder.serial || '');
+  const [localCustomDesc, setLocalCustomDesc] = useState(workOrder.productDescription || '');
+
+  // Sync local fields when the parent changes them externally (e.g. loading a different work order).
+  // Use functional setter so React skips the re-render when the value hasn't actually changed.
+  useEffect(() => { setLocalProblemInfo(v => v === (workOrder.problemInfo || '') ? v : (workOrder.problemInfo || '')); }, [workOrder.problemInfo]);
+  useEffect(() => { setLocalPassword(v => v === (workOrder.password || '') ? v : (workOrder.password || '')); }, [workOrder.password]);
+  useEffect(() => { setLocalModel(v => v === (workOrder.model || '') ? v : (workOrder.model || '')); }, [workOrder.model]);
+  useEffect(() => { setLocalSerial(v => v === (workOrder.serial || '') ? v : (workOrder.serial || '')); }, [workOrder.serial]);
+  useEffect(() => { setLocalCustomDesc(v => v === (workOrder.productDescription || '') ? v : (workOrder.productDescription || '')); }, [workOrder.productDescription]);
+
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
       <div className="flex items-center justify-between mb-2">
@@ -218,8 +234,9 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
           </label>
           <input
             className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-            value={workOrder.productDescription}
-            onChange={e => onChange({ productDescription: e.target.value })}
+            value={localCustomDesc}
+            onChange={e => setLocalCustomDesc(e.target.value)}
+            onBlur={e => onChange({ productDescription: e.target.value })}
           />
         </div>
       )}
@@ -231,8 +248,9 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
         </label>
         <textarea
           className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 h-16"
-          value={workOrder.problemInfo || ''}
-          onChange={e => onChange({ problemInfo: e.target.value })}
+          value={localProblemInfo}
+          onChange={e => setLocalProblemInfo(e.target.value)}
+          onBlur={e => onChange({ problemInfo: e.target.value })}
         />
       </div>
 
@@ -246,8 +264,9 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
               </label>
               <input
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                value={workOrder.password || ''}
-                onChange={e => onChange({ password: e.target.value })}
+                value={localPassword}
+                onChange={e => setLocalPassword(e.target.value)}
+                onBlur={e => onChange({ password: e.target.value })}
               />
             </div>
 
@@ -258,8 +277,9 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
               </label>
               <input
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                value={workOrder.model || ''}
-                onChange={e => onChange({ model: e.target.value })}
+                value={localModel}
+                onChange={e => setLocalModel(e.target.value)}
+                onBlur={e => onChange({ model: e.target.value })}
               />
             </div>
             <div>
@@ -269,8 +289,9 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
               </label>
               <input
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                value={workOrder.serial || ''}
-                onChange={e => onChange({ serial: e.target.value })}
+                value={localSerial}
+                onChange={e => setLocalSerial(e.target.value)}
+                onBlur={e => onChange({ serial: e.target.value })}
               />
             </div>
           </div>

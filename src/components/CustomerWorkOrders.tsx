@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Button from './Button';
 
 interface Props {
@@ -9,6 +9,11 @@ const CustomerWorkOrders: React.FC<Props> = ({ customerId }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
+
+  // Ref so the load callback can check current selection without it being a dep,
+  // which previously caused a fresh IPC fetch on every row click.
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
 
   // Derive lifetime spend & order count
   const lifetime = useMemo(() => {
@@ -30,10 +35,10 @@ const CustomerWorkOrders: React.FC<Props> = ({ customerId }) => {
     const found = await window.api.findWorkOrders({ customerId });
     setOrders(found || []);
     // If selection no longer exists, clear it
-    if (selectedId && !(found || []).some((o: any) => o.id === selectedId)) {
+    if (selectedIdRef.current && !(found || []).some((o: any) => o.id === selectedIdRef.current)) {
       setSelectedId(null);
     }
-  }, [customerId, selectedId]);
+  }, [customerId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

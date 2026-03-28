@@ -237,4 +237,24 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
   );
 }
 
-export default React.memo(WorkOrderSidebar);
+export default React.memo(WorkOrderSidebar, (prev, next) => {
+  const a = prev.workOrder;
+  const b = next.workOrder;
+  return prev.hideStatus === next.hideStatus
+    && prev.saleDates === next.saleDates
+    && prev.hideDates === next.hideDates
+    && prev.hideOrderDeliveryDates === next.hideOrderDeliveryDates
+    && prev.renderActions === next.renderActions
+    && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
+    && String(a.status || '') === String(b.status || '')
+    && String(a.assignedTo || '') === String(b.assignedTo || '')
+    && String(a.repairCompletionDate || '') === String(b.repairCompletionDate || '')
+    && String(a.checkoutDate || '') === String(b.checkoutDate || '')
+    && String((a as any).clientPickupDate || '') === String((b as any).clientPickupDate || '')
+    && String((a as any).customerId || '') === String((b as any).customerId || '')
+    && String((a as any).customerName || '') === String((b as any).customerName || '')
+    && String((a as any).id || '') === String((b as any).id || '')
+    && JSON.stringify(a.items) === JSON.stringify(b.items)
+    && Number((a as any).totals?.total ?? 0) === Number((b as any).totals?.total ?? 0)
+    && Number((a as any).amountPaid ?? 0) === Number((b as any).amountPaid ?? 0);
+});

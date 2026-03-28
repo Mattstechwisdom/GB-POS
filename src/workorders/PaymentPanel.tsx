@@ -129,6 +129,9 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
         {salesMode ? (
           <>
             <div className="text-zinc-400">Product</div><div className="text-zinc-200">${(workOrder.partCosts || 0).toFixed(2)}</div>
+            {(workOrder.discount || 0) > 0 && (
+              <><div className="text-zinc-400">Discount</div><div className="text-green-400">−${(workOrder.discount || 0).toFixed(2)}</div></>
+            )}
           </>
         ) : (
           <>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import Input from './Input';
 import Select from './Select';
 import Button from './Button';
@@ -15,7 +15,15 @@ const stores = ['Devine Street', 'Forest Acres', 'Online'];
 const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer);
 
-  useEffect(() => setLocal(customer), [customer]);
+  // Sync local state only when the customer's id changes (a different customer was loaded).
+  // This suppresses the round-trip re-render caused by our own onChange being reflected
+  // back down as a new object reference from the parent on every keystroke.
+  const customerId = (customer as any)?.id;
+  const prevIdRef = useRef(customerId);
+  if (prevIdRef.current !== customerId) {
+    prevIdRef.current = customerId;
+    setLocal(customer);
+  }
 
   function update(k: string, v: any) {
     const next = { ...local, [k]: v } as Partial<Customer>;
