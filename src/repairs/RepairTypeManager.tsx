@@ -9,6 +9,7 @@ export default function RepairTypeManager() {
   const [inputText, setInputText] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
 
   const ctx = useContextMenu<RepairType>();
 
@@ -49,9 +50,13 @@ export default function RepairTypeManager() {
   }
 
   async function deleteById(id: number) {
-    const t = types.find(x => x.id === id);
-    const ok = window.confirm(`Delete repair type "${t?.name || id}"? This cannot be undone.`);
-    if (!ok) return;
+    setPendingDelete(id);
+  }
+
+  async function confirmDelete() {
+    if (pendingDelete == null) return;
+    const id = pendingDelete;
+    setPendingDelete(null);
     const api = (window as any).api;
     await api?.dbDelete?.('repairTypes', id);
     if (selectedId === id) clearSelection();
@@ -144,12 +149,20 @@ export default function RepairTypeManager() {
 
       {selectedId != null && (
         <div className="flex justify-start mt-3">
-          <button
-            onClick={() => deleteById(selectedId)}
-            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
-          >
-            Delete
-          </button>
+          {pendingDelete === selectedId ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-red-400">Delete "{types.find(t => t.id === selectedId)?.name}"?</span>
+              <button onClick={confirmDelete} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm">Yes, delete</button>
+              <button onClick={() => setPendingDelete(null)} className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded text-sm">Cancel</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => deleteById(selectedId)}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
 

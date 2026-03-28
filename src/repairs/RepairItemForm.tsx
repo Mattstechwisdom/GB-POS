@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
+import PercentInput from '../components/PercentInput';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -350,30 +351,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               {/* Markup % helper — computes Part Costs from Internal Cost */}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <span className="text-xs text-zinc-400 whitespace-nowrap">Markup %:</span>
-                <select
-                  className="bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs focus:border-[#39FF14] focus:outline-none"
+                <PercentInput
+                  className="w-20"
                   value={markupPct}
-                  onChange={e => setMarkupPct(e.target.value)}
-                >
-                  <option value="">— preset —</option>
-                  <option value="5">5%</option>
-                  <option value="10">10%</option>
-                  <option value="15">15%</option>
-                  <option value="20">20%</option>
-                  <option value="25">25%</option>
-                  <option value="30">30%</option>
-                  <option value="40">40%</option>
-                  <option value="50">50%</option>
-                  <option value="100">100%</option>
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={markupPct}
-                  onChange={e => setMarkupPct(e.target.value)}
-                  placeholder="%"
-                  className="w-16 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs focus:border-[#39FF14] focus:outline-none"
+                  onChange={v => setMarkupPct(v)}
+                  presets={[5, 10, 15, 20, 25, 30, 40, 50, 100]}
                 />
                 <button
                   type="button"

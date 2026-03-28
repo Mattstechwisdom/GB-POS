@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
-import MoneyInput from '@/components/MoneyInput';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
@@ -324,7 +323,20 @@ const SaleWindow: React.FC = () => {
     const laborCost = 0;
     const taxRate = Number(sale.taxRate || 0) || 0;
     const amountPaid = Number(sale.amountPaid || 0) || 0;
-    const discount = Number(sale.discount || 0) || 0;
+    const discountType = (sale as any).discountType || '';
+    const discountCustomAmount = Number((sale as any).discountCustomAmount || 0) || 0;
+    const discountPctValue = Number((sale as any).discountPctValue || 0) || 0;
+    // Percentage discounts auto-recompute when items change; custom_amt uses the stored amount.
+    const discount = (() => {
+      if (discountType === 'pct_5')  return round2(partCosts * 0.05);
+      if (discountType === 'pct_10') return round2(partCosts * 0.10);
+      if (discountType === 'pct_15') return round2(partCosts * 0.15);
+      if (discountType === 'pct_20') return round2(partCosts * 0.20);
+      if (discountType === 'pct_25') return round2(partCosts * 0.25);
+      if (discountType === 'custom_pct') return round2(partCosts * discountPctValue / 100);
+      if (discountType === 'custom_amt') return discountCustomAmount;
+      return Number(sale.discount || 0) || 0; // legacy / no type set
+    })();
 
     // Consultation items are NOT taxed.
     const discountedTotal = round2(Math.max(0, partCosts - discount));
@@ -345,13 +357,14 @@ const SaleWindow: React.FC = () => {
       if (
         Number((s as any).partCosts || 0) === Number(partCosts || 0) &&
         Number((s as any).laborCost || 0) === Number(laborCost || 0) &&
+        Number((s as any).discount || 0) === Number(discount || 0) &&
         totalsUnchanged
       ) {
         return s;
       }
-      return { ...s, partCosts, laborCost, totals };
+      return { ...s, partCosts, laborCost, discount, totals };
     });
-  }, [total, consultationTotal, sale.taxRate, sale.amountPaid, sale.discount]);
+  }, [total, consultationTotal, sale.taxRate, sale.amountPaid, (sale as any).discountType, (sale as any).discountCustomAmount, (sale as any).discountPctValue, sale.discount]);
 
   // Per-item internal cost editing and pricing handled inside SaleItemsTable edit flow.
 
@@ -599,6 +612,9 @@ const SaleWindow: React.FC = () => {
       serial: '',
       intakeSource: (sale as any).intakeSource || '',
       discount: sale.discount || 0,
+      discountType: (sale as any).discountType || undefined,
+      discountPctValue: (sale as any).discountPctValue || undefined,
+      discountCustomAmount: (sale as any).discountCustomAmount || 0,
       amountPaid: sale.amountPaid || 0,
       taxRate: sale.taxRate || 0,
       laborCost: sale.laborCost || 0,
@@ -943,20 +959,6 @@ const SaleWindow: React.FC = () => {
                 />
               </div>
             </div>
-          <div className="col-span-2">
-            <label className="block text-sm text-zinc-400 mb-1">Discount</label>
-            <div className="flex items-center gap-2">
-              <MoneyInput
-                className="w-32 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                value={sale.discount || 0}
-                onValueChange={v => setSale(s => ({ ...s, discount: Number(v || 0) }))}
-              />
-              {(sale.discount || 0) > 0 && (
-                <span className="text-xs text-zinc-400">−${(sale.discount || 0).toFixed(2)} off subtotal before tax</span>
-              )}
-            </div>
-          </div>
-
           <div className="col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea

@@ -55,7 +55,7 @@ export interface WorkOrderFull {
 
   quotedPrice?: number;
   discount: number; // absolute discount applied to labor only
-  discountType?: 'pct_5' | 'pct_10' | 'custom_pct' | 'custom_amt';
+  discountType?: 'pct_5' | 'pct_10' | 'pct_15' | 'pct_20' | 'pct_25' | 'custom_pct' | 'custom_amt';
   discountPctValue?: number; // for custom_pct (e.g. 17 for 17%)
   discountCustomAmount?: number; // for custom_amt original input reference
   amountPaid: number;

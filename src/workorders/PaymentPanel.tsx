@@ -1,6 +1,7 @@
 import React from 'react';
 import { WorkOrderFull } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
+import PercentInput from '../components/PercentInput';
 
 interface Props {
   workOrder: WorkOrderFull;
@@ -21,49 +22,23 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
       <h4 className="text-sm font-semibold text-zinc-200 mb-2">Payment</h4>
 
       <div className="grid grid-cols-2 gap-2">
-        {!salesMode && (
+        {salesMode && (
           <div className="col-span-2">
-            <label className="block text-xs text-zinc-400">Discount (labor only)</label>
-            <div className="mt-1 flex flex-wrap gap-2 items-start">
-              <select
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm w-32"
-                value={workOrder.discountType || ''}
-                onChange={e => {
-                  const dt = e.target.value as any;
-                  let discount = workOrder.discount || 0;
-                  if (dt === 'pct_5') discount = (workOrder.laborCost || 0) * 0.05;
-                  else if (dt === 'pct_10') discount = (workOrder.laborCost || 0) * 0.10;
-                  else if (dt === 'custom_pct') {
-                    const pct = workOrder.discountPctValue || 0;
-                    discount = (workOrder.laborCost || 0) * (pct / 100);
-                  } else if (dt === 'custom_amt') {
-                    discount = workOrder.discountCustomAmount || 0;
-                  } else {
-                    discount = 0;
-                  }
-                  onChange({ discountType: dt, discount });
-                }}
-              >
-                <option value="">None</option>
-                <option value="pct_5">5%</option>
-                <option value="pct_10">10%</option>
-                <option value="custom_pct">Custom %</option>
-                <option value="custom_amt">Custom $</option>
-              </select>
-              {workOrder.discountType === 'custom_pct' && (
-                <input
-                  type="number"
-                  className="w-24 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                  placeholder="%"
-                  value={workOrder.discountPctValue ?? ''}
-                  onChange={e => {
-                    const pct = Number(e.target.value) || 0;
-                    const discount = (workOrder.laborCost || 0) * (pct / 100);
-                    onChange({ discountPctValue: pct, discount });
-                  }}
-                />
-              )}
-              {workOrder.discountType === 'custom_amt' && (
+            <label className="block text-xs text-zinc-400">Discount</label>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {workOrder.discountType !== 'custom_amt' ? (
+                <>
+                  <PercentInput
+                    className="w-20"
+                    value={workOrder.discountPctValue ?? ''}
+                    onChange={raw => {
+                      const pct = Number(raw) || 0;
+                      const discount = Number(((workOrder.partCosts || 0) * pct / 100).toFixed(2));
+                      onChange({ discountType: pct ? 'custom_pct' : (undefined as any), discountPctValue: pct || undefined, discount });
+                    }}
+                  />
+                </>
+              ) : (
                 <MoneyInput
                   className="w-28 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
                   placeholder="0.00"
@@ -74,15 +49,69 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
                   }}
                 />
               )}
-              <div className="text-xs text-zinc-300 self-center px-2 py-1 bg-zinc-800 rounded">${(workOrder.discount || 0).toFixed(2)}</div>
-              {workOrder.discountType?.startsWith('pct_') && (
-                <div className="text-[10px] text-zinc-500 self-center">({workOrder.discountType === 'pct_5' ? '5%' : workOrder.discountType === 'pct_10' ? '10%' : ''})</div>
-              )}
-              {workOrder.discountType === 'custom_pct' && typeof workOrder.discountPctValue === 'number' && (
-                <div className="text-[10px] text-zinc-500 self-center">({workOrder.discountPctValue}% of labor)</div>
+              {(workOrder.discount || 0) > 0 && (
+                <div className="text-xs text-green-400">−${(workOrder.discount || 0).toFixed(2)} off subtotal</div>
               )}
             </div>
-            <div className="mt-1 text-[10px] text-zinc-500">Applies to labor only. Amount auto-recalculates if labor changes.</div>
+            <label className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="scale-90"
+                checked={workOrder.discountType === 'custom_amt'}
+                onChange={e => {
+                  if (e.target.checked) {
+                    onChange({ discountType: 'custom_amt', discountPctValue: undefined, discount: workOrder.discountCustomAmount || 0 });
+                  } else {
+                    onChange({ discountType: undefined as any, discountPctValue: undefined, discount: 0 });
+                  }
+                }}
+              />
+              Enter dollar amount instead
+            </label>
+          </div>
+        )}
+        {!salesMode && (
+          <div className="col-span-2">
+            <label className="block text-xs text-zinc-400">Discount (labor only)</label>
+            <div className="mt-1 flex flex-wrap gap-2 items-center">
+              {workOrder.discountType !== 'custom_amt' ? (
+                <PercentInput
+                  className="w-20"
+                  value={workOrder.discountPctValue ?? ''}
+                  onChange={raw => {
+                    const pct = Number(raw) || 0;
+                    const discount = Number(((workOrder.laborCost || 0) * pct / 100).toFixed(2));
+                    onChange({ discountType: pct ? 'custom_pct' : (undefined as any), discountPctValue: pct || undefined, discount });
+                  }}
+                />
+              ) : (
+                <MoneyInput
+                  className="w-28 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                  placeholder="0.00"
+                  value={Number(workOrder.discountCustomAmount || 0)}
+                  onValueChange={(v) => {
+                    const amt = Number(v || 0) || 0;
+                    onChange({ discountCustomAmount: amt, discount: amt });
+                  }}
+                />
+              )}
+              <div className="text-xs text-zinc-300 self-center px-2 py-1 bg-zinc-800 rounded">−${(workOrder.discount || 0).toFixed(2)}</div>
+            </div>
+            <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-zinc-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="scale-90"
+                checked={workOrder.discountType === 'custom_amt'}
+                onChange={e => {
+                  if (e.target.checked) {
+                    onChange({ discountType: 'custom_amt', discountPctValue: undefined, discount: workOrder.discountCustomAmount || 0 });
+                  } else {
+                    onChange({ discountType: undefined as any, discountPctValue: undefined, discount: 0 });
+                  }
+                }}
+              />
+              Enter dollar amount instead. Applies to labor only.
+            </label>
           </div>
         )}
         <div>
