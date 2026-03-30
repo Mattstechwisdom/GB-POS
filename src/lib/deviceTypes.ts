@@ -195,6 +195,21 @@ export const deviceTypes: DeviceTypeDef[] = [
     ],
   },
   {
+    type: 'TV',
+    label: 'TV',
+    fields: [
+      { key: 'brand', label: 'Brand', type: 'select', options: ['Samsung','LG','Sony','TCL','Hisense','Vizio','Philips','Panasonic','Sharp','Toshiba','Insignia','Sceptre','Other'] },
+      { key: 'screenSize', label: 'Screen Size', type: 'select', options: ['24"','32"','40"','43"','50"','55"','58"','65"','70"','75"','77"','82"','85"','86"','98"','Other'] },
+      { key: 'resolution', label: 'Resolution', type: 'select', options: ['HD (720p)','Full HD (1080p)','4K UHD','8K UHD'] },
+      { key: 'displayTech', label: 'Display Tech', type: 'select', options: ['LED','QLED','OLED','Neo QLED','Mini-LED','AMOLED','NanoCell','ULED'] },
+      { key: 'refreshRate', label: 'Refresh Rate', type: 'select', options: ['60 Hz','120 Hz','144 Hz','240 Hz'] },
+      { key: 'hdr', label: 'HDR', type: 'select', options: ['None','HDR10','HDR10+','Dolby Vision','HLG'] },
+      // smartTv handled as a checkbox with conditional OS dropdown in renderDynamicFields
+      { key: 'ports', label: 'Ports / Inputs', type: 'text' },
+      { key: 'yearModel', label: 'Year / Model', type: 'text' },
+    ],
+  },
+  {
     type: 'Drone',
     label: 'Drone',
     fields: [

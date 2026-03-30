@@ -5413,6 +5413,54 @@ function QuoteGeneratorWindow(): JSX.Element {
       }
     }
 
+    // TV: inject Smart TV checkbox + conditional OS dropdown after the HDR field
+    if (dt?.type === 'TV') {
+      const isSmart = Boolean((it.dynamic as any)?.tvIsSmart);
+      const setIsSmart = (v: boolean) => setSales((s) => ({
+        ...s,
+        items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), tvIsSmart: v } } : x))
+      }));
+      const tvOsVal = (it.dynamic || ({} as any)).tvOs || '';
+      const tvOsOptions = ['Android TV','Google TV','Roku TV','Fire TV (Amazon)','Tizen (Samsung)','webOS (LG)','VIDAA (Hisense)','MyHomeScreen (Philips)','SmartCast (Vizio)','Other'];
+      const setTvOs = (v: string) => setSales((s) => ({
+        ...s,
+        items: s.items.map((x, i) => (i === idx ? { ...x, dynamic: { ...(x.dynamic || {}), tvOs: v } } : x))
+      }));
+      // Insert after the HDR field node (or refreshRate, or append)
+      let insertAt = effectiveFields.findIndex((f: any) => f.key === 'hdr');
+      if (insertAt < 0) insertAt = effectiveFields.findIndex((f: any) => f.key === 'refreshRate');
+      const insertIdx = insertAt >= 0 ? insertAt + 1 : fieldNodes.length;
+      const smartNode = (
+        <div key="tvIsSmart" className="col-span-16 col-start-1">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-[#39FF14]"
+                checked={isSmart}
+                onChange={(e) => {
+                  setIsSmart((e.target as HTMLInputElement).checked);
+                  if (!(e.target as HTMLInputElement).checked) setTvOs('');
+                }}
+              />
+              Smart TV?
+            </label>
+            {isSmart && (
+              <div className="flex-1 max-w-xs">
+                <ComboInput
+                  value={tvOsVal}
+                  onChange={setTvOs}
+                  options={tvOsOptions}
+                  placeholder="Select Smart TV OS..."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+      fieldNodes.splice(Math.max(0, Math.min(insertIdx, fieldNodes.length)), 0, smartNode);
+    }
+
     // If this is a Drone, append the ad-hoc droneSpecs editor (behaves like 'Other')
     if (dt?.type === 'Drone') {
       const specs: Array<{ desc?: string; value?: string }> = Array.isArray((it.dynamic as any)?.droneSpecs) ? (it.dynamic as any).droneSpecs : [];

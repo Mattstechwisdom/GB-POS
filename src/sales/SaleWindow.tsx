@@ -51,7 +51,50 @@ type SaleRecord = {
   consultationHours?: number; // legacy mirror of first consultation item
 };
 
-const CONSULTATION_HOURLY_RATE = 75;
+const CONSULTATION_BASE_RATE = 75;    // covers first hour + at-home travel within range
+const CONSULTATION_EXTRA_RATE = 50;   // each additional hour after the first
+const CONSULTATION_DISTANCE_FEE = 20; // applied when client is >10 miles from shop
+const CONSULTATION_DISTANCE_THRESHOLD = 10; // miles
+
+// Haversine formula – returns distance in miles between two lat/lng points
+function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+      { headers: { 'Accept-Language': 'en-US,en' } }
+    );
+    const data = await res.json() as any[];
+    if (!data || !data.length) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {
+    return null;
+  }
+}
+
+function calcConsultationPrice(hours: number, hasDistanceFee: boolean): number {
+  const extra = Math.max(0, hours - 1) * CONSULTATION_EXTRA_RATE;
+  const dist = hasDistanceFee ? CONSULTATION_DISTANCE_FEE : 0;
+  return CONSULTATION_BASE_RATE + extra + dist;
+}
+
+// Add minutes to a HH:MM time string; returns null if base time is empty
+function addHoursToTime(time: string, hours: number): string | null {
+  if (!time) return null;
+  const [hStr, mStr] = time.split(':');
+  const totalMin = parseInt(hStr, 10) * 60 + parseInt(mStr, 10) + Math.round(hours * 60);
+  const hh = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+  const mm = String(totalMin % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
 
 type SaleRequiredKey = 'assignedTo' | 'itemDetails';
 
@@ -164,6 +207,15 @@ const SaleWindow: React.FC = () => {
     close: false,
   });
 
+  // ── Consultation / Shop-address state ────────────────────────
+  const [shopAddress, setShopAddress] = useState<string>('');
+  const [shopLat, setShopLat] = useState<number | null>(null);
+  const [shopLng, setShopLng] = useState<number | null>(null);
+  const [shopAddressInput, setShopAddressInput] = useState<string>('');
+  const [distanceMiles, setDistanceMiles] = useState<number | null>(null);
+  const [distanceLoading, setDistanceLoading] = useState(false);
+  const [distanceFeeApplied, setDistanceFeeApplied] = useState(false);
+
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
       window.clearTimeout(warningHideTimer.current);
@@ -219,6 +271,39 @@ const SaleWindow: React.FC = () => {
       setValidationActive(false);
     }
   }, [validationActive, missingRequired]);
+
+  // Load saved shop address from DB settings on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const settings = await window.api.dbGet('settings');
+        const rec = (settings || []).find((s: any) => s.shopAddress);
+        if (rec?.shopAddress) {
+          setShopAddress(rec.shopAddress);
+          setShopAddressInput(rec.shopAddress);
+          setShopLat(rec.shopLat ?? null);
+          setShopLng(rec.shopLng ?? null);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  // Auto-update consultation item price whenever hours or distanceFee changes
+  useEffect(() => {
+    const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
+    if (!isConsult) return;
+    const hours = Number((sale as any).consultationHours) || 1;
+    const newPrice = calcConsultationPrice(hours, distanceFeeApplied);
+    setSale(s => ({
+      ...s,
+      items: ((s.items || []) as SaleItemRow[]).map(r =>
+        String(r.category || '').toLowerCase().startsWith('consult')
+          ? { ...r, price: newPrice }
+          : r
+      ),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(sale as any).consultationHours, distanceFeeApplied]);
 
   useEffect(() => () => {
     if (warningHideTimer.current !== undefined) {
@@ -636,6 +721,53 @@ const SaleWindow: React.FC = () => {
     setSale(s => ({ ...s, items }));
   }, []);
 
+  // Save shop address to DB and geocode it for future distance checks
+  async function saveShopAddressToDB() {
+    const addr = shopAddressInput.trim();
+    if (!addr) return;
+    const coords = await geocodeAddress(addr);
+    const record = { shopAddress: addr, shopLat: coords?.lat ?? null, shopLng: coords?.lng ?? null };
+    try {
+      const existing = await window.api.dbGet('settings');
+      const rec = (existing || []).find((s: any) => s.shopAddress != null);
+      if (rec) {
+        await window.api.dbUpdate('settings', rec.id, record);
+      } else {
+        await window.api.dbAdd('settings', record);
+      }
+    } catch { /* ignore */ }
+    setShopAddress(addr);
+    setShopLat(coords?.lat ?? null);
+    setShopLng(coords?.lng ?? null);
+  }
+
+  // Geocode client address, compute distance, auto-apply $20 surcharge if >10 miles
+  async function checkClientDistance(address: string) {
+    if (!address.trim()) return;
+    setDistanceLoading(true);
+    try {
+      let sLat = shopLat;
+      let sLng = shopLng;
+      // Geocode shop address on-the-fly if coords not loaded yet
+      if ((sLat == null || sLng == null) && shopAddress) {
+        const sc = await geocodeAddress(shopAddress);
+        if (sc) { sLat = sc.lat; sLng = sc.lng; setShopLat(sc.lat); setShopLng(sc.lng); }
+      }
+      if (sLat == null || sLng == null) {
+        setDistanceLoading(false);
+        return;
+      }
+      const clientCoords = await geocodeAddress(address);
+      if (!clientCoords) { setDistanceMiles(null); setDistanceFeeApplied(false); setDistanceLoading(false); return; }
+      const dist = haversineDistanceMiles(sLat, sLng, clientCoords.lat, clientCoords.lng);
+      setDistanceMiles(dist);
+      setDistanceFeeApplied(dist > CONSULTATION_DISTANCE_THRESHOLD);
+    } catch { setDistanceMiles(null); }
+    setDistanceLoading(false);
+  }
+
+
+
   const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
     const { items: _ignore, ...rest } = (patch as any) || {};
     setSale(s => ({ ...s, ...rest }));
@@ -660,6 +792,15 @@ const SaleWindow: React.FC = () => {
           }));
           const partCosts = Number(sale.partCosts ?? 0) || 0;
           const laborCost = Number(sale.laborCost ?? 0) || 0;
+          const consultationMeta = (sale as any).consultationType ? {
+            consultationType: (sale as any).consultationType,
+            consultationAddress: (sale as any).consultationAddress,
+            appointmentDate: (sale as any).appointmentDate,
+            appointmentTime: (sale as any).appointmentTime,
+            appointmentEndTime: (sale as any).appointmentEndTime,
+            consultationHours: (sale as any).consultationHours,
+            driverFee: (sale as any).driverFee,
+          } : {};
           const payload = {
             receiptType: 'sale',
             id: (sale as any).id,
@@ -676,6 +817,7 @@ const SaleWindow: React.FC = () => {
             taxRate: sale.taxRate || 0,
             totals: sale.totals,
             amountPaid: sale.amountPaid || 0,
+            ...consultationMeta,
           };
           await (window as any).api.openCustomerReceipt({
             data: payload,
@@ -780,6 +922,15 @@ const SaleWindow: React.FC = () => {
               price: Number(r.price) || 0,
             }));
 
+            const consultationMetaCheckout = (sale as any).consultationType ? {
+              consultationType: (sale as any).consultationType,
+              consultationAddress: (sale as any).consultationAddress,
+              appointmentDate: (sale as any).appointmentDate,
+              appointmentTime: (sale as any).appointmentTime,
+              appointmentEndTime: (sale as any).appointmentEndTime,
+              consultationHours: (sale as any).consultationHours,
+              driverFee: (sale as any).driverFee,
+            } : {};
             const payload = {
               receiptType: 'sale',
               id: currentId || (sale as any).id,
@@ -796,6 +947,7 @@ const SaleWindow: React.FC = () => {
               taxRate: recordToPersist.taxRate || 0,
               totals: updatedTotals,
               amountPaid: newAmountPaid,
+              ...consultationMetaCheckout,
             };
             if ((window as any).api?.openCustomerReceipt) {
               await (window as any).api.openCustomerReceipt({
@@ -842,7 +994,7 @@ const SaleWindow: React.FC = () => {
         id: crypto.randomUUID(),
         description: picked.itemDescription || picked.title || picked.name || 'Item',
         qty: Number(picked.quantity ?? 1) || 1,
-        price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_HOURLY_RATE : 0),
+        price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_BASE_RATE : 0),
         consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
         internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
         condition: picked.condition || 'New',
@@ -862,7 +1014,7 @@ const SaleWindow: React.FC = () => {
             id: crypto.randomUUID(),
             description: picked.itemDescription || picked.title || picked.name || 'Item',
             qty: Number(picked.quantity ?? 1) || 1,
-            price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_HOURLY_RATE : 0),
+            price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_BASE_RATE : 0),
             consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
             internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
             condition: picked.condition || 'New',
@@ -904,6 +1056,194 @@ const SaleWindow: React.FC = () => {
     />
   <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <h1 className="text-xl font-semibold mb-2">New Sale</h1>
+
+          {/* ── Consultation Details Panel ──────────────────────── */}
+          {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
+            <div className="bg-zinc-800 border border-yellow-500/50 rounded p-3 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-yellow-400 font-semibold text-sm uppercase tracking-wide">Consultation Details</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Appointment Date</label>
+                  <input
+                    type="date"
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                    value={(sale as any).appointmentDate || ''}
+                    onChange={e => setSale(s => ({ ...s, appointmentDate: e.target.value } as any))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                      value={(sale as any).appointmentTime || ''}
+                      onChange={e => {
+                        const t = e.target.value;
+                        const hrs = Number((sale as any).consultationHours) || 1;
+                        setSale(s => ({ ...s, appointmentTime: t, appointmentEndTime: addHoursToTime(t, hrs) || (s as any).appointmentEndTime } as any));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Hours Worked</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                      value={(sale as any).consultationHours || 1}
+                      onChange={e => {
+                        const hrs = Math.max(0.5, Number(e.target.value) || 0.5);
+                        const startTime = (sale as any).appointmentTime || '';
+                        setSale(s => ({ ...s, consultationHours: hrs, appointmentEndTime: startTime ? addHoursToTime(startTime, hrs) : (s as any).appointmentEndTime } as any));
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Location Type</label>
+                  <select
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                    value={(sale as any).consultationType || 'instore'}
+                    onChange={e => {
+                      const t = e.target.value;
+                      if (t === 'instore') { setDistanceMiles(null); setDistanceFeeApplied(false); }
+                      setSale(s => ({
+                        ...s,
+                        consultationType: t,
+                        consultationAddress: t === 'instore' ? undefined : (s as any).consultationAddress,
+                      } as any));
+                    }}
+                  >
+                    <option value="instore">In-Store</option>
+                    <option value="athome">At-Home / On-Site</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Assigned Technician</label>
+                  <input
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                    value={sale.assignedTo || ''}
+                    onChange={e => setSale(s => ({ ...s, assignedTo: e.target.value }))}
+                    placeholder="Technician name"
+                  />
+                </div>
+              </div>
+
+              {/* At-Home address + distance check */}
+              {(sale as any).consultationType === 'athome' && (
+                <div className="space-y-2">
+                  {/* Shop address setup (shown when not yet saved) */}
+                  {!shopAddress && (
+                    <div className="bg-zinc-700/40 border border-zinc-600 rounded p-2 space-y-1">
+                      <div className="text-xs text-zinc-400">Enter your shop address to enable distance checking:</div>
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                          value={shopAddressInput}
+                          onChange={e => setShopAddressInput(e.target.value)}
+                          placeholder="123 Shop St, City, State ZIP"
+                          onKeyDown={e => { if (e.key === 'Enter') saveShopAddressToDB(); }}
+                        />
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 text-xs bg-yellow-500 text-black rounded font-medium hover:bg-yellow-400"
+                          onClick={saveShopAddressToDB}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Client Address</label>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                        value={(sale as any).consultationAddress || ''}
+                        onChange={e => setSale(s => ({ ...s, consultationAddress: e.target.value } as any))}
+                        onBlur={e => { if (shopAddress) checkClientDistance(e.target.value); }}
+                        placeholder="123 Main St, City, State ZIP"
+                      />
+                      {shopAddress && (
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 whitespace-nowrap"
+                          onClick={() => checkClientDistance((sale as any).consultationAddress || '')}
+                          disabled={distanceLoading}
+                        >
+                          {distanceLoading ? 'Checking…' : 'Check Distance'}
+                        </button>
+                      )}
+                    </div>
+                    {/* Distance result badge */}
+                    {distanceMiles != null && (
+                      <div className={`mt-1 text-xs flex items-center gap-1 ${distanceFeeApplied ? 'text-orange-400' : 'text-green-400'}`}>
+                        {distanceFeeApplied
+                          ? `⚠ ${distanceMiles.toFixed(1)} mi from shop — $${CONSULTATION_DISTANCE_FEE} distance surcharge added`
+                          : `✓ ${distanceMiles.toFixed(1)} mi from shop — within range, no surcharge`}
+                      </div>
+                    )}
+                    {shopAddress && (
+                      <div className="mt-0.5 text-[11px] text-zinc-500 flex items-center gap-1">
+                        Shop: {shopAddress}
+                        <button
+                          type="button"
+                          className="ml-1 underline text-zinc-400 hover:text-zinc-200"
+                          onClick={() => { setShopAddress(''); setShopAddressInput(''); setShopLat(null); setShopLng(null); }}
+                        >
+                          change
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Pricing breakdown */}
+              <div className="pt-1 border-t border-zinc-700">
+                {(() => {
+                  const hours = Number((sale as any).consultationHours) || 1;
+                  const extraHrs = Math.max(0, hours - 1);
+                  const extraCost = extraHrs * CONSULTATION_EXTRA_RATE;
+                  const distCost = distanceFeeApplied ? CONSULTATION_DISTANCE_FEE : 0;
+                  const total = CONSULTATION_BASE_RATE + extraCost + distCost;
+                  return (
+                    <div className="bg-zinc-900/60 rounded p-2 text-xs space-y-1">
+                      <div className="text-zinc-400 font-medium mb-1">Pricing Breakdown</div>
+                      <div className="flex justify-between text-zinc-300">
+                        <span>Base rate (1st hr)</span>
+                        <span>${CONSULTATION_BASE_RATE}.00</span>
+                      </div>
+                      {extraHrs > 0 && (
+                        <div className="flex justify-between text-zinc-300">
+                          <span>+{extraHrs} additional hr{extraHrs !== 1 ? 's' : ''} × ${CONSULTATION_EXTRA_RATE}</span>
+                          <span>${extraCost.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {distCost > 0 && (
+                        <div className="flex justify-between text-orange-400">
+                          <span>Distance surcharge (&gt;{CONSULTATION_DISTANCE_THRESHOLD} mi)</span>
+                          <span>${distCost}.00</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-semibold text-yellow-400 border-t border-zinc-700 pt-1">
+                        <span>Total</span>
+                        <span>${total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="text-xs text-zinc-500">Purpose / title is shown in the items list below.</div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
             <SaleItemsTable
               items={(sale.items || []) as SaleItemRow[]}

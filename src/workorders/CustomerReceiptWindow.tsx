@@ -181,6 +181,31 @@ const CustomerReceiptWindow: React.FC = () => {
     });
   }, [isSaleReceipt, items]);
 
+  const consultationType = (data as any).consultationType as string | undefined;
+  const isConsultationReceipt = isSaleReceipt && !!consultationType;
+  const consultationAddress = (data as any).consultationAddress as string | undefined;
+  const appointmentDate = (data as any).appointmentDate as string | undefined;
+  const appointmentTime = (data as any).appointmentTime as string | undefined;
+  const appointmentEndTime = (data as any).appointmentEndTime as string | undefined;
+  const consultationHours = (data as any).consultationHours as number | undefined;
+  const driverFee = (data as any).driverFee as number | undefined;
+
+  function fmt12(hhmm?: string) {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m ?? 0).padStart(2, '0')} ${ampm}`;
+  }
+
+  function fmtApptDate(iso?: string) {
+    if (!iso) return '';
+    try {
+      const [y, mo, d] = iso.split('-').map(Number);
+      return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } catch { return iso; }
+  }
+
   return (
         <div className="receipt-root" style={{ background: '#f3f4f6', color: '#111', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
       <style>{`
@@ -312,6 +337,48 @@ const CustomerReceiptWindow: React.FC = () => {
               <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35, fontSize: '10.5pt' }}>{problem}</div>
             </div>
           </>
+        ) : isConsultationReceipt ? (
+          <div className="section muted-bg" style={{ pageBreakInside: 'avoid', borderColor: '#d97706' }}>
+            <div style={{ fontWeight: 700, fontSize: '11pt', marginBottom: 8, color: '#92400e', letterSpacing: '0.3px' }}>Consultation Details</div>
+            <div className="info-grid">
+              <div className="field">
+                <span className="label-inline">Type:</span>
+                <span className="value-inline">{consultationType === 'athome' ? 'At-Home / On-Site' : 'In-Store'}</span>
+              </div>
+              {appointmentDate && (
+                <div className="field">
+                  <span className="label-inline">Appointment:</span>
+                  <span className="value-inline">{fmtApptDate(appointmentDate)}</span>
+                </div>
+              )}
+              {(appointmentTime || appointmentEndTime) && (
+                <div className="field">
+                  <span className="label-inline">Time:</span>
+                  <span className="value-inline">
+                    {fmt12(appointmentTime)}{appointmentEndTime ? ` – ${fmt12(appointmentEndTime)}` : ''}
+                  </span>
+                </div>
+              )}
+              {consultationHours != null && (
+                <div className="field">
+                  <span className="label-inline">Hours Worked:</span>
+                  <span className="value-inline">{consultationHours}</span>
+                </div>
+              )}
+              {consultationType === 'athome' && consultationAddress && (
+                <div className="field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="label-inline">Address:</span>
+                  <span className="value-inline">{consultationAddress}</span>
+                </div>
+              )}
+              {driverFee != null && driverFee > 0 && (
+                <div className="field">
+                  <span className="label-inline">Distance Surcharge:</span>
+                  <span className="value-inline">${Number(driverFee).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          </div>
         ) : null}
 
         <div className="section muted-bg">
@@ -391,12 +458,13 @@ const CustomerReceiptWindow: React.FC = () => {
 
         {isSaleReceipt ? (
           <div className="section muted-bg terms" style={{ pageBreakInside: 'avoid' }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Sales Terms &amp; Conditions</div>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              {isConsultationReceipt ? 'Consultation Terms & Agreement' : 'Sales Terms & Conditions'}
+            </div>
             <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
-              Please keep this receipt for any return/exchange or warranty service.
-              {'\n'}Items are sold as-is unless otherwise stated in writing.
-              {'\n'}Returns/exchanges are subject to store policy and may not apply to all items.
-              {'\n'}By signing below, customer acknowledges receipt of goods and acceptance of these terms.
+              {isConsultationReceipt
+                ? `This document confirms the scheduled consultation listed above.\nPayment is due at completion of service unless otherwise arranged in writing.\nThe hourly rate applies to all time on-site or in-store. Travel time may apply for on-site visits.\nGadgetBoy is not responsible for pre-existing conditions discovered during the consultation.\nBy signing below, the client authorizes the consultation and acknowledges the pricing terms.`
+                : `Please keep this receipt for any return/exchange or warranty service.\nItems are sold as-is unless otherwise stated in writing.\nReturns/exchanges are subject to store policy and may not apply to all items.\nBy signing below, customer acknowledges receipt of goods and acceptance of these terms.`}
             </div>
             <div style={{ marginTop: 14, display: 'flex', gap: 16, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
