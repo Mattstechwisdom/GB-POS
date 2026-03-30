@@ -69,21 +69,9 @@ const CustomerReceiptWindow: React.FC = () => {
           window.setTimeout(() => { try { window.close(); } catch {} }, flags.autoCloseMs);
         }
       };
-      const img = logoImgRef.current;
-      if (img && !img.complete) {
-        let settled = false;
-        const onSettle = () => { if (settled) return; settled = true; doAutoPrint(); };
-        img.addEventListener('load', onSettle, { once: true });
-        img.addEventListener('error', onSettle, { once: true });
-        // Shorter safety timeout — logo should load in < 500ms from cache/disk.
-        const safetyTimer = window.setTimeout(onSettle, 500);
-        return () => {
-          img.removeEventListener('load', onSettle);
-          img.removeEventListener('error', onSettle);
-          window.clearTimeout(safetyTimer);
-        };
-      }
-      // Logo already loaded — single rAF to ensure it's painted before printing.
+      // Single rAF is enough to ensure the logo is committed to the DOM before
+      // printing — matches the release form behavior (no img.complete wait needed
+      // for base64 data URLs which decode synchronously in Chromium).
       requestAnimationFrame(doAutoPrint);
     }
 
@@ -110,7 +98,7 @@ const CustomerReceiptWindow: React.FC = () => {
         };
         try { img.addEventListener('load', finish, { once: true }); } catch {}
         try { img.addEventListener('error', finish, { once: true }); } catch {}
-        fallbackTimer = window.setTimeout(finish, 500);
+        fallbackTimer = window.setTimeout(finish, 150);
       });
     };
 
@@ -124,7 +112,7 @@ const CustomerReceiptWindow: React.FC = () => {
           if (fontSet?.ready) {
             await Promise.race([
               fontSet.ready,
-              new Promise<void>((r) => window.setTimeout(r, 100)),
+              new Promise<void>((r) => window.setTimeout(r, 50)),
             ]);
           }
         } catch {}

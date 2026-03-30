@@ -2795,7 +2795,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     // slow disks or first-run Windows Defender scans.
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const armFallback = () => {
-      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 700 : 1400);
+      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 400 : 900);
     };
 
     const handleReceiptReady = (readyEvent: any) => {

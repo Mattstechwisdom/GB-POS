@@ -262,40 +262,37 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
 
   const customerId = Number((customer as any)?.id || 0);
 
-  // Stable primitive strings derived from the customer's identity fields.
-  // These only change when the actual name/phone changes — NOT on every object
-  // reference created by a parent keystroke — so `load` won't re-fire mid-typing.
-  const customerNameNorm = normalizeCustomerName((customer as any)?.name || `${(customer as any)?.firstName || ''} ${(customer as any)?.lastName || ''}`);
-  const customerPhoneNorm = normalizeCustomerPhone((customer as any)?.phone);
-
   // Ref lets the callback always read the latest customer for filtering without
   // including the whole object in its dependency array.
   const customerRef = useRef(customer);
   customerRef.current = customer;
 
   const load = useCallback(async () => {
-    const cust = customerRef.current;
-    const hasIdentity = !!customerId || !!customerNameNorm || !!customerPhoneNorm;
-    if (!hasIdentity) { setOrders([]); setSales([]); setQuoteFiles([]); return; }
+    // New (unsaved) customers have no history — skip all IPC calls.
+    if (!customerId) { setOrders([]); setSales([]); setQuoteFiles([]); return; }
     try {
       const [wo, allSales, allQuoteFiles] = await Promise.all([
-        customerId ? (window as any).api.findWorkOrders({ customerId }).catch(() => []) : Promise.resolve([]),
+        (window as any).api.findWorkOrders({ customerId }).catch(() => []),
         (window as any).api.dbGet('sales').catch(() => []),
         (window as any).api.dbGet('quoteFiles').catch(() => []),
       ]);
+      // Read latest customer from ref so filtering is always accurate even if the
+      // parent re-rendered after load started.
+      const cust = customerRef.current;
+      const custNameNorm = normalizeCustomerName((cust as any)?.name || `${(cust as any)?.firstName || ''} ${(cust as any)?.lastName || ''}`);
+      const custPhoneNorm = normalizeCustomerPhone((cust as any)?.phone);
       setOrders(Array.isArray(wo) ? wo : []);
       setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, cust)));
-      // filter quoteFiles by this customer
       setQuoteFiles((Array.isArray(allQuoteFiles) ? allQuoteFiles : []).filter((q: any) => {
         if (customerId && q.customerId === customerId) return true;
         const qName = normalizeCustomerName(q.customerName);
         const qPhone = normalizeCustomerPhone(q.customerPhone);
-        return (!!customerNameNorm && qName === customerNameNorm) && (!!customerPhoneNorm ? qPhone === customerPhoneNorm : true);
+        return (!!custNameNorm && qName === custNameNorm) && (!!custPhoneNorm ? qPhone === custPhoneNorm : true);
       }));
     } catch (e) {
       setOrders([]); setSales([]); setQuoteFiles([]);
     }
-  }, [customerId, customerNameNorm, customerPhoneNorm]);
+  }, [customerId]); // Only re-create when the saved customer ID changes — not on every keystroke
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
