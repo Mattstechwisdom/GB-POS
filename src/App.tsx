@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SidebarFilters from './components/SidebarFilters';
 import Toolbar from './components/Toolbar';
 import WorkOrdersTable from './components/WorkOrdersTable';
@@ -12,6 +12,139 @@ import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
+import { registerOpenModal, unregisterOpenModal } from './lib/modalBus';
+import { storeWindowPayload } from './lib/windowPayload';
+
+// ── Lazy window components (shared chunk cache with main.tsx) ─────────────
+const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
+const SaleWindow                = React.lazy(() => import('./sales/SaleWindow'));
+const CalendarWindow            = React.lazy(() => import('./components/CalendarWindow'));
+const ClockInWindow             = React.lazy(() => import('./components/ClockInWindow'));
+const QuoteGeneratorWindow      = React.lazy(() => import('./components/QuoteGeneratorWindow'));
+const EODWindow                 = React.lazy(() => import('./components/EODWindow'));
+const ProductsWindow            = React.lazy(() => import('./components/ProductsWindow'));
+const InventoryWindow           = React.lazy(() => import('./components/InventoryWindow'));
+const WorkOrderRepairPickerWindow = React.lazy(() => import('./workorders/WorkOrderRepairPickerWindow'));
+const CustomerOverviewWindow    = React.lazy(() => import('./components/CustomerOverviewWindow'));
+const QuickSaleWindow           = React.lazy(() => import('./components/QuickSaleWindow'));
+const ConsultationBookingWindow = React.lazy(() => import('./components/ConsultationBookingWindow'));
+const CheckoutWindow            = React.lazy(() => import('./workorders/CheckoutWindow'));
+const DevMenuWindow             = React.lazy(() => import('./components/DevMenuWindow'));
+const DataToolsWindow           = React.lazy(() => import('./components/DataToolsWindow'));
+const ReportingWindow           = React.lazy(() => import('./components/ReportingWindow'));
+const ReportEmailWindow         = React.lazy(() => import('./components/ReportEmailWindow'));
+const ChartsWindow              = React.lazy(() => import('./components/ChartsWindow'));
+const NotificationsWindow       = React.lazy(() => import('./components/NotificationsWindow'));
+const NotificationSettingsWindow = React.lazy(() => import('./components/NotificationSettingsWindow'));
+const ReleaseFormWindow         = React.lazy(() => import('./workorders/ReleaseFormWindow'));
+const CustomerReceiptWindow     = React.lazy(() => import('./workorders/CustomerReceiptWindow'));
+const ProductFormWindow         = React.lazy(() => import('./sales/ProductFormWindow'));
+const BackupWindow              = React.lazy(() => import('./components/BackupWindow'));
+const ClearDatabaseWindow       = React.lazy(() => import('./components/ClearDatabaseWindow'));
+const RepairCategoriesWindow    = React.lazy(() => import('./repairs/RepairCategoriesWindow'));
+const DeviceCategoriesWindow    = React.lazy(() => import('./components/DeviceCategoriesWindow'));
+const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBuildItemWindow'));
+
+// ── map api method names → modal type ─────────────────────────────────────
+const API_TO_MODAL: Record<string, string> = {
+  openNewWorkOrder:          'newWorkOrder',
+  openNewSale:               'newSale',
+  openCalendar:              'calendar',
+  openClockIn:               'clockIn',
+  openQuoteGenerator:        'quoteGenerator',
+  openEod:                   'eod',
+  openProducts:              'products',
+  openInventory:             'inventory',
+  openWorkOrderRepairPicker: 'workOrderRepairPicker',
+  openCustomerOverview:      'customerOverview',
+  openQuickSale:             'quickSale',
+  openConsultation:          'consultation',
+  openCheckout:              'checkout',
+  openDevMenu:               'devMenu',
+  openDataTools:             'dataTools',
+  openReporting:             'reporting',
+  openReportEmail:           'reportEmail',
+  openCharts:                'charts',
+  openNotifications:         'notifications',
+  openNotificationSettings:  'notificationSettings',
+  openReleaseForm:           'releaseForm',
+  openCustomerReceipt:       'customerReceipt',
+  openProductForm:           'productForm',
+  openBackup:                'backup',
+  openRepairCategories:      'repairCategories',
+  openDeviceCategories:      'deviceCategories',
+  openWorkOrder:             'newWorkOrder',
+};
+
+interface ModalEntry { id: string; type: string; }
+
+// ── Overlay close button + content shell ─────────────────────────────────
+function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
+  // Close on Escape – only the top-most modal should fire.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler, { capture: true });
+    return () => window.removeEventListener('keydown', handler, { capture: true });
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-zinc-900 overflow-hidden"
+      style={{ zIndex }}
+      data-modal-shell="1"
+    >
+      {/* Floating close button */}
+      <button
+        onClick={onClose}
+        title="Close window (Esc)"
+        className="fixed top-2 right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white flex items-center justify-center text-lg font-bold leading-none shadow-lg transition-colors select-none"
+        style={{ zIndex: zIndex + 1 }}
+      >✕</button>
+      <React.Suspense fallback={
+        <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
+      }>
+        <ModalContent type={entry.type} onClose={onClose} />
+      </React.Suspense>
+    </div>
+  );
+}
+
+// ── Route modal type → window component ──────────────────────────────────
+function ModalContent({ type, onClose }: { type: string; onClose: () => void }) {
+  switch (type) {
+    case 'newWorkOrder':           return <NewWorkOrderWindow />;
+    case 'newSale':                return <SaleWindow />;
+    case 'calendar':               return <CalendarWindow />;
+    case 'clockIn':                return <ClockInWindow />;
+    case 'quoteGenerator':         return <QuoteGeneratorWindow />;
+    case 'eod':                    return <EODWindow />;
+    case 'products':               return <ProductsWindow />;
+    case 'inventory':              return <InventoryWindow />;
+    case 'workOrderRepairPicker':  return <WorkOrderRepairPickerWindow />;
+    case 'customerOverview':       return <CustomerOverviewWindow onClose={onClose} />;
+    case 'quickSale':              return <QuickSaleWindow />;
+    case 'consultation':           return <ConsultationBookingWindow />;
+    case 'checkout':               return <CheckoutWindow />;
+    case 'devMenu':                return <DevMenuWindow />;
+    case 'dataTools':              return <DataToolsWindow />;
+    case 'reporting':              return <ReportingWindow />;
+    case 'reportEmail':            return <ReportEmailWindow />;
+    case 'charts':                 return <ChartsWindow />;
+    case 'notifications':          return <NotificationsWindow />;
+    case 'notificationSettings':   return <NotificationSettingsWindow />;
+    case 'releaseForm':            return <ReleaseFormWindow />;
+    case 'customerReceipt':        return <CustomerReceiptWindow />;
+    case 'productForm':            return <ProductFormWindow />;
+    case 'backup':                 return <BackupWindow />;
+    case 'clearDb':                return <ClearDatabaseWindow />;
+    case 'repairCategories':       return <RepairCategoriesWindow mode="admin" />;
+    case 'deviceCategories':       return <DeviceCategoriesWindow />;
+    case 'customBuildItem':        return <CustomBuildItemWindow />;
+    default:                       return <div className="p-8 text-zinc-400">Unknown modal: {type}</div>;
+  }
+}
 
 function getActivityDate(record: any): Date {
   const raw = record?.activityAt || record?.checkoutDate || record?.repairCompletionDate || record?.clientPickupDate || record?.checkInAt || record?.createdAt || record?.updatedAt || 0;
@@ -23,7 +156,9 @@ const App: React.FC = () => {
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [woQuery, setWoQuery] = useState<string>('');
   const [mode, setMode] = useState<'workorders'|'sales'|'all'>('all');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <PaginationProvider pageSize={30}>
@@ -36,8 +171,12 @@ const App: React.FC = () => {
         setDateFrom={setDateFrom}
         dateTo={dateTo}
         setDateTo={setDateTo}
+        woQuery={woQuery}
+        setWoQuery={setWoQuery}
         mode={mode}
         setMode={setMode}
+        refreshKey={refreshKey}
+        setRefreshKey={setRefreshKey}
       />
     </PaginationProvider>
   );
@@ -54,8 +193,12 @@ const AppInner: React.FC<{
   setDateFrom: (v: string) => void;
   dateTo: string;
   setDateTo: (v: string) => void;
+  woQuery: string;
+  setWoQuery: (v: string) => void;
   mode: 'workorders' | 'sales' | 'all';
   setMode: (v: 'workorders' | 'sales' | 'all') => void;
+  refreshKey: number;
+  setRefreshKey: (v: number) => void;
 }> = ({
   showCustomerSearch,
   setShowCustomerSearch,
@@ -65,11 +208,86 @@ const AppInner: React.FC<{
   setDateFrom,
   dateTo,
   setDateTo,
+  woQuery,
+  setWoQuery,
   mode,
   setMode,
+  refreshKey,
+  setRefreshKey,
 }) => {
   const { setPage } = usePagination();
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
+
+  // ── Modal stack ──────────────────────────────────────────────────────────
+  const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
+  const modalCounterRef = useRef(0);
+
+  const openModal = useCallback((type: string, payload?: any) => {
+    if (payload !== undefined && payload !== null) {
+      storeWindowPayload(type, payload);
+    }
+    const id = `${type}-${++modalCounterRef.current}`;
+    setModalStack(s => [...s, { id, type }]);
+  }, []);
+
+  const closeModal = useCallback((id: string) => {
+    setModalStack(s => s.filter(m => m.id !== id));
+  }, []);
+
+  const closeTopModal = useCallback(() => {
+    setModalStack(s => s.length > 0 ? s.slice(0, -1) : s);
+  }, []);
+
+  // Keep a ref so the window.close override always sees the latest callback.
+  const closeTopModalRef = useRef(closeTopModal);
+  useEffect(() => { closeTopModalRef.current = closeTopModal; });
+
+  // Register bus + intercept window.api.open* calls
+  useEffect(() => {
+    registerOpenModal(openModal);
+
+    const api = (window as any).api;
+    if (!api) return () => { unregisterOpenModal(); };
+
+    // Save originals so we can restore on unmount.
+    const saved: Record<string, any> = {};
+    for (const [method, type] of Object.entries(API_TO_MODAL)) {
+      if (method in api) {
+        saved[method] = api[method];
+        const capturedType = type;
+        (api as any)[method] = (payload?: any) => {
+          openModal(capturedType, payload);
+          return Promise.resolve();
+        };
+      }
+    }
+
+    // closeSelfWindow → close top modal
+    if ('closeSelfWindow' in api) {
+      saved.closeSelfWindow = api.closeSelfWindow;
+      api.closeSelfWindow = () => { closeTopModalRef.current(); return Promise.resolve(); };
+    }
+
+    // window.close → close top modal (falls back to real close when no modals are open)
+    const origWindowClose = window.close.bind(window);
+    try {
+      (window as any).close = () => {
+        if (modalCounterRef.current > 0 && document.querySelectorAll('[data-modal-shell]').length > 0) {
+          closeTopModalRef.current();
+        } else {
+          origWindowClose();
+        }
+      };
+    } catch { /* read-only in some envs */ }
+
+    return () => {
+      unregisterOpenModal();
+      for (const [method, orig] of Object.entries(saved)) {
+        (api as any)[method] = orig;
+      }
+      try { (window as any).close = origWindowClose; } catch {}
+    };
+  }, [openModal]); // openModal is stable (useCallback [])
 
   useEffect(() => {
     // Keep invoice search scoped to Sales mode.
@@ -77,8 +295,21 @@ const AppInner: React.FC<{
   }, [mode, invoiceQuery]);
 
   useEffect(() => {
+    // Keep WO# filter scoped to non-sales mode.
+    if (mode === 'sales' && woQuery) setWoQuery('');
+  }, [mode, woQuery, setWoQuery]);
+
+  useEffect(() => {
     setPage(1);
-  }, [mode, technicianFilter, dateFrom, dateTo, setPage]);
+  }, [mode, technicianFilter, dateFrom, dateTo, woQuery, setPage]);
+
+  const handleClear = () => {
+    setTechnicianFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setWoQuery('');
+    setInvoiceQuery('');
+  };
 
   return (
     <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
@@ -96,6 +327,10 @@ const AppInner: React.FC<{
             onModeChange={setMode}
             invoiceQuery={invoiceQuery}
             onInvoiceQueryChange={setInvoiceQuery}
+            woQuery={woQuery}
+            onWoQueryChange={setWoQuery}
+            onClear={handleClear}
+            onRefresh={() => setRefreshKey(refreshKey + 1)}
           />
           <div>
             <RecentCustomers />
@@ -105,7 +340,7 @@ const AppInner: React.FC<{
           <Toolbar mode={mode} onModeChange={setMode} />
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
-              <WorkOrdersTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
+              <WorkOrdersTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} refreshKey={refreshKey} />
             )}
             {mode === 'sales' && (
               <SalesTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} />
@@ -123,6 +358,15 @@ const AppInner: React.FC<{
       {showCustomerSearch && (
         <CustomerSearchWindow onClose={() => setShowCustomerSearch(false)} />
       )}
+      {/* ── Internal modal windows ─────────────────────────────────────── */}
+      {modalStack.map((entry, idx) => (
+        <ModalShell
+          key={entry.id}
+          entry={entry}
+          zIndex={200 + idx * 10}
+          onClose={() => closeModal(entry.id)}
+        />
+      ))}
     </div>
   );
 };

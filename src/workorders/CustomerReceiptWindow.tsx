@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 function getPayload() {
+  try {
+    const stored = consumeWindowPayload('customerReceipt');
+    if (stored !== null) return stored;
+  } catch {}
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('customerReceipt');
@@ -25,7 +30,7 @@ function getReceiptFlags() {
 }
 
 const CustomerReceiptWindow: React.FC = () => {
-  const data = useMemo(() => getPayload() || {}, []);
+  const [data, setData] = useState<any>(() => getPayload() || {});
   const flags = useMemo(() => getReceiptFlags(), []);
   const now = new Date();
 
@@ -45,6 +50,46 @@ const CustomerReceiptWindow: React.FC = () => {
     })();
     return () => { alive = false; };
   }, []);
+
+  // Enrich from DB when only workOrderId is provided (e.g. from context menu)
+  useEffect(() => {
+    const payload = data as any;
+    if (!payload.workOrderId || payload.customerName) return;
+    let alive = true;
+    (async () => {
+      try {
+        const api = (window as any).api;
+        let wo: any = null;
+        try {
+          const list = await api.findWorkOrders?.({ id: payload.workOrderId });
+          wo = Array.isArray(list) && list.length ? list[0] : null;
+        } catch {}
+        if (!wo) {
+          try {
+            const list = await api.dbGet?.('workOrders');
+            wo = Array.isArray(list) ? list.find((w: any) => w.id === payload.workOrderId) || null : null;
+          } catch {}
+        }
+        if (!wo || !alive) return;
+        const enriched: any = { ...wo };
+        if (wo.customerId && api.findCustomers) {
+          try {
+            const customers = await api.findCustomers({ id: wo.customerId });
+            const c = Array.isArray(customers) && customers.length ? customers[0] : null;
+            if (c) {
+              const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+              enriched.customerName = full || wo.customerName;
+              enriched.customerPhone = c.phone || wo.customerPhone;
+              enriched.customerPhoneAlt = c.phoneAlt || '';
+              enriched.customerEmail = c.email || wo.customerEmail;
+            }
+          } catch {}
+        }
+        if (alive) setData(enriched);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!flags.autoPrint || flags.silent) return;
@@ -137,6 +182,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
   const phoneRaw = (data as any).customerPhone || (data as any).customer?.phone || '';
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
+  const phoneAltRaw = (data as any).customerPhoneAlt || (data as any).customer?.phoneAlt || '';
+  const phoneAlt = formatPhone(String(phoneAltRaw || '')) || String(phoneAltRaw || '');
   const email = (data as any).customerEmail || (data as any).customer?.email || '';
   const invoiceNo = (data as any).id ? String((data as any).id).padStart(6, '0') : '';
 
@@ -304,6 +351,7 @@ const CustomerReceiptWindow: React.FC = () => {
             <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
             <div><strong>Client:</strong> {fullName}</div>
             <div><strong>Phone:</strong> {phone}</div>
+            {phoneAlt ? <div><strong>Alt Phone:</strong> {phoneAlt}</div> : null}
             {email ? <div><strong>Email:</strong> {email}</div> : null}
           </div>
         </div>

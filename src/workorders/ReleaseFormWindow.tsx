@@ -1,8 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 function getPayload() {
+  try {
+    const stored = consumeWindowPayload('releaseForm');
+    if (stored !== null) return stored;
+  } catch {}
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('releaseForm');
@@ -19,7 +24,7 @@ const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => (
 );
 
 const ReleaseFormWindow: React.FC = () => {
-  const data = useMemo(() => getPayload() || {}, []);
+  const [data, setData] = useState<any>(() => getPayload() || {});
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const didAutoPrintRef = useRef(false);
@@ -33,6 +38,46 @@ const ReleaseFormWindow: React.FC = () => {
     })();
     return () => { alive = false; };
   }, []);
+
+  // Enrich from DB when only workOrderId is provided (e.g. from context menu)
+  useEffect(() => {
+    const payload = data as any;
+    if (!payload.workOrderId || payload.customerName) return;
+    let alive = true;
+    (async () => {
+      try {
+        const api = (window as any).api;
+        let wo: any = null;
+        try {
+          const list = await api.findWorkOrders?.({ id: payload.workOrderId });
+          wo = Array.isArray(list) && list.length ? list[0] : null;
+        } catch {}
+        if (!wo) {
+          try {
+            const list = await api.dbGet?.('workOrders');
+            wo = Array.isArray(list) ? list.find((w: any) => w.id === payload.workOrderId) || null : null;
+          } catch {}
+        }
+        if (!wo || !alive) return;
+        const enriched: any = { ...wo };
+        if (wo.customerId && api.findCustomers) {
+          try {
+            const customers = await api.findCustomers({ id: wo.customerId });
+            const c = Array.isArray(customers) && customers.length ? customers[0] : null;
+            if (c) {
+              const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+              enriched.customerName = full || wo.customerName;
+              enriched.customerPhone = c.phone || wo.customerPhone;
+              enriched.customerPhoneAlt = c.phoneAlt || '';
+              enriched.customerEmail = c.email || wo.customerEmail;
+            }
+          } catch {}
+        }
+        if (alive) setData(enriched);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Give the logo a chance to resolve before printing, to avoid the broken-image icon.
@@ -61,6 +106,8 @@ const ReleaseFormWindow: React.FC = () => {
   const fullName = data.customerName || data.customer?.name || '';
   const phoneRaw = data.customerPhone || data.customer?.phone || '';
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
+  const phoneAltRaw = (data as any).customerPhoneAlt || (data as any).customer?.phoneAlt || '';
+  const phoneAlt = formatPhone(String(phoneAltRaw || '')) || String(phoneAltRaw || '');
 
   return (
     <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -100,6 +147,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div><div style={{ color: '#666', fontSize: 11 }}>Customer</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{fullName}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phone}</div></div>
+          {phoneAlt ? <div><div style={{ color: '#666', fontSize: 11 }}>Alt Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phoneAlt}</div></div> : null}
           <div><div style={{ color: '#666', fontSize: 11 }}>Device</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productDescription || data.productCategory || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Model</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.model || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Serial</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || ''}</div></div>

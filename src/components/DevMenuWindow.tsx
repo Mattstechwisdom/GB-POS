@@ -3,6 +3,7 @@ import { computeTotals } from '../lib/calc';
 
 type LogLevel = 'info' | 'warn' | 'error';
 type LogEntry = { ts: string; level: LogLevel; message: string };
+type DupGroup = { groupKey: string; reason: 'name' | 'phone'; customers: any[]; keepId: number };
 
 const DevMenuWindow: React.FC = () => {
 	const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -11,6 +12,7 @@ const DevMenuWindow: React.FC = () => {
 	const hasElectron = typeof (window as any).api !== 'undefined';
 	const logScrollRef = useRef<HTMLDivElement | null>(null);
 	const [info, setInfo] = useState<{ title: string; body: string } | null>(null);
+	const [mergeView, setMergeView] = useState<DupGroup[] | null>(null);
 
 	// Info catalog for actions
 	const infoMap: Record<string, { title: string; body: string }> = {
@@ -69,6 +71,10 @@ const DevMenuWindow: React.FC = () => {
 		autoFixSalesTotals: {
 			title: 'Auto-fix Sales Totals',
 			body: 'Recomputes and saves totals for sales with mismatches. Use after changing tax settings or fixing line items.'
+		},
+		reviewMergeCustomers: {
+			title: 'Review & Merge Duplicate Customers',
+			body: 'Scans for customers sharing the same full name OR same phone number, then opens an interactive panel. For each duplicate group you can pick which record to keep — work orders and sales are re-pointed to the keeper, and contact info (alt phone, email) is preserved where possible. Customers with the same name but different phones may be different people; review carefully before merging.'
 		},
 		auditTechPasscodes: {
 			title: 'Audit Tech Passcodes',
@@ -296,7 +302,100 @@ const DevMenuWindow: React.FC = () => {
 				log('error', `Duplicate detection failed: ${e?.message || String(e)}`);
 			} finally { setBusy(false); }
 		}
+	// --- Interactive duplicate customer merge ---
+	async function loadMergeView() {
+		setBusy(true);
+		try {
+			const customers = await (window as any).api.dbGet('customers') || [];
+			const normName = (c: any) =>
+				`${(c.firstName || '').trim()} ${(c.lastName || '').trim()}`.replace(/\s+/g, ' ').trim().toLowerCase();
+			const normPhone = (s: any) => (s || '').replace(/\D/g, '');
 
+			const byName = new Map<string, any[]>();
+			const byPhone = new Map<string, any[]>();
+			for (const c of customers) {
+				const name = normName(c);
+				const phone = normPhone(c.phone);
+				if (name) byName.set(name, [...(byName.get(name) || []), c]);
+				if (phone.length >= 7) byPhone.set(phone, [...(byPhone.get(phone) || []), c]);
+			}
+
+			const seen = new Set<string>();
+			const groups: DupGroup[] = [];
+
+			const addGroup = (arr: any[], reason: 'name' | 'phone', key: string) => {
+				if (arr.length < 2) return;
+				const sig = arr.map(c => c.id).sort((a,b) => Number(a)-Number(b)).join(',');
+				if (seen.has(sig)) return;
+				seen.add(sig);
+				const sorted = [...arr].sort((a,b) => Number(a.id)-Number(b.id));
+				groups.push({ groupKey: key, reason, customers: sorted, keepId: sorted[0].id });
+			};
+
+			for (const [name, arr] of byName.entries()) addGroup(arr, 'name', name);
+			for (const [phone, arr] of byPhone.entries()) addGroup(arr, 'phone', phone);
+
+			if (groups.length === 0) {
+				log('info', 'No duplicate customers found by name or phone.');
+			} else {
+				log('info', `Found ${groups.length} duplicate group(s). Opening review panel.`);
+				setMergeView(groups);
+			}
+		} catch (e: any) {
+			log('error', `Failed to load merge view: ${e?.message || String(e)}`);
+		} finally { setBusy(false); }
+	}
+
+	function setGroupKeeper(groupKey: string, reason: string, keepId: number) {
+		setMergeView(prev => prev
+			? prev.map(g => (g.groupKey === groupKey && g.reason === reason) ? { ...g, keepId } : g)
+			: null
+		);
+	}
+
+	async function executeMerge(group: DupGroup) {
+		setBusy(true);
+		try {
+			const [workOrders, sales] = await Promise.all([
+				(window as any).api.dbGet('workOrders').catch(() => []),
+				(window as any).api.dbGet('sales').catch(() => []),
+			]);
+			const keeper = group.customers.find(c => c.id === group.keepId);
+			if (!keeper) { log('error', 'Keeper not found'); return; }
+			const dupes = group.customers.filter(c => c.id !== group.keepId);
+
+			// Repoint work orders and sales
+			for (const w of workOrders || []) {
+				if (dupes.some(d => Number(d.id) === Number(w.customerId))) {
+					await (window as any).api.dbUpdate('workOrders', w.id, { ...w, customerId: keeper.id });
+				}
+			}
+			for (const s of sales || []) {
+				if (dupes.some(d => Number(d.id) === Number(s.customerId))) {
+					await (window as any).api.dbUpdate('sales', s.id, { ...s, customerId: keeper.id });
+				}
+			}
+
+			// Merge any missing contact info into keeper before deleting dupes
+			let merged = { ...keeper };
+			for (const d of dupes) {
+				if (!merged.phoneAlt && d.phone && d.phone !== merged.phone) merged = { ...merged, phoneAlt: d.phone };
+				if (!merged.email && d.email) merged = { ...merged, email: d.email };
+				if (!merged.address && d.address) merged = { ...merged, address: d.address };
+			}
+			await (window as any).api.dbUpdate('customers', keeper.id, merged);
+
+			for (const d of dupes) {
+				await (window as any).api.dbDelete('customers', d.id);
+				log('info', `Merged customer ${d.id} → ${keeper.id} (${keeper.firstName} ${keeper.lastName})`);
+			}
+
+			log('info', `✓ Merge complete for "${group.groupKey}" — kept ID ${keeper.id}`);
+			setMergeView(prev => prev ? prev.filter(g => !(g.groupKey === group.groupKey && g.reason === group.reason)) : null);
+		} catch (e: any) {
+			log('error', `Merge failed: ${e?.message || String(e)}`);
+		} finally { setBusy(false); }
+	}
 		// Auto-fix common issues: de-duplicate safely and fix work order totals/status
 		async function autoFixCommonIssues() {
 			setBusy(true);
@@ -777,8 +876,7 @@ const DevMenuWindow: React.FC = () => {
 						</section>
 						<section className="bg-zinc-950 border border-zinc-800 rounded p-3">
 							<div className="text-sm font-semibold text-zinc-300 mb-2">Repair / Auto-fix</div>
-							<div className="space-y-2">
-									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={autoFixCommonIssues} disabled={busy || !hasElectron}>Auto-fix Work Orders</button><InfoIcon infoKey="autoFixCommonIssues" /></div>
+							<div className="space-y-2">								<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-amber-900/60 border border-amber-600 text-amber-100 rounded hover:border-amber-400 disabled:opacity-50" onClick={loadMergeView} disabled={busy || !hasElectron}>Review &amp; Merge Duplicates…</button><InfoIcon infoKey="reviewMergeCustomers" /></div>									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={autoFixCommonIssues} disabled={busy || !hasElectron}>Auto-fix Work Orders</button><InfoIcon infoKey="autoFixCommonIssues" /></div>
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={autoFixTimeEntries} disabled={busy || !hasElectron}>Auto-fix Time Entries</button><InfoIcon infoKey="autoFixTimeEntries" /></div>
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={normalizeCustomerPhones} disabled={busy || !hasElectron}>Normalize Customer Phones</button><InfoIcon infoKey="normalizeCustomerPhones" /></div>
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={autoFixSalesTotals} disabled={busy || !hasElectron}>Auto-fix Sales Totals</button><InfoIcon infoKey="autoFixSalesTotals" /></div>
@@ -802,38 +900,106 @@ const DevMenuWindow: React.FC = () => {
 					</aside>
 							{/* Main log view (larger, fixed; page not scrollable except sidebar) */}
 							<main className="flex-1 min-w-0 flex flex-col">
-											<div className="flex items-center justify-between mb-2">
-												<div className="text-sm text-zinc-400">Log</div>
-												<div className="flex items-center gap-2">
-													<label className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer select-none"><input type="checkbox" className="accent-[#39FF14]" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} /> Auto-scroll</label>
-													<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={exportLog}>Export</button>
-													<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={clearLog}>Clear</button>
-												</div>
-											</div>
-											<div className="flex-1 bg-zinc-950 border border-zinc-800 rounded p-2 space-y-1 overflow-hidden">
-												<div ref={logScrollRef} className="h-full overflow-auto">
-							{logs.map((l, idx) => (
-								<div key={idx} className={l.level === 'error' ? 'text-red-400' : l.level === 'warn' ? 'text-yellow-300' : 'text-zinc-300'}>
-									[{l.ts}] {l.level.toUpperCase()}: {l.message}
+					{mergeView !== null ? (
+						// ---- Merge review panel ----
+						<>
+							<div className="flex items-center justify-between mb-2">
+								<div className="flex items-center gap-3">
+									<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={() => setMergeView(null)}>← Back to Log</button>
+									<span className="text-sm font-semibold text-amber-300">Review Duplicate Customers</span>
+									{mergeView.length > 0 && <span className="text-xs text-zinc-400">{mergeView.length} group{mergeView.length !== 1 ? 's' : ''} remaining</span>}
 								</div>
-							))}
+							</div>
+							<div className="flex-1 overflow-y-auto space-y-3">
+								{mergeView.length === 0 && (
+									<div className="text-center text-zinc-400 mt-12">All duplicate groups resolved!</div>
+								)}
+								{mergeView.map(group => (
+									<div key={`${group.reason}-${group.groupKey}`} className="bg-zinc-950 border border-zinc-800 rounded p-3">
+										<div className="flex items-center justify-between mb-2">
+											<div>
+												<span className="text-xs font-semibold text-amber-400 uppercase mr-2">{group.reason === 'name' ? 'Same Name' : 'Same Phone'}</span>
+												<span className="text-sm text-zinc-200">{group.groupKey}</span>
+												<span className="ml-2 text-xs text-zinc-500">({group.customers.length} records)</span>
+											</div>
+											<button
+												className="px-3 py-1 text-xs bg-amber-700 border border-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50"
+												onClick={() => executeMerge(group)}
+												disabled={busy}
+											>Merge &amp; Keep Selected</button>
+										</div>
+										<div className="grid grid-cols-2 gap-2">
+											{group.customers.map(c => {
+												const isKeeper = c.id === group.keepId;
+												return (
+													<label
+														key={c.id}
+														className={`flex items-start gap-2 p-2 rounded border cursor-pointer ${
+															isKeeper ? 'border-[#39FF14] bg-zinc-800' : 'border-zinc-700 bg-zinc-900 hover:border-zinc-500'
+														}`}
+													>
+														<input
+															type="radio"
+															name={`keep-${group.reason}-${group.groupKey}`}
+															checked={isKeeper}
+															onChange={() => setGroupKeeper(group.groupKey, group.reason, c.id)}
+															className="mt-0.5 accent-[#39FF14]"
+														/>
+														<div className="min-w-0">
+															<div className="flex items-center gap-1">
+																<span className="text-xs font-semibold text-zinc-200">{c.firstName} {c.lastName}</span>
+																{isKeeper && <span className="text-[10px] text-[#39FF14] font-bold">KEEP</span>}
+															</div>
+															<div className="text-[11px] text-zinc-400">ID: {c.id}</div>
+															{c.phone && <div className="text-[11px] text-zinc-400">📞 {c.phone}</div>}
+															{c.phoneAlt && <div className="text-[11px] text-zinc-400">📞 Alt: {c.phoneAlt}</div>}
+															{c.email && <div className="text-[11px] text-zinc-400">✉ {c.email}</div>}
+														</div>
+													</label>
+												);
+											})}
+										</div>
+										<div className="text-[10px] text-zinc-500 mt-1">Merging will re-point all work orders &amp; sales to the kept record, and preserve any unique contact info.</div>
 									</div>
+								))}
+							</div>
+						</>
+					) : (
+						// ---- Normal log view ----
+						<>
+							<div className="flex items-center justify-between mb-2">
+								<div className="text-sm text-zinc-400">Log</div>
+								<div className="flex items-center gap-2">
+									<label className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer select-none"><input type="checkbox" className="accent-[#39FF14]" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} /> Auto-scroll</label>
+									<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={exportLog}>Export</button>
+									<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={clearLog}>Clear</button>
 								</div>
+							</div>
+							<div className="flex-1 bg-zinc-950 border border-zinc-800 rounded p-2 space-y-1 overflow-hidden">
+								<div ref={logScrollRef} className="h-full overflow-auto">
+									{logs.map((l, idx) => (
+										<div key={idx} className={l.level === 'error' ? 'text-red-400' : l.level === 'warn' ? 'text-yellow-300' : 'text-zinc-300'}>
+											[{l.ts}] {l.level.toUpperCase()}: {l.message}
+										</div>
+									))}
+								</div>
+							</div>
+						</>
+					)}
 
-										{/* Info modal */}
-										{info && (
-											<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setInfo(null)}>
-												<div className="w-[500px] max-w-[95vw] bg-zinc-900 border border-zinc-700 rounded p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-													<div className="flex items-center justify-between mb-2">
-														<div className="font-semibold text-zinc-200">{info.title}</div>
-														<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={() => setInfo(null)}>Close</button>
-													</div>
-													<div className="text-sm text-zinc-300 whitespace-pre-wrap">{info.body}</div>
+									{info && (
+										<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setInfo(null)}>
+											<div className="w-[500px] max-w-[95vw] bg-zinc-900 border border-zinc-700 rounded p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+												<div className="flex items-center justify-between mb-2">
+													<div className="font-semibold text-zinc-200">{info.title}</div>
+													<button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={() => setInfo(null)}>Close</button>
 												</div>
+												<div className="text-sm text-zinc-300 whitespace-pre-wrap">{info.body}</div>
 											</div>
-										)}
-						<div className="mt-2 text-xs text-zinc-500">High-ROI actions only; all writes are gated elsewhere.</div>
-					</main>
+										</div>
+									)}
+					<div className="mt-2 text-xs text-zinc-500">High-ROI actions only; all writes are gated elsewhere.</div>
+				</main>
 				</div>
 			</div>
 		);

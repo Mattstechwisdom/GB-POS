@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 type ReportEmailPayload = {
   generatedAt?: string;
@@ -61,6 +62,10 @@ function formatMoney(n: any) {
 const ReportEmailWindow: React.FC<{ payload?: ReportEmailPayload | null }> = ({ payload: payloadProp }) => {
   const payload = useMemo(() => {
     if (payloadProp !== undefined) return payloadProp;
+    try {
+      const stored = consumeWindowPayload('reportEmail');
+      if (stored !== null) return stored as ReportEmailPayload;
+    } catch {}
     const params = new URLSearchParams(window.location.search);
     return tryDecodePayload(params.get('reportEmail'));
   }, [payloadProp]);

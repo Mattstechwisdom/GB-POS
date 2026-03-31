@@ -14,9 +14,13 @@ interface Props {
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
   invoiceQuery?: string;
   onInvoiceQueryChange?: (v: string) => void;
+  woQuery?: string;
+  onWoQueryChange?: (v: string) => void;
+  onClear?: () => void;
+  onRefresh?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -99,6 +103,17 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         </div>
       </div>
       )}
+      {mode !== 'sales' && (
+      <div>
+        <label className="block text-xs mb-1 leading-none">Work Order #</label>
+        <input
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+          placeholder="e.g. 42"
+          value={woQuery}
+          onChange={e => onWoQueryChange && onWoQueryChange(e.target.value)}
+        />
+      </div>
+      )}
       {/* Mode toggle moved from top toolbar */}
       <div className="w-full flex items-center justify-center gap-2 mt-2">
           <button
@@ -128,8 +143,8 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         </div>
       
       <div className="flex gap-2 mt-1">
-        <button type="button" className="flex-1 bg-zinc-700 rounded px-2 py-1 text-xs">Clear</button>
-        <button type="button" className="flex-1 bg-[#39FF14] text-black rounded px-2 py-1 text-xs font-bold">Refresh</button>
+        <button type="button" className="flex-1 bg-zinc-700 rounded px-2 py-1 text-xs" onClick={onClear}>Clear</button>
+        <button type="button" className="flex-1 bg-[#39FF14] text-black rounded px-2 py-1 text-xs font-bold" onClick={onRefresh}>Refresh</button>
       </div>
       <div className="mt-2">
         <button

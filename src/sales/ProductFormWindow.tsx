@@ -2,8 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 function getPayload() {
+  try {
+    const stored = consumeWindowPayload('productForm');
+    if (stored !== null) return stored;
+  } catch {}
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('productForm');

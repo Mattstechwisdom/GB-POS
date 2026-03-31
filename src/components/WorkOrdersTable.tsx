@@ -21,7 +21,7 @@ function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date |
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
+const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string; woQuery?: string; refreshKey?: number }> = ({ technicianFilter = '', dateFrom = '', dateTo = '', woQuery = '', refreshKey = 0 }) => {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [techIndex, setTechIndex] = useState<Record<string,string>>({});
@@ -87,6 +87,11 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
     return () => { try { unsubWO && unsubWO(); } catch {} try { unsubTech && unsubTech(); } catch {} };
   }, [load]);
 
+  // Re-fetch when parent requests a manual refresh.
+  useEffect(() => {
+    if (refreshKey > 0) load();
+  }, [refreshKey, load]);
+
   const filteredRows = useMemo(() => {
     return rows
       .filter(r => {
@@ -117,8 +122,12 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
         const fromOk = dateFrom ? activity >= new Date(dateFrom + 'T00:00:00') : true;
         const toOk = dateTo ? activity <= new Date(dateTo + 'T23:59:59.999') : true;
         return fromOk && toOk;
+      })
+      .filter(r => {
+        if (!woQuery) return true;
+        return String(r.id).includes(woQuery.trim());
       });
-  }, [rows, technicianFilter, dateFrom, dateTo, techIndex]);
+  }, [rows, technicianFilter, dateFrom, dateTo, woQuery, techIndex]);
 
   useEffect(() => {
     setTotalItems(Math.min(filteredRows.length, MAX_ITEMS));

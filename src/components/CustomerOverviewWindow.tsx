@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAutosave } from '../lib/useAutosave';
+import { consumeWindowPayload } from '../lib/windowPayload';
 import CustomerForm from './CustomerForm';
 import Button from './Button';
 import { Customer } from '../lib/types';
@@ -19,12 +20,19 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
 
-  // If customer not passed, attempt to load by query param customerOverview
+  // If customer not passed, attempt to load by payload store or query param customerOverview
   useEffect(() => {
     if (customer) return; // already have
-    const params = new URLSearchParams(window.location.search);
-    const idParam = params.get('customerOverview');
-    const id = idParam ? Number(idParam) : 0;
+    let id = 0;
+    try {
+      const stored = consumeWindowPayload('customerOverview');
+      if (stored !== null) id = Number(stored);
+    } catch {}
+    if (!id) {
+      const params = new URLSearchParams(window.location.search);
+      const idParam = params.get('customerOverview');
+      id = idParam ? Number(idParam) : 0;
+    }
     if (!id) return;
     (async () => {
       try {

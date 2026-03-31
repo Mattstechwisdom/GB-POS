@@ -13,6 +13,7 @@ export type WorkOrderItemRow = {
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAutosave } from '../lib/useAutosave';
+import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
 import ItemsTable from './ItemsTable';
@@ -39,6 +40,11 @@ const REQUIRED_LABELS: Record<RequiredKey, string> = {
 };
 
 function parsePayload() {
+  try {
+    // Check the in-app modal payload store first (set when opened as internal modal).
+    const stored = consumeWindowPayload('newWorkOrder');
+    if (stored !== null) return stored;
+  } catch {}
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('newWorkOrder');
@@ -718,6 +724,7 @@ const NewWorkOrderWindow: React.FC = () => {
           try {
             let customerName = (wo as any).customerName || '';
             let customerPhone = (wo as any).customerPhone || '';
+            let customerPhoneAlt = '';
             let customerEmail = (wo as any).customerEmail || '';
             try {
               const id = (wo as any).customerId;
@@ -728,6 +735,7 @@ const NewWorkOrderWindow: React.FC = () => {
                   const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
                   customerName = full || customerName;
                   customerPhone = c.phone || customerPhone;
+                  customerPhoneAlt = c.phoneAlt || '';
                   customerEmail = c.email || customerEmail;
                 }
               }
@@ -738,6 +746,7 @@ const NewWorkOrderWindow: React.FC = () => {
               customerId: (wo as any).customerId,
               customerName,
               customerPhone,
+              customerPhoneAlt,
               customerEmail,
               productCategory: wo.productCategory,
               productDescription: wo.productDescription,

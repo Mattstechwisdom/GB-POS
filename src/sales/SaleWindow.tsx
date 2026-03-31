@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
@@ -106,6 +107,10 @@ const SALE_REQUIRED_LABELS: Record<SaleRequiredKey, string> = {
 };
 
 function readPayload(): SalePayload | null {
+  try {
+    const stored = consumeWindowPayload('newSale');
+    if (stored !== null) return stored as SalePayload;
+  } catch {}
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('newSale');
@@ -801,12 +806,22 @@ const SaleWindow: React.FC = () => {
             consultationHours: (sale as any).consultationHours,
             driverFee: (sale as any).driverFee,
           } : {};
+          let customerPhoneAlt = '';
+          try {
+            const cid = sale.customerId;
+            if (cid && (window as any).api?.findCustomers) {
+              const list = await (window as any).api.findCustomers({ id: cid });
+              const c = Array.isArray(list) && list.length ? list[0] : null;
+              if (c) customerPhoneAlt = c.phoneAlt || '';
+            }
+          } catch {}
           const payload = {
             receiptType: 'sale',
             id: (sale as any).id,
             customerId: sale.customerId,
             customerName: sale.customerName,
             customerPhone: sale.customerPhone,
+            customerPhoneAlt,
             customerEmail: (sale as any).customerEmail || '',
             productCategory: 'Retail',
             productDescription: (rows[0]?.description) || sale.itemDescription || 'Sale',
@@ -931,12 +946,22 @@ const SaleWindow: React.FC = () => {
               consultationHours: (sale as any).consultationHours,
               driverFee: (sale as any).driverFee,
             } : {};
+            let checkoutCustomerPhoneAlt = '';
+            try {
+              const cid = recordToPersist.customerId;
+              if (cid && (window as any).api?.findCustomers) {
+                const list = await (window as any).api.findCustomers({ id: cid });
+                const c = Array.isArray(list) && list.length ? list[0] : null;
+                if (c) checkoutCustomerPhoneAlt = c.phoneAlt || '';
+              }
+            } catch {}
             const payload = {
               receiptType: 'sale',
               id: currentId || (sale as any).id,
               customerId: recordToPersist.customerId,
               customerName: recordToPersist.customerName,
               customerPhone: recordToPersist.customerPhone,
+              customerPhoneAlt: checkoutCustomerPhoneAlt,
               customerEmail: (recordToPersist as any).customerEmail || '',
               productCategory: 'Retail',
               productDescription: (recordToPersist.items && (recordToPersist.items as any)[0]?.description) || recordToPersist.itemDescription || 'Sale',
