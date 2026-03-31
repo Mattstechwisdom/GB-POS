@@ -1,6 +1,7 @@
 export {};
 
 declare global {
+  const __APP_VERSION__: string;
   // Temporary: QuoteGeneratorWindow has a legacy reference to itemsPage()
   // in the print pipeline; at runtime it is guarded by try/catch.
   // This keeps TypeScript from failing if the helper is out of scope.

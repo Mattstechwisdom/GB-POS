@@ -18,6 +18,7 @@ interface Props {
 
 const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange }) => {
   const [techs, setTechs] = useState<any[]>([]);
+  const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
     let mounted = true;
     const refresh = async () => {
@@ -33,8 +34,11 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
   return (
     <form className="flex flex-col gap-3">
       {/* App title above logo */}
-      <div className="w-full flex items-center justify-center pt-1 pb-0">
+      <div className="w-full flex flex-col items-center justify-center pt-1 pb-0">
         <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
+        {appVersion && (
+          <div className="text-xs text-zinc-500 mt-0.5">v{appVersion}</div>
+        )}
       </div>
       {/* Logo: smaller, centered, no border/background */}
       <div className="w-full mb-2 flex items-center justify-center">

@@ -1304,8 +1304,18 @@ ipcMain.handle('email:sendReportCsv', async (_e: any, payload: any) => {
 // App info (used for update/version gating)
 ipcMain.handle('app:getInfo', async () => {
   try {
+    // app.getVersion() returns the Electron runtime version in dev mode.
+    // Read from package.json directly so it always reflects the app version.
+    let version = '0.0.0';
+    try {
+      const pkgPath = path.join(app.getAppPath(), 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      version = String(pkg.version || '0.0.0');
+    } catch {
+      version = app.getVersion();
+    }
     return {
-      version: app.getVersion(),
+      version,
       platform: process.platform,
       arch: process.arch,
     };
@@ -2919,6 +2929,29 @@ if (!app.requestSingleInstanceLock()) {
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     ensureBatchOutScheduler();
+
+    // Pre-initialize storage before the window opens.
+    // Fast path: existing configured installs resolve instantly (read + write check).
+    // First-run path: shows the data-folder chooser dialog BEFORE the window opens.
+    try {
+      const existing = readDataLocationConfig();
+      if (existing?.dataRoot) {
+        const writeCheck = canWriteToFolder(existing.dataRoot);
+        if (writeCheck.ok) {
+          setDataRoot(existing.dataRoot);
+        } else {
+          // Configured folder no longer writable — fall back to userData silently.
+          setDataRoot(app.getPath('userData'));
+        }
+      } else {
+        // First run: no config yet — auto-select per-user AppData (no dialog).
+        // Users can change via Admin > Data Tools if needed.
+        setDataRoot(app.getPath('userData'));
+      }
+    } catch {
+      // If anything goes wrong, resolveDataRoot() will handle the fallback.
+    }
+
     // Optional: quick startup sync to pull newer server data (offline-first; bounded timeout).
     try {
       const cfg = readServerSyncConfig();

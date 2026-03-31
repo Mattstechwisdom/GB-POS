@@ -1,6 +1,7 @@
 ﻿import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
+import { publicAsset } from './lib/publicAsset';
 
 const App = lazy(() => import('./App'));
 const CalendarWindow = lazy(() => import('./components/CalendarWindow'));
@@ -111,8 +112,25 @@ function getNewWorkOrderPayload() {
 
 function LoadingScreen() {
 	return (
-		<div className="min-h-screen bg-zinc-900 text-zinc-300 flex items-center justify-center text-sm">
-			Loading…
+		<div className="min-h-screen bg-zinc-900 flex flex-col items-center justify-center gap-5">
+			<img
+				src={publicAsset('logo.png')}
+				alt="GadgetBoy POS"
+				className="w-28 h-28 object-contain animate-pulse"
+			/>
+			<div className="flex items-center gap-1">
+				<span className="text-sm text-zinc-400 tracking-wide">Loading</span>
+				<span className="flex gap-0.5 ml-0.5">
+					{[0, 1, 2].map(i => (
+						<span
+							key={i}
+							className="block w-1 h-1 rounded-full bg-[#39FF14]"
+							style={{ animation: `bounce 1s ease-in-out ${i * 0.18}s infinite` }}
+						/>
+					))}
+				</span>
+			</div>
+			<style>{`@keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-5px);opacity:1} }`}</style>
 		</div>
 	);
 }
@@ -291,11 +309,7 @@ try {
 		renderWithSuspense(root, <NewWorkOrderWindow />);
 	} else {
 		scheduleCommonWindowPreloads();
-		renderWithSuspense(root,
-			<DataPathGate>
-				<App />
-			</DataPathGate>
-		);
+		renderWithSuspense(root, <App />);
 	}
 
 } catch (e: any) {
