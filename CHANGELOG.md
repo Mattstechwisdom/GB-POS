@@ -143,3 +143,6 @@
 ## v0.2.49 (2026-03-07)
 - fix(quotes): remove popup-based signing; Sign & Finalize now opens an in-page signature + date screen and downloads the signed PDF
 
+## v0.4.3 (2026-04-02)
+- No commits recorded.
+

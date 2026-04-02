@@ -552,7 +552,8 @@ function QuoteGeneratorWindow(): JSX.Element {
     const devicePageInteractive = (item: SaleItem, title: string, standalone: boolean = true) => {
       const images = (item.images || []).slice(0, 3);
       const base = Number(item.price || 0);
-      const shown = Number.isFinite(base) && base > 0 ? (base * 1.15) : null;
+      // Price is already the customer-facing total (before tax). Do not apply any additional multiplier here.
+      const shown = Number.isFinite(base) && base > 0 ? base : null;
       const inner = `
         <div class=\"text-base\" style=\"text-align:center; font-weight:600; margin-bottom:8px\">${esc(title)}</div>
         ${images.length ? `
@@ -569,7 +570,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
           </div>
           ${shown != null ? `<div class=\"gb-total\" style=\"grid-column:3; justify-self:end\">
-            <div style=\"display:inline-block; border:1px solid #f00; padding:6px 10px; border-radius:4px; font-size:10pt; white-space:nowrap; font-weight:700\">Total (before tax): $${shown.toFixed(2)}</div>
+            <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
           </div>` : ``}
         </div>
         ${item.prompt && String(item.prompt).trim().length > 0 ? `
@@ -3007,7 +3008,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
     function devicePage(item: SaleItem, title: string, standalone: boolean = true) {
       const base = Number(item.price || 0);
-      const shown = Number.isFinite(base) && base > 0 ? (base * 1.15) : null;
+      // Price is already the customer-facing total (before tax). Do not apply any additional multiplier here.
+      const shown = Number.isFinite(base) && base > 0 ? base : null;
       const hasSpecs = !!(
         (item.dynamic && Object.keys(item.dynamic || {}).length > 0) ||
         item.deviceType || (item.dynamic && (item.dynamic as any).device) || item.model || item.condition || item.accessories
@@ -3134,11 +3136,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                 </div>
               </div>
               ${shown != null ? `<div style=\"grid-column:3; justify-self:end\">
-                <div style=\"display:inline-block; border:1px solid #f00; padding:6px 10px; border-radius:4px; font-size:10pt; white-space:nowrap; font-weight:700\">Total (before tax): $${shown.toFixed(2)}</div>
+                <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
               </div>` : ``}
             </div>` : (shown != null ? `
             <div style=\"text-align:right; margin-top:8px\">
-              <div style=\"display:inline-block; border:1px solid #f00; padding:6px 10px; border-radius:4px; font-size:10pt; white-space:nowrap; font-weight:700\">Total (before tax): $${shown.toFixed(2)}</div>
+              <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
             </div>
           ` : ``)}
           ${item.prompt && String(item.prompt).trim().length > 0 ? `
@@ -6489,10 +6491,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                       {(() => {
                                         const base = parseFloat((first.price || '').toString());
                                         if (!isFinite(base) || base <= 0) return null;
-                                        const shown = base * 1.15;
+                                        const shown = base;
                                         return (
                                           <div style={{ gridColumn: 3, justifySelf: 'end' }}>
-                                            <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                            <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
                                               Total (before tax): ${shown.toFixed(2)}
                                             </div>
                                           </div>
@@ -6504,10 +6506,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   {!hasSpecs && (() => {
                                     const base = parseFloat((first.price || '').toString());
                                     if (!isFinite(base) || base <= 0) return null;
-                                    const shown = base * 1.15;
+                                    const shown = base;
                                     return (
                                       <div style={{ textAlign: 'right', marginTop: 8 }}>
-                                        <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                        <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
                                           Total (before tax): ${shown.toFixed(2)}
                                         </div>
                                       </div>
@@ -6636,10 +6638,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                           {(() => {
                                             const base = Number(item.price || 0);
                                             if (!isFinite(base) || base <= 0) return null;
-                                            const shown = base * 1.15;
+                                            const shown = base;
                                             return (
                                               <div style={{ gridColumn: 3, justifySelf: 'end' }}>
-                                                <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                                <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
                                                   Total (before tax): ${shown.toFixed(2)}
                                                 </div>
                                               </div>
@@ -6650,10 +6652,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                                       {!hasSpecs && (() => {
                                         const base = Number(item.price || 0);
                                         if (!isFinite(base) || base <= 0) return null;
-                                        const shown = base * 1.15;
+                                        const shown = base;
                                         return (
                                           <div style={{ textAlign: 'right', marginTop: 8 }}>
-                                            <div style={{ display: 'inline-block', border: '1px solid #FF0000', padding: '6px 10px', borderRadius: 4, fontSize: '10pt', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                                            <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
                                               Total (before tax): ${shown.toFixed(2)}
                                             </div>
                                           </div>
