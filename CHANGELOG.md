@@ -146,3 +146,6 @@
 ## v0.4.3 (2026-04-02)
 - No commits recorded.
 
+## v0.4.4 (2026-04-02)
+- No commits recorded.
+

@@ -249,23 +249,47 @@ const AppInner: React.FC<{
     const api = (window as any).api;
     if (!api) return () => { unregisterOpenModal(); };
 
+    const canOverrideApiMethod = (method: string): boolean => {
+      try {
+        const d = Object.getOwnPropertyDescriptor(api, method);
+        // contextBridge typically exposes non-writable, non-configurable props.
+        // If we can't confirm it's writable/configurable, do not attempt to patch.
+        return !!d && (d.writable === true || d.configurable === true);
+      } catch {
+        return false;
+      }
+    };
+
     // Save originals so we can restore on unmount.
     const saved: Record<string, any> = {};
     for (const [method, type] of Object.entries(API_TO_MODAL)) {
       if (method in api) {
         saved[method] = api[method];
         const capturedType = type;
-        (api as any)[method] = (payload?: any) => {
-          openModal(capturedType, payload);
-          return Promise.resolve();
-        };
+
+        if (canOverrideApiMethod(method)) {
+          try {
+            (api as any)[method] = (payload?: any) => {
+              openModal(capturedType, payload);
+              return Promise.resolve();
+            };
+          } catch {
+            // If the API object is read-only (contextBridge), skip patching.
+          }
+        }
       }
     }
 
     // closeSelfWindow → close top modal
     if ('closeSelfWindow' in api) {
       saved.closeSelfWindow = api.closeSelfWindow;
-      api.closeSelfWindow = () => { closeTopModalRef.current(); return Promise.resolve(); };
+      if (canOverrideApiMethod('closeSelfWindow')) {
+        try {
+          api.closeSelfWindow = () => { closeTopModalRef.current(); return Promise.resolve(); };
+        } catch {
+          // read-only in packaged builds
+        }
+      }
     }
 
     // window.close → close top modal (falls back to real close when no modals are open)
@@ -283,7 +307,9 @@ const AppInner: React.FC<{
     return () => {
       unregisterOpenModal();
       for (const [method, orig] of Object.entries(saved)) {
-        (api as any)[method] = orig;
+        if (canOverrideApiMethod(method)) {
+          try { (api as any)[method] = orig; } catch {}
+        }
       }
       try { (window as any).close = origWindowClose; } catch {}
     };
