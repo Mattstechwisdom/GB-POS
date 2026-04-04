@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '@/lib/admin';
 import { computeTotals } from '../lib/calc';
+import { dispatchOpenModal } from '@/lib/modalBus';
 
 function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
   const d = new Date(date);
@@ -476,28 +477,11 @@ const ReportingWindow: React.FC = () => {
             <input type="checkbox" className="accent-[#39FF14]" checked={onlyPaid} onChange={e => setOnlyPaid(e.target.checked)} /> Paid only
           </label>
         </div>
-        <button className="ml-auto px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={async () => {
-          const api = (window as any).api;
-          const openFallback = () => {
-            const url = window.location.origin + '/?charts=true';
-            const win = window.open(url, '_blank', 'width=1200,height=800');
-            // After small delay, send current normalized dataset for charts
-            setTimeout(() => {
-              try {
-                const payload = (function () {
-                  const all = filtered || [];
-                  return all.map((w: any) => ({ ...w }));
-                })();
-                win && win.postMessage({ type: 'charts:data', payload }, '*');
-              } catch {}
-            }, 300);
-          };
-          if (api && typeof api.openCharts === 'function') {
-            try { await api.openCharts(); }
-            catch (e) { console.warn('openCharts failed, falling back to route', e); openFallback(); }
-          } else {
-            openFallback();
-          }
+        <button className="ml-auto px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => {
+          try {
+            const payload = (filtered || []).map((w: any) => ({ ...w }));
+            dispatchOpenModal('charts', { payload });
+          } catch {}
         }}>Charts</button>
         <button className="px-3 py-2 bg-[#39FF14] text-black rounded font-semibold" onClick={downloadSummary} disabled={!filtered.length}>Download</button>
       </div>

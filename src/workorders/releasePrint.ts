@@ -27,7 +27,7 @@ export type WorkOrder = {
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
-function buildPatternSvg(seq: number[], size: number = 140): string {
+export function buildPatternSvg(seq: number[], size: number = 140): string {
   const padding = 12;
   const grid = 3;
   const gap = (size - padding * 2) / (grid - 1);

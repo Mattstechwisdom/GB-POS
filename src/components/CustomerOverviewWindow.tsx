@@ -287,15 +287,11 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
       // Read latest customer from ref so filtering is always accurate even if the
       // parent re-rendered after load started.
       const cust = customerRef.current;
-      const custNameNorm = normalizeCustomerName((cust as any)?.name || `${(cust as any)?.firstName || ''} ${(cust as any)?.lastName || ''}`);
-      const custPhoneNorm = normalizeCustomerPhone((cust as any)?.phone);
       setOrders(Array.isArray(wo) ? wo : []);
       setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, cust)));
       setQuoteFiles((Array.isArray(allQuoteFiles) ? allQuoteFiles : []).filter((q: any) => {
-        if (customerId && q.customerId === customerId) return true;
-        const qName = normalizeCustomerName(q.customerName);
-        const qPhone = normalizeCustomerPhone(q.customerPhone);
-        return (!!custNameNorm && qName === custNameNorm) && (!!custPhoneNorm ? qPhone === custPhoneNorm : true);
+        const qCustomerId = Number(q?.customerId || 0);
+        return qCustomerId === customerId;
       }));
     } catch (e) {
       setOrders([]); setSales([]); setQuoteFiles([]);
@@ -506,12 +502,6 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
   const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const nameNorm = useMemo(() => {
-    const name = (customer?.name || `${customer?.firstName || ''} ${customer?.lastName || ''}`).trim();
-    return name.toLowerCase();
-  }, [customer]);
-  const phoneNorm = useMemo(() => String(customer?.phone || '').replace(/\D+/g,'').slice(-10), [customer]);
-
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -526,16 +516,11 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
 
   const rows = useMemo(() => {
     const arr = Array.isArray(allRows) ? allRows : [];
-    const cid = (customer as any)?.id;
-    const filtered = arr.filter((q: any) => {
-      if (cid && q.customerId === cid) return true;
-      const qName = String(q.customerName || '').trim().toLowerCase();
-      const qPhone = String(q.customerPhone || '').replace(/\D+/g,'').slice(-10);
-      return (!!nameNorm && qName === nameNorm) && (!!phoneNorm ? qPhone === phoneNorm : true);
-    });
+    const cid = Number((customer as any)?.id || 0);
+    const filtered = arr.filter((q: any) => Number(q?.customerId || 0) === cid);
     filtered.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return filtered;
-  }, [allRows, customer, nameNorm, phoneNorm]);
+  }, [allRows, customer]);
 
   const handleOpen = async (r: any) => {
     if (!r?.filePath) return;

@@ -209,6 +209,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     productDescription: workOrder.productDescription,
                     model: (workOrder as any).model,
                     serial: (workOrder as any).serial,
+                    password: (workOrder as any).password || '',
+                    patternSequence: Array.isArray((workOrder as any).patternSequence) ? (workOrder as any).patternSequence : [],
                     problemInfo: workOrder.problemInfo,
                     items: (workOrder as any).items || [],
                     partCosts: (workOrder as any).partCosts,

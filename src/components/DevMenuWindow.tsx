@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { computeTotals } from '../lib/calc';
+import { dispatchOpenModal } from '@/lib/modalBus';
 
 type LogLevel = 'info' | 'warn' | 'error';
 type LogEntry = { ts: string; level: LogLevel; message: string };
@@ -179,15 +180,8 @@ const DevMenuWindow: React.FC = () => {
 
 	async function openReporting() {
 		try {
-			const api = (window as any).api;
-			if (api && typeof api.openReporting === 'function') {
-				await api.openReporting();
-				log('info', 'Opened Reporting window');
-			} else {
-				const url = window.location.origin + '/?reporting=true';
-				window.open(url, '_blank', 'noopener,noreferrer');
-				log('warn', 'Electron bridge missing; opened Reporting in browser tab');
-			}
+			dispatchOpenModal('reporting');
+			log('info', 'Opened Reporting window');
 		} catch (e: any) { log('error', `Open reporting failed: ${e?.message || String(e)}`); }
 	}
 
@@ -894,7 +888,7 @@ const DevMenuWindow: React.FC = () => {
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={environmentInfo} disabled={busy || !hasElectron}>Environment Info</button><InfoIcon infoKey="environmentInfo" /></div>
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={openAllDevTools} disabled={!hasElectron}>Open All DevTools</button><InfoIcon infoKey="openAllDevTools" /></div>
 									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={dbStats} disabled={busy || !hasElectron}>DB Stats</button><InfoIcon infoKey="dbStats" /></div>
-									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-red-900/50 border border-red-700 text-red-200 rounded hover:border-red-500 disabled:opacity-50" onClick={() => (window as any).api?.openClearDatabase ? (window as any).api.openClearDatabase() : window.open(window.location.origin + '/?clearDb=true', '_blank', 'noopener,noreferrer')} disabled={busy}>Clear Database…</button><InfoIcon infoKey="clearDatabase" /></div>
+									<div className="flex items-center gap-2"><button className="flex-1 text-left px-3 py-2 bg-red-900/50 border border-red-700 text-red-200 rounded hover:border-red-500 disabled:opacity-50" onClick={() => { try { dispatchOpenModal('clearDb'); } catch {} }} disabled={busy}>Clear Database…</button><InfoIcon infoKey="clearDatabase" /></div>
 							</div>
 						</section>
 					</aside>

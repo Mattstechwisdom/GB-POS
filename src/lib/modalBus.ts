@@ -20,6 +20,10 @@ export function unregisterOpenModal(): void {
   _handler = null;
 }
 
+export function canDispatchOpenModal(): boolean {
+  return !!_handler;
+}
+
 export function dispatchOpenModal(type: string, payload?: any): void {
   if (_handler) _handler(type, payload);
 }

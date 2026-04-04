@@ -5,13 +5,14 @@ import CustomerHoverCard from './CustomerHoverCard';
 import ItemsDescriptionHoverCard from './ItemsDescriptionHoverCard';
 
 type Props = {
+  statusFilter?: 'all' | 'open' | 'closed';
   technicianFilter?: string;
   dateFrom?: string;
   dateTo?: string;
   invoiceQuery?: string;
 };
 
-const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dateTo = '', invoiceQuery = '' }) => {
+const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', invoiceQuery = '' }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
@@ -71,6 +72,12 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
     const qRaw = (invoiceQuery || '').trim().toLowerCase();
     const qDigits = qRaw.replace(/\D/g, '');
     return rows.filter((s: any) => {
+      if (statusFilter !== 'all') {
+        const total = Number(s.totals?.total || s.total || 0) || 0;
+        const remaining = total - Number(s.amountPaid || 0);
+        const computed = remaining <= 0 ? 'closed' : 'open';
+        if (computed !== statusFilter) return false;
+      }
       if (qRaw) {
         const idNum = typeof s.id === 'number' ? s.id : Number(s.id);
         const formatted = Number.isFinite(idNum) ? `gb${String(idNum).padStart(7, '0')}` : '';
@@ -95,7 +102,7 @@ const SalesTable: React.FC<Props> = ({ technicianFilter = '', dateFrom = '', dat
       const bd = new Date(b.checkInAt || b.createdAt || 0).getTime();
       return bd - ad;
     });
-  }, [rows, technicianFilter, dateFrom, dateTo, techIndex, invoiceQuery]);
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, invoiceQuery]);
 
   useEffect(() => {
     const MAX_PAGES = 10;

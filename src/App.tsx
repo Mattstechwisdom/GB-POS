@@ -154,6 +154,7 @@ function getActivityDate(record: any): Date {
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [woQuery, setWoQuery] = useState<string>('');
@@ -167,6 +168,8 @@ const App: React.FC = () => {
         setShowCustomerSearch={setShowCustomerSearch}
         technicianFilter={technicianFilter}
         setTechnicianFilter={setTechnicianFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
         dateFrom={dateFrom}
         setDateFrom={setDateFrom}
         dateTo={dateTo}
@@ -189,6 +192,8 @@ const AppInner: React.FC<{
   setShowCustomerSearch: (v: boolean) => void;
   technicianFilter: string;
   setTechnicianFilter: (v: string) => void;
+  statusFilter: 'all' | 'open' | 'closed';
+  setStatusFilter: (v: 'all' | 'open' | 'closed') => void;
   dateFrom: string;
   setDateFrom: (v: string) => void;
   dateTo: string;
@@ -204,6 +209,8 @@ const AppInner: React.FC<{
   setShowCustomerSearch,
   technicianFilter,
   setTechnicianFilter,
+  statusFilter,
+  setStatusFilter,
   dateFrom,
   setDateFrom,
   dateTo,
@@ -331,6 +338,7 @@ const AppInner: React.FC<{
 
   const handleClear = () => {
     setTechnicianFilter('');
+    setStatusFilter('all');
     setDateFrom('');
     setDateTo('');
     setWoQuery('');
@@ -344,6 +352,8 @@ const AppInner: React.FC<{
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
             dateFrom={dateFrom}
             dateTo={dateTo}
             onDateFromChange={setDateFrom}
@@ -366,13 +376,13 @@ const AppInner: React.FC<{
           <Toolbar mode={mode} onModeChange={setMode} />
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
-              <WorkOrdersTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} refreshKey={refreshKey} />
+              <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} refreshKey={refreshKey} />
             )}
             {mode === 'sales' && (
-              <SalesTable technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} />
+              <SalesTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} />
             )}
             {mode === 'all' && (
-              <UnifiedList technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
+              <UnifiedList statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
             )}
           </div>
           <div className="border-t border-zinc-700 p-2 flex items-center justify-end bg-zinc-900">
@@ -398,7 +408,7 @@ const AppInner: React.FC<{
 };
 
 // Unified list of Work Orders and Sales in one table, ordered by id desc
-const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ technicianFilter = '', dateFrom = '', dateTo = '' }) => {
+const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '' }) => {
   const [wo, setWo] = React.useState<any[]>([]);
   const [sa, setSa] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
@@ -465,6 +475,15 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
   const rows = React.useMemo(() => {
     const from = dateFrom ? new Date(dateFrom) : null;
     const to = dateTo ? new Date(dateTo) : null;
+
+    const normalizeWoStatus = (w: any, remaining: number): 'open' | 'in progress' | 'closed' => {
+      const raw = String(w?.status || '').toLowerCase().trim();
+      if (raw === 'closed') return 'closed';
+      if (raw === 'in progress' || raw === 'inprogress') return 'in progress';
+      if (raw === 'open') return 'open';
+      return remaining <= 0 ? 'closed' : 'open';
+    };
+
     const mapped = [
       ...wo.map(w => ({
         type: 'workorder' as const,
@@ -472,7 +491,11 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
         customerId: (w as any).customerId as number | undefined,
         date: getActivityDate(w),
         originalDate: new Date(w.checkInAt || w.createdAt || 0),
-        status: (Math.max(0, Number(w.totals?.total || w.total || 0) - Number(w.amountPaid || 0)) <= 0 ? 'closed' : 'open') as 'open'|'closed',
+        status: (() => {
+          const total = Number(w.totals?.total || w.total || 0) || 0;
+          const remaining = Math.max(0, total - Number(w.amountPaid || 0));
+          return normalizeWoStatus(w, remaining);
+        })(),
         desc: w.productDescription || w.summary || '',
         items: (() => {
           const list = Array.isArray((w as any).items) ? (w as any).items : [];
@@ -547,6 +570,12 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
     ];
     return mapped
       .filter(r => {
+        if (statusFilter !== 'all') {
+          const st = String((r as any).status || '').toLowerCase().trim();
+          const isClosed = st === 'closed';
+          if (statusFilter === 'closed' && !isClosed) return false;
+          if (statusFilter === 'open' && isClosed) return false;
+        }
         if (technicianFilter) {
           const at = (r.tech || '').toString();
           if (technicianFilter === '__unassigned') { if (at) return false; }
@@ -565,7 +594,7 @@ const UnifiedList: React.FC<{ technicianFilter?: string; dateFrom?: string; date
         const ad = a.date?.getTime?.() || 0;
         return (bd - ad) || (b.id - a.id);
       });
-  }, [wo, sa, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
+  }, [wo, sa, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
 
   React.useEffect(() => {
     // Cap pagination to MAX_PAGES (older records stay stored, but not always loaded here)

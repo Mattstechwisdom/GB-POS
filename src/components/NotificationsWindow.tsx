@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { dispatchOpenModal } from '@/lib/modalBus';
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -201,7 +202,7 @@ const NotificationsWindow: React.FC = () => {
                     <button
                       className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
                       onClick={async () => {
-                        try { await (window as any).api.openCalendar?.(); } catch {}
+                        try { dispatchOpenModal('calendar'); } catch {}
                       }}
                     >
                       Open calendar

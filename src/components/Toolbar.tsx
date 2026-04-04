@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notifications';
+import { dispatchOpenModal } from '@/lib/modalBus';
 
 const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void }> = ({ mode, onModeChange }) => {
 
@@ -93,13 +94,13 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
           {showAdmin && (
             <div className="absolute left-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
               {[
-                { label: 'Inventory',       action: async () => { try { await (window as any).api.openInventory?.(); } catch { window.open(window.location.origin + '/?inventory=true', '_blank', 'width=1280,height=800'); } } },
-                { label: 'Devices/Repairs', action: async () => { try { const api = (window as any).api; if (api?.openRepairCategories) await api.openRepairCategories(); else window.open(window.location.origin + '/?repairCategories=true&mode=admin', '_blank', 'width=900,height=600'); } catch { window.open(window.location.origin + '/?repairCategories=true&mode=admin', '_blank', 'width=900,height=600'); } } },
-                { label: 'Products',        action: async () => { try { await (window as any).api.openProducts?.(); } catch { window.open(window.location.origin + '/?products=true', '_blank', 'width=1280,height=800'); } } },
-                { label: 'Reports',         action: async () => { try { const api = (window as any).api; if (api?.openEod) await api.openEod(); else window.open(window.location.origin + '/?eod=true', '_blank'); } catch (e) { console.error(e); } } },
-                { label: 'Data Management', action: async () => { try { const api = (window as any).api; if (api?.openBackup) await api.openBackup(); else window.open(window.location.origin + '/?backup=true', '_blank', 'noopener,noreferrer'); } catch (e) { console.error(e); window.open(window.location.origin + '/?backup=true', '_blank', 'noopener,noreferrer'); } } },
-                { label: 'Notifications',   action: async () => { try { const api = (window as any).api; if (api?.openNotificationSettings) await api.openNotificationSettings(); else window.open(window.location.origin + '/?notificationSettings=true', '_blank', 'width=820,height=720'); } catch (e) { console.error(e); } } },
-                { label: 'Dev Menu',        action: async () => { try { const api = (window as any).api; if (api?.openDevMenu) await api.openDevMenu(); else window.open(window.location.origin + '/?devMenu=true', '_blank', 'noopener,noreferrer'); } catch (e) { console.error(e); } } },
+                { label: 'Inventory',       action: () => dispatchOpenModal('inventory') },
+                { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
+                { label: 'Products',        action: () => dispatchOpenModal('products') },
+                { label: 'Reports',         action: () => dispatchOpenModal('eod') },
+                { label: 'Data Management', action: () => dispatchOpenModal('backup') },
+                { label: 'Notifications',   action: () => dispatchOpenModal('notificationSettings') },
+                { label: 'Dev Menu',        action: () => dispatchOpenModal('devMenu') },
               ].map(item => (
                 <button key={item.label} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => { setShowAdmin(false); item.action(); }}>{item.label}</button>
               ))}
@@ -108,60 +109,21 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </div>
         <button
           className="px-4 py-2 bg-[#39FF14] text-black font-semibold rounded shadow-sm border border-[#39FF14] hover:brightness-110 text-sm"
-          onClick={async () => {
-            try {
-              const api = (window as any).api;
-              if (api && typeof api.openQuoteGenerator === 'function') await api.openQuoteGenerator();
-              else {
-                const url = window.location.origin + '/?quote=true';
-                window.open(url, '_blank', 'width=1000,height=720');
-              }
-            } catch (e) {
-              console.error('openQuoteGenerator failed, falling back to window.open', e);
-              try {
-                const url = window.location.origin + '/?quote=true';
-                window.open(url, '_blank', 'width=1000,height=720');
-              } catch (ee) { console.error(ee); }
-            }
-          }}
+          onClick={() => dispatchOpenModal('quoteGenerator')}
         >
           Generate Quote
         </button>
 
         <button
           className="px-4 py-2 bg-zinc-800 text-zinc-100 font-semibold rounded shadow-sm border border-zinc-700 hover:border-[#39FF14] hover:text-white text-sm"
-          onClick={async () => {
-            try {
-              const api = (window as any).api;
-              if (api && typeof api.openQuickSale === 'function') {
-                await api.openQuickSale();
-                return;
-              }
-              alert('Quick Sale requires the desktop app (update needed).');
-            } catch (e) {
-              console.error('openQuickSale failed, falling back to window.open', e);
-              try { alert('Quick Sale failed to open. See console.'); } catch {}
-            }
-          }}
+          onClick={() => dispatchOpenModal('quickSale')}
         >
           Quick Sale
         </button>
 
         <button
           className="px-4 py-2 bg-blue-600 text-white font-semibold rounded shadow-sm border border-blue-500 hover:bg-blue-500 text-sm"
-          onClick={async () => {
-            try {
-              const api = (window as any).api;
-              if (api && typeof api.openConsultation === 'function') {
-                await api.openConsultation();
-                return;
-              }
-              alert('Consultation booking requires the desktop app (update needed).');
-            } catch (e) {
-              console.error('openConsultation failed', e);
-              try { alert('Consultation booking failed to open. See console.'); } catch {}
-            }
-          }}
+          onClick={() => dispatchOpenModal('consultation')}
         >
           Consultation
         </button>
@@ -169,22 +131,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
       <div className="flex items-center gap-3">
         <button
           className="relative px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={async () => {
-            try {
-              const api = (window as any).api;
-              if (api?.openNotifications) await api.openNotifications();
-              else {
-                const url = window.location.origin + '/?notifications=true';
-                window.open(url, '_blank', 'width=860,height=720');
-              }
-            } catch (e) {
-              console.error('openNotifications failed', e);
-              try {
-                const url = window.location.origin + '/?notifications=true';
-                window.open(url, '_blank', 'width=860,height=720');
-              } catch {}
-            }
-          }}
+          onClick={() => dispatchOpenModal('notifications')}
         >
           Notifications
           {unread > 0 && (
@@ -201,22 +148,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </button>
         <button
           className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={async () => {
-            try {
-              const api = (window as any).api;
-              if (api && typeof api.openCalendar === 'function') await api.openCalendar();
-              else {
-                const url = window.location.origin + '/?calendar=true';
-                window.open(url, '_blank', 'width=1000,height=720');
-              }
-            } catch (e) {
-              console.error('openCalendar failed, falling back to window.open', e);
-              try {
-                const url = window.location.origin + '/?calendar=true';
-                window.open(url, '_blank', 'width=1000,height=720');
-              } catch (ee) { console.error(ee); }
-            }
-          }}
+          onClick={() => dispatchOpenModal('calendar')}
         >
           Calendar
         </button>

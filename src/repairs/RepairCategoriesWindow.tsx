@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import RepairItemList from '../repairs/RepairItemList';
 import RepairItemForm from '../repairs/RepairItemForm';
 import RepairTypeManager from '../repairs/RepairTypeManager';
@@ -126,23 +126,33 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
     console.log('Cancel repair item selection');
   };
 
+  // Keep latest selected item + handlers in refs so we don't re-register
+  // global key listeners on each keystroke.
+  const selectedItemRef = useRef<RepairItem | null>(null);
+  const handleSaveRef = useRef(handleSave);
+  const handleCancelRef = useRef(handleCancel);
+  useEffect(() => { selectedItemRef.current = selectedItem; }, [selectedItem]);
+  useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
+  useEffect(() => { handleCancelRef.current = handleCancel; }, [handleCancel]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
-        if (selectedItem) {
-          handleSave(selectedItem);
+        const cur = selectedItemRef.current;
+        if (cur) {
+          try { handleSaveRef.current(cur); } catch {}
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        handleCancel();
+        try { handleCancelRef.current(); } catch {}
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItem]);
+  }, []);
 
   return (
     <ErrorBoundary>

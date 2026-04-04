@@ -5,6 +5,8 @@ import { publicAsset } from '../lib/publicAsset';
 interface Props {
   technicianFilter: string;
   onTechnicianFilterChange: (v: string) => void;
+  statusFilter: 'all' | 'open' | 'closed';
+  onStatusFilterChange: (v: 'all' | 'open' | 'closed') => void;
   dateFrom?: string;
   dateTo?: string;
   onDateFromChange?: (v: string) => void;
@@ -20,7 +22,7 @@ interface Props {
   onRefresh?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -50,7 +52,11 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
       </div>
       <div>
         <label className="block text-xs mb-1 leading-none">Status</label>
-        <select className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm">
+        <select
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+          value={statusFilter}
+          onChange={(e) => onStatusFilterChange(e.target.value as any)}
+        >
           <option value="all">All</option>
           <option value="open">Open</option>
           <option value="closed">Closed</option>

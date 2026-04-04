@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
+import { useAutosave } from '../lib/useAutosave';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
@@ -29,6 +30,7 @@ type SaleItem = {
 };
 
 type SalesState = {
+  customerId?: number;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
@@ -45,6 +47,7 @@ type RepairsState = {
   lines: RepairLine[];
   selectedCategoryId?: string;
   selectedRepairId?: string;
+  customerId?: number;
 };
 
 const PERIPHERAL_TYPE_OPTIONS: string[] = [
@@ -136,9 +139,10 @@ const ComboInput: React.FC<{ value: string; onChange: (v: string) => void; optio
 
 // Client search bar — lets the user pick an existing customer to pre-fill quote fields
 type ClientSearchBarProps = {
-  onSelect: (c: { firstName?: string; lastName?: string; phone?: string; email?: string }) => void;
+  onSelect: (c: { id?: number; firstName?: string; lastName?: string; phone?: string; email?: string }) => void;
+  onClear?: () => void;
 };
-const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect }) => {
+const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) => {
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<any[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -175,12 +179,12 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect }) => {
     setQuery('');
     setResults([]);
     const name = `${c.firstName || ''} ${c.lastName || ''}`.trim();
-    onSelect({ firstName: c.firstName, lastName: c.lastName, phone: c.phone || '', email: c.email || '' });
+    onSelect({ id: c?.id, firstName: c.firstName, lastName: c.lastName, phone: c.phone || '', email: c.email || '' });
     // Update query display to selected name
     setQuery(name);
   };
 
-  const clear = () => { setSelected(null); setQuery(''); setResults([]); };
+  const clear = () => { setSelected(null); setQuery(''); setResults([]); try { onClear && onClear(); } catch {} };
 
   return (
     <div className="relative mb-1">
@@ -220,20 +224,55 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect }) => {
   );
 };
 
-// Simple autosave with debounce
-function useAutosave<T>(value: T, cb: () => void, opts?: { debounceMs?: number; enabled?: boolean }) {
-  useEffect(() => {
-    if (opts && opts.enabled === false) return;
-    const t = setTimeout(() => { try { cb(); } catch {} }, opts?.debounceMs ?? 1000);
-    return () => clearTimeout(t);
-  // stringify as a coarse change detector
-  }, [JSON.stringify(value), opts?.debounceMs, opts?.enabled]);
+function sanitizeForSnapshot(value: any, keyHint?: string): any {
+  try {
+    if (value == null) return value;
+
+    const key = String(keyHint || '');
+    const isImageKey = /(^|\b)(image|images|img|photo|photos|signature|dataurl|dataUrl)(\b|$)/i.test(key);
+
+    if (typeof value === 'string') {
+      const s = value;
+      const lower = s.slice(0, 32).toLowerCase();
+      const looksLikeDataUri = lower.startsWith('data:') || lower.startsWith('blob:') || s.includes('base64,');
+      if ((isImageKey || looksLikeDataUri) && s.length > 400) return { __omitted: true, len: s.length };
+      return s;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+
+    if (Array.isArray(value)) {
+      if (isImageKey) {
+        const lens = value
+          .map((v) => (typeof v === 'string' ? v.length : 0))
+          .slice(0, 10);
+        const totalLen = value.reduce((acc, v) => acc + (typeof v === 'string' ? v.length : 0), 0);
+        return { __images: true, count: value.length, lens, totalLen };
+      }
+      // cap recursion work for very large arrays
+      const capped = value.length > 80 ? value.slice(0, 80) : value;
+      const mapped = capped.map((v) => sanitizeForSnapshot(v));
+      return value.length > 80 ? { __array: true, len: value.length, head: mapped } : mapped;
+    }
+
+    if (typeof value === 'object') {
+      const out: any = {};
+      for (const [k, v] of Object.entries(value)) {
+        out[k] = sanitizeForSnapshot(v, k);
+      }
+      return out;
+    }
+
+    return String(value);
+  } catch {
+    return '';
+  }
 }
 
 function normalizeQuoteSnapshot(record: any) {
   if (!record) return '';
   if ((record.type ?? 'sales') === 'sales') {
-    return JSON.stringify({
+    return JSON.stringify(sanitizeForSnapshot({
       type: 'sales',
       customerName: record.customerName || '',
       customerPhone: record.customerPhone || '',
@@ -241,9 +280,9 @@ function normalizeQuoteSnapshot(record: any) {
       notes: record.notes || '',
       items: Array.isArray(record.items) ? record.items : [],
       totals: record.totals || { subtotal: 0, total: 0 },
-    });
+    }));
   }
-  return JSON.stringify({
+  return JSON.stringify(sanitizeForSnapshot({
     type: 'repairs',
     customerName: record.customerName || '',
     customerPhone: record.customerPhone || '',
@@ -251,7 +290,7 @@ function normalizeQuoteSnapshot(record: any) {
     notes: record.notes || '',
     lines: Array.isArray(record.lines) ? record.lines : [],
     totals: record.totals || { parts: 0, labor: 0, total: 0 },
-  });
+  }));
 }
 
 function getQuoteActivityIso(record: any) {
@@ -298,6 +337,14 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [emailErr, setEmailErr] = useState<string | null>(null);
   const [emailSettingsSaving, setEmailSettingsSaving] = useState(false);
   const [emailSettingsErr, setEmailSettingsErr] = useState<string | null>(null);
+  const [quoteEmailAttachmentMode, setQuoteEmailAttachmentMode] = useState<'html' | 'pdf'>(() => {
+    try {
+      const v = localStorage.getItem('gbpos.quoteEmail.attachmentMode');
+      return v === 'pdf' ? 'pdf' : 'html';
+    } catch {
+      return 'html';
+    }
+  });
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<number | undefined>(undefined);
   const [expandedQuoteMonths, setExpandedQuoteMonths] = useState<Record<string, boolean>>({});
@@ -338,6 +385,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     if (mode === 'sales') {
       return {
         type: 'sales' as const,
+        customerId: sales.customerId || undefined,
         customerName: sales.customerName || '',
         customerPhone: sales.customerPhone || '',
         customerEmail: sales.customerEmail || '',
@@ -348,6 +396,7 @@ function QuoteGeneratorWindow(): JSX.Element {
     }
     return {
       type: 'repairs' as const,
+      customerId: repairs.customerId || undefined,
       customerName: repairs.customerName || '',
       customerPhone: repairs.customerPhone || '',
       customerEmail: repairs.customerEmail || '',
@@ -356,6 +405,12 @@ function QuoteGeneratorWindow(): JSX.Element {
       totals: { ...repairTotals },
     };
   }, [mode, repairs, repairTotals, sales, salesTotals]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gbpos.quoteEmail.attachmentMode', quoteEmailAttachmentMode);
+    } catch {}
+  }, [quoteEmailAttachmentMode]);
 
   const currentQuoteSnapshot = useMemo(() => normalizeQuoteSnapshot(currentQuoteRecord), [currentQuoteRecord]);
 
@@ -374,6 +429,10 @@ function QuoteGeneratorWindow(): JSX.Element {
     const phoneRaw = `${sales.customerPhone || ''}`.trim();
     const phone = (formatPhone(phoneRaw) || phoneRaw).trim();
     const email = `${sales.customerEmail || ''}`.trim();
+    const custId = (() => {
+      const v = Number((sales as any).customerId || 0);
+      return v > 0 ? v : null;
+    })();
     const ts = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     const mm = pad(ts.getMonth() + 1), dd = pad(ts.getDate()), yy = String(ts.getFullYear()).slice(-2);
@@ -1819,6 +1878,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           var gbShopEmail = 'gadgetboysc@gmail.com';
           var gbCustomerName = ${JSON.stringify(cust)};
           var gbCustomerPhone = ${JSON.stringify(phone)};
+          var gbCustomerId = ${JSON.stringify(custId)};
           var gbItemsCount = ${JSON.stringify((sales.items || []).length)};
           var gbStampShort = ${JSON.stringify(stampShort)};
 
@@ -2023,7 +2083,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 var res = await api.exportPdf(html, base);
                 try {
                   if (res && res.ok && res.filePath && typeof api.dbAdd === 'function') {
-                    api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerName: gbCustomerName, customerPhone: gbCustomerPhone, filePath: res.filePath, title: document.title, itemsCount: gbItemsCount });
+                    api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerId: gbCustomerId || null, customerName: gbCustomerName, customerPhone: gbCustomerPhone, filePath: res.filePath, title: document.title, itemsCount: gbItemsCount });
                   }
                 } catch(_) {}
                 showThankYou(filename);
@@ -2233,6 +2293,8 @@ function QuoteGeneratorWindow(): JSX.Element {
         const finalizeBtn = document.getElementById('finalize');
         // Injected context for recording completed quote in-app
         const CUSTOMER_NAME = ${JSON.stringify(cust)};
+        const CUSTOMER_ID = ${JSON.stringify(custId)};
+        const CUSTOMER_NAME = ${JSON.stringify(cust)};
         const CUSTOMER_PHONE = ${JSON.stringify(phone)};
         const ITEMS_COUNT = ${JSON.stringify((sales.items || []).length)};
   const STAMP_TITLE = ${JSON.stringify(stampTitle)};
@@ -2349,7 +2411,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           if (api && typeof api.exportPdf==='function') {
             api.exportPdf(html, base).then((res)=>{ 
               if(res && res.ok && res.filePath && typeof api.dbAdd==='function'){
-                try { api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerName: CUSTOMER_NAME, customerPhone: CUSTOMER_PHONE, filePath: res.filePath, title: document.title, itemsCount: ITEMS_COUNT }); } catch {}
+                try { api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), customerId: CUSTOMER_ID || null, customerName: CUSTOMER_NAME, customerPhone: CUSTOMER_PHONE, filePath: res.filePath, title: document.title, itemsCount: ITEMS_COUNT }); } catch {}
               } else if(!res || !res.ok) { try{ alert('Could not save PDF'); }catch{} }
             });
           } else {
@@ -4049,12 +4111,14 @@ function QuoteGeneratorWindow(): JSX.Element {
       const html = await generateInteractiveSalesHtml();
       const cust = (sales.customerName || '').trim() || 'Customer';
       const sanitize = (s: string) => String(s || '').replace(/[^a-z0-9\-\_\+]+/gi, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
-      const filename = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}.html`;
+      const base = `Gadgetboy-Quote-${sanitize(cust) || 'Customer'}`;
       const subject = 'Gadgetboy Quote';
 
       const bodyText = (emailBodyDraft || '').trim() ? emailBodyDraft : getBuiltInQuoteEmailBody();
 
-      const sendRes = await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename, html });
+      const sendRes = quoteEmailAttachmentMode === 'pdf'
+        ? await (window as any).api.emailSendQuotePdf({ to, subject, bodyText, filename: `${base}.pdf`, html })
+        : await window.api.emailSendQuoteHtml({ to, subject, bodyText, filename: `${base}.html`, html });
       if (!sendRes?.ok) {
         setEmailErr(String(sendRes?.error || 'Failed to send email'));
         return;
@@ -4104,12 +4168,11 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
 
   // Autosave quote after 2s of inactivity
-  useAutosave({ mode, sales, repairs }, async () => {
+  useAutosave(currentQuoteSnapshot, async (currentSnapshot) => {
     const hasSalesData = !!(sales.customerName || sales.customerPhone || sales.customerEmail || (sales.items && sales.items.length));
     const hasRepairsData = !!(repairs.customerName || repairs.customerPhone || repairs.customerEmail || (repairs.lines && repairs.lines.length));
     if (mode === 'sales' && !hasSalesData) return;
     if (mode === 'repairs' && !hasRepairsData) return;
-    const currentSnapshot = currentQuoteSnapshot;
     if (quoteId && currentSnapshot === quoteSnapshotRef.current) return;
     const nowIso = new Date().toISOString();
     const payload = {
@@ -4143,7 +4206,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       setSaveMsg('Autosaved');
       setTimeout(() => setSaveMsg(null), 1500);
     } catch {}
-  }, { debounceMs: 1000, enabled: true });
+  }, { debounceMs: 1000, enabled: true, equals: (a, b) => a === b });
 
   function buildAIPrompt(it: SaleItem) {
     const lines: string[] = [];
@@ -5511,15 +5574,17 @@ function QuoteGeneratorWindow(): JSX.Element {
             <ClientSearchBar
               onSelect={(c) => setSales((s) => ({
                 ...s,
+                customerId: c?.id ? Number(c.id) : undefined,
                 customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
                 customerPhone: c.phone || '',
                 customerEmail: c.email || '',
               }))}
+              onClear={() => setSales((s) => ({ ...s, customerId: undefined }))}
             />
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Customer Name" value={sales.customerName} onChange={(v) => setSales((s) => ({ ...s, customerName: v }))} />
-              <Field label="Customer Phone" value={sales.customerPhone} onChange={(v) => setSales((s) => ({ ...s, customerPhone: v }))} />
-              <Field label="Customer Email" value={sales.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setSales((s) => ({ ...s, customerEmail: v }))} />
+              <Field label="Customer Name" value={sales.customerName} onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerName: v }))} />
+              <Field label="Customer Phone" value={sales.customerPhone} onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerPhone: v }))} />
+              <Field label="Customer Email" value={sales.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerEmail: v }))} />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -5786,15 +5851,17 @@ function QuoteGeneratorWindow(): JSX.Element {
             <ClientSearchBar
               onSelect={(c) => setRepairs((s) => ({
                 ...s,
+                customerId: c?.id ? Number(c.id) : undefined,
                 customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
                 customerPhone: c.phone || '',
                 customerEmail: c.email || '',
               }))}
+              onClear={() => setRepairs((s) => ({ ...s, customerId: undefined }))}
             />
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Customer Name" value={repairs.customerName} onChange={(v) => setRepairs((s) => ({ ...s, customerName: v }))} />
-              <Field label="Customer Phone" value={repairs.customerPhone} onChange={(v) => setRepairs((s) => ({ ...s, customerPhone: v }))} />
-              <Field label="Customer Email" value={repairs.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setRepairs((s) => ({ ...s, customerEmail: v }))} />
+              <Field label="Customer Name" value={repairs.customerName} onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerName: v }))} />
+              <Field label="Customer Phone" value={repairs.customerPhone} onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerPhone: v }))} />
+              <Field label="Customer Email" value={repairs.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerEmail: v }))} />
             </div>
             <div className="grid grid-cols-12 gap-3">
               <div className="col-span-4">
@@ -5897,8 +5964,8 @@ function QuoteGeneratorWindow(): JSX.Element {
             <button
               className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
               onClick={openHtmlPreview}
-            >HTML Preview</button>
-            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Print Preview</button>
+            >Digital</button>
+            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Print</button>
           </div>
           </div>
 
@@ -6066,6 +6133,23 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-lg font-semibold">Email Settings</div>
                       <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { if (!emailSettingsSaving) setShowEmailSettings(false); }}>Close</button>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="text-xs text-zinc-400 mb-1">Quote Email Attachment</div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'html' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
+                          onClick={() => setQuoteEmailAttachmentMode('html')}
+                        >HTML</button>
+                        <button
+                          type="button"
+                          className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'pdf' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
+                          onClick={() => setQuoteEmailAttachmentMode('pdf')}
+                        >PDF only</button>
+                        <div className="text-[11px] text-zinc-400">(PDF only sends a static copy)</div>
+                      </div>
                     </div>
 
                     <div className="mt-3">
@@ -6932,6 +7016,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                               try {
                                 setMode((q?.type ?? 'sales') === 'repairs' ? 'repairs' : 'sales');
                                 setSales({
+                                  customerId: q.customerId != null ? Number(q.customerId) : undefined,
                                   customerName: q.customerName || '',
                                   customerPhone: q.customerPhone || '',
                                   customerEmail: q.customerEmail || '',
@@ -6939,6 +7024,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                   items: Array.isArray(q.items) ? q.items : [],
                                 });
                                 setRepairs({
+                                  customerId: q.customerId != null ? Number(q.customerId) : undefined,
                                   customerName: q.customerName || '',
                                   customerPhone: q.customerPhone || '',
                                   customerEmail: q.customerEmail || '',

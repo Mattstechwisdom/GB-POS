@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { buildPatternSvg } from './releasePrint';
 
 function getPayload() {
   try {
@@ -192,6 +193,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const model = (data as any).model || '';
   const serial = (data as any).serial || (data as any).serialNumber || '';
   const password = (data as any).password || '';
+  const patternSequence = Array.isArray((data as any).patternSequence) ? (data as any).patternSequence : [];
+  const hasPattern = patternSequence.length > 0;
   const problem = (data as any).problemInfo || (data as any).problem || '';
 
   const partCosts = Number((data as any).partCosts ?? (data as any).subTotalParts ?? 0) || 0;
@@ -365,6 +368,17 @@ const CustomerReceiptWindow: React.FC = () => {
                 <div className="field"><span className="label-inline">Model:</span><span className="value-inline">{model}</span></div>
                 <div className="field"><span className="label-inline">Serial #:</span><span className="value-inline">{serial}</span></div>
                 <div className="field"><span className="label-inline">Password:</span><span className="value-inline">{password}</span></div>
+                {hasPattern ? (
+                  <div className="field" style={{ gridColumn: '1 / -1', alignItems: 'center' }}>
+                    <span className="label-inline">Pattern:</span>
+                    <span className="value-inline" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span
+                        aria-label="Unlock pattern"
+                        dangerouslySetInnerHTML={{ __html: buildPatternSvg(patternSequence, 120) }}
+                      />
+                    </span>
+                  </div>
+                ) : null}
               </div>
             </div>
 

@@ -14,6 +14,28 @@ interface WorkOrderRow {
   items?: any[];
 }
 
+type StatusFilter = 'all' | 'open' | 'closed';
+type TicketStatus = 'open' | 'in progress' | 'closed';
+
+function normalizeTicketStatus(row: Partial<WorkOrderRow> & Record<string, any>): TicketStatus {
+  const raw = String((row as any)?.status || '').toLowerCase().trim();
+  if (raw === 'closed') return 'closed';
+  if (raw === 'in progress' || raw === 'inprogress') return 'in progress';
+  if (raw === 'open') return 'open';
+
+  // Back-compat: if status is missing, infer from remaining/paid.
+  const total = Number((row as any)?.totals?.total ?? (row as any)?.total ?? 0) || 0;
+  const remaining = Number((row as any)?.totals?.remaining ?? Math.max(0, total - Number((row as any)?.amountPaid || 0))) || 0;
+  return remaining <= 0 ? 'closed' : 'open';
+}
+
+function passesStatusFilter(filter: StatusFilter, status: TicketStatus): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'closed') return status === 'closed';
+  // 'open' means not closed (includes 'in progress')
+  return status !== 'closed';
+}
+
 function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date | null {
   const raw = r.activityAt || r.checkoutDate || r.repairCompletionDate || r.checkInAt || r.createdAt || r.updatedAt;
   if (!raw) return null;
@@ -21,7 +43,7 @@ function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date |
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; dateTo?: string; woQuery?: string; refreshKey?: number }> = ({ technicianFilter = '', dateFrom = '', dateTo = '', woQuery = '', refreshKey = 0 }) => {
+const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?: string; dateFrom?: string; dateTo?: string; woQuery?: string; refreshKey?: number }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', woQuery = '', refreshKey = 0 }) => {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [techIndex, setTechIndex] = useState<Record<string,string>>({});
@@ -94,6 +116,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
 
   const filteredRows = useMemo(() => {
     return rows
+      .filter(r => passesStatusFilter(statusFilter, normalizeTicketStatus(r)))
       .filter(r => {
         if (!technicianFilter) return true;
         const at = r.assignedTo as any;
@@ -127,7 +150,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
         if (!woQuery) return true;
         return String(r.id).includes(woQuery.trim());
       });
-  }, [rows, technicianFilter, dateFrom, dateTo, woQuery, techIndex]);
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, woQuery, techIndex]);
 
   useEffect(() => {
     setTotalItems(Math.min(filteredRows.length, MAX_ITEMS));
@@ -287,7 +310,7 @@ const WorkOrdersTable: React.FC<{ technicianFilter?: string; dateFrom?: string; 
           {!loading && pagedRows.map(r => {
             const total = r.totals?.total ?? 0;
             const remaining = r.totals?.remaining ?? Math.max(0, total - (r.amountPaid || 0));
-            const computedStatus = remaining <= 0 ? 'closed' : 'open';
+            const computedStatus = normalizeTicketStatus(r);
             const clientName = (r.customerId && customerIndex[r.customerId!]?.name) || (r as any).customerName || [
               (r as any).firstName,
               (r as any).lastName,

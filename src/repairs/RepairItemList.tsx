@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DevicePicker from '@/components/DevicePicker';
 import type { RepairItem } from '../lib/types';
 
@@ -24,6 +24,13 @@ export default function RepairItemList({
   const [searchText, setSearchText] = useState<string>('');
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [repairTypeOptions, setRepairTypeOptions] = useState<string[]>([]);
+
+  const selectedIndexRef = useRef<number>(selectedIndex);
+  const filteredItemsRef = useRef<RepairItem[]>(filteredItems);
+  const onItemSelectRef = useRef<(item: RepairItem) => void>(onItemSelect);
+  useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
+  useEffect(() => { filteredItemsRef.current = filteredItems; }, [filteredItems]);
+  useEffect(() => { onItemSelectRef.current = onItemSelect; }, [onItemSelect]);
 
   // DevicePicker pulls categories on its own; we just store selection as filter
   // Map device name (sub) -> Title (main) for filtering by Title
@@ -120,31 +127,34 @@ export default function RepairItemList({
         return; // Don't handle navigation when focused on inputs
       }
 
+      const currentIndex = selectedIndexRef.current;
+      const currentItems = filteredItemsRef.current;
+
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        const newIndex = Math.max(0, selectedIndex - 1);
+        const newIndex = Math.max(0, currentIndex - 1);
         setSelectedIndex(newIndex);
-        if (filteredItems[newIndex]) {
-          onItemSelect(filteredItems[newIndex]);
+        if (currentItems[newIndex]) {
+          onItemSelectRef.current(currentItems[newIndex]);
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        const newIndex = Math.min(filteredItems.length - 1, selectedIndex + 1);
+        const newIndex = Math.min(currentItems.length - 1, currentIndex + 1);
         setSelectedIndex(newIndex);
-        if (filteredItems[newIndex]) {
-          onItemSelect(filteredItems[newIndex]);
+        if (currentItems[newIndex]) {
+          onItemSelectRef.current(currentItems[newIndex]);
         }
-      } else if (e.key === 'Enter' && selectedIndex >= 0) {
+      } else if (e.key === 'Enter' && currentIndex >= 0) {
         e.preventDefault();
-        if (filteredItems[selectedIndex]) {
-          onItemSelect(filteredItems[selectedIndex]);
+        if (currentItems[currentIndex]) {
+          onItemSelectRef.current(currentItems[currentIndex]);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex, filteredItems, onItemSelect]);
+  }, []);
 
   return (
     <div className="flex flex-col h-full min-h-0">

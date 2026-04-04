@@ -359,19 +359,36 @@ const NewWorkOrderWindow: React.FC = () => {
     });
   }, [wo.items, wo.discount, wo.taxRate, wo.amountPaid, (wo as any).discountType, (wo as any).discountPctValue, (wo as any).discountCustomAmount]);
 
+  const onSaveRef = useRef<() => void>(() => {});
+  const onCancelRef = useRef<() => void>(() => {});
+  const woRef = useRef<any>(wo);
+  const isEditingExistingRef = useRef<boolean>(isEditingExisting);
+  useEffect(() => { woRef.current = wo; }, [wo]);
+  useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
+
+  // Bind the latest functions each render.
+  onSaveRef.current = onSave;
+  onCancelRef.current = onCancel;
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); onSave(); }
-      if (e.key === 'Escape') onCancel();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        try { onSaveRef.current(); } catch {}
+      }
+      if (e.key === 'Escape') {
+        try { onCancelRef.current(); } catch {}
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [wo]);
+  }, []);
 
   // Attempt auto-save when the window is being closed if fields look valid
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      const requiredOk = !!(wo.productCategory && wo.productDescription && wo.customerId && wo.assignedTo);
+      const current = woRef.current || {};
+      const requiredOk = !!(current.productCategory && current.productDescription && current.customerId && current.assignedTo);
       if (!requiredOk) return; // nothing to do
       // If it's a new order (id 0) or editing, persist synchronously before allowing close
       // Prevent default close, then perform save and close programmatically
@@ -380,14 +397,14 @@ const NewWorkOrderWindow: React.FC = () => {
       (async () => {
         try {
           const api = (window as any).api || {};
-          if (isEditingExisting || (wo.id && wo.id !== 0)) {
-            if (typeof api.update === 'function') await api.update('workOrders', { ...wo });
-            else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', wo.id, { ...wo });
+          if (isEditingExistingRef.current || (current.id && current.id !== 0)) {
+            if (typeof api.update === 'function') await api.update('workOrders', { ...current });
+            else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', current.id, { ...current });
           } else {
-            if (typeof api.addWorkOrder === 'function') await api.addWorkOrder({ ...wo });
-            else if (typeof api.dbAdd === 'function') await api.dbAdd('workOrders', { ...wo });
+            if (typeof api.addWorkOrder === 'function') await api.addWorkOrder({ ...current });
+            else if (typeof api.dbAdd === 'function') await api.dbAdd('workOrders', { ...current });
           }
-          try { window.opener?.postMessage({ type: 'workorders:changed', id: wo.id }, '*'); } catch {}
+          try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
         } catch (err) {
           console.warn('Auto-save on close failed', err);
         } finally {
@@ -399,7 +416,7 @@ const NewWorkOrderWindow: React.FC = () => {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [wo, isEditingExisting]);
+  }, []);
 
   // Autosave work order after 2 seconds of inactivity
   useAutosave(wo, async (val) => {
@@ -752,6 +769,10 @@ const NewWorkOrderWindow: React.FC = () => {
               productDescription: wo.productDescription,
               model: (wo as any).model,
               serial: (wo as any).serial,
+              password: (nextWo as any).password ?? (wo as any).password ?? '',
+              patternSequence: Array.isArray((nextWo as any).patternSequence)
+                ? (nextWo as any).patternSequence
+                : (Array.isArray((wo as any).patternSequence) ? (wo as any).patternSequence : []),
               problemInfo: wo.problemInfo,
               items: (nextWo as any).items || [],
               partCosts: (nextWo as any).partCosts,

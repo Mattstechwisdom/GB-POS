@@ -1,4 +1,5 @@
 import type { WorkOrder } from './releasePrint';
+import { buildPatternSvg } from './releasePrint';
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 
@@ -43,6 +44,8 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   }
 
   const remaining = (wo.subTotalParts + wo.subTotalLabor - wo.discount + wo.taxes) - wo.amountPaid;
+  const seq = Array.isArray(wo.patternSequence) ? wo.patternSequence : [];
+  const hasPattern = seq.length > 0;
 
   return `<!doctype html>
   <html>
@@ -143,6 +146,12 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
             <div class="field"><span class="label-inline">Model:</span><span class="value-inline">${htmlEscape(wo.model)}</span></div>
             <div class="field"><span class="label-inline">Serial #:</span><span class="value-inline">${htmlEscape(wo.serialNumber)}</span></div>
             <div class="field"><span class="label-inline">Password:</span><span class="value-inline">${htmlEscape(wo.password)}</span></div>
+            ${hasPattern ? `
+              <div class="field" style="grid-column: 1 / span 4; align-items:center;">
+                <span class="label-inline">Pattern:</span>
+                <span class="value-inline" style="display:flex; align-items:center; gap:10px;">${buildPatternSvg(seq, 120)}</span>
+              </div>
+            ` : ''}
 
             <div class="field" style="grid-column: 1 / span 4"><span class="label-inline">Description:</span><span class="value-inline"><span class="chip">${htmlEscape(wo.description)}</span></span></div>
             <div class="field" style="grid-column: 1 / span 4; margin-top:2px;"><span class="label-inline">Problem:</span><span class="value-inline">${htmlEscape(wo.problem)}</span></div>

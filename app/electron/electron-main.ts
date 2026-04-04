@@ -10,6 +10,45 @@ const { spawn } = require('child_process');
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
+function isExternalUrl(url: string) {
+  try {
+    const u = String(url || '').trim();
+    if (!u) return false;
+    // Always treat http(s)/mailto/tel as external
+    if (/^(https?:|mailto:|tel:)/i.test(u)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Prevent random blank popup windows (often caused by window.open or target=_blank)
+// and route external links to the default browser.
+app.on('web-contents-created', (_event: any, contents: any) => {
+  try {
+    if (typeof contents.setWindowOpenHandler === 'function') {
+      contents.setWindowOpenHandler(({ url }: any) => {
+        try {
+          if (isExternalUrl(url)) {
+            try { shell.openExternal(url); } catch {}
+          }
+        } catch {}
+        return { action: 'deny' };
+      });
+    }
+
+    contents.on('will-navigate', (event: any, url: string) => {
+      try {
+        if (!isExternalUrl(url)) return;
+        event.preventDefault();
+        try { shell.openExternal(url); } catch {}
+      } catch {}
+    });
+  } catch {
+    // ignore
+  }
+});
+
 // -------------------------------------------------------------
 // NAS / server sync config (offline-first)
 // -------------------------------------------------------------
@@ -1273,6 +1312,78 @@ ipcMain.handle('email:sendQuoteHtml', async (_e: any, payload: any) => {
     });
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('email:sendQuotePdf', async (_e: any, payload: any) => {
+  let win: any | null = null;
+  let tempHtmlPath: string | null = null;
+
+  try {
+    const to = String(payload?.to || '').trim();
+    const subject = String(payload?.subject || 'Gadgetboy Quote');
+    const bodyText = String(payload?.bodyText || '');
+    const html = String(payload?.html || '');
+    const filenameRaw = String(payload?.filename || 'gadgetboy-quote.pdf').trim() || 'gadgetboy-quote.pdf';
+
+    if (!to) return { ok: false, error: 'Missing recipient (to)' };
+    if (!html) return { ok: false, error: 'Missing quote HTML content' };
+
+    const pdfFilename = filenameRaw.toLowerCase().endsWith('.pdf') ? filenameRaw : `${filenameRaw}.pdf`;
+    const safeBase = pdfFilename
+      .replace(/\.pdf$/i, '')
+      .replace(/[^a-z0-9-_]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'quote';
+
+    const tempDir = path.join(resolveDataRoot(), 'quote-previews');
+    fs.mkdirSync(tempDir, { recursive: true });
+    tempHtmlPath = path.join(tempDir, `${safeBase}-${Date.now()}-email.html`);
+    fs.writeFileSync(tempHtmlPath, html, 'utf-8');
+
+    win = new BrowserWindow({
+      show: false,
+      width: 1200,
+      height: 900,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+
+    await win.loadFile(tempHtmlPath);
+    await new Promise((r) => setTimeout(r, 200));
+
+    const pdfBuffer = await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      pageSize: 'Letter',
+      margins: { marginType: 'none' },
+    });
+
+    return await sendConfiguredEmail({
+      to,
+      subject,
+      text: bodyText,
+      attachments: [
+        {
+          filename: pdfFilename,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  } finally {
+    try {
+      if (win) win.destroy();
+    } catch {}
+    try {
+      if (tempHtmlPath) fs.unlinkSync(tempHtmlPath);
+    } catch {}
   }
 });
 

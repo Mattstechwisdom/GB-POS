@@ -67,15 +67,67 @@ function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+const GEOCODE_CACHE = new Map<string, { lat: number; lng: number } | null>();
+
+async function geocodeAddress(address: string, near?: { lat: number; lng: number }): Promise<{ lat: number; lng: number } | null> {
   try {
+    const q = String(address || '').trim();
+    if (!q) return null;
+
+    const cacheKey = `${q.toLowerCase()}|${near ? `${near.lat.toFixed(4)},${near.lng.toFixed(4)}` : ''}`;
+    if (GEOCODE_CACHE.has(cacheKey)) return GEOCODE_CACHE.get(cacheKey) ?? null;
+
+    const params = new URLSearchParams({
+      q,
+      format: 'json',
+      limit: '5',
+      addressdetails: '1',
+      countrycodes: 'us',
+    });
+
+    // If we know the shop coords, strongly bias results to the local area to avoid
+    // ambiguous addresses resolving to another state (e.g., same street name).
+    if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+      const delta = 1.0; // ~69 miles latitude; plenty for local consultations
+      const left = (near.lng - delta).toFixed(6);
+      const right = (near.lng + delta).toFixed(6);
+      const top = (near.lat + delta).toFixed(6);
+      const bottom = (near.lat - delta).toFixed(6);
+      params.set('viewbox', `${left},${top},${right},${bottom}`);
+    }
+
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
       { headers: { 'Accept-Language': 'en-US,en' } }
     );
     const data = await res.json() as any[];
-    if (!data || !data.length) return null;
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    if (!Array.isArray(data) || !data.length) {
+      GEOCODE_CACHE.set(cacheKey, null);
+      return null;
+    }
+
+    const parsed = data
+      .map((d) => ({
+        lat: Number.parseFloat(String(d?.lat ?? '')),
+        lng: Number.parseFloat(String(d?.lon ?? '')),
+      }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    if (!parsed.length) {
+      GEOCODE_CACHE.set(cacheKey, null);
+      return null;
+    }
+
+    let best = parsed[0];
+    if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+      let bestD = Number.POSITIVE_INFINITY;
+      for (const p of parsed) {
+        const d = haversineDistanceMiles(near.lat, near.lng, p.lat, p.lng);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+    }
+
+    GEOCODE_CACHE.set(cacheKey, best);
+    return best;
   } catch {
     return null;
   }
@@ -221,6 +273,64 @@ const SaleWindow: React.FC = () => {
   const [distanceLoading, setDistanceLoading] = useState(false);
   const [distanceFeeApplied, setDistanceFeeApplied] = useState(false);
 
+  type AddressHistoryRecord = { id: number; key?: string; address?: string; usedCount?: number; lastUsedAt?: string };
+  const [addressHistory, setAddressHistory] = useState<AddressHistoryRecord[]>([]);
+  const [addressMatches, setAddressMatches] = useState<AddressHistoryRecord[]>([]);
+  const [addressSuggestOpen, setAddressSuggestOpen] = useState(false);
+  const addressSuggestTimer = useRef<number | undefined>(undefined);
+
+  const normalizeAddressKey = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const refreshAddressHistory = useCallback(async () => {
+    try {
+      const list = await window.api.dbGet('addressHistory');
+      setAddressHistory(Array.isArray(list) ? list : []);
+    } catch {
+      setAddressHistory([]);
+    }
+  }, []);
+
+  const upsertAddressHistory = useCallback(async (addr: string) => {
+    try {
+      const address = String(addr || '').trim();
+      // avoid storing tiny fragments; keep the DB clean
+      if (address.length < 8) return;
+      if (!/\d/.test(address)) return;
+      const key = normalizeAddressKey(address);
+      if (!key) return;
+
+      const now = new Date().toISOString();
+      const existing = (addressHistory || []).find((r) => normalizeAddressKey(String(r.key || r.address || '')) === key);
+      if (existing?.id != null) {
+        await window.api.dbUpdate('addressHistory', existing.id, {
+          ...existing,
+          key,
+          address,
+          usedCount: (Number(existing.usedCount) || 0) + 1,
+          lastUsedAt: now,
+        });
+      } else {
+        await window.api.dbAdd('addressHistory', { key, address, usedCount: 1, lastUsedAt: now });
+      }
+
+      // Cap to a reasonable size so we never bog the system down.
+      // Keep the most recently used entries.
+      const after = await window.api.dbGet('addressHistory').catch(() => []);
+      const arr: any[] = Array.isArray(after) ? after : [];
+      const CAP = 500;
+      if (arr.length > CAP) {
+        const sorted = [...arr].sort((a, b) => String(b?.lastUsedAt || '').localeCompare(String(a?.lastUsedAt || '')));
+        const extras = sorted.slice(CAP);
+        for (const ex of extras) {
+          try { if (ex?.id != null) await window.api.dbDelete('addressHistory', ex.id); } catch {}
+        }
+      }
+      refreshAddressHistory();
+    } catch {
+      // ignore
+    }
+  }, [addressHistory, refreshAddressHistory]);
+
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
       window.clearTimeout(warningHideTimer.current);
@@ -292,6 +402,11 @@ const SaleWindow: React.FC = () => {
       } catch { /* ignore */ }
     })();
   }, []);
+
+  // Load address autocomplete history once
+  useEffect(() => {
+    refreshAddressHistory();
+  }, [refreshAddressHistory]);
 
   // Auto-update consultation item price whenever hours or distanceFee changes
   useEffect(() => {
@@ -762,7 +877,7 @@ const SaleWindow: React.FC = () => {
         setDistanceLoading(false);
         return;
       }
-      const clientCoords = await geocodeAddress(address);
+      const clientCoords = await geocodeAddress(address, { lat: sLat, lng: sLng });
       if (!clientCoords) { setDistanceMiles(null); setDistanceFeeApplied(false); setDistanceLoading(false); return; }
       const dist = haversineDistanceMiles(sLat, sLng, clientCoords.lat, clientCoords.lng);
       setDistanceMiles(dist);
@@ -1187,13 +1302,76 @@ const SaleWindow: React.FC = () => {
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Client Address</label>
                     <div className="flex gap-2">
-                      <input
-                        className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                        value={(sale as any).consultationAddress || ''}
-                        onChange={e => setSale(s => ({ ...s, consultationAddress: e.target.value } as any))}
-                        onBlur={e => { if (shopAddress) checkClientDistance(e.target.value); }}
-                        placeholder="123 Main St, City, State ZIP"
-                      />
+                      <div className="relative flex-1">
+                        <input
+                          className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                          value={(sale as any).consultationAddress || ''}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setSale(s => ({ ...s, consultationAddress: v } as any));
+                            if (addressSuggestTimer.current !== undefined) window.clearTimeout(addressSuggestTimer.current);
+                            addressSuggestTimer.current = window.setTimeout(() => {
+                              const q = normalizeAddressKey(v);
+                              if (!q || q.length < 2) {
+                                setAddressMatches([]);
+                                setAddressSuggestOpen(false);
+                                return;
+                              }
+                              const list = (addressHistory || [])
+                                .filter((r) => {
+                                  const a = String(r.address || '');
+                                  const ak = normalizeAddressKey(a);
+                                  return ak.includes(q);
+                                })
+                                .sort((a, b) => {
+                                  const bc = Number(b.usedCount) || 0;
+                                  const ac = Number(a.usedCount) || 0;
+                                  if (bc !== ac) return bc - ac;
+                                  return String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''));
+                                })
+                                .slice(0, 8);
+                              setAddressMatches(list);
+                              setAddressSuggestOpen(true);
+                            }, 120);
+                          }}
+                          onFocus={() => {
+                            const v = String((sale as any).consultationAddress || '');
+                            const q = normalizeAddressKey(v);
+                            if (q.length >= 2) setAddressSuggestOpen(true);
+                          }}
+                          onBlur={e => {
+                            const v = e.target.value;
+                            // close after click handlers run
+                            window.setTimeout(() => setAddressSuggestOpen(false), 150);
+                            upsertAddressHistory(v);
+                            if (shopAddress) checkClientDistance(v);
+                          }}
+                          placeholder="123 Main St, City, State ZIP"
+                        />
+                        {addressSuggestOpen && addressMatches.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full z-50 mt-1 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-44 overflow-auto">
+                            {addressMatches.map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-700"
+                                onMouseDown={(ev) => {
+                                  ev.preventDefault();
+                                  const addr = String(r.address || '');
+                                  setSale(s => ({ ...s, consultationAddress: addr } as any));
+                                  setAddressSuggestOpen(false);
+                                  setAddressMatches([]);
+                                  upsertAddressHistory(addr);
+                                  if (shopAddress) checkClientDistance(addr);
+                                }}
+                              >
+                                <div className="text-zinc-100">{String(r.address || '')}</div>
+                                <div className="text-[11px] text-zinc-400">Used {Number(r.usedCount) || 0}×</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       {shopAddress && (
                         <button
                           type="button"

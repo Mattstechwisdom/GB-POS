@@ -60,6 +60,58 @@ export default function ConsultationBookingWindow() {
   const [hourlyRate, setHourlyRate] = useState(HOURLY_RATE_DEFAULT);
   const [driverFee, setDriverFee] = useState(0);
 
+  type AddressHistoryRecord = { id: number; key?: string; address?: string; usedCount?: number; lastUsedAt?: string };
+  const [addressHistory, setAddressHistory] = useState<AddressHistoryRecord[]>([]);
+  const [addressMatches, setAddressMatches] = useState<AddressHistoryRecord[]>([]);
+  const [addressSuggestOpen, setAddressSuggestOpen] = useState(false);
+  const addressSuggestTimer = useRef<number | undefined>(undefined);
+  const normalizeAddressKey = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const refreshAddressHistory = useCallback(async () => {
+    try {
+      const list = await api.dbGet('addressHistory');
+      setAddressHistory(Array.isArray(list) ? list : []);
+    } catch {
+      setAddressHistory([]);
+    }
+  }, [api]);
+
+  const upsertAddressHistory = useCallback(async (addr: string) => {
+    try {
+      const address = String(addr || '').trim();
+      if (address.length < 8) return;
+      if (!/\d/.test(address)) return;
+      const key = normalizeAddressKey(address);
+      if (!key) return;
+      const now = new Date().toISOString();
+      const existing = (addressHistory || []).find((r) => normalizeAddressKey(String(r.key || r.address || '')) === key);
+      if (existing?.id != null) {
+        await api.dbUpdate('addressHistory', existing.id, {
+          ...existing,
+          key,
+          address,
+          usedCount: (Number(existing.usedCount) || 0) + 1,
+          lastUsedAt: now,
+        });
+      } else {
+        await api.dbAdd('addressHistory', { key, address, usedCount: 1, lastUsedAt: now });
+      }
+      const after = await api.dbGet('addressHistory').catch(() => []);
+      const arr: any[] = Array.isArray(after) ? after : [];
+      const CAP = 500;
+      if (arr.length > CAP) {
+        const sorted = [...arr].sort((a, b) => String(b?.lastUsedAt || '').localeCompare(String(a?.lastUsedAt || '')));
+        const extras = sorted.slice(CAP);
+        for (const ex of extras) {
+          try { if (ex?.id != null) await api.dbDelete('addressHistory', ex.id); } catch {}
+        }
+      }
+      refreshAddressHistory();
+    } catch {
+      // ignore
+    }
+  }, [addressHistory, api, refreshAddressHistory]);
+
   // ── Technicians list ────────────────────────────────────────────
   const [techs, setTechs] = useState<Technician[]>([]);
 
@@ -76,6 +128,10 @@ export default function ConsultationBookingWindow() {
       } catch {}
     })();
   }, [api]);
+
+  useEffect(() => {
+    refreshAddressHistory();
+  }, [refreshAddressHistory]);
 
   // Live customer search
   const searchCustomers = useCallback(async (q: string) => {
@@ -144,6 +200,9 @@ export default function ConsultationBookingWindow() {
     setSaving(true);
     setError('');
     try {
+      if (locationType === 'athome') {
+        try { await upsertAddressHistory(address); } catch {}
+      }
       // 1. Resolve or create customer
       let customer = selectedCustomer;
       if (!customer) {
@@ -500,13 +559,68 @@ export default function ConsultationBookingWindow() {
           {locationType === 'athome' && (
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Client Address</label>
-              <input
-                className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                placeholder="123 Main St, City, State"
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                autoFocus
-              />
+              <div className="relative">
+                <input
+                  className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                  placeholder="123 Main St, City, State ZIP"
+                  value={address}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setAddress(v);
+                    if (addressSuggestTimer.current !== undefined) window.clearTimeout(addressSuggestTimer.current);
+                    addressSuggestTimer.current = window.setTimeout(() => {
+                      const q = normalizeAddressKey(v);
+                      if (!q || q.length < 2) {
+                        setAddressMatches([]);
+                        setAddressSuggestOpen(false);
+                        return;
+                      }
+                      const list = (addressHistory || [])
+                        .filter((r) => normalizeAddressKey(String(r.address || '')).includes(q))
+                        .sort((a, b) => {
+                          const bc = Number(b.usedCount) || 0;
+                          const ac = Number(a.usedCount) || 0;
+                          if (bc !== ac) return bc - ac;
+                          return String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''));
+                        })
+                        .slice(0, 8);
+                      setAddressMatches(list);
+                      setAddressSuggestOpen(true);
+                    }, 120);
+                  }}
+                  onFocus={() => {
+                    const q = normalizeAddressKey(address);
+                    if (q.length >= 2) setAddressSuggestOpen(true);
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setAddressSuggestOpen(false), 150);
+                    upsertAddressHistory(address);
+                  }}
+                  autoFocus
+                />
+                {addressSuggestOpen && addressMatches.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-44 overflow-auto">
+                    {addressMatches.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-700"
+                        onMouseDown={(ev) => {
+                          ev.preventDefault();
+                          const addr = String(r.address || '');
+                          setAddress(addr);
+                          setAddressSuggestOpen(false);
+                          setAddressMatches([]);
+                          upsertAddressHistory(addr);
+                        }}
+                      >
+                        <div className="text-zinc-100">{String(r.address || '')}</div>
+                        <div className="text-[11px] text-zinc-400">Used {Number(r.usedCount) || 0}×</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>

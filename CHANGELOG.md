@@ -149,3 +149,9 @@
 ## v0.4.4 (2026-04-02)
 - No commits recorded.
 
+## v0.4.5 (2026-04-04)
+- Main screen: Status filter (Open/Closed) is now wired and filters correctly across Work Orders, Sales, and All views.
+- Work Orders: Status display/logic now follows the ticket lifecycle status (open / in progress / closed) with safe fallback for older records.
+- Quote Generator: “Print” + “Digital” buttons, Email Settings toggle for sending HTML vs PDF-only, and PDF emailing support.
+- Customer Overview: Completed quotes now associate by customerId (prevents throwaway/manual entries from attaching to existing customers).
+
