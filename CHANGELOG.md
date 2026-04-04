@@ -155,3 +155,6 @@
 - Quote Generator: “Print” + “Digital” buttons, Email Settings toggle for sending HTML vs PDF-only, and PDF emailing support.
 - Customer Overview: Completed quotes now associate by customerId (prevents throwaway/manual entries from attaching to existing customers).
 
+## v0.4.6 (2026-04-04)
+- Send Quote Email: HTML/PDF toggle moved into the Send Email window (default: PDF only).
+

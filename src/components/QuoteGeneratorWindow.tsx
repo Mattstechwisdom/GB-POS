@@ -337,14 +337,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [emailErr, setEmailErr] = useState<string | null>(null);
   const [emailSettingsSaving, setEmailSettingsSaving] = useState(false);
   const [emailSettingsErr, setEmailSettingsErr] = useState<string | null>(null);
-  const [quoteEmailAttachmentMode, setQuoteEmailAttachmentMode] = useState<'html' | 'pdf'>(() => {
-    try {
-      const v = localStorage.getItem('gbpos.quoteEmail.attachmentMode');
-      return v === 'pdf' ? 'pdf' : 'html';
-    } catch {
-      return 'html';
-    }
-  });
+  const [quoteEmailAttachmentMode, setQuoteEmailAttachmentMode] = useState<'html' | 'pdf'>('pdf');
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<number | undefined>(undefined);
   const [expandedQuoteMonths, setExpandedQuoteMonths] = useState<Record<string, boolean>>({});
@@ -405,12 +398,6 @@ function QuoteGeneratorWindow(): JSX.Element {
       totals: { ...repairTotals },
     };
   }, [mode, repairs, repairTotals, sales, salesTotals]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gbpos.quoteEmail.attachmentMode', quoteEmailAttachmentMode);
-    } catch {}
-  }, [quoteEmailAttachmentMode]);
 
   const currentQuoteSnapshot = useMemo(() => normalizeQuoteSnapshot(currentQuoteRecord), [currentQuoteRecord]);
 
@@ -4014,6 +4001,9 @@ function QuoteGeneratorWindow(): JSX.Element {
       if (!(emailTo || '').trim()) {
         setEmailTo(String(sales.customerEmail || '').trim());
       }
+
+      // Default to PDF for each send (user can change per-email in the Send window)
+      setQuoteEmailAttachmentMode('pdf');
       setShowEmailModal(true);
     } catch {
       setSaveMsg('Email setup unavailable');
@@ -6031,6 +6021,25 @@ function QuoteGeneratorWindow(): JSX.Element {
                       </div>
 
                       <div className="col-span-12">
+                        <div className="text-xs text-zinc-400 mb-1">Quote Email Attachment</div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'pdf' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
+                            onClick={() => setQuoteEmailAttachmentMode('pdf')}
+                            disabled={emailSending}
+                          >PDF only</button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'html' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
+                            onClick={() => setQuoteEmailAttachmentMode('html')}
+                            disabled={emailSending}
+                          >HTML</button>
+                          <div className="text-[11px] text-zinc-400">(PDF only sends a static copy)</div>
+                        </div>
+                      </div>
+
+                      <div className="col-span-12">
                         <div className="flex items-end justify-between gap-2">
                           <div>
                             <div className="text-xs text-zinc-400 mb-1">Email Body</div>
@@ -6133,23 +6142,6 @@ function QuoteGeneratorWindow(): JSX.Element {
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-lg font-semibold">Email Settings</div>
                       <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { if (!emailSettingsSaving) setShowEmailSettings(false); }}>Close</button>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="text-xs text-zinc-400 mb-1">Quote Email Attachment</div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'html' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
-                          onClick={() => setQuoteEmailAttachmentMode('html')}
-                        >HTML</button>
-                        <button
-                          type="button"
-                          className={`px-3 py-1.5 border rounded text-sm ${quoteEmailAttachmentMode === 'pdf' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'}`}
-                          onClick={() => setQuoteEmailAttachmentMode('pdf')}
-                        >PDF only</button>
-                        <div className="text-[11px] text-zinc-400">(PDF only sends a static copy)</div>
-                      </div>
                     </div>
 
                     <div className="mt-3">
