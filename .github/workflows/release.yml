@@ -63,6 +63,14 @@ jobs:
           Copy-Item -Force $setup $update
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Generate release notes from CHANGELOG
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_VERSION
+          if (-not $version) { throw "RELEASE_VERSION is not set" }
+          node -e "const fs=require('fs'); const v=process.env.RELEASE_VERSION; const raw=fs.readFileSync('CHANGELOG.md','utf8').replace(/\r\n/g,'\n'); const head=new RegExp('^## v'+v.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')+'\\b.*$','m'); const m=head.exec(raw); if(!m){ console.log('## v'+v+'\n\n- (No changelog section found)'); process.exit(0);} const start=m.index; const after=raw.slice(start); const next=after.slice(3).search(/^## v/m); const section=next>=0? after.slice(0, 3+next): after; const lines=section.split('\n'); const title=lines.shift(); const body=lines.join('\n').trim(); console.log((title||('## v'+v)).trim()+'\n\n'+(body||'- (No entries)')+'\n');" | Out-File -FilePath release-notes.md -Encoding utf8
+          "RELEASE_NOTES_PATH=release-notes.md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: List release artifacts
         run: |
           echo "Release folder contents:"
@@ -72,6 +80,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
           files: |
             release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe
             release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe.blockmap
