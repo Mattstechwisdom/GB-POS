@@ -185,3 +185,7 @@
 ## v0.4.12 (2026-04-06)
 - UI: Customer Search and Customer Overview now show a top-right ✕ close button when opened as standalone screens (outside the modal shell).
 
+## v0.4.13 (2026-04-06)
+- Work Orders: Device Category and Device fields now accept the top dropdown match when you press Tab (auto-fills, then moves to the next field).
+- Checkout: pressing Enter now triggers Save when the checkout form is valid.
+

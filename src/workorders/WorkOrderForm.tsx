@@ -56,6 +56,18 @@ const DeviceCategorySelect: React.FC<{
         autoComplete="off"
         onChange={e => { setInputVal(e.target.value); onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') {
+            const q = inputVal.trim();
+            if (!q) return;
+            const top = filtered[0];
+            if (!top) return;
+            // Accept the top match, then allow normal tab navigation to proceed.
+            onChange(top);
+            setInputVal(top);
+            setOpen(false);
+          }
+        }}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
       />
       {open && filtered.length > 0 && (
@@ -122,6 +134,19 @@ const DeviceSelect: React.FC<{
           onChange(v, exists ? undefined : (category || undefined));
         }}
         onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') {
+            const q = inputVal.trim();
+            if (!q) return;
+            const top = filtered[0];
+            if (!top) return;
+            // Accept the top match, then allow normal tab navigation to proceed.
+            const exists = cats.some(c => (c.name || '').trim() === top);
+            onChange(top, exists ? undefined : (category || undefined));
+            setInputVal(top);
+            setOpen(false);
+          }
+        }}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
       />
       {open && filtered.length > 0 && (

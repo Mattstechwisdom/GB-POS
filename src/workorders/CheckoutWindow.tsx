@@ -167,8 +167,29 @@ const CheckoutWindow: React.FC = () => {
     }
   }, [paymentType, selectedDue, cashEdited, appliedPaid]);
 
+  function onRootKeyDownCapture(e: React.KeyboardEvent) {
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const tag = (target as any).tagName as string | undefined;
+    if (tag === 'TEXTAREA') return;
+    if (tag === 'BUTTON') return;
+
+    // Don't submit when focused on checkboxes (Enter toggles them).
+    if (target instanceof HTMLInputElement) {
+      const t = (target.type || '').toLowerCase();
+      if (t === 'checkbox' || t === 'radio' || t === 'button' || t === 'submit') return;
+    }
+
+    if (!canSave) return;
+    e.preventDefault();
+    save();
+  }
+
   return (
-    <div className="h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none">
+    <div className="h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none" onKeyDownCapture={onRootKeyDownCapture}>
       <div className="h-full p-2 flex flex-col gap-2 text-[13px] leading-tight">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">{payload?.title ? String(payload.title) : 'Checkout'}</h2>
