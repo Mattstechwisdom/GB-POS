@@ -195,3 +195,6 @@
 ## v0.4.15 (2026-04-06)
 - Work Orders: Device Category and Device dropdowns now support Arrow Up/Down to move the highlight and Enter to select (Enter defaults to the top match unless you navigate with arrows).
 
+## v0.4.16 (2026-04-06)
+- Performance: reduced input lag in Work Order and Sales windows (device/category typing no longer re-renders the whole window per keystroke; Sales item IDs are now stable so rows don't re-mount while typing).
+

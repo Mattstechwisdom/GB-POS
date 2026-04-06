@@ -65,7 +65,7 @@ const DeviceCategorySelect: React.FC<{
         value={inputVal}
         placeholder="Type or select…"
         autoComplete="off"
-        onChange={e => { setInputVal(e.target.value); onChange(e.target.value); setOpen(true); setHighlightIdx(-1); }}
+        onChange={e => { setInputVal(e.target.value); setOpen(true); setHighlightIdx(-1); }}
         onFocus={() => { setOpen(true); }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -105,7 +105,16 @@ const DeviceCategorySelect: React.FC<{
             setHighlightIdx(-1);
           }
         }}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onBlur={() => {
+          // Commit the current typed value on blur so we don't re-render the entire Work Order
+          // window on every keystroke while filtering.
+          const v = inputVal;
+          setTimeout(() => {
+            try { onChange(v); } catch {}
+            setOpen(false);
+            setHighlightIdx(-1);
+          }, 120);
+        }}
       />
       {open && filtered.length > 0 && (
         <ul ref={listRef} className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
@@ -180,9 +189,6 @@ const DeviceSelect: React.FC<{
           setInputVal(v);
           setOpen(true);
           setHighlightIdx(-1);
-          // If user clears or types something not in dropdown, still propagate
-          const exists = cats.some(c => (c.name || '').trim() === v);
-          onChange(v, exists ? undefined : (category || undefined));
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
@@ -221,7 +227,18 @@ const DeviceSelect: React.FC<{
             setHighlightIdx(-1);
           }
         }}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onBlur={() => {
+          // Commit on blur (typing stays local for responsiveness).
+          const v = inputVal;
+          setTimeout(() => {
+            try {
+              const exists = cats.some(c => (c.name || '').trim() === v);
+              onChange(v, exists ? undefined : (category || undefined));
+            } catch {}
+            setOpen(false);
+            setHighlightIdx(-1);
+          }, 120);
+        }}
       />
       {open && filtered.length > 0 && (
         <ul ref={listRef} className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">

@@ -792,8 +792,10 @@ const SaleWindow: React.FC = () => {
 
   const sharedWorkOrder = useMemo<WorkOrderFull>(() => {
     const rows = (sale.items || []) as SaleItemRow[];
-    const items = (rows.length ? rows : [{ id: 'sale-item', description: sale.itemDescription || 'Retail item', qty: sale.quantity || 1, price: sale.price || 0 } as any]).map((r: any) => ({
-      id: r.id || crypto.randomUUID(),
+    // IMPORTANT: Never generate random IDs during render. Unstable IDs will cause the items table
+    // to re-mount rows on every keystroke, which feels like input lag.
+    const items = (rows.length ? rows : [{ id: 'sale-item', description: sale.itemDescription || 'Retail item', qty: sale.quantity || 1, price: sale.price || 0 } as any]).map((r: any, idx: number) => ({
+      id: String(r.id || `sale-row-${idx}`),
       description: r.description,
       qty: itemUnits(r) || 1,
       unitPrice: r.price,
