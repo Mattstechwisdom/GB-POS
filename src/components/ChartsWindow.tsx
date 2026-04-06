@@ -158,7 +158,6 @@ const ChartsWindow: React.FC = () => {
     <div className="h-screen bg-zinc-900 text-gray-100 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold">Charts</div>
-        <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => window.close()}>Close</button>
       </div>
       <div className="flex flex-wrap gap-3 items-end">
         <div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '../lib/admin';
 import { usePagination } from '../lib/pagination';
 import CustomerHoverCard from './CustomerHoverCard';
@@ -18,6 +18,21 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
   const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }>>({});
   const { page, setPage, pageSize, setTotalItems } = usePagination();
+
+  const deferredInvoiceQuery = useDeferredValue(invoiceQuery);
+
+  const techLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, labelRaw] of Object.entries(techIndex || {})) {
+      const label = (labelRaw || '').toString().trim();
+      if (!label) continue;
+      if (id) map.set(id, label);
+      map.set(label, label);
+      const first = label.split(' ')[0];
+      if (first) map.set(first, label);
+    }
+    return map;
+  }, [techIndex]);
 
   async function load() {
     try {
@@ -67,10 +82,19 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
   }, []);
 
   const filtered = useMemo(() => {
-    const from = dateFrom ? new Date(dateFrom) : null;
-    const to = dateTo ? new Date(dateTo) : null;
-    const qRaw = (invoiceQuery || '').trim().toLowerCase();
+    const fromBoundary = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+    const toBoundary = dateTo ? new Date(dateTo + 'T23:59:59.999') : null;
+    const fromTime = fromBoundary && !Number.isNaN(fromBoundary.getTime()) ? fromBoundary.getTime() : null;
+    const toTime = toBoundary && !Number.isNaN(toBoundary.getTime()) ? toBoundary.getTime() : null;
+
+    const qRaw = (deferredInvoiceQuery || '').trim().toLowerCase();
     const qDigits = qRaw.replace(/\D/g, '');
+    const getTs = (s: any) => {
+      const raw = s.checkInAt || s.createdAt || 0;
+      const t = new Date(raw).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+
     return rows.filter((s: any) => {
       if (statusFilter !== 'all') {
         const total = Number(s.totals?.total || s.total || 0) || 0;
@@ -93,16 +117,12 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
           if (!match) return false;
         }
       }
-      const d = new Date(s.checkInAt || s.createdAt || 0);
-      if (from && d < from) return false;
-      if (to && d > to) return false;
+      const t = getTs(s);
+      if (fromTime && t < fromTime) return false;
+      if (toTime && t > toTime) return false;
       return true;
-    }).sort((a: any, b: any) => {
-      const ad = new Date(a.checkInAt || a.createdAt || 0).getTime();
-      const bd = new Date(b.checkInAt || b.createdAt || 0).getTime();
-      return bd - ad;
-    });
-  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, invoiceQuery]);
+    }).sort((a: any, b: any) => getTs(b) - getTs(a));
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, deferredInvoiceQuery]);
 
   useEffect(() => {
     const MAX_PAGES = 10;
@@ -121,6 +141,33 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
   const startIdx = (safePage - 1) * pageSize;
   const endIdx = Math.min(startIdx + pageSize, capped.length);
   const paged = useMemo(() => capped.slice(startIdx, endIdx), [capped, startIdx, endIdx]);
+
+  const viewRows = useMemo(() => {
+    return paged.map((s: any) => {
+      const date = (s.createdAt || s.checkInAt || '').toString().split('T')[0];
+      const desc = (Array.isArray(s.items) && s.items[0]?.description) || s.itemDescription || '';
+      const total = Number(s.totals?.total || s.total || 0) || 0;
+      const remaining = total - Number(s.amountPaid || 0);
+      const status = remaining <= 0 ? 'closed' : 'open';
+      const at = (s.assignedTo || '').toString().trim();
+      const techLabel = at ? (techLookup.get(at) || '') : '';
+      const itemsText = (() => {
+        const items = Array.isArray(s.items) ? s.items : [];
+        const titles = items.map((it: any) => (it.description || it.name || it.title || '').toString().trim()).filter(Boolean);
+        return titles.join(', ');
+      })();
+      const customerLabel = (() => {
+        const id = (s as any).customerId as number | undefined;
+        const fromIndex = id ? customerIndex[id]?.name : '';
+        if (fromIndex) return fromIndex;
+        const inline = (s as any).customerName as string | undefined;
+        if (inline && inline.trim()) return inline.trim();
+        return id ? (`Customer #${id}`) : '';
+      })();
+      const customer = s.customerId ? ({ id: s.customerId, ...(customerIndex[s.customerId] || {}) } as any) : null;
+      return { s, date, desc, total, remaining, status, techLabel, itemsText, customerLabel, customer };
+    });
+  }, [paged, customerIndex, techLookup]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -150,38 +197,7 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
           {!loading && filtered.length === 0 && (
             <tr><td colSpan={10} className="p-6 text-center text-zinc-500">No sales yet</td></tr>
           )}
-          {!loading && paged.map((s: any) => {
-            const date = (s.createdAt || s.checkInAt || '').toString().split('T')[0];
-            const desc = (Array.isArray(s.items) && s.items[0]?.description) || s.itemDescription || '';
-            const total = Number(s.totals?.total || s.total || 0) || 0;
-            const remaining = total - Number(s.amountPaid || 0);
-            const status = remaining <= 0 ? 'closed' : 'open';
-            const techLabel = (() => {
-              const at = (s.assignedTo || '').toString().trim();
-              if (!at) return '';
-              if (techIndex[at]) return techIndex[at];
-              for (const [, label] of Object.entries(techIndex)) {
-                if (!label) continue;
-                if (label === at) return label;
-                const first = label.split(' ')[0];
-                if (first && first === at) return label;
-              }
-              return '';
-            })();
-            const itemsText = (() => {
-              const items = Array.isArray(s.items) ? s.items : [];
-              const titles = items.map((it: any) => (it.description || it.name || it.title || '').toString().trim()).filter(Boolean);
-              return titles.join(', ');
-            })();
-            const customerLabel = (() => {
-              const id = (s as any).customerId as number | undefined;
-              const fromIndex = id ? customerIndex[id]?.name : '';
-              if (fromIndex) return fromIndex;
-              const inline = (s as any).customerName as string | undefined;
-              if (inline && inline.trim()) return inline.trim();
-              return id ? (`Customer #${id}`) : '';
-            })();
-            const customer = s.customerId ? ({ id: s.customerId, ...(customerIndex[s.customerId] || {}) } as any) : null;
+          {!loading && viewRows.map(({ s, date, desc, total, remaining, status, techLabel, itemsText, customerLabel, customer }) => {
             return (
               <tr
                 key={s.id}

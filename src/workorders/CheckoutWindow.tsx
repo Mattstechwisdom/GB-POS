@@ -46,6 +46,8 @@ const CheckoutWindow: React.FC = () => {
   const [payFor, setPayFor] = useState<CheckoutPayFor>('both');
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [cashEdited, setCashEdited] = useState<boolean>(false);
+  const [amountToApply, setAmountToApply] = useState<number>(0);
+  const [applyEdited, setApplyEdited] = useState<boolean>(false);
   const [paymentType, setPaymentType] = useState<PaymentType | ''>('');
   const [closeParent, setCloseParent] = useState(true);
   const [printReceipt, setPrintReceipt] = useState(true);
@@ -95,11 +97,20 @@ const CheckoutWindow: React.FC = () => {
     return Number.isFinite(n) && n >= 0 ? round2(n) : 0;
   }, [cashReceived]);
 
+  const numericAmountToApply = useMemo(() => {
+    const n = Number(amountToApply || 0);
+    return Number.isFinite(n) && n >= 0 ? round2(n) : 0;
+  }, [amountToApply]);
+
   const isCash = (paymentType as any) === 'Cash';
+  const appliedPaid = round2(Math.min(numericAmountToApply, Math.max(0, selectedDue)));
   const tendered = isCash ? numericCashReceived : undefined;
-  const changeDue = isCash ? Math.max(numericCashReceived - selectedDue, 0) : 0;
-  const appliedPaid = selectedDue;
-  const canSave = !!paymentType && (!hasPayFor || selectedDue > 0) && (isCash ? numericCashReceived >= selectedDue : true);
+  const changeDue = isCash ? Math.max(numericCashReceived - appliedPaid, 0) : 0;
+  const canSave = !!paymentType
+    && appliedPaid > 0
+    && appliedPaid <= selectedDue + 0.0001
+    && (!hasPayFor || selectedDue > 0)
+    && (isCash ? numericCashReceived >= appliedPaid : true);
 
   const allocation = useMemo(() => {
     if (!hasPayFor) return { appliedParts: undefined as any, appliedLabor: undefined as any };
@@ -137,22 +148,24 @@ const CheckoutWindow: React.FC = () => {
   useEffect(() => {
     // ensure initial formatting
     setCashReceived(round2(originalAmountDue));
+    setAmountToApply(round2(originalAmountDue));
   }, []);
 
   useEffect(() => {
-    // When the selected due changes, default the input fields (unless user edited).
-    if (paymentType === 'Cash' && !cashEdited) setCashReceived(round2(selectedDue));
-  }, [selectedDue, cashEdited, paymentType]);
+    // When the selected due changes, default inputs unless user edited.
+    if (!applyEdited) setAmountToApply(round2(selectedDue));
+    if (paymentType === 'Cash' && !cashEdited && !applyEdited) setCashReceived(round2(selectedDue));
+  }, [selectedDue, cashEdited, paymentType, applyEdited]);
 
   useEffect(() => {
     // When switching to cash, default cash received to amount due (but don't fight user edits for non-cash).
     if (paymentType === 'Cash') {
       setCashReceived(prev => {
         if (cashEdited) return prev;
-        return (Number(prev) > 0) ? prev : round2(selectedDue);
+        return (Number(prev) > 0) ? prev : round2(appliedPaid || selectedDue);
       });
     }
-  }, [paymentType, selectedDue, cashEdited]);
+  }, [paymentType, selectedDue, cashEdited, appliedPaid]);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none">
@@ -193,26 +206,47 @@ const CheckoutWindow: React.FC = () => {
 
         <div className="grid grid-cols-2 gap-2">
           {isCash ? (
-            <div className="col-span-2">
-              <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Cash received</label>
-              <MoneyInput
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
-                value={numericCashReceived}
-                onValueChange={(v) => {
-                  setCashEdited(true);
-                  setCashReceived(Number(v || 0));
-                }}
-              />
-              <div className="text-[10px] text-zinc-500 mt-1">Applied to balance: <span className="text-zinc-200 font-semibold">${appliedPaid.toFixed(2)}</span></div>
+            <div className="col-span-2 grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Cash received</label>
+                <MoneyInput
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
+                  value={numericCashReceived}
+                  onValueChange={(v) => {
+                    setCashEdited(true);
+                    setCashReceived(Number(v || 0));
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Amount to apply</label>
+                <MoneyInput
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
+                  value={appliedPaid}
+                  onValueChange={(v) => {
+                    setApplyEdited(true);
+                    const next = Number(v || 0);
+                    const safe = Number.isFinite(next) ? Math.max(0, Math.min(next, selectedDue)) : 0;
+                    setAmountToApply(safe);
+                  }}
+                />
+              </div>
+              <div className="col-span-2 text-[10px] text-zinc-500">Applied to balance: <span className="text-zinc-200 font-semibold">${appliedPaid.toFixed(2)}</span></div>
             </div>
           ) : (
             <div className="col-span-2">
               <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Amount to apply</label>
-              <input
-                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1"
-                value={selectedDue.toFixed(2)}
-                readOnly
+              <MoneyInput
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
+                value={appliedPaid}
+                onValueChange={(v) => {
+                  setApplyEdited(true);
+                  const next = Number(v || 0);
+                  const safe = Number.isFinite(next) ? Math.max(0, Math.min(next, selectedDue)) : 0;
+                  setAmountToApply(safe);
+                }}
               />
+              <div className="text-[10px] text-zinc-500 mt-1">Max: <span className="text-zinc-200 font-semibold">${selectedDue.toFixed(2)}</span></div>
             </div>
           )}
 

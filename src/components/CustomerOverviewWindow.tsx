@@ -151,7 +151,6 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         <div className="flex items-center justify-between mb-3">
           <div className="text-lg font-semibold text-zinc-200">Customer Overview</div>
           <div className="flex items-center gap-2">
-            <Button className="bg-zinc-700" onClick={onClose}>Close</Button>
             <Button neon onClick={handleSave}>Save</Button>
           </div>
         </div>

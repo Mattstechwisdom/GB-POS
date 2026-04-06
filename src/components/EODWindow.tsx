@@ -1437,10 +1437,6 @@ const EODWindow: React.FC = () => {
                 >Trends</button>
               </>
             )}
-            <button
-              className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
-              onClick={() => window.close()}
-            >Close</button>
           </div>
         </div>
 

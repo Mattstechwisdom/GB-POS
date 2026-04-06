@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useDeferredValue, useMemo, useState, useCallback, useEffect } from 'react';
 import { Customer } from '../lib/types';
 import CustomerSearchForm, { CustomerSearchFilters } from './CustomerSearchForm';
 import CustomerTable from './CustomerTable';
@@ -23,6 +23,9 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
 	const ctx = useContextMenu<Customer>();
 	const ctxCustomer = ctx.state.data;
 
+  // Defer expensive list filtering while typing in the search form.
+  const deferredFilters = useDeferredValue(filters);
+
   const loadCustomers = useCallback(async () => {
     try {
       const list = await window.api.getCustomers();
@@ -42,10 +45,10 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
 
   const filtered = useMemo(() => {
     const f = customersList || [];
-    const qFirst = (filters.firstName ?? '').trim().toLowerCase();
-    const qLast = (filters.lastName ?? '').trim().toLowerCase();
-    const qPhone = (filters.phone ?? '').trim().toLowerCase();
-    const qEmail = (filters.email ?? '').trim().toLowerCase();
+    const qFirst = (deferredFilters.firstName ?? '').trim().toLowerCase();
+    const qLast = (deferredFilters.lastName ?? '').trim().toLowerCase();
+    const qPhone = (deferredFilters.phone ?? '').trim().toLowerCase();
+    const qEmail = (deferredFilters.email ?? '').trim().toLowerCase();
     const anyFilled = !!(qFirst || qLast || qPhone || qEmail);
     if (!anyFilled) {
       // No filters: show only the 8 most recently updated/created customers (newest first)
@@ -67,7 +70,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
              (!qPhone || phone.includes(qPhone)) &&
              (!qEmail || email.includes(qEmail));
     });
-  }, [filters, customersList]);
+  }, [deferredFilters, customersList]);
 
   const handleSearch = useCallback((f: CustomerSearchFilters) => {
     setFilters(f);

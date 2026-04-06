@@ -183,7 +183,6 @@ const ReportEmailWindow: React.FC<{ payload?: ReportEmailPayload | null }> = ({ 
     <div className="h-screen bg-zinc-900 text-gray-100 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xl font-bold">Send Report Email</div>
-        <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => window.close()}>Close</button>
       </div>
 
       {!payload && (

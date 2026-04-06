@@ -158,3 +158,8 @@
 ## v0.4.6 (2026-04-04)
 - Send Quote Email: HTML/PDF toggle moved into the Send Email window (default: PDF only).
 
+## v0.4.7 (2026-04-05)
+- Performance: reduced UI lag while typing/filtering by deferring expensive table recomputations and removing per-row heavy lookups.
+- Payments: Checkout now supports partial “Amount to apply” so you can split tender (ex: $50 cash then the remainder on card).
+- UI: removed redundant top-right Close buttons on windows that already use the global floating ✕.
+

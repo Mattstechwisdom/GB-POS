@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { listTechnicians } from '../lib/admin';
 import { formatPhone } from '../lib/format';
@@ -53,6 +53,9 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const { page, setPage, pageSize, setTotalItems } = usePagination();
+
+  // Defer expensive filtering while typing.
+  const deferredWoQuery = useDeferredValue(woQuery);
 
 	const ctx = useContextMenu<WorkOrderRow>();
 	const ctxRow = ctx.state.data;
@@ -115,6 +118,11 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
   }, [refreshKey, load]);
 
   const filteredRows = useMemo(() => {
+    const fromBoundary = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+    const toBoundary = dateTo ? new Date(dateTo + 'T23:59:59.999') : null;
+    const fromTime = fromBoundary && !Number.isNaN(fromBoundary.getTime()) ? fromBoundary.getTime() : null;
+    const toTime = toBoundary && !Number.isNaN(toBoundary.getTime()) ? toBoundary.getTime() : null;
+    const q = (deferredWoQuery || '').trim();
     return rows
       .filter(r => passesStatusFilter(statusFilter, normalizeTicketStatus(r)))
       .filter(r => {
@@ -139,18 +147,32 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
       })
       .filter(r => {
         // Date range filter uses latest activity so later payments/edits show in the current range.
-        if (!dateFrom && !dateTo) return true;
+        if (!fromTime && !toTime) return true;
         const activity = getActivityDate(r);
         if (!activity) return false;
-        const fromOk = dateFrom ? activity >= new Date(dateFrom + 'T00:00:00') : true;
-        const toOk = dateTo ? activity <= new Date(dateTo + 'T23:59:59.999') : true;
+        const t = activity.getTime();
+        const fromOk = fromTime ? t >= fromTime : true;
+        const toOk = toTime ? t <= toTime : true;
         return fromOk && toOk;
       })
       .filter(r => {
-        if (!woQuery) return true;
-        return String(r.id).includes(woQuery.trim());
+        if (!q) return true;
+        return String(r.id).includes(q);
       });
-  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, woQuery, techIndex]);
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, deferredWoQuery, techIndex]);
+
+  const techLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [id, labelRaw] of Object.entries(techIndex || {})) {
+      const label = (labelRaw || '').toString().trim();
+      if (!label) continue;
+      if (id) map.set(id, label);
+      map.set(label, label);
+      const first = label.split(' ')[0];
+      if (first) map.set(first, label);
+    }
+    return map;
+  }, [techIndex]);
 
   useEffect(() => {
     setTotalItems(Math.min(filteredRows.length, MAX_ITEMS));
@@ -165,6 +187,36 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
   const startIdx = (safePage - 1) * pageSize;
   const endIdx = Math.min(startIdx + pageSize, capped.length);
   const pagedRows = capped.slice(startIdx, endIdx);
+
+  const viewRows = useMemo(() => {
+    return pagedRows.map(r => {
+      const total = r.totals?.total ?? 0;
+      const remaining = r.totals?.remaining ?? Math.max(0, total - (r.amountPaid || 0));
+      const computedStatus = normalizeTicketStatus(r);
+      const clientName = (r.customerId && customerIndex[r.customerId!]?.name) || (r as any).customerName || [
+        (r as any).firstName,
+        (r as any).lastName,
+      ].filter(Boolean).join(' ').trim();
+      const customer = r.customerId ? ({ id: r.customerId, ...(customerIndex[r.customerId] || {}) } as any) : null;
+      const items = Array.isArray((r as any).items) ? (r as any).items : [];
+      const repairs = items.length
+        ? items
+            .map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim())
+            .filter(Boolean)
+            .join(', ')
+        : '';
+
+      const activity = getActivityDate(r);
+      const activityIso = activity ? activity.toISOString().slice(0, 10) : '';
+      const checkInIso = r.checkInAt ? r.checkInAt.split('T')[0] : '';
+
+      const atRaw = r.assignedTo as any;
+      const at = (atRaw === null || typeof atRaw === 'undefined') ? '' : String(atRaw).trim();
+      const techLabel = at ? (techLookup.get(at) || '') : '';
+
+      return { r, total, remaining, computedStatus, clientName, customer, repairs, activityIso, checkInIso, techLabel };
+    });
+  }, [pagedRows, customerIndex, techLookup]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -307,22 +359,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
           {!loading && rows.length === 0 && (
             <tr><td colSpan={10} className="p-6 text-center text-zinc-500">No work orders yet</td></tr>
           )}
-          {!loading && pagedRows.map(r => {
-            const total = r.totals?.total ?? 0;
-            const remaining = r.totals?.remaining ?? Math.max(0, total - (r.amountPaid || 0));
-            const computedStatus = normalizeTicketStatus(r);
-            const clientName = (r.customerId && customerIndex[r.customerId!]?.name) || (r as any).customerName || [
-              (r as any).firstName,
-              (r as any).lastName,
-            ].filter(Boolean).join(' ').trim();
-            const customer = r.customerId ? ({ id: r.customerId, ...(customerIndex[r.customerId] || {}) } as any) : null;
-            const repairs = (() => {
-              const items = Array.isArray((r as any).items) ? (r as any).items : [];
-              if (!items.length) return '';
-              const titles = items.map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim()).filter(Boolean);
-              const text = titles.join(', ');
-              return text;
-            })();
+          {!loading && viewRows.map(({ r, total, remaining, computedStatus, clientName, customer, repairs, activityIso, checkInIso, techLabel }) => {
             return (
               <tr
                 key={r.id}
@@ -332,28 +369,10 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
                 className={`odd:bg-zinc-900 even:bg-zinc-800/40 cursor-pointer transition-colors border-l-4 ${selectedId === r.id ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_6px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/70'}`}
               >
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1" title={r.checkInAt ? `Checked in: ${r.checkInAt.split('T')[0]}` : undefined}>{(() => {
-                  const activity = getActivityDate(r);
-                  return activity ? activity.toISOString().slice(0,10) : '';
-                })()}</td>
+                <td className="px-2 py-1" title={checkInIso ? `Checked in: ${checkInIso}` : undefined}>{activityIso}</td>
                 <td className="px-2 py-1 capitalize">{computedStatus}</td>
                 <td className="px-2 py-1 font-semibold">WO</td>
-                <td className="px-2 py-1">{(() => {
-                  const atRaw = r.assignedTo as any;
-                  if (atRaw === null || typeof atRaw === 'undefined') return '';
-                  const at = String(atRaw).trim();
-                  // Direct id match
-                  if (techIndex[at]) return techIndex[at];
-                  // Label or first-name match against admin-defined labels
-                  const entries = Object.entries(techIndex);
-                  for (const [, label] of entries) {
-                    if (!label) continue;
-                    if (label === at) return label;
-                    const first = label.split(' ')[0];
-                    if (first && first === at) return label;
-                  }
-                  return '';
-                })()}</td>
+                <td className="px-2 py-1">{techLabel}</td>
                 <td className="px-2 py-1" title={clientName}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{clientName}</div>
