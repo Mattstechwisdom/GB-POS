@@ -192,3 +192,6 @@
 ## v0.4.14 (2026-04-06)
 - UI: modal windows are scrollable again when content is taller than the screen (fixes Quote Generator bottom Save/Print actions being unreachable).
 
+## v0.4.15 (2026-04-06)
+- Work Orders: Device Category and Device dropdowns now support Arrow Up/Down to move the highlight and Enter to select (Enter defaults to the top match unless you navigate with arrows).
+

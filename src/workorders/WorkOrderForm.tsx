@@ -31,7 +31,9 @@ const DeviceCategorySelect: React.FC<{
 }> = ({ value, onChange, cats }) => {
   const [inputVal, setInputVal] = useState(value);
   const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState<number>(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   // Keep input in sync when parent value changes (e.g. device selection)
   useEffect(() => { setInputVal(value); }, [value]);
@@ -46,6 +48,15 @@ const DeviceCategorySelect: React.FC<{
     inputVal ? titles.filter(t => t.toLowerCase().includes(inputVal.toLowerCase())) : titles
   , [titles, inputVal]);
 
+  // Reset highlight when the candidate list changes.
+  useEffect(() => { setHighlightIdx(-1); }, [inputVal, titles.length]);
+  useEffect(() => {
+    if (!open) return;
+    if (highlightIdx < 0) return;
+    const el = listRef.current?.querySelector(`[data-idx="${highlightIdx}"]`) as HTMLElement | null;
+    try { el?.scrollIntoView({ block: 'nearest' }); } catch {}
+  }, [open, highlightIdx]);
+
   return (
     <div className="mt-1 relative">
       <input
@@ -54,9 +65,34 @@ const DeviceCategorySelect: React.FC<{
         value={inputVal}
         placeholder="Type or select…"
         autoComplete="off"
-        onChange={e => { setInputVal(e.target.value); onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
+        onChange={e => { setInputVal(e.target.value); onChange(e.target.value); setOpen(true); setHighlightIdx(-1); }}
+        onFocus={() => { setOpen(true); }}
         onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (filtered.length === 0) return;
+            e.preventDefault();
+            setOpen(true);
+            setHighlightIdx((prev) => {
+              const max = filtered.length - 1;
+              if (prev < 0) return e.key === 'ArrowUp' ? max : 0;
+              return e.key === 'ArrowUp' ? Math.max(0, prev - 1) : Math.min(max, prev + 1);
+            });
+            return;
+          }
+
+          if (e.key === 'Enter') {
+            if (filtered.length === 0) return;
+            e.preventDefault();
+            const idx = highlightIdx >= 0 ? highlightIdx : 0;
+            const picked = filtered[idx];
+            if (!picked) return;
+            onChange(picked);
+            setInputVal(picked);
+            setOpen(false);
+            setHighlightIdx(-1);
+            return;
+          }
+
           if (e.key === 'Tab') {
             const q = inputVal.trim();
             if (!q) return;
@@ -66,16 +102,19 @@ const DeviceCategorySelect: React.FC<{
             onChange(top);
             setInputVal(top);
             setOpen(false);
+            setHighlightIdx(-1);
           }
         }}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
-          {filtered.map(t => (
+        <ul ref={listRef} className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
+          {filtered.map((t, idx) => (
             <li key={t}
-              className="px-3 py-1.5 text-sm hover:bg-[#39FF14] hover:text-black cursor-pointer"
-              onMouseDown={() => { onChange(t); setInputVal(t); setOpen(false); inputRef.current?.blur(); }}
+              data-idx={idx}
+              className={`px-3 py-1.5 text-sm cursor-pointer ${idx === highlightIdx ? 'bg-[#39FF14] text-black' : 'hover:bg-[#39FF14] hover:text-black'}`}
+              onMouseEnter={() => setHighlightIdx(idx)}
+              onMouseDown={() => { onChange(t); setInputVal(t); setOpen(false); setHighlightIdx(-1); inputRef.current?.blur(); }}
             >{t}</li>
           ))}
         </ul>
@@ -93,7 +132,9 @@ const DeviceSelect: React.FC<{
 }> = ({ category, value, onChange, cats }) => {
   const [inputVal, setInputVal] = useState(value);
   const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState<number>(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => { setInputVal(value); }, [value]);
 
@@ -108,9 +149,18 @@ const DeviceSelect: React.FC<{
     inputVal ? devices.filter(d => d.toLowerCase().includes(inputVal.toLowerCase())) : devices
   , [devices, inputVal]);
 
+  useEffect(() => { setHighlightIdx(-1); }, [inputVal, devices.length]);
+  useEffect(() => {
+    if (!open) return;
+    if (highlightIdx < 0) return;
+    const el = listRef.current?.querySelector(`[data-idx="${highlightIdx}"]`) as HTMLElement | null;
+    try { el?.scrollIntoView({ block: 'nearest' }); } catch {}
+  }, [open, highlightIdx]);
+
   const handleSelect = (name: string) => {
     setInputVal(name);
     setOpen(false);
+    setHighlightIdx(-1);
     inputRef.current?.blur();
     // Does this name exist in the DB? If not, don't pass a categoryIfNew
     const exists = cats.some(c => (c.name || '').trim() === name);
@@ -129,12 +179,35 @@ const DeviceSelect: React.FC<{
           const v = e.target.value;
           setInputVal(v);
           setOpen(true);
+          setHighlightIdx(-1);
           // If user clears or types something not in dropdown, still propagate
           const exists = cats.some(c => (c.name || '').trim() === v);
           onChange(v, exists ? undefined : (category || undefined));
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (filtered.length === 0) return;
+            e.preventDefault();
+            setOpen(true);
+            setHighlightIdx((prev) => {
+              const max = filtered.length - 1;
+              if (prev < 0) return e.key === 'ArrowUp' ? max : 0;
+              return e.key === 'ArrowUp' ? Math.max(0, prev - 1) : Math.min(max, prev + 1);
+            });
+            return;
+          }
+
+          if (e.key === 'Enter') {
+            if (filtered.length === 0) return;
+            e.preventDefault();
+            const idx = highlightIdx >= 0 ? highlightIdx : 0;
+            const picked = filtered[idx];
+            if (!picked) return;
+            handleSelect(picked);
+            return;
+          }
+
           if (e.key === 'Tab') {
             const q = inputVal.trim();
             if (!q) return;
@@ -145,15 +218,18 @@ const DeviceSelect: React.FC<{
             onChange(top, exists ? undefined : (category || undefined));
             setInputVal(top);
             setOpen(false);
+            setHighlightIdx(-1);
           }
         }}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
-          {filtered.map(d => (
+        <ul ref={listRef} className="absolute z-20 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-0.5 rounded shadow-lg max-h-40 overflow-y-auto">
+          {filtered.map((d, idx) => (
             <li key={d}
-              className="px-3 py-1.5 text-sm hover:bg-[#39FF14] hover:text-black cursor-pointer"
+              data-idx={idx}
+              className={`px-3 py-1.5 text-sm cursor-pointer ${idx === highlightIdx ? 'bg-[#39FF14] text-black' : 'hover:bg-[#39FF14] hover:text-black'}`}
+              onMouseEnter={() => setHighlightIdx(idx)}
               onMouseDown={() => handleSelect(d)}
             >{d}</li>
           ))}
