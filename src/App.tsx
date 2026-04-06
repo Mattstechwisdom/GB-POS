@@ -91,7 +91,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-hidden pr-12"
+      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12"
       style={{ zIndex }}
       data-modal-shell="1"
     >

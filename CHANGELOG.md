@@ -189,3 +189,6 @@
 - Work Orders: Device Category and Device fields now accept the top dropdown match when you press Tab (auto-fills, then moves to the next field).
 - Checkout: pressing Enter now triggers Save when the checkout form is valid.
 
+## v0.4.14 (2026-04-06)
+- UI: modal windows are scrollable again when content is taller than the screen (fixes Quote Generator bottom Save/Print actions being unreachable).
+
