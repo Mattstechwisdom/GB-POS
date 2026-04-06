@@ -182,3 +182,6 @@
 - Customer Overview: removed the Quotes filter button (quotes are shown only in the bottom Completed Quotes section).
 - Customer Overview: Completed Quotes now shows only real saved quote PDFs (prevents debug/placeholder quote entries from appearing repeatedly).
 
+## v0.4.12 (2026-04-06)
+- UI: Customer Search and Customer Overview now show a top-right ✕ close button when opened as standalone screens (outside the modal shell).
+

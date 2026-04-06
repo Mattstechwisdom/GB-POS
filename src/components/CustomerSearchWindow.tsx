@@ -13,6 +13,9 @@ interface Props {
 }
 
 const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
   const [filters, setFilters] = useState<CustomerSearchFilters>({ firstName: '', lastName: '', phone: '', email: '' });
   const [selected, setSelected] = useState<Customer | null>(null);
   const [customersList, setCustomersList] = useState<Customer[]>([]);
@@ -150,8 +153,18 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-8 overflow-auto">
       <div className="w-full max-w-5xl bg-zinc-900 border border-zinc-700 rounded shadow-xl flex flex-col max-h-[90vh]">
-        <div className="p-4 border-b border-zinc-700">
+        <div className="p-4 border-b border-zinc-700 flex items-center justify-between gap-3">
           <h2 className="font-bold text-lg">Customer Search</h2>
+          {!isModalShell && (
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+            >
+              ✕
+            </button>
+          )}
         </div>
         <div className="p-4 space-y-4 overflow-auto">
           <CustomerSearchForm onSearch={handleSearch} />
