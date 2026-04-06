@@ -346,6 +346,10 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Track expanded categories per item for Custom PC (keyed by item index string)
   const [openCats, setOpenCats] = useState<Record<string, Record<string, boolean>>>({});
 
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
+
   // Use the full device type catalog from lib so all dropdowns are available
   const deviceTypes = useMemo(() => DEVICE_TYPE_DEFS, []);
   // Options for the Device Type dropdown: remove 'Custom Build' and force 'Custom PC' to the end
@@ -5961,7 +5965,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           {showHtmlPreview && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={closeHtmlPreview}>
-              <div className="absolute top-3 right-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className={`absolute top-3 ${isModalShell ? 'right-16' : 'right-3'} flex items-center gap-2`} onClick={(e) => e.stopPropagation()}>
                 <button
                   className="px-4 py-2 bg-blue-600 text-white rounded-md text-base font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
                   onClick={async () => {

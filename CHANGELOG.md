@@ -173,3 +173,8 @@
 - UI: removed/hid redundant Close/Cancel buttons on windows that already have the floating ✕.
 - Consultation: window opens larger and uses a fixed-height layout so the Book Consultation button is always reachable.
 
+## v0.4.10 (2026-04-06)
+- Print: Release Form now includes the Pattern Lock diagram on the printout.
+- UI: Quote Generator HTML preview toolbar no longer overlaps the global floating ✕.
+- UI: Quick Sale hides redundant Close/Cancel buttons when the floating ✕ is present.
+

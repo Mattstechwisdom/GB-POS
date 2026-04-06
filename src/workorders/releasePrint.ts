@@ -222,6 +222,12 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
           <div class="field"><span class="label-inline">Model:</span><span class="value-inline">${htmlEscape(wo.model)}</span></div>
           <div class="field"><span class="label-inline">Serial #:</span><span class="value-inline">${htmlEscape(wo.serialNumber)}</span></div>
           <div class="field"><span class="label-inline">Password:</span><span class="value-inline">${htmlEscape(wo.password)}</span></div>
+          ${hasPattern ? `
+            <div class="field" style="grid-column: 1 / span 2; align-items:center;">
+              <span class="label-inline">Pattern:</span>
+              <span class="value-inline" style="display:flex; align-items:center; gap:10px;">${buildPatternSvg(seq, 120)}</span>
+            </div>
+          ` : ''}
         </div>
       </div>
 

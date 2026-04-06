@@ -6,6 +6,9 @@ const TAX_RATE = 8;
 
 const QuickSaleWindow: React.FC = () => {
   const api = (window as any)?.api as any;
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
   const [description, setDescription] = useState<string>('');
   const [amount, setAmount] = useState<number>(0);
   const [taxed, setTaxed] = useState<boolean>(true);
@@ -165,9 +168,11 @@ const QuickSaleWindow: React.FC = () => {
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Sale</h1>
           <div className="text-xs text-zinc-400">Create a sale without customer info</div>
         </div>
-        <button className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf}>
-          Close
-        </button>
+        {!isModalShell && (
+          <button className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf}>
+            Close
+          </button>
+        )}
       </div>
 
       <div className="p-4 grid grid-cols-1 gap-4">
@@ -222,9 +227,11 @@ const QuickSaleWindow: React.FC = () => {
           </div>
 
           <div className="pt-2 flex justify-end gap-2">
-            <button className="px-4 py-2 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf} disabled={busy}>
-              Cancel
-            </button>
+            {!isModalShell && (
+              <button className="px-4 py-2 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf} disabled={busy}>
+                Cancel
+              </button>
+            )}
             <button
               className={`px-4 py-2 rounded text-sm font-semibold ${canCheckout ? 'bg-neon-green text-zinc-900 hover:brightness-110' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
               onClick={handleCheckout}
