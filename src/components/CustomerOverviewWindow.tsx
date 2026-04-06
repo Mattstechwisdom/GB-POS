@@ -129,6 +129,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   }, {
     debounceMs: 1000,
     enabled: isCustomerValid(local) || !!(local as any)?.id,
+    equals: Object.is,
     shouldSave: (v) => {
       if (!v) return false;
       if ((v as any).id) return !!(v as any).firstName && !!(v as any).lastName;

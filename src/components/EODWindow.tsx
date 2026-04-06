@@ -763,7 +763,7 @@ const EODWindow: React.FC = () => {
     } catch (err) {
       console.error('Failed to save EOD settings', err);
     }
-  }, { enabled: settingsReady, debounceMs: 1000 });
+  }, { enabled: settingsReady, debounceMs: 1000, equals: Object.is });
 
   const { start, end } = useMemo(() => resolveRange(range, customFrom, customTo), [range, customFrom, customTo]);
   const rangeKey = `${start.getTime()}-${end.getTime()}`;

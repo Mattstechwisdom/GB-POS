@@ -281,7 +281,7 @@ const EditTechnicianModal: React.FC<{ tech: any; onClose: () => void; onSave: (p
   // Autosave edits after 2s of inactivity
   useAutosave(local, async (val) => {
     try { await onSave({ ...val }); } catch (e) { /* swallow */ }
-  }, { debounceMs: 2000, enabled: !!tech?.id });
+  }, { debounceMs: 2000, enabled: !!tech?.id, equals: Object.is });
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
       <div className="bg-zinc-900 border border-zinc-700 rounded p-4 w-96">
@@ -648,7 +648,7 @@ const ScheduleEditor: React.FC<{ tech: any; onSave: (sched: any) => Promise<void
       await onSave(val);
       showMessage(`✅ Auto-saved ${new Date().toLocaleTimeString()}`);
     } catch {}
-  }, { debounceMs: 2000, enabled: !!tech?.id });
+  }, { debounceMs: 2000, enabled: !!tech?.id, equals: Object.is });
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded p-3 max-w-full overflow-auto">
       <div className="text-xs text-zinc-400 mb-2">Weekly Schedule</div>

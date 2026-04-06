@@ -828,7 +828,29 @@ const SaleWindow: React.FC = () => {
       items: items,
       clientPickupDate: (sale as any).clientPickupDate || null,
     } as unknown as WorkOrderFull;
-  }, [sale]);
+  }, [
+    sale.items,
+    sale.itemDescription,
+    sale.quantity,
+    sale.price,
+    (sale as any).id,
+    sale.customerId,
+    sale.status,
+    sale.assignedTo,
+    sale.checkInAt,
+    sale.repairCompletionDate,
+    sale.checkoutDate,
+    (sale as any).intakeSource,
+    sale.discount,
+    (sale as any).discountType,
+    (sale as any).discountPctValue,
+    (sale as any).discountCustomAmount,
+    sale.amountPaid,
+    sale.taxRate,
+    sale.laborCost,
+    sale.totals,
+    (sale as any).clientPickupDate,
+  ]);
 
   const intakeCustomerSummary = useMemo(() => ({ name: sale.customerName, phone: sale.customerPhone }), [sale.customerName, sale.customerPhone]);
 

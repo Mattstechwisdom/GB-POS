@@ -163,3 +163,8 @@
 - Payments: Checkout now supports partial “Amount to apply” so you can split tender (ex: $50 cash then the remainder on card).
 - UI: removed redundant top-right Close buttons on windows that already use the global floating ✕.
 
+## v0.4.8 (2026-04-06)
+- Performance: smoother typing in New Work Order by removing expensive deep comparisons from autosave.
+- Consultation: client search now uses an in-memory customer cache (no repeated full DB loads while typing).
+- Sales: reduced unnecessary recomputation of the shared work-order model while editing unrelated fields.
+

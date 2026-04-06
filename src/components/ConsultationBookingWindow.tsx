@@ -39,6 +39,7 @@ export default function ConsultationBookingWindow() {
   const api = (window as any).api;
 
   // ── Customer state ──────────────────────────────────────────────
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -133,16 +134,33 @@ export default function ConsultationBookingWindow() {
     refreshAddressHistory();
   }, [refreshAddressHistory]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await api.dbGet('customers');
+        setAllCustomers(Array.isArray(list) ? list : []);
+      } catch {
+        setAllCustomers([]);
+      }
+    })();
+  }, [api]);
+
+  useEffect(() => () => {
+    if (searchDebounce.current) {
+      clearTimeout(searchDebounce.current);
+      searchDebounce.current = null;
+    }
+  }, []);
+
   // Live customer search
   const searchCustomers = useCallback(async (q: string) => {
     const query = q.trim();
     if (!query) { setCustomerResults([]); return; }
     setSearchBusy(true);
     try {
-      const all: Customer[] = await api.dbGet('customers');
       const ql = query.toLowerCase();
       const digits = query.replace(/\D/g, '');
-      const filtered = (all || []).filter(c => {
+      const filtered = (allCustomers || []).filter(c => {
         const full = customerDisplayName(c).toLowerCase();
         if (full.includes(ql)) return true;
         if (digits && (c.phone || '').replace(/\D/g, '').includes(digits)) return true;
@@ -154,7 +172,7 @@ export default function ConsultationBookingWindow() {
     } finally {
       setSearchBusy(false);
     }
-  }, [api]);
+  }, [allCustomers]);
 
   const handleQueryChange = (v: string) => {
     setCustomerQuery(v);
@@ -215,6 +233,14 @@ export default function ConsultationBookingWindow() {
           createdAt: now,
           updatedAt: now,
         });
+        if (customer?.id != null) {
+          const created = customer as Customer;
+          setAllCustomers((prev) => {
+            const list = Array.isArray(prev) ? prev : [];
+            if (list.some((c) => c?.id === created.id)) return list;
+            return [created, ...list];
+          });
+        }
       }
 
       const customerName = customerDisplayName(customer!);
