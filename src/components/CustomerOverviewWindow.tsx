@@ -14,7 +14,7 @@ interface Props {
 
 const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true }) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer || {});
-  const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'quotes'|'consultations'|'all'>('all');
+  const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
@@ -190,11 +190,6 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 title="Show sales only"
               >Sales</button>
               <button
-                className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='quotes' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
-                onClick={() => setHistoryMode('quotes')}
-                title="Show quotes only"
-              >Quotes</button>
-              <button
                 className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='consultations' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
                 onClick={() => setHistoryMode('consultations')}
                 title="Show consultations only"
@@ -261,12 +256,11 @@ function saleMatchesCustomer(sale: any, customer: any) {
   return false;
 }
 
-const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'workorders'|'sales'|'quotes'|'consultations'|'all' }> = ({ customer, mode }) => {
+const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'workorders'|'sales'|'consultations'|'all' }> = ({ customer, mode }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
-  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<{ type: 'workorder'|'sale'|'consultation'|'quote'; id: number } | null>(null);
+  const [selected, setSelected] = useState<{ type: 'workorder'|'sale'|'consultation'; id: number } | null>(null);
 
   const customerId = Number((customer as any)?.id || 0);
 
@@ -277,24 +271,19 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
 
   const load = useCallback(async () => {
     // New (unsaved) customers have no history — skip all IPC calls.
-    if (!customerId) { setOrders([]); setSales([]); setQuoteFiles([]); return; }
+    if (!customerId) { setOrders([]); setSales([]); return; }
     try {
-      const [wo, allSales, allQuoteFiles] = await Promise.all([
+      const [wo, allSales] = await Promise.all([
         (window as any).api.findWorkOrders({ customerId }).catch(() => []),
         (window as any).api.dbGet('sales').catch(() => []),
-        (window as any).api.dbGet('quoteFiles').catch(() => []),
       ]);
       // Read latest customer from ref so filtering is always accurate even if the
       // parent re-rendered after load started.
       const cust = customerRef.current;
       setOrders(Array.isArray(wo) ? wo : []);
       setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, cust)));
-      setQuoteFiles((Array.isArray(allQuoteFiles) ? allQuoteFiles : []).filter((q: any) => {
-        const qCustomerId = Number(q?.customerId || 0);
-        return qCustomerId === customerId;
-      }));
     } catch (e) {
-      setOrders([]); setSales([]); setQuoteFiles([]);
+      setOrders([]); setSales([]);
     }
   }, [customerId]); // Only re-create when the saved customer ID changes — not on every keystroke
 
@@ -337,24 +326,13 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
         filePath: undefined as string | undefined,
       };
     });
-    const q = (quoteFiles || []).map((qf: any) => ({
-      key: `quote-${qf.id}`,
-      id: qf.id,
-      type: 'quote' as const,
-      date: (qf.createdAt || '').toString().split('T')[0] || '',
-      label: qf.title || 'Quote',
-      amountDue: 0,
-      total: 0,
-      filePath: qf.filePath as string | undefined,
-    }));
-    let merged = [...w, ...s, ...q];
+    let merged = [...w, ...s];
     merged.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
     if (mode === 'workorders') merged = merged.filter(r => r.type === 'workorder');
     if (mode === 'sales') merged = merged.filter(r => r.type === 'sale');
-    if (mode === 'quotes') merged = merged.filter(r => r.type === 'quote');
     if (mode === 'consultations') merged = merged.filter(r => r.type === 'consultation');
     return merged;
-  }, [orders, sales, quoteFiles, mode]);
+  }, [orders, sales, mode]);
 
   const totalPages = Math.max(1, Math.ceil((rows.length || 0) / PAGE_SIZE));
   const pageSafe = Math.min(Math.max(1, page), totalPages);
@@ -364,11 +342,11 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
   // Delete selected row with confirmation
   const handleDeleteSelected = useCallback(async () => {
     if (!selected) return;
-    const typeLabel = selected.type === 'sale' ? 'sale' : selected.type === 'consultation' ? 'consultation' : selected.type === 'quote' ? 'quote' : 'work order';
+    const typeLabel = selected.type === 'sale' ? 'sale' : selected.type === 'consultation' ? 'consultation' : 'work order';
     const confirmed = window.confirm(`Delete this ${typeLabel} #${selected.id}? This cannot be undone.`);
     if (!confirmed) return;
     try {
-      const collection = selected.type === 'workorder' ? 'workOrders' : selected.type === 'quote' ? 'quoteFiles' : 'sales';
+      const collection = selected.type === 'workorder' ? 'workOrders' : 'sales';
       await (window as any).api.dbDelete(collection, selected.id);
       setSelected(null);
       await load();
@@ -403,8 +381,6 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
                   onDoubleClick={async () => {
                     if (r.type === 'workorder') {
                       await (window as any).api.openNewWorkOrder({ workOrderId: r.id });
-                    } else if (r.type === 'quote') {
-                      if (r.filePath) { try { await (window as any).api.openFile(r.filePath); } catch {} }
                     } else {
                       await (window as any).api.openNewSale({ id: r.id });
                     }
@@ -414,12 +390,11 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
                   <td className="px-2 py-1">
                     {r.type === 'workorder' ? 'Work Order'
                       : r.type === 'consultation' ? 'Consultation'
-                      : r.type === 'quote' ? 'Quote'
                       : 'Sale'}
                   </td>
                   <td className="px-2 py-1 truncate" title={r.label}>{r.label}</td>
-                  <td className="px-2 py-1">{r.type === 'quote' ? '—' : `$${r.amountDue.toFixed(2)}`}</td>
-                  <td className="px-2 py-1">{r.type === 'quote' ? '—' : `$${r.total.toFixed(2)}`}</td>
+                  <td className="px-2 py-1">{`$${r.amountDue.toFixed(2)}`}</td>
+                  <td className="px-2 py-1">{`$${r.total.toFixed(2)}`}</td>
                 </tr>
               ))}
             </tbody>
@@ -432,7 +407,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
           <button
             className="px-3 py-1 text-xs bg-red-700 hover:bg-red-800 border border-red-600 rounded text-white disabled:opacity-50"
             disabled={!selected}
-            title={selected ? `Delete ${selected.type === 'sale' ? 'Sale' : 'Work Order'} #${selected.id}` : 'Select a row to delete'}
+            title={selected ? `Delete ${selected.type === 'sale' ? 'Sale' : selected.type === 'consultation' ? 'Consultation' : 'Work Order'} #${selected.id}` : 'Select a row to delete'}
             onClick={handleDeleteSelected}
           >
             Delete
@@ -517,7 +492,11 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
   const rows = useMemo(() => {
     const arr = Array.isArray(allRows) ? allRows : [];
     const cid = Number((customer as any)?.id || 0);
-    const filtered = arr.filter((q: any) => Number(q?.customerId || 0) === cid);
+    if (!cid) return [];
+    const filtered = arr.filter((q: any) => {
+      if (!q?.filePath) return false;
+      return Number(q?.customerId || 0) === cid;
+    });
     filtered.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return filtered;
   }, [allRows, customer]);

@@ -178,3 +178,7 @@
 - UI: Quote Generator HTML preview toolbar no longer overlaps the global floating ✕.
 - UI: Quick Sale hides redundant Close/Cancel buttons when the floating ✕ is present.
 
+## v0.4.11 (2026-04-06)
+- Customer Overview: removed the Quotes filter button (quotes are shown only in the bottom Completed Quotes section).
+- Customer Overview: Completed Quotes now shows only real saved quote PDFs (prevents debug/placeholder quote entries from appearing repeatedly).
+

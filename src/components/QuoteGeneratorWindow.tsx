@@ -1704,13 +1704,6 @@ function QuoteGeneratorWindow(): JSX.Element {
         ${approvalPage}
       </body>
       </html>`;
-      // Debug: attempt to save generated HTML into the app DB for inspection
-      try {
-        const api = (window as any).api;
-        if (api && typeof api.dbAdd === 'function') {
-          try { api.dbAdd('quoteFiles', { createdAt: new Date().toISOString(), title: 'debug-interactive-print-html', customerName: cust || null, html: html }); } catch (e) { /* ignore */ }
-        }
-      } catch {}
       return html;
     }
     pages.push(`
