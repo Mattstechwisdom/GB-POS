@@ -3400,10 +3400,10 @@ ipcMain.handle('open-consultation', async (event: any) => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
   const child = new BrowserWindow({
-    width: 820,
-    height: 700,
-    minWidth: 760,
-    minHeight: 600,
+    width: 1100,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 820,
     resizable: true,
     parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,

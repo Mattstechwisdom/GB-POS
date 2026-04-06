@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Button from './Button';
 
 interface DeviceCategory { id?: number; name: string; }
 
 const DeviceCategoriesWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
   const [list, setList] = useState<DeviceCategory[]>([]);
   const [newName, setNewName] = useState('');
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
@@ -71,9 +74,11 @@ const DeviceCategoriesWindow: React.FC<{ onClose?: () => void }> = ({ onClose })
           <Button className="bg-brand text-black" onClick={add}>Add</Button>
         </div>
 
-        <div className="flex justify-end mt-4">
-          <Button className="bg-zinc-700" onClick={() => { if (onClose) { onClose(); } else { try { window.close(); } catch (e) { /* ignore */ } } }}>Close</Button>
-        </div>
+        {!isModalShell && (
+          <div className="flex justify-end mt-4">
+            <Button className="bg-zinc-700" onClick={() => { if (onClose) { onClose(); } else { try { window.close(); } catch (e) { /* ignore */ } } }}>Close</Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -168,3 +168,8 @@
 - Consultation: client search now uses an in-memory customer cache (no repeated full DB loads while typing).
 - Sales: reduced unnecessary recomputation of the shared work-order model while editing unrelated fields.
 
+## v0.4.9 (2026-04-06)
+- UI: modal windows reserve space so top-right actions no longer sit under the global floating ✕.
+- UI: removed/hid redundant Close/Cancel buttons on windows that already have the floating ✕.
+- Consultation: window opens larger and uses a fixed-height layout so the Book Consultation button is always reachable.
+

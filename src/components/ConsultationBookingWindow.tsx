@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPhone } from '../lib/format';
 
 const HOURLY_RATE_DEFAULT = 75;
@@ -37,6 +37,9 @@ function addHour(time: string): string {
 
 export default function ConsultationBookingWindow() {
   const api = (window as any).api;
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
 
   // ── Customer state ──────────────────────────────────────────────
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
@@ -344,12 +347,14 @@ export default function ConsultationBookingWindow() {
           <p className="text-zinc-400 text-sm mb-6">
             Added to calendar. Check the Calendar window to view or edit.
           </p>
-          <button
-            onClick={() => window.close()}
-            className="px-6 py-2 bg-[#39FF14] text-black font-semibold rounded hover:brightness-110 mr-3"
-          >
-            Close
-          </button>
+          {!isModalShell && (
+            <button
+              onClick={() => window.close()}
+              className="px-6 py-2 bg-[#39FF14] text-black font-semibold rounded hover:brightness-110 mr-3"
+            >
+              Close
+            </button>
+          )}
           <button
             onClick={() => { setDone(null); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setError(''); }}
             className="px-6 py-2 bg-zinc-700 text-zinc-200 font-semibold rounded hover:bg-zinc-600"
@@ -363,16 +368,18 @@ export default function ConsultationBookingWindow() {
 
   // ── Main form ───────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-zinc-900 text-gray-100 flex flex-col overflow-hidden">
+    <div className="h-screen bg-zinc-900 text-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-700 shrink-0">
         <h1 className="text-xl font-bold tracking-wide">Book Consultation</h1>
-        <button
-          onClick={() => window.close()}
-          className="px-3 py-1 text-sm bg-zinc-800 border border-zinc-600 rounded hover:bg-zinc-700"
-        >
-          Cancel
-        </button>
+        {!isModalShell && (
+          <button
+            onClick={() => window.close()}
+            className="px-3 py-1 text-sm bg-zinc-800 border border-zinc-600 rounded hover:bg-zinc-700"
+          >
+            Cancel
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto px-5 py-4 space-y-5">

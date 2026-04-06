@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DeviceCategory, RepairItem } from '../lib/repairModels';
 import { RepairsRepo } from '../lib/repairsRepo';
 
 export default function RepairCategoriesWindow({ onClose }: { onClose?: () => void }) {
+  const isModalShell = useMemo(() => {
+    try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
   const [categories, setCategories] = useState<DeviceCategory[]>([]);
   const [newName, setNewName] = useState('');
   const [repairs, setRepairs] = useState<RepairItem[]>([]);
@@ -31,9 +34,11 @@ export default function RepairCategoriesWindow({ onClose }: { onClose?: () => vo
     <div className="p-4 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Repair Catalog</h2>
-        <div>
-          <button className="btn" onClick={() => onClose?.() || window.close()}>Close</button>
-        </div>
+        {!isModalShell && (
+          <div>
+            <button className="btn" onClick={() => onClose?.() || window.close()}>Close</button>
+          </div>
+        )}
       </div>
 
       <section className="mb-6">
