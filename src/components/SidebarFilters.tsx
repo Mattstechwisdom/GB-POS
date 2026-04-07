@@ -38,7 +38,13 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
     return () => { mounted = false; try { off && off(); } catch {} };
   }, []);
   return (
-    <form className="flex flex-col gap-3">
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onRefresh && onRefresh();
+      }}
+    >
       {/* App title above logo */}
       <div className="w-full flex flex-col items-center justify-center pt-1 pb-0">
         <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>

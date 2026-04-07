@@ -207,3 +207,6 @@
 ## v0.4.19 (2026-04-07)
 - Reports: Batch Out timestamp in the email is stamped at send-time (manual + scheduled), so it always reflects when the email was actually sent.
 
+## v0.4.20 (2026-04-07)
+- Main screen: pressing Enter in the Work Order # filter now refreshes the list using the current filters.
+
