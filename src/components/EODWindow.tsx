@@ -1264,8 +1264,7 @@ const EODWindow: React.FC = () => {
     lines.push(`Closed tickets: ${dailyBatchSummary.closedTicketCount}`);
     if (settings.includeBatchInfo && batchInfo) {
       const last = batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run';
-      const backup = batchInfo?.lastBackupPath ? `Backup: ${batchInfo.lastBackupPath}` : '';
-      lines.push(`Batch Out: ${last}${backup ? ` — ${backup}` : ''}`);
+      lines.push(`Batch Out: ${last}`);
     }
     return lines.filter(Boolean).join('\n');
   }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, settings.includeBatchInfo]);
@@ -1937,11 +1936,10 @@ const EODWindow: React.FC = () => {
                     <input type="time" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={settings.batchOutTime || ''} onChange={e => setSettings(s => ({ ...s, batchOutTime: e.target.value }))} />
                   </div>
                 </div>
-                <div className="text-xs text-zinc-500 -mt-1">Auto backups are managed in Backup/Restore; this schedule controls batch-out and email timing only.</div>
+                <div className="text-xs text-zinc-500 -mt-1">This schedule controls batch-out and email timing only.</div>
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
                   <div>Last sent: {settings.lastSentAt ? formatDate(settings.lastSentAt) : 'Not yet sent'}</div>
                   <div>Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
-                  {batchInfo?.lastBackupPath ? <div className="truncate">Backup path: {batchInfo.lastBackupPath}</div> : null}
                 </div>
                 <div className="flex gap-2">
                   <button className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => handleBatchOutNow()} disabled={sending}>Run Batch Out now</button>

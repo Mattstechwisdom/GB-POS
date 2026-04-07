@@ -201,3 +201,6 @@
 ## v0.4.17 (2026-04-06)
 - Devices/Repairs: Clear no longer leaves dropdown popovers open over the form (inputs remain clickable/typable after clearing).
 
+## v0.4.18 (2026-04-07)
+- Reports: Batch Out email no longer includes backup details.
+
