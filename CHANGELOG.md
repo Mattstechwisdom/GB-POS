@@ -198,3 +198,6 @@
 ## v0.4.16 (2026-04-06)
 - Performance: reduced input lag in Work Order and Sales windows (device/category typing no longer re-renders the whole window per keystroke; Sales item IDs are now stable so rows don't re-mount while typing).
 
+## v0.4.17 (2026-04-06)
+- Devices/Repairs: Clear no longer leaves dropdown popovers open over the form (inputs remain clickable/typable after clearing).
+

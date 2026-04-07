@@ -199,6 +199,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setDeviceCategoryInput('');
     setRepairCategoryInput('');
     setHasDeviceCategory(false);
+    setShowCategoryDropdown(false);
+    setShowRepairCategoryDropdown(false);
+    setMarkupPct('');
   };
 
   return (
