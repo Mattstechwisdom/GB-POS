@@ -1360,11 +1360,26 @@ const EODWindow: React.FC = () => {
         alert('Email sending not configured in this build.');
         return;
       }
-      const text = presetBody;
-      for (const to of recipients) {
-        await api.emailSendQuoteHtml({ to, subject, bodyText: text, filename: 'reports.html', html: emailHtml });
+      const sentAtIso = new Date().toISOString();
+      let text = presetBody;
+      if (settings.includeBatchInfo) {
+        const stamp = `Batch Out: ${formatDate(sentAtIso)}`;
+        text = /^Batch Out:.*$/m.test(text)
+          ? text.replace(/^Batch Out:.*$/m, stamp)
+          : [text, stamp].filter(Boolean).join('\n');
       }
-      setSettings(s => ({ ...s, lastSentAt: new Date().toISOString() }));
+
+      const sendHtml = (() => {
+        const bodyBlock = text
+          .split('\n')
+          .map(line => line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+          .join('<br/>');
+        return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;">${bodyBlock}</div>`;
+      })();
+      for (const to of recipients) {
+        await api.emailSendQuoteHtml({ to, subject, bodyText: text, filename: 'reports.html', html: sendHtml });
+      }
+      setSettings(s => ({ ...s, lastSentAt: sentAtIso }));
       alert('Report sent');
     } catch (e) {
       console.error('Report send failed', e);

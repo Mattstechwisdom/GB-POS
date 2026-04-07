@@ -3913,9 +3913,11 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
     .sort((a, b) => b.collected - a.collected);
 
   const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const sentLabel = targetDate.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   const lines = [
     `Daily batch report for ${dateLabel}`,
+    `Batch Out: ${sentLabel}`,
     `Work orders: ${totals.workOrders}`,
     `Sales: ${totals.sales}`,
     `Checked out: ${totals.checkedOut}`,
