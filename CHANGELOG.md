@@ -213,3 +213,7 @@
 ## v0.4.21 (2026-04-07)
 - Work Orders: Tab now selects the highlighted Device Category/Device option (Arrow keys or mouse hover), and no longer gets overwritten by the delayed blur commit.
 
+## v0.4.22 (2026-04-07)
+- Reports: manual Batch Out email now sends styled content as the email body (not an .html attachment).
+- Reports: scheduled Batch Out email now respects the configured Batch Out time / Send time and no longer spams repeated reports.
+

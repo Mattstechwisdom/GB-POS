@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   emailSendQuoteHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuoteHtml', payload),
   emailSendQuotePdf: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuotePdf', payload),
   emailSendReportCsv: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportCsv', payload),
+  emailSendReportHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportHtml', payload),
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),

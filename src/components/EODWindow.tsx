@@ -1356,7 +1356,7 @@ const EODWindow: React.FC = () => {
     setSending(true);
     try {
       const api = (window as any).api;
-      if (!api?.emailSendQuoteHtml) {
+      if (!api?.emailSendReportHtml) {
         alert('Email sending not configured in this build.');
         return;
       }
@@ -1377,7 +1377,7 @@ const EODWindow: React.FC = () => {
         return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;">${bodyBlock}</div>`;
       })();
       for (const to of recipients) {
-        await api.emailSendQuoteHtml({ to, subject, bodyText: text, filename: 'reports.html', html: sendHtml });
+        await api.emailSendReportHtml({ to, subject, bodyText: text, html: sendHtml });
       }
       setSettings(s => ({ ...s, lastSentAt: sentAtIso }));
       alert('Report sent');

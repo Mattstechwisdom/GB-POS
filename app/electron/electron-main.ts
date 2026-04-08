@@ -865,6 +865,42 @@ async function sendConfiguredEmail(payload: { to: string; subject: string; text?
   return { ok: true, messageId: info?.messageId || null };
 }
 
+ipcMain.handle('email:sendReportHtml', async (_event: any, payload: any) => {
+  try {
+    const to = String(payload?.to || '').trim();
+    const subject = String(payload?.subject || 'Daily batch report').trim() || 'Daily batch report';
+    const bodyText = String(payload?.bodyText || '').trim();
+    const html = payload?.html ? String(payload.html) : undefined;
+    return await sendConfiguredEmail({
+      to,
+      subject,
+      text: bodyText,
+      html,
+    });
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+function localDateKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function configDateKey(value: any): string | null {
+  try {
+    if (!value) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return localDateKey(d);
+  } catch {
+    return null;
+  }
+}
+
 function getReleasesUrl(): string {
   try {
     // In production this resolves inside app.asar; require works fine.
@@ -3979,10 +4015,11 @@ async function trySendScheduledEodEmail(targetDate: Date) {
 async function checkBatchOutSchedule() {
   try {
     const cfg = readBackupConfig();
-    if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = (cfg.lastBatchOutDate || '').slice(0, 10) || null;
+    if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = configDateKey(cfg.lastBatchOutDate) || null;
     const db = readDb();
     const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
-    const autoEmailDate = (cfg as any)?.lastAutoEmailDate ? String((cfg as any).lastAutoEmailDate).slice(0, 10) : null;
+    const autoEmailDate = configDateKey((cfg as any)?.lastAutoEmailDate);
+    const lastSentAtKey = configDateKey(settings?.lastSentAt);
     const autoBackup = settings?.autoBackup !== false; // default enabled
     const scheduleMode = String(settings?.schedule || 'daily');
     const batchOutTime = settings?.batchOutTime || settings?.sendTime || '21:00';
@@ -3990,10 +4027,11 @@ async function checkBatchOutSchedule() {
     const now = new Date();
     if (!scheduleAllowsToday(scheduleMode, now)) return;
 
+    const todayKey = localDateKey(now);
+
     const { h, m } = parseHhMm(batchOutTime);
     const batchTarget = new Date();
     batchTarget.setHours(h, m, 0, 0);
-    const todayKey = batchTarget.toISOString().slice(0, 10);
     if (autoBackup && lastBatchOutDate !== todayKey && now >= batchTarget) {
       const res = await runBatchOutBackup('batchout');
       if (res.ok) {
@@ -4004,9 +4042,17 @@ async function checkBatchOutSchedule() {
     const { h: sendHour, m: sendMinute } = parseHhMm(sendTime);
     const emailTarget = new Date();
     emailTarget.setHours(sendHour, sendMinute, 0, 0);
-    if (autoEmailDate !== todayKey && now >= emailTarget) {
+    // Safety valve: if we sent very recently, don't spam even if keys mismatch.
+    const lastSentAtIso = settings?.lastSentAt ? String(settings.lastSentAt) : '';
+    const lastSentAt = lastSentAtIso ? new Date(lastSentAtIso) : null;
+    const sentRecently = !!(lastSentAt && Number.isFinite(lastSentAt.getTime()) && (now.getTime() - lastSentAt.getTime()) < 55 * 60 * 1000);
+
+    const sentToday = autoEmailDate === todayKey || lastSentAtKey === todayKey;
+
+    if (!sentRecently && !sentToday && now >= emailTarget) {
       const sent = await trySendScheduledEodEmail(now);
       if (sent?.ok) {
+        // Store an ISO timestamp for display, but compare using local date keys.
         writeBackupConfig({ lastAutoEmailDate: new Date().toISOString() });
         appendStartupLog(`scheduled EOD email sent for ${todayKey}`);
       } else if (!(sent as any)?.skipped) {
