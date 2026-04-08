@@ -34,6 +34,7 @@ const DeviceCategorySelect: React.FC<{
   const [highlightIdx, setHighlightIdx] = useState<number>(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const skipBlurCommitRef = useRef(false);
 
   // Keep input in sync when parent value changes (e.g. device selection)
   useEffect(() => { setInputVal(value); }, [value]);
@@ -57,6 +58,15 @@ const DeviceCategorySelect: React.FC<{
     try { el?.scrollIntoView({ block: 'nearest' }); } catch {}
   }, [open, highlightIdx]);
 
+  const commitPicked = (picked: string, expectBlurCommitToRun: boolean) => {
+    if (!picked) return;
+    skipBlurCommitRef.current = expectBlurCommitToRun;
+    onChange(picked);
+    setInputVal(picked);
+    setOpen(false);
+    setHighlightIdx(-1);
+  };
+
   return (
     <div className="mt-1 relative">
       <input
@@ -65,7 +75,7 @@ const DeviceCategorySelect: React.FC<{
         value={inputVal}
         placeholder="Type or select…"
         autoComplete="off"
-        onChange={e => { setInputVal(e.target.value); setOpen(true); setHighlightIdx(-1); }}
+        onChange={e => { skipBlurCommitRef.current = false; setInputVal(e.target.value); setOpen(true); setHighlightIdx(-1); }}
         onFocus={() => { setOpen(true); }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -86,23 +96,18 @@ const DeviceCategorySelect: React.FC<{
             const idx = highlightIdx >= 0 ? highlightIdx : 0;
             const picked = filtered[idx];
             if (!picked) return;
-            onChange(picked);
-            setInputVal(picked);
-            setOpen(false);
-            setHighlightIdx(-1);
+            commitPicked(picked, false);
             return;
           }
 
           if (e.key === 'Tab') {
-            const q = inputVal.trim();
-            if (!q) return;
-            const top = filtered[0];
-            if (!top) return;
-            // Accept the top match, then allow normal tab navigation to proceed.
-            onChange(top);
-            setInputVal(top);
-            setOpen(false);
-            setHighlightIdx(-1);
+            if (filtered.length === 0) return;
+            // Accept highlighted option (Arrow keys or mouse hover), otherwise accept top match.
+            const idx = highlightIdx >= 0 ? highlightIdx : 0;
+            const picked = filtered[idx];
+            if (!picked) return;
+            // Allow normal tab navigation to proceed.
+            commitPicked(picked, true);
           }
         }}
         onBlur={() => {
@@ -110,6 +115,12 @@ const DeviceCategorySelect: React.FC<{
           // window on every keystroke while filtering.
           const v = inputVal;
           setTimeout(() => {
+            if (skipBlurCommitRef.current) {
+              skipBlurCommitRef.current = false;
+              setOpen(false);
+              setHighlightIdx(-1);
+              return;
+            }
             try { onChange(v); } catch {}
             setOpen(false);
             setHighlightIdx(-1);
@@ -123,7 +134,7 @@ const DeviceCategorySelect: React.FC<{
               data-idx={idx}
               className={`px-3 py-1.5 text-sm cursor-pointer ${idx === highlightIdx ? 'bg-[#39FF14] text-black' : 'hover:bg-[#39FF14] hover:text-black'}`}
               onMouseEnter={() => setHighlightIdx(idx)}
-              onMouseDown={() => { onChange(t); setInputVal(t); setOpen(false); setHighlightIdx(-1); inputRef.current?.blur(); }}
+              onMouseDown={() => { commitPicked(t, true); inputRef.current?.blur(); }}
             >{t}</li>
           ))}
         </ul>
@@ -144,8 +155,13 @@ const DeviceSelect: React.FC<{
   const [highlightIdx, setHighlightIdx] = useState<number>(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const skipBlurCommitRef = useRef(false);
+  const latestInputValRef = useRef(value);
 
-  useEffect(() => { setInputVal(value); }, [value]);
+  useEffect(() => {
+    setInputVal(value);
+    latestInputValRef.current = value;
+  }, [value]);
 
   const devices = useMemo(() => {
     const trimCat = category.trim().toLowerCase();
@@ -167,6 +183,9 @@ const DeviceSelect: React.FC<{
   }, [open, highlightIdx]);
 
   const handleSelect = (name: string) => {
+    if (!name) return;
+    skipBlurCommitRef.current = true;
+    latestInputValRef.current = name;
     setInputVal(name);
     setOpen(false);
     setHighlightIdx(-1);
@@ -186,6 +205,8 @@ const DeviceSelect: React.FC<{
         autoComplete="off"
         onChange={e => {
           const v = e.target.value;
+          skipBlurCommitRef.current = false;
+          latestInputValRef.current = v;
           setInputVal(v);
           setOpen(true);
           setHighlightIdx(-1);
@@ -215,25 +236,28 @@ const DeviceSelect: React.FC<{
           }
 
           if (e.key === 'Tab') {
-            const q = inputVal.trim();
-            if (!q) return;
-            const top = filtered[0];
-            if (!top) return;
-            // Accept the top match, then allow normal tab navigation to proceed.
-            const exists = cats.some(c => (c.name || '').trim() === top);
-            onChange(top, exists ? undefined : (category || undefined));
-            setInputVal(top);
-            setOpen(false);
-            setHighlightIdx(-1);
+            if (filtered.length === 0) return;
+            // Accept highlighted option (Arrow keys or mouse hover), otherwise accept top match.
+            const idx = highlightIdx >= 0 ? highlightIdx : 0;
+            const picked = filtered[idx];
+            if (!picked) return;
+            // Allow normal tab navigation to proceed.
+            handleSelect(picked);
           }
         }}
         onBlur={() => {
           // Commit on blur (typing stays local for responsiveness).
-          const v = inputVal;
           setTimeout(() => {
+            if (skipBlurCommitRef.current) {
+              skipBlurCommitRef.current = false;
+              setOpen(false);
+              setHighlightIdx(-1);
+              return;
+            }
             try {
-              const exists = cats.some(c => (c.name || '').trim() === v);
-              onChange(v, exists ? undefined : (category || undefined));
+              const vNow = (latestInputValRef.current ?? '').toString();
+              const exists = cats.some(c => (c.name || '').trim() === vNow);
+              onChange(vNow, exists ? undefined : (category || undefined));
             } catch {}
             setOpen(false);
             setHighlightIdx(-1);

@@ -210,3 +210,6 @@
 ## v0.4.20 (2026-04-07)
 - Main screen: pressing Enter in the Work Order # filter now refreshes the list using the current filters.
 
+## v0.4.21 (2026-04-07)
+- Work Orders: Tab now selects the highlighted Device Category/Device option (Arrow keys or mouse hover), and no longer gets overwritten by the delayed blur commit.
+
