@@ -27,6 +27,8 @@ const loadSaleWindow = () => import('./sales/SaleWindow');
 const SaleWindow = lazy(loadSaleWindow);
 const loadProductFormWindow = () => import('./sales/ProductFormWindow');
 const ProductFormWindow = lazy(loadProductFormWindow);
+const loadConsultSheetWindow = () => import('./sales/ConsultSheetWindow');
+const ConsultSheetWindow = lazy(loadConsultSheetWindow);
 const loadProductsWindow = () => import('./components/ProductsWindow');
 const ProductsWindow = lazy(loadProductsWindow);
 const loadInventoryWindow = () => import('./components/InventoryWindow');
@@ -184,6 +186,7 @@ function scheduleCommonWindowPreloads() {
 				loadCustomerReceiptWindow,
 				loadReleaseFormWindow,
 				loadProductFormWindow,
+				loadConsultSheetWindow,
 				loadDeviceCategoriesWindow,
 				loadRepairCategoriesWindow,
 				loadClockInWindow,
@@ -223,6 +226,7 @@ try {
 	const showEod = params.get('eod');
 	const showReleaseForm = params.get('releaseForm');
 	const showCustomerReceipt = params.get('customerReceipt');
+	const showConsultSheet = params.get('consultSheet');
 	const showProductForm = params.get('productForm');
 	const showBackup = params.get('backup');
 	const showClearDb = params.get('clearDb');
@@ -291,6 +295,8 @@ try {
 		renderWithSuspense(root, <ReleaseFormWindow />);
 	} else if (showCustomerReceipt) {
 		renderWithSuspense(root, <CustomerReceiptWindow />);
+	} else if (showConsultSheet) {
+		renderWithSuspense(root, <ConsultSheetWindow />);
 	} else if (showCalendar) {
 		renderWithSuspense(root, <CalendarWindow />);
 	} else if (showProductForm) {

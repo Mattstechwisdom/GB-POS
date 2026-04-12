@@ -93,6 +93,8 @@ declare global {
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyCustomerReceiptReady: () => void;
+    openConsultSheet: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
+    notifyConsultSheetReady: () => void;
   openProductForm: (payload: any) => Promise<any>;
   pickSaleProduct: () => Promise<any>;
   onSalesChanged: (cb: () => void) => () => void;

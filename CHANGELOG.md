@@ -217,3 +217,7 @@
 - Reports: manual Batch Out email now sends styled content as the email body (not an .html attachment).
 - Reports: scheduled Batch Out email now respects the configured Batch Out time / Send time and no longer spams repeated reports.
 
+## v0.4.23 (2026-04-12)
+- Sales (Consultations): added a dedicated "Print Consult Sheet" printout containing all vital consultation info (client info, date/time, reason for visit, address, first-hour quote + driver fee) plus a large notes section for the tech.
+- Reports: scheduled Daily Batch email no longer starts with a blank/duplicated section.
+

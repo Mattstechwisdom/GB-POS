@@ -927,6 +927,88 @@ const SaleWindow: React.FC = () => {
       <button
         className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
         onClick={async () => {
+          const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
+          if (isConsult && (window as any).api?.openConsultSheet) {
+            let customerPhoneAlt = '';
+            let customerEmail = String((sale as any).customerEmail || '').trim();
+            try {
+              const cid = sale.customerId;
+              if (cid && (window as any).api?.findCustomers) {
+                const list = await (window as any).api.findCustomers({ id: cid });
+                const c = Array.isArray(list) && list.length ? list[0] : null;
+                if (c) {
+                  customerPhoneAlt = c.phoneAlt || '';
+                  if (!customerEmail) customerEmail = c.email || '';
+                }
+              }
+            } catch {}
+
+            const items = Array.isArray(sale.items) ? (sale.items as any[]) : [];
+            const consultItem = items.find((r) => {
+              const cat = String(r?.category || '').toLowerCase();
+              const desc = String(r?.description || '').toLowerCase();
+              if (!cat.startsWith('consult')) return false;
+              if (desc.includes('driver') || desc.includes('on-site') || desc.includes('on site')) return false;
+              return true;
+            }) || items.find((r) => String(r?.category || '').toLowerCase().startsWith('consult')) || null;
+
+            const driverItem = items.find((r) => {
+              const cat = String(r?.category || '').toLowerCase();
+              const desc = String(r?.description || '').toLowerCase();
+              return cat.startsWith('consult') && (desc.includes('driver') || desc.includes('on-site') || desc.includes('on site'));
+            }) || null;
+
+            const reasonForVisit = String(
+              (consultItem as any)?.description
+              || (sale as any).itemDescription
+              || 'Consultation'
+            ).trim();
+
+            const appointmentDate = String((sale as any).appointmentDate || '').trim();
+            const appointmentTime = String((sale as any).appointmentTime || '').trim();
+            const consultationDateLabel = appointmentDate
+              ? (() => {
+                const d = new Date(`${appointmentDate}T00:00:00`);
+                return Number.isNaN(d.getTime()) ? appointmentDate : d.toLocaleDateString();
+              })()
+              : (sale.checkInAt ? new Date(String(sale.checkInAt)).toLocaleDateString() : new Date().toLocaleDateString());
+            const consultationTimeLabel = appointmentTime || '';
+
+            const address = (sale as any).consultationType === 'athome'
+              ? String((sale as any).consultationAddress || '').trim()
+              : 'In-Store';
+
+            const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
+            const driverFee = Number((sale as any).driverFee ?? (driverItem as any)?.price ?? 0) || 0;
+            const firstHourTotal = round2(firstHourRate + driverFee);
+            const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+            const payload = {
+              id: (sale as any).id,
+              customerId: sale.customerId,
+              customerName: sale.customerName,
+              customerPhone: sale.customerPhone,
+              customerPhoneAlt,
+              customerEmail,
+              consultationDateLabel,
+              consultationTimeLabel,
+              reasonForVisit,
+              address,
+              firstHourRateLabel: money(firstHourRate),
+              driverFeeLabel: money(driverFee),
+              firstHourTotalLabel: money(firstHourTotal),
+            };
+
+            await (window as any).api.openConsultSheet({
+              data: payload,
+              autoPrint: true,
+              silent: true,
+              autoCloseMs: 900,
+              show: false,
+            });
+            return;
+          }
+
           const rows = (sale.items || []) as SaleItemRow[];
           const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
             id: r.id,
@@ -982,7 +1064,7 @@ const SaleWindow: React.FC = () => {
           });
         }}
       >
-        Print Customer Receipt
+        {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'Print Consult Sheet' : 'Print Customer Receipt'}
       </button>
     </>
   ), [sale]);
@@ -1068,6 +1150,89 @@ const SaleWindow: React.FC = () => {
 
         if (result.printReceipt) {
           try {
+            const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
+            if (isConsult && (window as any).api?.openConsultSheet) {
+              let customerPhoneAlt = '';
+              let customerEmail = String((recordToPersist as any).customerEmail || (sale as any).customerEmail || '').trim();
+              try {
+                const cid = recordToPersist.customerId;
+                if (cid && (window as any).api?.findCustomers) {
+                  const list = await (window as any).api.findCustomers({ id: cid });
+                  const c = Array.isArray(list) && list.length ? list[0] : null;
+                  if (c) {
+                    customerPhoneAlt = c.phoneAlt || '';
+                    if (!customerEmail) customerEmail = c.email || '';
+                  }
+                }
+              } catch {}
+
+              const items = Array.isArray(recordToPersist.items) ? (recordToPersist.items as any[]) : [];
+              const consultItem = items.find((r) => {
+                const cat = String(r?.category || '').toLowerCase();
+                const desc = String(r?.description || '').toLowerCase();
+                if (!cat.startsWith('consult')) return false;
+                if (desc.includes('driver') || desc.includes('on-site') || desc.includes('on site')) return false;
+                return true;
+              }) || items.find((r) => String(r?.category || '').toLowerCase().startsWith('consult')) || null;
+
+              const driverItem = items.find((r) => {
+                const cat = String(r?.category || '').toLowerCase();
+                const desc = String(r?.description || '').toLowerCase();
+                return cat.startsWith('consult') && (desc.includes('driver') || desc.includes('on-site') || desc.includes('on site'));
+              }) || null;
+
+              const reasonForVisit = String(
+                (consultItem as any)?.description
+                || (recordToPersist as any).itemDescription
+                || 'Consultation'
+              ).trim();
+
+              const appointmentDate = String((recordToPersist as any).appointmentDate || (sale as any).appointmentDate || '').trim();
+              const appointmentTime = String((recordToPersist as any).appointmentTime || (sale as any).appointmentTime || '').trim();
+              const consultationDateLabel = appointmentDate
+                ? (() => {
+                  const d = new Date(`${appointmentDate}T00:00:00`);
+                  return Number.isNaN(d.getTime()) ? appointmentDate : d.toLocaleDateString();
+                })()
+                : (recordToPersist.checkInAt ? new Date(String(recordToPersist.checkInAt)).toLocaleDateString() : new Date().toLocaleDateString());
+              const consultationTimeLabel = appointmentTime || '';
+
+              const consultationType = String((recordToPersist as any).consultationType || (sale as any).consultationType || '').trim();
+              const address = consultationType === 'athome'
+                ? String((recordToPersist as any).consultationAddress || (sale as any).consultationAddress || '').trim()
+                : 'In-Store';
+
+              const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
+              const driverFee = Number((recordToPersist as any).driverFee ?? (driverItem as any)?.price ?? (sale as any).driverFee ?? 0) || 0;
+              const firstHourTotal = round2(firstHourRate + driverFee);
+              const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+              const payload = {
+                id: currentId || (sale as any).id,
+                customerId: recordToPersist.customerId,
+                customerName: recordToPersist.customerName,
+                customerPhone: recordToPersist.customerPhone,
+                customerPhoneAlt,
+                customerEmail,
+                consultationDateLabel,
+                consultationTimeLabel,
+                reasonForVisit,
+                address,
+                firstHourRateLabel: money(firstHourRate),
+                driverFeeLabel: money(driverFee),
+                firstHourTotalLabel: money(firstHourTotal),
+              };
+
+              await (window as any).api.openConsultSheet({
+                data: payload,
+                autoPrint: true,
+                silent: true,
+                autoCloseMs: 900,
+                show: false,
+              });
+              return;
+            }
+
             const rows = (sale.items || []) as SaleItemRow[];
             const receiptItems = (rows.length ? rows : [{ description: sale.itemDescription, qty: sale.quantity || 1, price: sale.price || 0 } as any]).map(r => ({
               id: r.id,

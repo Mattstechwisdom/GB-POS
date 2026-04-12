@@ -2981,6 +2981,90 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
   return { ok: true };
 });
 
+// Consult Sheet print window (Sales consultations)
+ipcMain.handle('open-consult-sheet', async (event: any, payload: any) => {
+  const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+
+  // Payload shape mirrors open-customer-receipt for consistency
+  const data = payload && typeof payload === 'object' && 'data' in payload ? (payload as any).data : payload;
+  const autoPrint = !!(payload && typeof payload === 'object' && (payload as any).autoPrint);
+  const silent = !!(payload && typeof payload === 'object' && (payload as any).silent);
+  const autoCloseMs = Number(payload && typeof payload === 'object' ? (payload as any).autoCloseMs : 0) || 0;
+  const showWindow = payload && typeof payload === 'object' && 'show' in payload ? !!(payload as any).show : !silent;
+
+  const actualParent = (autoPrint && silent)
+    ? (mainWindow || BrowserWindow.getAllWindows()[0] || undefined)
+    : parentWin;
+
+  const child = new BrowserWindow({
+    width: 850,
+    height: 1100,
+    resizable: true,
+    parent: actualParent as any,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Consult Sheet'),
+  });
+  if (showWindow) {
+    showWindowFast(child, () => { centerWindow(child); });
+  }
+  child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+
+  const encoded = encodeURIComponent(JSON.stringify(data || {}));
+  const flags = `${autoPrint ? '&autoPrint=1' : ''}${silent ? '&silent=1' : ''}${autoCloseMs ? `&autoCloseMs=${encodeURIComponent(String(autoCloseMs))}` : ''}`;
+  const url = isDev
+    ? `${DEV_SERVER_URL}/?consultSheet=${encoded}${flags}`
+    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?consultSheet=${encoded}${flags}`;
+  child.loadURL(url);
+
+  if (autoPrint && silent) {
+    const startSilentPrint = scheduleSilentPrint(child, {
+      delayMs: 40,
+      onDone: () => {
+        if (autoCloseMs > 0) {
+          setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs);
+        }
+      },
+    });
+
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const armFallback = () => {
+      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 400 : 900);
+    };
+
+    const handleReady = (readyEvent: any) => {
+      if (readyEvent?.sender !== child.webContents) return;
+      cleanupReadyListener();
+      startSilentPrint();
+    };
+
+    const cleanupReadyListener = () => {
+      try { clearTimeout(fallbackTimer); } catch {}
+      try { ipcMain.removeListener('consult-sheet:ready', handleReady); } catch {}
+    };
+
+    child.webContents.once('did-finish-load', armFallback);
+    const absoluteBackstop = setTimeout(() => {
+      if (fallbackTimer === undefined) armFallback();
+    }, app.isPackaged ? 5000 : 7000);
+    child.once('closed', () => { try { clearTimeout(absoluteBackstop); } catch {} });
+
+    ipcMain.on('consult-sheet:ready', handleReady);
+    child.once('closed', cleanupReadyListener);
+  }
+
+  return { ok: true };
+});
+
 // Product Form print window (Sales)
 ipcMain.handle('open-product-form', async (event: any, payload: any) => {
   const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
@@ -3951,37 +4035,118 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
   const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const sentLabel = targetDate.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  const lines = [
-    `Daily batch report for ${dateLabel}`,
-    `Batch Out: ${sentLabel}`,
+  const escapeHtml = (value: any) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const rawBodyPrefix = String(settings?.emailBody || '').trim();
+  // Many stores had emailBody set to an older report/template (sometimes with blank placeholders).
+  // Avoid duplicating (or showing an empty/blank "header") by only using emailBody as a short intro note.
+  const looksLikeReport = /daily\s+batch|batch\s*out|work\s*orders\s*:|sales\s*:|checked\s*out\s*:|partial\s*paid\s*:|billed\s*:|collected\s*:|remaining\s*:|cash\s*:|card\s*:|other\s*:|change\s*:/i.test(rawBodyPrefix);
+  const intro = looksLikeReport ? '' : rawBodyPrefix;
+
+  const billed = formatCurrency(reportRound2(totals.billed));
+  const collected = formatCurrency(reportRound2(totals.collected));
+  const remaining = formatCurrency(reportRound2(totals.remaining));
+
+  const cash = formatCurrency(reportRound2(paymentSummary.cash));
+  const card = formatCurrency(reportRound2(paymentSummary.card));
+  const other = formatCurrency(reportRound2(paymentSummary.other));
+  const change = formatCurrency(reportRound2(paymentSummary.change));
+
+  const bodyTextLines: string[] = [];
+  bodyTextLines.push(`Daily batch report for ${dateLabel}`);
+  bodyTextLines.push(`Batch Out: ${sentLabel}`);
+  if (intro) bodyTextLines.push('', intro);
+  bodyTextLines.push(
+    '',
     `Work orders: ${totals.workOrders}`,
     `Sales: ${totals.sales}`,
     `Checked out: ${totals.checkedOut}`,
     `Partial paid: ${totals.partialPaid}`,
-    `Billed: ${formatCurrency(reportRound2(totals.billed))}`,
-    `Collected: ${formatCurrency(reportRound2(totals.collected))}`,
-    `Remaining: ${formatCurrency(reportRound2(totals.remaining))}`,
-    `Cash: ${formatCurrency(reportRound2(paymentSummary.cash))}`,
-    `Card: ${formatCurrency(reportRound2(paymentSummary.card))}`,
-    `Other: ${formatCurrency(reportRound2(paymentSummary.other))}`,
-    `Change: ${formatCurrency(reportRound2(paymentSummary.change))}`,
-  ];
-
+    `Billed: ${billed}`,
+    `Collected: ${collected}`,
+    `Remaining: ${remaining}`,
+    `Cash: ${cash}`,
+    `Card: ${card}`,
+    `Other: ${other}`,
+    `Change: ${change}`,
+  );
   if (techLines.length) {
-    lines.push('', 'Technician breakdown:');
+    bodyTextLines.push('', 'Technician breakdown:');
     for (const line of techLines) {
-      lines.push(`${line.label}: WO ${line.workOrders} | Sales ${line.sales} | Checked out ${line.checkedOut} | Partial ${line.partialPaid} | Collected ${formatCurrency(line.collected)} | Remaining ${formatCurrency(line.remaining)}`);
+      bodyTextLines.push(`${line.label}: WO ${line.workOrders} | Sales ${line.sales} | Checked out ${line.checkedOut} | Partial ${line.partialPaid} | Collected ${formatCurrency(line.collected)} | Remaining ${formatCurrency(line.remaining)}`);
     }
   }
+  const bodyText = bodyTextLines.filter((v) => v !== undefined && v !== null).join('\n');
 
-  const bodyPrefix = String(settings?.emailBody || '').trim();
-  const bodyText = [bodyPrefix, lines.join('\n')].filter(Boolean).join('\n\n');
-  const html = [
-    bodyPrefix ? `<div style="margin-bottom:12px;white-space:pre-wrap;font-family:Arial,sans-serif;">${bodyPrefix.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : '',
-    '<ul style="font-family:Arial,sans-serif;font-size:13px;line-height:1.5;">',
-    ...lines.filter(Boolean).map((line) => `<li>${String(line).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`),
-    '</ul>',
-  ].join('');
+  const html = `
+<div style="font-family:Arial,sans-serif;background:#0b0b0c;color:#f4f4f5;padding:14px;">
+  <div style="max-width:720px;margin:0 auto;border:1px solid #27272a;border-radius:12px;overflow:hidden;">
+    <div style="padding:14px 16px;background:#111113;border-bottom:1px solid #27272a;">
+      <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#a1a1aa;">Daily Batch Report</div>
+      <div style="margin-top:6px;font-size:18px;font-weight:700;color:#39FF14;">${escapeHtml(dateLabel)}</div>
+      <div style="margin-top:2px;font-size:12px;color:#a1a1aa;">Batch Out: ${escapeHtml(sentLabel)}</div>
+    </div>
+    ${intro ? `<div style="padding:12px 16px;border-bottom:1px solid #27272a;white-space:pre-wrap;color:#e4e4e7;">${escapeHtml(intro)}</div>` : ''}
+    <div style="padding:14px 16px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Work orders</td><td style="padding:8px 0;text-align:right;">${totals.workOrders}</td></tr>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Sales</td><td style="padding:8px 0;text-align:right;">${totals.sales}</td></tr>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Checked out</td><td style="padding:8px 0;text-align:right;">${totals.checkedOut}</td></tr>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Partial paid</td><td style="padding:8px 0;text-align:right;">${totals.partialPaid}</td></tr>
+          <tr><td style="padding:8px 0;border-top:1px solid #27272a;color:#a1a1aa;">Billed</td><td style="padding:8px 0;border-top:1px solid #27272a;text-align:right;font-weight:700;">${escapeHtml(billed)}</td></tr>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Collected</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(collected)}</td></tr>
+          <tr><td style="padding:8px 0;color:#a1a1aa;">Remaining</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(remaining)}</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid #27272a;">
+        <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a1a1aa;margin-bottom:8px;">Payments</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tbody>
+            <tr><td style="padding:6px 0;color:#a1a1aa;">Cash</td><td style="padding:6px 0;text-align:right;">${escapeHtml(cash)}</td></tr>
+            <tr><td style="padding:6px 0;color:#a1a1aa;">Card</td><td style="padding:6px 0;text-align:right;">${escapeHtml(card)}</td></tr>
+            <tr><td style="padding:6px 0;color:#a1a1aa;">Other</td><td style="padding:6px 0;text-align:right;">${escapeHtml(other)}</td></tr>
+            <tr><td style="padding:6px 0;color:#a1a1aa;">Change</td><td style="padding:6px 0;text-align:right;">${escapeHtml(change)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      ${techLines.length ? `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid #27272a;">
+        <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a1a1aa;margin-bottom:8px;">Technician breakdown</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:6px 0;color:#a1a1aa;font-weight:600;">Tech</th>
+              <th style="text-align:right;padding:6px 0;color:#a1a1aa;font-weight:600;">WO</th>
+              <th style="text-align:right;padding:6px 0;color:#a1a1aa;font-weight:600;">Sales</th>
+              <th style="text-align:right;padding:6px 0;color:#a1a1aa;font-weight:600;">Collected</th>
+              <th style="text-align:right;padding:6px 0;color:#a1a1aa;font-weight:600;">Remaining</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${techLines.map((line) => `
+              <tr>
+                <td style="padding:6px 0;border-top:1px solid #1f1f22;">${escapeHtml(line.label)}</td>
+                <td style="padding:6px 0;border-top:1px solid #1f1f22;text-align:right;">${line.workOrders}</td>
+                <td style="padding:6px 0;border-top:1px solid #1f1f22;text-align:right;">${line.sales}</td>
+                <td style="padding:6px 0;border-top:1px solid #1f1f22;text-align:right;">${escapeHtml(formatCurrency(line.collected))}</td>
+                <td style="padding:6px 0;border-top:1px solid #1f1f22;text-align:right;">${escapeHtml(formatCurrency(line.remaining))}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+    </div>
+  </div>
+</div>`.trim();
 
   return {
     recipients,
