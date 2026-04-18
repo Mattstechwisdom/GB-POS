@@ -10,6 +10,105 @@ import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
 
+const QUOTE_AUTOFIT_SCRIPT_INLINE = String(`
+(function(){
+  function hasClass(el, cls){
+    try {
+      if (!el) return false;
+      if (el.classList) return el.classList.contains(cls);
+      return (' ' + (el.className || '') + ' ').indexOf(' ' + cls + ' ') >= 0;
+    } catch(e) { return false; }
+  }
+  function addClass(el, cls){
+    try {
+      if (!el) return;
+      if (el.classList) { el.classList.add(cls); return; }
+      if (!hasClass(el, cls)) el.className = ((el.className || '') + ' ' + cls).trim();
+    } catch(e) {}
+  }
+  function removeClass(el, cls){
+    try {
+      if (!el) return;
+      if (el.classList) { el.classList.remove(cls); return; }
+      el.className = (' ' + (el.className || '') + ' ').replace(' ' + cls + ' ', ' ').trim();
+    } catch(e) {}
+  }
+  function num(v){
+    var x = parseFloat(v || '0');
+    return isFinite(x) ? x : 0;
+  }
+  function getPadding(el){
+    try {
+      var cs = (window.getComputedStyle ? getComputedStyle(el) : null);
+      return cs ? { l:num(cs.paddingLeft), r:num(cs.paddingRight), t:num(cs.paddingTop), b:num(cs.paddingBottom) } : { l:0, r:0, t:0, b:0 };
+    } catch(e) { return { l:0, r:0, t:0, b:0 }; }
+  }
+  function resetScale(inner){
+    try {
+      inner.style.transform = '';
+      inner.style.transformOrigin = '';
+    } catch(e) {}
+  }
+  function fitOne(page){
+    try {
+      if (!page) return;
+      var inner = page.querySelector ? (page.querySelector('.page-inner') || page) : page;
+      if (!inner) return;
+      resetScale(inner);
+
+      var pad = getPadding(page);
+      var availW = (page.clientWidth || 0) - pad.l - pad.r;
+      var availH = (page.clientHeight || 0) - pad.t - pad.b;
+      if (!(availW > 0 && availH > 0)) return;
+
+      var rect = inner.getBoundingClientRect ? inner.getBoundingClientRect() : { width:0, height:0 };
+      var needW = Math.max(inner.scrollWidth || 0, rect.width || 0);
+      var needH = Math.max(inner.scrollHeight || 0, rect.height || 0);
+      if (!(needW > 0 && needH > 0)) return;
+
+      var scaleW = availW / needW;
+      var scaleH = availH / needH;
+      var scale = Math.min(scaleW, scaleH, 1);
+
+      if (scale < 1) {
+        inner.style.transformOrigin = 'top left';
+        inner.style.transform = 'scale(' + scale + ')';
+      }
+    } catch(e) {}
+  }
+  function fitAll(){
+    try {
+      var pages = document.querySelectorAll ? document.querySelectorAll('.print-page') : [];
+      for (var i = 0; i < pages.length; i++) fitOne(pages[i]);
+    } catch(e) {}
+  }
+  function fitWithMode(){
+    try { addClass(document.documentElement, 'gb-fit-pages'); } catch(e) {}
+    try { fitAll(); } catch(e) {}
+    try { setTimeout(fitAll, 60); } catch(e) {}
+    try { setTimeout(fitAll, 250); } catch(e) {}
+  }
+  function clearMode(){
+    try { removeClass(document.documentElement, 'gb-fit-pages'); } catch(e) {}
+    try { fitAll(); } catch(e) {}
+  }
+
+  try { window.__gbFitQuotePages = fitWithMode; } catch(e) {}
+  try { window.__gbClearQuotePageFit = clearMode; } catch(e) {}
+
+  try {
+    window.addEventListener('beforeprint', function(){ try { fitWithMode(); } catch(e) {} });
+    window.addEventListener('afterprint', function(){ try { clearMode(); } catch(e) {} });
+  } catch(e) {}
+})();
+`).replace(/<\/script/gi, '<\\/script');
+
+const QUOTE_AUTOFIT_CSS = String(`
+  html.gb-fit-pages, html.gb-fit-pages body { background: #ffffff !important; color: #000000 !important; }
+  html.gb-fit-pages .print-page { width: 210mm !important; height: 297mm !important; min-height: 297mm !important; overflow: hidden !important; box-sizing: border-box !important; }
+  html.gb-fit-pages .page-inner { transform-origin: top left !important; }
+`).trim();
+
 // Minimal types to satisfy this component
 type SaleItem = {
   expanded?: boolean;
@@ -604,24 +703,33 @@ function QuoteGeneratorWindow(): JSX.Element {
       const base = Number(item.price || 0);
       // Price is already the customer-facing total (before tax). Do not apply any additional multiplier here.
       const shown = Number.isFinite(base) && base > 0 ? base : null;
+      const hasSpecs = !!(
+        (item.dynamic && Object.keys(item.dynamic || {}).length > 0) ||
+        item.deviceType || (item.dynamic && (item.dynamic as any).device) || item.model || item.condition || item.accessories
+      );
       const inner = `
         <div class=\"text-base\" style=\"text-align:center; font-weight:600; margin-bottom:8px\">${esc(title)}</div>
-        ${images.length ? `
-          <div style=\"margin-bottom:10px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center\">
-            ${images.map((src) => `<img src=\"${src}\" data-gbzoom=\"1\" style=\"max-height:55mm; max-width:55mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px; cursor:zoom-in\" />`).join('')}
-          </div>` : ''}
-        <div class=\"gb-spec-grid\" style=\"display:grid; grid-template-columns:1fr auto 1fr; align-items:end; column-gap:12px; width:100%\">
-          <div style=\"grid-column:2; text-align:center; justify-self:center; margin-left:auto; margin-right:auto\">
-            <div style=\"font-size:12pt; border:2px solid #f00; display:inline-block; padding:12px 14px; border-radius:4px\">
-              <div style=\"font-weight:600; margin-bottom:6px; text-align:center\">Specifications</div>
-              <table style=\"border-collapse:collapse; display:inline-table; width:auto; table-layout:auto\"><tbody>
-                ${specRowsInteractive(item)}
-              </tbody></table>
+        <div class=\"gb-spec-grid\" style=\"display:grid; grid-template-columns:${images.length ? '70mm 1fr' : '1fr'}; align-items:start; column-gap:12px; width:100%\">
+          ${images.length ? `
+            <div style=\"display:flex; flex-direction:column; gap:10px; align-items:center\">
+              ${images.map((src) => `<img src=\"${src}\" data-gbzoom=\"1\" style=\"max-height:55mm; max-width:65mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px; cursor:zoom-in\" />`).join('')}
             </div>
+          ` : ''}
+          <div style=\"min-width:0; display:flex; flex-direction:column; gap:12px\">
+            ${hasSpecs ? `
+              <div style=\"font-size:12pt; border:2px solid #f00; padding:12px 14px; border-radius:4px; width:100%; box-sizing:border-box\">
+                <div style=\"font-weight:600; margin-bottom:6px; text-align:center\">Specifications</div>
+                <table style=\"border-collapse:collapse; width:100%; table-layout:auto\"><tbody>
+                  ${specRowsInteractive(item)}
+                </tbody></table>
+              </div>
+            ` : ''}
+            ${shown != null ? `
+              <div class=\"gb-total\" style=\"text-align:right\">
+                <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
+              </div>
+            ` : ''}
           </div>
-          ${shown != null ? `<div class=\"gb-total\" style=\"grid-column:3; justify-self:end\">
-            <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
-          </div>` : ``}
         </div>
         ${item.prompt && String(item.prompt).trim().length > 0 ? `
           <div style=\"text-align:center; font-size:13pt; line-height:1.45; max-width:180mm; margin:18px auto 0 auto; border:2px solid #f00; border-radius:4px; padding:10px 12px\">${esc(item.prompt || '')}</div>
@@ -943,7 +1051,13 @@ function QuoteGeneratorWindow(): JSX.Element {
         <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" rel="stylesheet" />
         <script>${HTML2PDF_BUNDLE_INLINE}</script>
         <style>
-          @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } .no-print { display:none !important; } }
+          @media print {
+            @page { size:A4; margin:0; }
+            .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
+            .print-page:last-of-type { page-break-after: auto; }
+            .no-print { display:none !important; }
+          }
+          ${QUOTE_AUTOFIT_CSS}
           html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
           /* Mobile drawing reliability */
           #sigPad { touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -956,6 +1070,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             .sig-actions { flex-wrap: wrap !important; }
           }
         </style>
+        <script>${QUOTE_AUTOFIT_SCRIPT_INLINE}</script>
         <script>
           try { window.__GB_CUSTOM_PRINT__ = true; console.log('[GB POS] Custom Build Print active'); } catch(e) {}
         </script>
@@ -1615,6 +1730,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                 var toPdf = async function(){
                   try {
+                    try { if (window.__gbFitQuotePages) window.__gbFitQuotePages(); } catch(e) {}
                     await ensurePdfLibs();
                     var h2c = (window).html2canvas;
                     var jsPDF = (window).jspdf.jsPDF;
@@ -1663,11 +1779,13 @@ function QuoteGeneratorWindow(): JSX.Element {
                     } catch(e) {}
 
                     try { document.head.removeChild(style); } catch(_) {}
+                    try { if (window.__gbClearQuotePageFit) window.__gbClearQuotePageFit(); } catch(e) {}
                   } catch (e) {
                     try {
                       var prev = document.querySelector('style[data-pdf-style="1"]');
                       if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
                     } catch(_) {}
+                    try { if (window.__gbClearQuotePageFit) window.__gbClearQuotePageFit(); } catch(e) {}
                     try { alert('Could not generate PDF automatically. Your browser will open the print dialog, choose "Save as PDF".'); } catch(_) {}
                     try { window.print(); } catch(_) {}
                   }
@@ -1746,12 +1864,13 @@ function QuoteGeneratorWindow(): JSX.Element {
       <script>${HTML2PDF_BUNDLE_INLINE}</script>
       <style>
         @media print {
-          @page { size: A4; margin: 12mm; }
+          @page { size: A4; margin: 0; }
           .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
           .print-page:last-of-type { page-break-after: auto; }
           .no-print { display:none !important; }
           html, body { background: #ffffff !important; color: #000000 !important; }
         }
+        ${QUOTE_AUTOFIT_CSS}
         html, body { margin: 0; padding: 0; background: #1f2937; color: #e5e7eb; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-text-size-adjust: 100%; }
         #mobileHelp { max-width: 920px; margin: 12px auto; padding: 12px; border-radius: 12px; background: #111827; border: 1px solid #374151; color: #e5e7eb; font-size: 11.5pt; line-height: 1.35; }
         #mobileHelp b { color: #ffffff; }
@@ -1776,6 +1895,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         /* Image zoom helper */
         img[data-gbzoom="1"] { -webkit-tap-highlight-color: transparent; }
       </style>
+      <script>${QUOTE_AUTOFIT_SCRIPT_INLINE}</script>
     </head>
     <body>
       <noscript>
@@ -2538,6 +2658,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
             const toPdf = async () => {
               try {
+                try { if (window.__gbFitQuotePages) window.__gbFitQuotePages(); } catch(e) {}
                 await ensurePdfLibs();
                 const h2c = (window).html2canvas;
                 const jsPDF = (window).jspdf.jsPDF;
@@ -2586,11 +2707,13 @@ function QuoteGeneratorWindow(): JSX.Element {
                   pdf.save(filename);
                 }
                 try { document.head.removeChild(style); } catch {}
+                try { if (window.__gbClearQuotePageFit) window.__gbClearQuotePageFit(); } catch(e) {}
               } catch (e) {
                 try {
                   const prev = document.querySelector('style[data-pdf-style="1"]');
                   if (prev) prev.parentElement.removeChild(prev);
                 } catch {}
+                try { if (window.__gbClearQuotePageFit) window.__gbClearQuotePageFit(); } catch(e) {}
                 try { alert('Could not generate PDF automatically. Your browser will open the print dialog, choose "Save as PDF".'); } catch {}
                 try { window.print(); } catch {}
               }
@@ -2909,9 +3032,15 @@ function QuoteGeneratorWindow(): JSX.Element {
         <title>Custom Build Quote</title>
         <base href="${(typeof window !== 'undefined' && (window as any).location) ? ((window as any).location.origin + '/') : '/'}">
         <style>
-          @media print { @page { size:A4; margin:12mm; } .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; } .print-page:last-of-type { page-break-after: auto; } }
+          @media print {
+            @page { size:A4; margin:0; }
+            .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
+            .print-page:last-of-type { page-break-after: auto; }
+          }
+          ${QUOTE_AUTOFIT_CSS}
           html,body { margin:0; padding:0; background:#fff; color:#000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
         </style>
+        <script>${QUOTE_AUTOFIT_SCRIPT_INLINE}</script>
       </head>
       <body>
         ${firstPageHtml + otherPagesHtml + summaryPage + approvalPage}
@@ -3167,28 +3296,28 @@ function QuoteGeneratorWindow(): JSX.Element {
     }
     const inner = `
           <div class=\"text-base\" style=\"text-align:center; font-weight:600; margin-bottom:8px\">${esc(title)}</div>
-          ${images.length ? `
-            <div style=\"margin-bottom:10px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center\">
-              ${images.map((src) => `<img src=\"${src}\" style=\"max-height:55mm; max-width:55mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px\" />`).join('')}
-            </div>` : ''}
-          ${hasSpecs ? `
-            <div style=\"display:grid; grid-template-columns:1fr auto 1fr; align-items:end; column-gap:12px; width:100%\">
-              <div style=\"grid-column:2; text-align:center; justify-self:center; margin-left:auto; margin-right:auto\">
-                <div style=\"font-size:12pt; border:2px solid #f00; display:inline-block; padding:12px 14px; border-radius:4px\">
+          <div style=\"display:grid; grid-template-columns:${images.length ? '70mm 1fr' : '1fr'}; align-items:start; column-gap:12px; width:100%\">
+            ${images.length ? `
+              <div style=\"display:flex; flex-direction:column; gap:10px; align-items:center\">
+                ${images.map((src) => `<img src=\"${src}\" style=\"max-height:55mm; max-width:65mm; object-fit:contain; border:1px solid #e5e7eb; border-radius:4px; padding:2px\" />`).join('')}
+              </div>
+            ` : ''}
+            <div style=\"min-width:0; display:flex; flex-direction:column; gap:12px\">
+              ${hasSpecs ? `
+                <div style=\"font-size:12pt; border:2px solid #f00; padding:12px 14px; border-radius:4px; width:100%; box-sizing:border-box\">
                   <div style=\"font-weight:600; margin-bottom:6px; text-align:center\">Specifications</div>
-                  <table style=\"border-collapse:collapse; display:inline-table; width:auto; table-layout:auto\"><tbody>
+                  <table style=\"border-collapse:collapse; width:100%; table-layout:auto\"><tbody>
                     ${specRows(item)}
                   </tbody></table>
                 </div>
-              </div>
-              ${shown != null ? `<div style=\"grid-column:3; justify-self:end\">
-                <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
-              </div>` : ``}
-            </div>` : (shown != null ? `
-            <div style=\"text-align:right; margin-top:8px\">
-              <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
+              ` : ''}
+              ${shown != null ? `
+                <div style=\"text-align:right\">
+                  <div style=\"display:inline-block; border:2px solid #f00; padding:10px 14px; border-radius:6px; font-size:14pt; white-space:nowrap; font-weight:800\">Total (before tax): $${shown.toFixed(2)}</div>
+                </div>
+              ` : ''}
             </div>
-          ` : ``)}
+          </div>
           ${item.prompt && String(item.prompt).trim().length > 0 ? `
             <div style=\"text-align:center; font-size:13pt; line-height:1.45; max-width:180mm; margin:18px auto 0 auto; border:2px solid #f00; border-radius:4px; padding:10px 12px\">${esc(item.prompt || '')}</div>
           ` : ''}`;
@@ -3330,14 +3459,16 @@ function QuoteGeneratorWindow(): JSX.Element {
         <base href="${(typeof window !== 'undefined' && (window as any).location) ? ((window as any).location.origin + '/') : '/'}">
         <style>
           @media print {
-            @page { size: A4; margin: 12mm; }
+            @page { size: A4; margin: 0; }
             .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
             .print-page:last-of-type { page-break-after: auto; }
             .no-print { display:none !important; }
           }
+          ${QUOTE_AUTOFIT_CSS}
           html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
           .page-inner { transform-origin: top center; }
         </style>
+        <script>${QUOTE_AUTOFIT_SCRIPT_INLINE}</script>
         </head>
       <body>
         ${pages.join('\n')}
@@ -3365,14 +3496,16 @@ function QuoteGeneratorWindow(): JSX.Element {
   <base href="${(typeof window !== 'undefined' && (window as any).location) ? ((window as any).location.origin + '/') : '/'}">
       <style>
         @media print {
-          @page { size: A4; margin: 12mm; }
+          @page { size: A4; margin: 0; }
           .print-page { page-break-after: auto; }
         }
+        ${QUOTE_AUTOFIT_CSS}
         html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
         .border { border: 1px solid #000; }
         .p-2 { padding: 8px; }
         table { border-collapse: collapse; width: 100%; }
       </style>
+      <script>${QUOTE_AUTOFIT_SCRIPT_INLINE}</script>
     </head>
     <body>
       <div class="print-page" style="width:210mm; min-height:297mm; margin:0 auto; padding:12mm;">
@@ -3437,24 +3570,10 @@ function QuoteGeneratorWindow(): JSX.Element {
       const win = iframe.contentWindow;
       if (!win) return;
       try {
-        const pages = Array.from(win.document.querySelectorAll<HTMLElement>('.print-page'));
-        pages.forEach((page) => {
-          const inner = page.querySelector<HTMLElement>('.page-inner');
-          if (!inner) return;
-          // reset any previous transform for accurate measurement
-          inner.style.transform = '';
-          inner.style.width = '';
-          // force layout and measure
-          const pageRect = page.getBoundingClientRect();
-          const innerRect = inner.getBoundingClientRect();
-          const scaleW = pageRect.width / innerRect.width;
-          const scaleH = pageRect.height / innerRect.height;
-          const scale = Math.min(scaleW, scaleH, 1);
-          if (scale < 1) {
-            inner.style.transform = `scale(${scale})`;
-            inner.style.width = `${pageRect.width / scale}px`;
-          }
-        });
+        try {
+          // Prefer the shared fitter embedded in the HTML (also used for saved HTML + PDF generation).
+          (win as any).__gbFitQuotePages?.();
+        } catch {}
         win.focus();
         win.print();
       } finally {
@@ -6220,7 +6339,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                   <div>
                     <style>{`
                       @media print {
-                        @page { size: A4; margin: 12mm; }
+                        @page { size: A4; margin: 0; }
                         /* Page control helpers */
                         .page-break { page-break-after: always; }
                         .print-page { page-break-after: always; page-break-inside: avoid; break-inside: avoid; }
@@ -6462,22 +6581,25 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 (first.dynamic && Object.keys(first.dynamic || {}).length > 0) ||
                                 first.deviceType || (first.dynamic && (first.dynamic as any).device) || first.model || first.condition || first.accessories
                               );
+                              const imgs = (first.images || []).slice(0, 3);
+                              const base = Number(first.price || 0);
+                              const shown = Number.isFinite(base) && base > 0 ? base : null;
                               return (
                                 <div className="mt-4">
                                   <div className="text-base font-semibold mb-2 text-center">{title}</div>
-                                  {first.images && first.images.length > 0 && (
-                                    <div className="mb-3 flex gap-3 flex-wrap justify-center items-center">
-                                      {first.images.slice(0, 3).map((src, i) => (
-                                            <img key={i} src={src} alt={`Device ${i + 1}`} style={{ maxHeight: '55mm', maxWidth: '55mm', objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 4, padding: 2 }} />
-                                      ))}
-                                    </div>
-                                  )}
-                                  {hasSpecs && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'end', columnGap: 12 }}>
-                                      <div style={{ gridColumn: 2, textAlign: 'center', justifySelf: 'center' }}>
-                                        <div className="rounded" style={{ fontSize: '12pt', border: '2px solid #FF0000', display: 'inline-block', padding: '12px 14px' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: imgs.length ? '70mm 1fr' : '1fr', alignItems: 'start', columnGap: 12 }}>
+                                    {imgs.length > 0 && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+                                        {imgs.map((src, i) => (
+                                          <img key={i} src={src} alt={`Device ${i + 1}`} style={{ maxHeight: '55mm', maxWidth: '65mm', objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 4, padding: 2 }} />
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                      {hasSpecs && (
+                                        <div className="rounded" style={{ fontSize: '12pt', border: '2px solid #FF0000', borderRadius: 4, padding: '12px 14px', width: '100%', boxSizing: 'border-box' }}>
                                           <div className="font-semibold mb-2" style={{ textAlign: 'center' }}>Specifications</div>
-                                          <table style={{ borderCollapse: 'collapse', display: 'inline-table', width: 'auto', tableLayout: 'auto' }}>
+                                          <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'auto' }}>
                                             <tbody>
                                               {(() => {
                                                 const rows: Array<[string, string]> = [];
@@ -6560,34 +6682,16 @@ function QuoteGeneratorWindow(): JSX.Element {
                                             </tbody>
                                           </table>
                                         </div>
-                                      </div>
-                                      {(() => {
-                                        const base = parseFloat((first.price || '').toString());
-                                        if (!isFinite(base) || base <= 0) return null;
-                                        const shown = base;
-                                        return (
-                                          <div style={{ gridColumn: 3, justifySelf: 'end' }}>
-                                            <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
-                                              Total (before tax): ${shown.toFixed(2)}
-                                            </div>
+                                      )}
+                                      {shown != null && (
+                                        <div style={{ textAlign: 'right' }}>
+                                          <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
+                                            Total (before tax): ${shown.toFixed(2)}
                                           </div>
-                                        );
-                                      })()}
-                                    </div>
-                                  )}
-                                  {/* Fallback: show price alone aligned right if no specs */}
-                                  {!hasSpecs && (() => {
-                                    const base = parseFloat((first.price || '').toString());
-                                    if (!isFinite(base) || base <= 0) return null;
-                                    const shown = base;
-                                    return (
-                                      <div style={{ textAlign: 'right', marginTop: 8 }}>
-                                        <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
-                                          Total (before tax): ${shown.toFixed(2)}
                                         </div>
-                                      </div>
-                                    );
-                                  })()}
+                                      )}
+                                    </div>
+                                  </div>
                                   {first.prompt && String(first.prompt).trim().length > 0 && (
                                     <div style={{ textAlign: 'center', fontSize: '13pt', lineHeight: 1.45, maxWidth: '180mm', marginLeft: 'auto', marginRight: 'auto', marginTop: 18, border: '2px solid #FF0000', borderRadius: 4, padding: '10px 12px' }}>
                                       {first.prompt}
@@ -6609,22 +6713,25 @@ function QuoteGeneratorWindow(): JSX.Element {
                                     (item.dynamic && Object.keys(item.dynamic || {}).length > 0) ||
                                     item.deviceType || (item.dynamic && (item.dynamic as any).device) || item.model || item.condition || item.accessories
                                   );
+                                  const imgs = (item.images || []).slice(0, 3);
+                                  const base = Number(item.price || 0);
+                                  const shown = Number.isFinite(base) && base > 0 ? base : null;
                                   return (
                                     <div>
                                       <div className="text-base font-semibold mb-2 text-center">{title}</div>
-                                      {item.images && item.images.length > 0 && (
-                                        <div className="mb-3 flex gap-3 flex-wrap justify-center items-center">
-                                          {item.images.slice(0, 3).map((src, i) => (
-                                            <img key={i} src={src} alt={`Device ${i + 1}`} style={{ maxHeight: '55mm', maxWidth: '55mm', objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 4, padding: 2 }} />
-                                          ))}
-                                        </div>
-                                      )}
-                                      {hasSpecs && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'end', columnGap: 12 }}>
-                                          <div style={{ gridColumn: 2, textAlign: 'center', justifySelf: 'center' }}>
-                                            <div className="rounded" style={{ fontSize: '12pt', border: '2px solid #FF0000', display: 'inline-block', padding: '12px 14px' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: imgs.length ? '70mm 1fr' : '1fr', alignItems: 'start', columnGap: 12 }}>
+                                        {imgs.length > 0 && (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+                                            {imgs.map((src, i) => (
+                                              <img key={i} src={src} alt={`Device ${i + 1}`} style={{ maxHeight: '55mm', maxWidth: '65mm', objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 4, padding: 2 }} />
+                                            ))}
+                                          </div>
+                                        )}
+                                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                          {hasSpecs && (
+                                            <div className="rounded" style={{ fontSize: '12pt', border: '2px solid #FF0000', borderRadius: 4, padding: '12px 14px', width: '100%', boxSizing: 'border-box' }}>
                                               <div className="font-semibold mb-2" style={{ textAlign: 'center' }}>Specifications</div>
-                                              <table style={{ borderCollapse: 'collapse', display: 'inline-table', width: 'auto', tableLayout: 'auto' }}>
+                                              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'auto' }}>
                                                 <tbody>
                                                   {(() => {
                                                     const rows: Array<[string, string]> = [];
@@ -6707,33 +6814,16 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                 </tbody>
                                               </table>
                                             </div>
-                                          </div>
-                                          {(() => {
-                                            const base = Number(item.price || 0);
-                                            if (!isFinite(base) || base <= 0) return null;
-                                            const shown = base;
-                                            return (
-                                              <div style={{ gridColumn: 3, justifySelf: 'end' }}>
-                                                <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
-                                                  Total (before tax): ${shown.toFixed(2)}
-                                                </div>
+                                          )}
+                                          {shown != null && (
+                                            <div style={{ textAlign: 'right' }}>
+                                              <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
+                                                Total (before tax): ${shown.toFixed(2)}
                                               </div>
-                                            );
-                                          })()}
-                                        </div>
-                                      )}
-                                      {!hasSpecs && (() => {
-                                        const base = Number(item.price || 0);
-                                        if (!isFinite(base) || base <= 0) return null;
-                                        const shown = base;
-                                        return (
-                                          <div style={{ textAlign: 'right', marginTop: 8 }}>
-                                            <div style={{ display: 'inline-block', border: '2px solid #FF0000', padding: '10px 14px', borderRadius: 6, fontSize: '14pt', whiteSpace: 'nowrap', fontWeight: 800 }}>
-                                              Total (before tax): ${shown.toFixed(2)}
                                             </div>
-                                          </div>
-                                        );
-                                      })()}
+                                          )}
+                                        </div>
+                                      </div>
                                       {item.prompt && String(item.prompt).trim().length > 0 && (
                                         <div style={{ textAlign: 'center', fontSize: '13pt', lineHeight: 1.45, maxWidth: '180mm', marginLeft: 'auto', marginRight: 'auto', marginTop: 18, border: '2px solid #FF0000', borderRadius: 4, padding: '10px 12px' }}>
                                           {item.prompt}

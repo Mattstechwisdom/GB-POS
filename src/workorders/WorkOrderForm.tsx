@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PatternLock from '../components/PatternLock';
 import { WorkOrderFull } from '../lib/types';
+import { focusNextFocusable } from '../lib/focusNextFocusable';
 
 type WorkOrderValidationFlags = Partial<Record<'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial', boolean>>;
 
@@ -97,6 +98,9 @@ const DeviceCategorySelect: React.FC<{
             const picked = filtered[idx];
             if (!picked) return;
             commitPicked(picked, false);
+            requestAnimationFrame(() => {
+              if (inputRef.current) focusNextFocusable(inputRef.current);
+            });
             return;
           }
 
@@ -232,6 +236,9 @@ const DeviceSelect: React.FC<{
             const picked = filtered[idx];
             if (!picked) return;
             handleSelect(picked);
+            requestAnimationFrame(() => {
+              if (inputRef.current) focusNextFocusable(inputRef.current);
+            });
             return;
           }
 

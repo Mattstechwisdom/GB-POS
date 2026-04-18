@@ -16,6 +16,12 @@ export type WorkOrderItemRow = {
 interface Props {
   items: WorkOrderItemRow[];
   onChange: (items: WorkOrderItemRow[]) => void;
+  onAddProduct?: () => void | Promise<void>;
+  addProductDisabled?: boolean;
+  /** Read-only rows (e.g., linked retail add-ons) shown in the table. */
+  readonlyItems?: WorkOrderItemRow[];
+  /** Optional handler for removing a read-only row from its backing record (e.g., attached retail Sale). */
+  onRemoveReadonlyItem?: (row: WorkOrderItemRow) => void | Promise<void>;
 }
 
 function newId(): string {
@@ -31,8 +37,10 @@ function money(n: any) {
   return Number.isFinite(v) && v > 0 ? `$${v.toFixed(2)}` : '';
 }
 
-const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
+const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
+
+  const ro = Array.isArray(readonlyItems) ? readonlyItems : [];
 
   const ctx = useContextMenu<WorkOrderItemRow>();
   const ctxRow = ctx.state.data;
@@ -103,6 +111,25 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
 
   const ctxItems = useMemo<ContextMenuItem[]>(() => {
     if (!ctxRow) return [];
+
+    const isReadonly = ro.some(r => r.id === ctxRow.id);
+    if (isReadonly) {
+      return [
+        { type: 'header', label: ctxRow.repair || 'Line Item' },
+        { label: 'Edit…', disabled: true, hint: 'Read-only' },
+        { type: 'separator' },
+        {
+          label: 'Remove…',
+          danger: true,
+          disabled: typeof onRemoveReadonlyItem !== 'function',
+          hint: ctxRow.note || 'Sale',
+          onClick: async () => {
+            await onRemoveReadonlyItem?.(ctxRow);
+          },
+        },
+      ];
+    }
+
     return [
       { type: 'header', label: ctxRow.repair || 'Line Item' },
       { label: 'Edit…', onClick: () => editItem(ctxRow) },
@@ -110,7 +137,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
       { type: 'separator' },
       { label: 'Remove…', danger: true, onClick: () => removeItem(ctxRow) },
     ];
-  }, [ctxRow, items]);
+  }, [ctxRow, items, ro, onRemoveReadonlyItem]);
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
@@ -153,7 +180,33 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 </tr>
               );
             })}
-            {(!items || items.length === 0) && (
+
+            {ro.map((it, idx) => {
+              const isSel = selected === it.id;
+              return (
+                <tr
+                  key={`readonly-${it.id || idx}`}
+                  onClick={() => setSelected(it.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelected(it.id);
+                    ctx.openFromEvent(e, it);
+                  }}
+                  className={`cursor-pointer transition-colors border-l-4 ${
+                    isSel
+                      ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]'
+                      : 'border-transparent bg-zinc-950/30 hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <td className="px-2 py-1 font-medium overflow-hidden text-ellipsis">{it.repair}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{money(it.parts)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{money(it.labor)}</td>
+                </tr>
+              );
+            })}
+
+            {(!items || items.length === 0) && ro.length === 0 && (
               <tr>
                 <td colSpan={3} className="px-2 py-8 text-center text-zinc-500">
                   No line items yet.
@@ -168,6 +221,15 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange }) => {
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={addItem}>
           Add line item
         </button>
+        {onAddProduct ? (
+          <button
+            className="px-3 py-1 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { void onAddProduct(); }}
+            disabled={!!addProductDisabled}
+          >
+            Add Product
+          </button>
+        ) : null}
       </div>
 
       <ContextMenu

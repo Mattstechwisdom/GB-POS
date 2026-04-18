@@ -161,7 +161,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 type="button"
                 aria-label="Close"
                 onClick={onClose}
-                className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+                className="h-9 w-9 mr-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
               >
                 ✕
               </button>

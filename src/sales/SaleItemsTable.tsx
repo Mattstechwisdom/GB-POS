@@ -338,7 +338,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           </div>
           {isConsultationItem(editing) ? (
             <div className="mt-2 text-[11px] text-zinc-400">
-              Consultation totals use hours multiplied by the hourly rate. Technician payout is tracked separately in EOD reporting.
+              Consultation pricing is $75 for the first hour + $50 per additional hour. Technician payout is tracked separately in EOD reporting.
             </div>
           ) : null}
           <div className="mt-2">

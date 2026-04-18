@@ -3,7 +3,7 @@ import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians } from '../lib/admin';
 
-type RangeKey = 'today' | 'yesterday' | 'last7' | 'custom';
+type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
 const CONSULTATION_HOURLY_RATE = 75;
 const CONSULTATION_TECH_RATE = 25;
@@ -18,7 +18,15 @@ interface EodSettings {
   includePayments: boolean;
   includeCounts: boolean;
   includeBatchInfo: boolean;
-  schedule: 'manual' | 'daily' | 'weekly';
+  emailIncludeTrends?: boolean; // legacy flag (applies when specific flags not set)
+  emailIncludeTrendsWeek?: boolean;
+  emailIncludeTrendsMonth?: boolean;
+  emailIncludeOpenTickets?: boolean;
+  emailIncludeWorkOrdersDetails?: boolean;
+  emailIncludeSalesDetails?: boolean;
+  emailIncludeOutstandingDetails?: boolean;
+  emailIncludeTechnicianSummary?: boolean;
+  schedule: 'manual' | 'daily' | 'weekly' | 'monthly';
   sendTime: string; // HH:mm
   batchOutTime?: string; // HH:mm
   autoBackup?: boolean;
@@ -35,6 +43,14 @@ const defaultSettings: EodSettings = {
   includePayments: true,
   includeCounts: true,
   includeBatchInfo: true,
+  emailIncludeTrends: true,
+  emailIncludeTrendsWeek: true,
+  emailIncludeTrendsMonth: true,
+  emailIncludeOpenTickets: false,
+  emailIncludeWorkOrdersDetails: false,
+  emailIncludeSalesDetails: false,
+  emailIncludeOutstandingDetails: false,
+  emailIncludeTechnicianSummary: false,
   schedule: 'daily',
   sendTime: '18:00',
   batchOutTime: '21:00',
@@ -53,6 +69,15 @@ function formatDate(input: string | Date | null | undefined) {
   const d = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString();
+}
+
+function escapeHtml(text: string) {
+  return (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function round2(n: number) {
@@ -188,6 +213,19 @@ function rangeLabel(range: RangeKey, start: Date, end: Date) {
   return `${startStr} - ${endStr}`;
 }
 
+function startOfLocalWeek(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diffFromMonday = (day + 6) % 7;
+  d.setDate(d.getDate() - diffFromMonday);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfLocalMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
 function resolveRange(range: RangeKey, customFrom: string, customTo: string) {
   const now = new Date();
   let start = new Date();
@@ -201,6 +239,12 @@ function resolveRange(range: RangeKey, customFrom: string, customTo: string) {
     y.setDate(y.getDate() - 1);
     start = new Date(y.setHours(0, 0, 0, 0));
     end = new Date(y.setHours(23, 59, 59, 999));
+  } else if (range === 'thisWeek') {
+    start = startOfLocalWeek(now);
+    end.setHours(23, 59, 59, 999);
+  } else if (range === 'thisMonth') {
+    start = startOfLocalMonth(now);
+    end.setHours(23, 59, 59, 999);
   } else if (range === 'last7') {
     const s = new Date(now);
     s.setDate(s.getDate() - 6);
@@ -616,7 +660,8 @@ type UnifiedRow = {
 };
 
 const EODWindow: React.FC = () => {
-  const [settings, setSettings] = useState<EodSettings>(defaultSettings);
+  const [savedSettings, setSavedSettings] = useState<EodSettings>(defaultSettings);
+  const [draftSettings, setDraftSettings] = useState<EodSettings>(defaultSettings);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [range, setRange] = useState<RangeKey>('today');
@@ -726,7 +771,8 @@ const EODWindow: React.FC = () => {
 
         const storedSettings = Array.isArray(stored) ? stored[0] : stored;
         if (storedSettings && typeof storedSettings === 'object') {
-          setSettings(prev => ({ ...prev, ...storedSettings }));
+          setSavedSettings(prev => ({ ...prev, ...storedSettings }));
+          setDraftSettings(prev => ({ ...prev, ...storedSettings }));
         }
 
         const batchRecord = Array.isArray(batch) ? batch[0] : batch;
@@ -745,7 +791,7 @@ const EODWindow: React.FC = () => {
     };
   }, []);
 
-  const settingsPayload = useMemo(() => ({ ...settings }), [settings]);
+  const settingsPayload = useMemo(() => ({ ...savedSettings }), [savedSettings]);
 
   useAutosave(settingsPayload, async payload => {
     if (!settingsReady) return;
@@ -757,7 +803,7 @@ const EODWindow: React.FC = () => {
       } else if (!payload.id && api.dbAdd) {
         const created = await api.dbAdd('eodSettings', payload);
         if (created?.id) {
-          setSettings(s => ({ ...s, id: created.id }));
+          setSavedSettings(s => ({ ...s, id: created.id }));
         }
       }
     } catch (err) {
@@ -1255,35 +1301,276 @@ const EODWindow: React.FC = () => {
       .map(([label, count]) => ({ label, count }));
   }, [workOrders]);
 
+  const reportHasAnyActivity = useMemo(() => {
+    const anyTaken = (Number(dailyBatchSummary.totalTaken) || 0) > 0.009;
+    const anyCounts = (Number(dailyBatchSummary.checkInCount) || 0) > 0 || (Number(dailyBatchSummary.closedTicketCount) || 0) > 0;
+    const anyOrders = (Number(summary.woTotals.count) || 0) > 0 || (Number(summary.saTotals.count) || 0) > 0;
+    const anyRemaining = (Number(summary.grandRemaining) || 0) > 0.009;
+    return anyTaken || anyCounts || anyOrders || anyRemaining;
+  }, [dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, summary.grandRemaining, summary.saTotals.count, summary.woTotals.count]);
+
   const reportLines = useMemo(() => {
     const lines: string[] = [];
-    lines.push(`Total taken in: ${formatCurrency(dailyBatchSummary.totalTaken)}`);
-    lines.push(`Card: ${formatCurrency(dailyBatchSummary.cardTotal)}`);
-    lines.push(`Cash: ${formatCurrency(dailyBatchSummary.cashTotal)}`);
-    lines.push(`Check-ins: ${dailyBatchSummary.checkInCount}`);
-    lines.push(`Closed tickets: ${dailyBatchSummary.closedTicketCount}`);
-    if (settings.includeBatchInfo && batchInfo) {
+    if (!reportHasAnyActivity) return '';
+    if (draftSettings.includePayments) {
+      lines.push(`Total taken in: ${formatCurrency(dailyBatchSummary.totalTaken)}`);
+      lines.push(`Card: ${formatCurrency(dailyBatchSummary.cardTotal)}`);
+      lines.push(`Cash: ${formatCurrency(dailyBatchSummary.cashTotal)}`);
+    }
+    if (draftSettings.includeCounts) {
+      lines.push(`Check-ins: ${dailyBatchSummary.checkInCount}`);
+      lines.push(`Closed tickets: ${dailyBatchSummary.closedTicketCount}`);
+    }
+    if (draftSettings.includeWorkOrders) {
+      lines.push(`Work orders: ${summary.woTotals.count} · Collected ${formatCurrency(summary.woTotals.collected)} · Remaining ${formatCurrency(summary.woTotals.remaining)}`);
+    }
+    if (draftSettings.includeSales) {
+      lines.push(`Sales: ${summary.saTotals.count} · Collected ${formatCurrency(summary.saTotals.collected)} · Remaining ${formatCurrency(summary.saTotals.remaining)}`);
+    }
+    if (draftSettings.includeOutstanding) {
+      lines.push(`Outstanding total: ${formatCurrency(summary.grandRemaining)}`);
+    }
+    if (draftSettings.includeBatchInfo && batchInfo) {
       const last = batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run';
-      lines.push(`Batch Out: ${last}`);
+      lines.push(`Last Batch Out: ${last}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, settings.includeBatchInfo]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, reportHasAnyActivity, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining]);
 
   const presetBody = useMemo(() => {
-    return [`Daily batch for ${rangeLabel(range, start, end)}`, reportLines].filter(Boolean).join('\n\n');
-  }, [range, reportLines, start, end]);
+    const header = `Batch report for ${rangeLabel(range, start, end)}`;
+    if (!reportHasAnyActivity) return `${header}\n\nNo activity in range.`;
+    return [header, reportLines].filter(Boolean).join('\n\n');
+  }, [range, reportHasAnyActivity, reportLines, start, end]);
 
-  const emailHtml = useMemo(() => {
-    const bodyBlock = presetBody
-      .split('\n')
-      .map(line => line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-      .join('<br/>');
-    return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;">${bodyBlock}</div>`;
-  }, [presetBody]);
+  const [trendEditor, setTrendEditor] = useState<'week' | 'month' | null>(null);
+  const weekTrendsEnabled = useMemo(() => {
+    const legacy = draftSettings.emailIncludeTrends !== false;
+    return (draftSettings.emailIncludeTrendsWeek ?? legacy) !== false;
+  }, [draftSettings.emailIncludeTrends, draftSettings.emailIncludeTrendsWeek]);
+
+  const monthTrendsEnabled = useMemo(() => {
+    const legacy = draftSettings.emailIncludeTrends !== false;
+    return (draftSettings.emailIncludeTrendsMonth ?? legacy) !== false;
+  }, [draftSettings.emailIncludeTrends, draftSettings.emailIncludeTrendsMonth]);
+
+  const trendData = useMemo(() => {
+    if (range !== 'thisWeek' && range !== 'thisMonth') return null;
+    if (range === 'thisWeek' && !weekTrendsEnabled) return null;
+    if (range === 'thisMonth' && !monthTrendsEnabled) return null;
+
+    const startDay = new Date(start);
+    startDay.setHours(0, 0, 0, 0);
+    const endDay = new Date(end);
+    endDay.setHours(0, 0, 0, 0);
+
+    const dayRows: Array<{ day: Date; collected: number; transactions: number }> = [];
+    for (let d = new Date(startDay); d.getTime() <= endDay.getTime(); d.setDate(d.getDate() + 1)) {
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(d);
+      dayEnd.setHours(23, 59, 59, 999);
+      const min = dayStart.getTime();
+      const max = dayEnd.getTime();
+
+      let collected = 0;
+      let transactions = 0;
+      unified.forEach(row => {
+        const amt = collectedAmountInRange(row, min, max, row.date);
+        if (amt > 0) {
+          collected += amt;
+          transactions += 1;
+        }
+      });
+      dayRows.push({ day: new Date(dayStart), collected: round2(collected), transactions });
+    }
+
+    if (range === 'thisWeek') {
+      const totalCollected = round2(dayRows.reduce((s, r) => s + r.collected, 0));
+      const totalTx = dayRows.reduce((s, r) => s + r.transactions, 0);
+      return { kind: 'week' as const, rows: dayRows, totalCollected, totalTx };
+    }
+
+    const weeks = new Map<string, { start: Date; end: Date; collected: number; transactions: number }>();
+    dayRows.forEach(r => {
+      const ws = startOfLocalWeek(r.day);
+      const key = ws.toISOString();
+      const existing = weeks.get(key);
+      const we = new Date(ws);
+      we.setDate(we.getDate() + 6);
+      we.setHours(23, 59, 59, 999);
+      if (!existing) {
+        weeks.set(key, { start: ws, end: we, collected: r.collected, transactions: r.transactions });
+      } else {
+        existing.collected = round2(existing.collected + r.collected);
+        existing.transactions += r.transactions;
+      }
+    });
+    const orderedWeeks = Array.from(weeks.values()).sort((a, b) => a.start.getTime() - b.start.getTime());
+    const totalCollected = round2(orderedWeeks.reduce((s, w) => s + w.collected, 0));
+    const totalTx = orderedWeeks.reduce((s, w) => s + w.transactions, 0);
+    return { kind: 'month' as const, rows: orderedWeeks, totalCollected, totalTx };
+  }, [end, monthTrendsEnabled, range, start, unified, weekTrendsEnabled]);
+
+  const trendSectionHtml = useMemo(() => {
+    if (!trendData) return '';
+
+    const startDay = new Date(start);
+    startDay.setHours(0, 0, 0, 0);
+    const endDay = new Date(end);
+    endDay.setHours(0, 0, 0, 0);
+
+    const dayRows: Array<{ day: Date; collected: number; transactions: number }> = [];
+    for (let d = new Date(startDay); d.getTime() <= endDay.getTime(); d.setDate(d.getDate() + 1)) {
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(d);
+      dayEnd.setHours(23, 59, 59, 999);
+      const min = dayStart.getTime();
+      const max = dayEnd.getTime();
+
+      let collected = 0;
+      let transactions = 0;
+      unified.forEach(row => {
+        const amt = collectedAmountInRange(row, min, max, row.date);
+        if (amt > 0) {
+          collected += amt;
+          transactions += 1;
+        }
+      });
+
+      dayRows.push({ day: new Date(dayStart), collected: round2(collected), transactions });
+    }
+
+    const tableStyle = 'border-collapse:collapse;width:100%;margin-top:8px;';
+    const thStyle = 'text-align:left;padding:8px;border:1px solid #27272a;background:#111113;color:#39FF14;font-size:12px;';
+    const tdStyle = 'padding:8px;border:1px solid #27272a;font-size:12px;color:#f8f8f8;';
+    const sectionTitleStyle = 'margin-top:12px;font-size:13px;font-weight:700;color:#39FF14;';
+    const subStyle = 'font-size:12px;color:#a1a1aa;margin-top:2px;';
+
+    if (trendData.kind === 'week') {
+      const rowsHtml = trendData.rows.map(r => {
+        const label = r.day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        return `<tr>`
+          + `<td style="${tdStyle}">${escapeHtml(label)}</td>`
+          + `<td style="${tdStyle}">${escapeHtml(formatCurrency(r.collected))}</td>`
+          + `<td style="${tdStyle}">${escapeHtml(String(r.transactions))}</td>`
+          + `</tr>`;
+      }).join('');
+
+      return `
+        <div style="${sectionTitleStyle}">Trends (This week)</div>
+        <div style="${subStyle}">Daily collected totals across the selected week.</div>
+        <table style="${tableStyle}">
+          <thead>
+            <tr>
+              <th style="${thStyle}">Day</th>
+              <th style="${thStyle}">Collected</th>
+              <th style="${thStyle}">Transactions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            <tr>
+              <td style="${tdStyle}"><b>Total</b></td>
+              <td style="${tdStyle}"><b>${escapeHtml(formatCurrency(trendData.totalCollected))}</b></td>
+              <td style="${tdStyle}"><b>${escapeHtml(String(trendData.totalTx))}</b></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    const rowsHtml = trendData.rows.map(w => {
+      const label = `${w.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${w.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      return `<tr>`
+        + `<td style="${tdStyle}">${escapeHtml(label)}</td>`
+        + `<td style="${tdStyle}">${escapeHtml(formatCurrency(w.collected))}</td>`
+        + `<td style="${tdStyle}">${escapeHtml(String(w.transactions))}</td>`
+        + `</tr>`;
+    }).join('');
+
+    return `
+      <div style="${sectionTitleStyle}">Trends (This month)</div>
+      <div style="${subStyle}">Week-by-week collected totals across the selected month.</div>
+      <table style="${tableStyle}">
+        <thead>
+          <tr>
+            <th style="${thStyle}">Week</th>
+            <th style="${thStyle}">Collected</th>
+            <th style="${thStyle}">Transactions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr>
+            <td style="${tdStyle}"><b>Total</b></td>
+            <td style="${tdStyle}"><b>${escapeHtml(formatCurrency(trendData.totalCollected))}</b></td>
+            <td style="${tdStyle}"><b>${escapeHtml(String(trendData.totalTx))}</b></td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }, [trendData]);
 
   const subject = useMemo(() => {
-    return settings.subject || 'Daily batch report';
-  }, [settings.subject]);
+    return draftSettings.subject || 'Daily batch report';
+  }, [draftSettings.subject]);
+
+  const savedReportPrefs = useMemo(() => {
+    return {
+      recipients: savedSettings.recipients,
+      subject: savedSettings.subject || '',
+      includePayments: !!savedSettings.includePayments,
+      includeCounts: !!savedSettings.includeCounts,
+      includeBatchInfo: !!savedSettings.includeBatchInfo,
+      includeWorkOrders: !!savedSettings.includeWorkOrders,
+      includeSales: !!savedSettings.includeSales,
+      includeOutstanding: !!savedSettings.includeOutstanding,
+      emailIncludeTrends: savedSettings.emailIncludeTrends !== false,
+      emailIncludeTrendsWeek: savedSettings.emailIncludeTrendsWeek,
+      emailIncludeTrendsMonth: savedSettings.emailIncludeTrendsMonth,
+      emailIncludeOpenTickets: !!savedSettings.emailIncludeOpenTickets,
+      emailIncludeWorkOrdersDetails: !!savedSettings.emailIncludeWorkOrdersDetails,
+      emailIncludeSalesDetails: !!savedSettings.emailIncludeSalesDetails,
+      emailIncludeOutstandingDetails: !!savedSettings.emailIncludeOutstandingDetails,
+      emailIncludeTechnicianSummary: !!savedSettings.emailIncludeTechnicianSummary,
+    };
+  }, [savedSettings.emailIncludeOpenTickets, savedSettings.emailIncludeOutstandingDetails, savedSettings.emailIncludeSalesDetails, savedSettings.emailIncludeTechnicianSummary, savedSettings.emailIncludeTrends, savedSettings.emailIncludeTrendsMonth, savedSettings.emailIncludeTrendsWeek, savedSettings.emailIncludeWorkOrdersDetails, savedSettings.includeBatchInfo, savedSettings.includeCounts, savedSettings.includeOutstanding, savedSettings.includePayments, savedSettings.includeSales, savedSettings.includeWorkOrders, savedSettings.recipients, savedSettings.subject]);
+
+  const draftReportPrefs = useMemo(() => {
+    return {
+      recipients: draftSettings.recipients,
+      subject: draftSettings.subject || '',
+      includePayments: !!draftSettings.includePayments,
+      includeCounts: !!draftSettings.includeCounts,
+      includeBatchInfo: !!draftSettings.includeBatchInfo,
+      includeWorkOrders: !!draftSettings.includeWorkOrders,
+      includeSales: !!draftSettings.includeSales,
+      includeOutstanding: !!draftSettings.includeOutstanding,
+      emailIncludeTrends: draftSettings.emailIncludeTrends !== false,
+      emailIncludeTrendsWeek: draftSettings.emailIncludeTrendsWeek,
+      emailIncludeTrendsMonth: draftSettings.emailIncludeTrendsMonth,
+      emailIncludeOpenTickets: !!draftSettings.emailIncludeOpenTickets,
+      emailIncludeWorkOrdersDetails: !!draftSettings.emailIncludeWorkOrdersDetails,
+      emailIncludeSalesDetails: !!draftSettings.emailIncludeSalesDetails,
+      emailIncludeOutstandingDetails: !!draftSettings.emailIncludeOutstandingDetails,
+      emailIncludeTechnicianSummary: !!draftSettings.emailIncludeTechnicianSummary,
+    };
+  }, [draftSettings.emailIncludeOpenTickets, draftSettings.emailIncludeOutstandingDetails, draftSettings.emailIncludeSalesDetails, draftSettings.emailIncludeTechnicianSummary, draftSettings.emailIncludeTrends, draftSettings.emailIncludeTrendsMonth, draftSettings.emailIncludeTrendsWeek, draftSettings.emailIncludeWorkOrdersDetails, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, draftSettings.recipients, draftSettings.subject]);
+
+  const draftPrefsDirty = useMemo(() => {
+    return JSON.stringify(draftReportPrefs) !== JSON.stringify(savedReportPrefs);
+  }, [draftReportPrefs, savedReportPrefs]);
+
+  const resetDraftToSaved = () => {
+    setDraftSettings(s => ({ ...s, ...savedReportPrefs }));
+  };
+
+  const saveDraftAsDefault = () => {
+    setSavedSettings(s => ({ ...s, ...draftReportPrefs }));
+    setDraftSettings(s => ({ ...s, ...draftReportPrefs }));
+  };
 
   const filteredLists = useMemo(() => {
     const workOrderRows = unified.filter(row => row.kind === 'work');
@@ -1333,6 +1620,157 @@ const EODWindow: React.FC = () => {
     };
   }, [activeList, filteredLists]);
 
+  const emailText = useMemo(() => {
+    const parts: string[] = [];
+    if (presetBody) parts.push(presetBody);
+
+    const extras: string[] = [];
+    if (draftSettings.emailIncludeWorkOrdersDetails) extras.push('Work orders table included');
+    if (draftSettings.emailIncludeSalesDetails) extras.push('Sales table included');
+    if (draftSettings.emailIncludeOutstandingDetails) extras.push('Outstanding balances table included');
+    if (draftSettings.emailIncludeOpenTickets) extras.push('Open tickets table included');
+    if (draftSettings.emailIncludeTechnicianSummary) extras.push('Technician summary included');
+    if (extras.length) parts.push(`\nDetails: ${extras.join(' · ')}`);
+
+    return parts.filter(Boolean).join('\n\n').trim();
+  }, [draftSettings.emailIncludeOpenTickets, draftSettings.emailIncludeOutstandingDetails, draftSettings.emailIncludeSalesDetails, draftSettings.emailIncludeTechnicianSummary, draftSettings.emailIncludeWorkOrdersDetails, presetBody]);
+
+  const emailDetailsHtml = useMemo(() => {
+    const tableStyle = 'border-collapse:collapse;width:100%;margin-top:8px;';
+    const thStyle = 'text-align:left;padding:8px;border:1px solid #27272a;background:#111113;color:#39FF14;font-size:12px;';
+    const tdStyle = 'padding:8px;border:1px solid #27272a;font-size:12px;color:#f8f8f8;vertical-align:top;';
+    const sectionTitleStyle = 'margin-top:14px;font-size:13px;font-weight:700;color:#39FF14;';
+    const subStyle = 'font-size:12px;color:#a1a1aa;margin-top:2px;';
+
+    const renderTable = (title: string, subtitle: string, headers: string[], rows: string[][]) => {
+      if (!rows.length) return '';
+      const head = headers.map(h => `<th style="${thStyle}">${escapeHtml(h)}</th>`).join('');
+      const body = rows.map(r => `<tr>${r.map(cell => `<td style="${tdStyle}">${escapeHtml(cell)}</td>`).join('')}</tr>`).join('');
+      return `
+        <div style="${sectionTitleStyle}">${escapeHtml(title)}</div>
+        ${subtitle ? `<div style="${subStyle}">${escapeHtml(subtitle)}</div>` : ''}
+        <table style="${tableStyle}">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      `;
+    };
+
+    const blocks: string[] = [];
+
+    if (draftSettings.emailIncludeWorkOrdersDetails) {
+      const rows = filteredLists.work.slice(0, 20).map(r => ([
+        String(r.id ?? ''),
+        r.date ? r.date.toLocaleDateString() : '',
+        (r.customerName || '').toString(),
+        formatCurrency(Number(r.total || 0) || 0),
+        formatCurrency(Number(r.paid || 0) || 0),
+        formatCurrency(Number(r.remaining || 0) || 0),
+        (r.status || '').toString(),
+      ]));
+      blocks.push(renderTable('Work orders (in range)', 'Showing up to 20', ['Ticket', 'Date', 'Customer', 'Total', 'Paid', 'Remaining', 'Status'], rows));
+    }
+
+    if (draftSettings.emailIncludeSalesDetails) {
+      const rows = filteredLists.sales.slice(0, 20).map(r => ([
+        String(r.id ?? ''),
+        r.date ? r.date.toLocaleDateString() : '',
+        (r.customerName || '').toString(),
+        (r.title || 'Sale').toString(),
+        formatCurrency(Number(r.total || 0) || 0),
+        formatCurrency(Number(r.paid || 0) || 0),
+        formatCurrency(Number(r.remaining || 0) || 0),
+      ]));
+      blocks.push(renderTable('Sales (in range)', 'Showing up to 20', ['Ticket', 'Date', 'Customer', 'Item', 'Total', 'Paid', 'Remaining'], rows));
+    }
+
+    if (draftSettings.emailIncludeOutstandingDetails) {
+      const sorted = [...filteredLists.outstanding].sort((a, b) => (Number(b.remaining || 0) || 0) - (Number(a.remaining || 0) || 0));
+      const rows = sorted.slice(0, 20).map(r => ([
+        `${r.kind === 'work' ? 'WO' : 'Sale'} ${String(r.id ?? '')}`,
+        r.date ? r.date.toLocaleDateString() : '',
+        (r.customerName || '').toString(),
+        formatCurrency(Number(r.total || 0) || 0),
+        formatCurrency(Number(r.paid || 0) || 0),
+        formatCurrency(Number(r.remaining || 0) || 0),
+      ]));
+      blocks.push(renderTable('Outstanding balances', 'Showing up to 20 (highest remaining first)', ['Ticket', 'Date', 'Customer', 'Total', 'Paid', 'Remaining'], rows));
+    }
+
+    if (draftSettings.emailIncludeOpenTickets) {
+      const rows = filteredLists.openTickets.slice(0, 20).map(r => ([
+        `${r.kind === 'work' ? 'WO' : 'Sale'} ${String(r.id ?? '')}`,
+        r.date ? r.date.toLocaleDateString() : '',
+        (r.customerName || '').toString(),
+        (r.status || '').toString(),
+        r.checkoutDate ? 'Yes' : 'No',
+        formatCurrency(Number(r.remaining || 0) || 0),
+      ]));
+      blocks.push(renderTable('Open tickets', 'Showing up to 20', ['Ticket', 'Date', 'Customer', 'Status', 'Checked out', 'Remaining'], rows));
+    }
+
+    if (draftSettings.emailIncludeTechnicianSummary) {
+      const rows = technicianSummaryRows.slice(0, 10).map(r => ([
+        (techAliasToCanonical.labelMap.get(r.tech) || r.tech || '').toString(),
+        String(r.workOrders || 0),
+        String(r.sales || 0),
+        formatCurrency(Number(r.collected || 0) || 0),
+        formatCurrency(Number(r.remaining || 0) || 0),
+      ]));
+      blocks.push(renderTable('Technician summary', 'Showing up to 10', ['Technician', 'Work', 'Sales', 'Collected', 'Remaining'], rows));
+    }
+
+    return blocks.filter(Boolean).join('');
+  }, [draftSettings.emailIncludeOpenTickets, draftSettings.emailIncludeOutstandingDetails, draftSettings.emailIncludeSalesDetails, draftSettings.emailIncludeTechnicianSummary, draftSettings.emailIncludeWorkOrdersDetails, filteredLists.openTickets, filteredLists.outstanding, filteredLists.sales, filteredLists.work, techAliasToCanonical.labelMap, technicianSummaryRows]);
+
+  const emailHtml = useMemo(() => {
+    const wrapperStyle = 'font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;';
+    const headerStyle = 'font-size:14px;font-weight:700;color:#39FF14;margin-bottom:10px;';
+    const tableStyle = 'border-collapse:collapse;width:100%;';
+    const tdLabel = 'padding:6px 8px;border:1px solid #27272a;color:#a1a1aa;font-size:12px;width:220px;';
+    const tdVal = 'padding:6px 8px;border:1px solid #27272a;color:#f8f8f8;font-size:12px;';
+
+    const header = `Batch report for ${rangeLabel(range, start, end)}`;
+
+    if (!reportHasAnyActivity) {
+      const last = (draftSettings.includeBatchInfo && batchInfo)
+        ? (batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run')
+        : '';
+      const extra = last ? `<div style="margin-top:10px;color:#a1a1aa;font-size:12px;">Last Batch Out: ${escapeHtml(last)}</div>` : '';
+      return `<div style="${wrapperStyle}"><div style="${headerStyle}">${escapeHtml(header)}</div><div>No activity in range.</div>${extra}${trendSectionHtml}${emailDetailsHtml}</div>`;
+    }
+
+    const rows: Array<[string, string]> = [];
+    if (draftSettings.includePayments) {
+      rows.push(['Total taken in', formatCurrency(dailyBatchSummary.totalTaken)]);
+      rows.push(['Card', formatCurrency(dailyBatchSummary.cardTotal)]);
+      rows.push(['Cash', formatCurrency(dailyBatchSummary.cashTotal)]);
+    }
+    if (draftSettings.includeCounts) {
+      rows.push(['Check-ins', String(dailyBatchSummary.checkInCount)]);
+      rows.push(['Closed tickets', String(dailyBatchSummary.closedTicketCount)]);
+    }
+    if (draftSettings.includeWorkOrders) {
+      rows.push(['Work orders', `${summary.woTotals.count} · Collected ${formatCurrency(summary.woTotals.collected)} · Remaining ${formatCurrency(summary.woTotals.remaining)}`]);
+    }
+    if (draftSettings.includeSales) {
+      rows.push(['Sales', `${summary.saTotals.count} · Collected ${formatCurrency(summary.saTotals.collected)} · Remaining ${formatCurrency(summary.saTotals.remaining)}`]);
+    }
+    if (draftSettings.includeOutstanding) {
+      rows.push(['Outstanding total', formatCurrency(summary.grandRemaining)]);
+    }
+    if (draftSettings.includeBatchInfo && batchInfo) {
+      const last = batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run';
+      rows.push(['Last Batch Out', last]);
+    }
+
+    const body = rows
+      .map(([k, v]) => `<tr><td style="${tdLabel}">${escapeHtml(k)}</td><td style="${tdVal}">${escapeHtml(v)}</td></tr>`)
+      .join('');
+
+    return `<div style="${wrapperStyle}"><div style="${headerStyle}">${escapeHtml(header)}</div><table style="${tableStyle}"><tbody>${body}</tbody></table>${trendSectionHtml}${emailDetailsHtml}</div>`;
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, emailDetailsHtml, end, range, reportHasAnyActivity, start, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining, trendSectionHtml]);
+
   async function handleRowOpen(row: UnifiedRow) {
     const api = (window as any).api;
     if (!api) return;
@@ -1351,7 +1789,7 @@ const EODWindow: React.FC = () => {
 
   async function handleSend() {
     if (sending) return;
-    const recipients = (settings.recipients || '').split(/[;,]/).map(r => r.trim()).filter(Boolean);
+    const recipients = (draftSettings.recipients || '').split(/[;,]/).map(r => r.trim()).filter(Boolean);
     if (!recipients.length) { alert('Add at least one recipient'); return; }
     setSending(true);
     try {
@@ -1361,25 +1799,17 @@ const EODWindow: React.FC = () => {
         return;
       }
       const sentAtIso = new Date().toISOString();
-      let text = presetBody;
-      if (settings.includeBatchInfo) {
-        const stamp = `Batch Out: ${formatDate(sentAtIso)}`;
-        text = /^Batch Out:.*$/m.test(text)
-          ? text.replace(/^Batch Out:.*$/m, stamp)
-          : [text, stamp].filter(Boolean).join('\n');
+      let text = emailText;
+      let html = emailHtml;
+      if (draftSettings.includeBatchInfo) {
+        const stamp = `Sent: ${formatDate(sentAtIso)}`;
+        text = [text, stamp].filter(Boolean).join('\n\n');
+        html = `${html}<div style="margin-top:10px;color:#a1a1aa;font-size:12px;">${escapeHtml(stamp)}</div>`;
       }
-
-      const sendHtml = (() => {
-        const bodyBlock = text
-          .split('\n')
-          .map(line => line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-          .join('<br/>');
-        return `<div style="font-family:Arial, sans-serif;font-size:13px;color:#f8f8f8;background:#0b0b0c;padding:12px;white-space:normal;">${bodyBlock}</div>`;
-      })();
       for (const to of recipients) {
-        await api.emailSendReportHtml({ to, subject, bodyText: text, html: sendHtml });
+        await api.emailSendReportHtml({ to, subject, bodyText: text, html });
       }
-      setSettings(s => ({ ...s, lastSentAt: sentAtIso }));
+      setSavedSettings(s => ({ ...s, lastSentAt: sentAtIso }));
       alert('Report sent');
     } catch (e) {
       console.error('Report send failed', e);
@@ -1471,6 +1901,8 @@ const EODWindow: React.FC = () => {
                   >
                     <option value="today">Today</option>
                     <option value="yesterday">Yesterday</option>
+                    <option value="thisWeek">This week</option>
+                    <option value="thisMonth">This month</option>
                     <option value="last7">Last 7 days</option>
                     <option value="custom">Custom</option>
                   </select>
@@ -1488,20 +1920,20 @@ const EODWindow: React.FC = () => {
                   </div>
                 )}
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
-                  Report contents are fixed for consistency. Adjust the date range above to change the report window.
+                  Adjust the date range above to change the report window. Email contents are customizable in the Email report section.
                 </div>
               </div>
 
               <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Daily batch totals</h3>
+                  <h3 className="text-lg font-semibold">Batch totals</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : rangeLabel(range, start, end)}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Total taken in</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.totalTaken)}</div>
-                    <div className="text-[11px] text-zinc-400">cash plus card for the selected day</div>
+                    <div className="text-[11px] text-zinc-400">cash plus card for the selected range</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Card</div>
@@ -1890,70 +2322,285 @@ const EODWindow: React.FC = () => {
             ) : null}
 
             <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-7 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                <div className="flex items-center justify-between">
+              <div className="col-span-12 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <h3 className="text-lg font-semibold">Email report</h3>
                     <div className="text-xs text-zinc-500">Subject: {subject}</div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Recipients</label>
-                    <textarea
-                      rows={2}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
-                      placeholder="ops@gadgetboy.com; owner@gadgetboy.com"
-                      value={settings.recipients}
-                      onChange={e => setSettings(s => ({ ...s, recipients: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Subject</label>
-                    <input
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
-                      value={settings.subject || ''}
-                      onChange={e => setSettings(s => ({ ...s, subject: e.target.value }))}
-                    />
-                    <div className="text-[11px] text-zinc-500 mt-1">Sent at the scheduled batch-out time.</div>
+                  <div className="flex items-center gap-2">
+                    <div className={`text-xs ${draftPrefsDirty ? 'text-yellow-200' : 'text-zinc-500'}`}>{draftPrefsDirty ? 'Unsaved changes' : 'Using saved defaults'}</div>
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50"
+                      onClick={resetDraftToSaved}
+                      disabled={!draftPrefsDirty}
+                      title="Discard changes and return to your saved default report preferences"
+                    >Reset</button>
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-xs bg-[#39FF14] text-black border border-[#39FF14] rounded hover:brightness-110 disabled:opacity-50"
+                      onClick={saveDraftAsDefault}
+                      disabled={!draftPrefsDirty}
+                      title="Save the current report preferences as your default"
+                    >Save as default</button>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Generated message body</label>
-                  <div className="bg-zinc-800 border border-zinc-700 rounded p-3 text-xs text-zinc-200 space-y-2">
-                    <div className="font-semibold text-zinc-100">Email body preview</div>
-                    <pre className="whitespace-pre-wrap text-[12px] text-zinc-300">{presetBody || 'No data in range.'}</pre>
+
+                <div className="grid grid-cols-12 gap-3">
+                  <div className="col-span-12 lg:col-span-7 flex flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Recipients</label>
+                        <textarea
+                          rows={2}
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
+                          placeholder="ops@gadgetboy.com; owner@gadgetboy.com"
+                          value={draftSettings.recipients}
+                          onChange={e => setDraftSettings(s => ({ ...s, recipients: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Subject</label>
+                        <input
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
+                          value={draftSettings.subject || ''}
+                          onChange={e => setDraftSettings(s => ({ ...s, subject: e.target.value }))}
+                        />
+                        <div className="text-[11px] text-zinc-500 mt-1">Sent at the scheduled batch-out time.</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3">
+                      <div className="text-sm font-semibold mb-2">Report preferences (this send)</div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includePayments} onChange={e => setDraftSettings(s => ({ ...s, includePayments: e.target.checked }))} />
+                          <span>Include payment totals (total/card/cash)</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includeCounts} onChange={e => setDraftSettings(s => ({ ...s, includeCounts: e.target.checked }))} />
+                          <span>Include counts (check-ins/closed)</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includeWorkOrders} onChange={e => setDraftSettings(s => ({ ...s, includeWorkOrders: e.target.checked }))} />
+                          <span>Include work order summary line</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includeSales} onChange={e => setDraftSettings(s => ({ ...s, includeSales: e.target.checked }))} />
+                          <span>Include sales summary line</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includeOutstanding} onChange={e => setDraftSettings(s => ({ ...s, includeOutstanding: e.target.checked }))} />
+                          <span>Include outstanding total line</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={!!draftSettings.includeBatchInfo} onChange={e => setDraftSettings(s => ({ ...s, includeBatchInfo: e.target.checked }))} />
+                          <span>Include batch info (last batch out / sent stamp)</span>
+                        </label>
+                        <div className="col-span-2 pt-1">
+                          <div className="text-xs text-zinc-400 mb-2">Weekly / Monthly</div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className={`px-2.5 py-1 text-xs rounded border transition-colors ${range === 'thisWeek' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
+                              onClick={() => { setRange('thisWeek'); setTrendEditor(prev => (prev === 'week' ? null : 'week')); }}
+                              title="Weekly report options"
+                            >Weekly</button>
+                            <button
+                              type="button"
+                              className={`px-2.5 py-1 text-xs rounded border transition-colors ${range === 'thisMonth' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
+                              onClick={() => { setRange('thisMonth'); setTrendEditor(prev => (prev === 'month' ? null : 'month')); }}
+                              title="Monthly report options"
+                            >Monthly</button>
+                            <div className="text-[11px] text-zinc-500">Buttons switch the preview range.</div>
+                          </div>
+                          {trendEditor === 'week' ? (
+                            <label className="mt-2 flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={weekTrendsEnabled}
+                                onChange={e => setDraftSettings(s => ({ ...s, emailIncludeTrendsWeek: e.target.checked }))}
+                              />
+                              <span>Include weekly trends table</span>
+                            </label>
+                          ) : null}
+                          {trendEditor === 'month' ? (
+                            <label className="mt-2 flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={monthTrendsEnabled}
+                                onChange={e => setDraftSettings(s => ({ ...s, emailIncludeTrendsMonth: e.target.checked }))}
+                              />
+                              <span>Include monthly trends table</span>
+                            </label>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-zinc-700">
+                        <div className="text-xs text-zinc-400 mb-2">Optional detail tables (emails can get long)</div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={!!draftSettings.emailIncludeWorkOrdersDetails} onChange={e => setDraftSettings(s => ({ ...s, emailIncludeWorkOrdersDetails: e.target.checked }))} />
+                            <span>Work orders table</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={!!draftSettings.emailIncludeSalesDetails} onChange={e => setDraftSettings(s => ({ ...s, emailIncludeSalesDetails: e.target.checked }))} />
+                            <span>Sales table</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={!!draftSettings.emailIncludeOutstandingDetails} onChange={e => setDraftSettings(s => ({ ...s, emailIncludeOutstandingDetails: e.target.checked }))} />
+                            <span>Outstanding balances table</span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={!!draftSettings.emailIncludeOpenTickets} onChange={e => setDraftSettings(s => ({ ...s, emailIncludeOpenTickets: e.target.checked }))} />
+                            <span>Open tickets table</span>
+                          </label>
+                          <label className="flex items-center gap-2 col-span-2">
+                            <input type="checkbox" checked={!!draftSettings.emailIncludeTechnicianSummary} onChange={e => setDraftSettings(s => ({ ...s, emailIncludeTechnicianSummary: e.target.checked }))} />
+                            <span>Technician summary table</span>
+                          </label>
+                        </div>
+                        <div className="text-[11px] text-zinc-500 mt-1">Tables are capped (usually first/top 20) to keep emails readable.</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="col-span-12 lg:col-span-5">
+                    <label className="block text-xs text-zinc-400 mb-1">Email preview</label>
+                    <div className="bg-zinc-800 border border-zinc-700 rounded p-3 text-xs text-zinc-200 space-y-2">
+                      <div className="font-semibold text-zinc-100">Preview</div>
+                      <div className="rounded border border-zinc-700 overflow-auto max-h-[680px] p-3 space-y-3">
+                        <div className="text-sm font-semibold text-[#39FF14]">Batch report for {rangeLabel(range, start, end)}</div>
+                        {!reportHasAnyActivity ? (
+                          <div className="text-sm text-zinc-300">No activity in range.</div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-1 text-sm">
+                            {draftSettings.includePayments ? (
+                              <>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Total taken in</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.totalTaken)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Card</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cardTotal)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Cash</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cashTotal)}</div></div>
+                              </>
+                            ) : null}
+                            {draftSettings.includeCounts ? (
+                              <>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Check-ins</div><div className="tabular-nums">{dailyBatchSummary.checkInCount}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Closed tickets</div><div className="tabular-nums">{dailyBatchSummary.closedTicketCount}</div></div>
+                              </>
+                            ) : null}
+                            {draftSettings.includeWorkOrders ? (
+                              <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Work orders</div><div className="tabular-nums">{summary.woTotals.count} · Collected {formatCurrency(summary.woTotals.collected)} · Remaining {formatCurrency(summary.woTotals.remaining)}</div></div>
+                            ) : null}
+                            {draftSettings.includeSales ? (
+                              <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Sales</div><div className="tabular-nums">{summary.saTotals.count} · Collected {formatCurrency(summary.saTotals.collected)} · Remaining {formatCurrency(summary.saTotals.remaining)}</div></div>
+                            ) : null}
+                            {draftSettings.includeOutstanding ? (
+                              <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Outstanding total</div><div className="tabular-nums">{formatCurrency(summary.grandRemaining)}</div></div>
+                            ) : null}
+                            {draftSettings.includeBatchInfo ? (
+                              <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Last Batch Out</div><div className="tabular-nums">{batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div></div>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {trendData ? (
+                          <div className="pt-3 border-t border-zinc-700">
+                            <div className="text-sm font-semibold text-zinc-100">Trends ({trendData.kind === 'week' ? 'This week' : 'This month'})</div>
+                            <div className="overflow-x-auto mt-2">
+                              <table className="min-w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs uppercase tracking-wide text-zinc-400">
+                                    <th className="py-1 pr-2 text-left">{trendData.kind === 'week' ? 'Day' : 'Week'}</th>
+                                    <th className="py-1 pr-2 text-right">Collected</th>
+                                    <th className="py-1 text-right">Tx</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-700">
+                                  {trendData.kind === 'week' ? (
+                                    (trendData.rows as Array<{ day: Date; collected: number; transactions: number }>).map(r => (
+                                      <tr key={r.day.toISOString()}>
+                                        <td className="py-1 pr-2 text-zinc-300">{r.day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                                        <td className="py-1 pr-2 text-right tabular-nums">{formatCurrency(r.collected)}</td>
+                                        <td className="py-1 text-right tabular-nums">{r.transactions}</td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    (trendData.rows as Array<{ start: Date; end: Date; collected: number; transactions: number }>).map(w => (
+                                      <tr key={w.start.toISOString()}>
+                                        <td className="py-1 pr-2 text-zinc-300">{w.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {w.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+                                        <td className="py-1 pr-2 text-right tabular-nums">{formatCurrency(w.collected)}</td>
+                                        <td className="py-1 text-right tabular-nums">{w.transactions}</td>
+                                      </tr>
+                                    ))
+                                  )}
+                                  <tr>
+                                    <td className="py-1 pr-2 font-semibold text-zinc-200">Total</td>
+                                    <td className="py-1 pr-2 text-right font-semibold tabular-nums text-zinc-200">{formatCurrency(trendData.totalCollected)}</td>
+                                    <td className="py-1 text-right font-semibold tabular-nums text-zinc-200">{trendData.totalTx}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {(draftSettings.emailIncludeWorkOrdersDetails || draftSettings.emailIncludeSalesDetails || draftSettings.emailIncludeOutstandingDetails || draftSettings.emailIncludeOpenTickets || draftSettings.emailIncludeTechnicianSummary) ? (
+                          <div className="text-[11px] text-zinc-500">Detail tables (if enabled) are included in the emailed report.</div>
+                        ) : null}
+                      </div>
+                      <div className="text-[11px] text-zinc-500">Plain text fallback is sent automatically (not shown).</div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="col-span-5 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="col-span-12 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <h3 className="text-lg font-semibold">EOD Batches</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Schedule</label>
                     <select
                       className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
-                      value={settings.schedule}
-                      onChange={e => setSettings(s => ({ ...s, schedule: e.target.value as EodSettings['schedule'] }))}
+                        value={savedSettings.schedule}
+                        onChange={e => {
+                          const next = e.target.value as EodSettings['schedule'];
+                          setSavedSettings(s => ({
+                            ...s,
+                            schedule: next,
+                            sendTime: (next === 'weekly' || next === 'monthly') ? '00:00' : (s.sendTime || '18:00'),
+                          }));
+                        }}
                     >
                       <option value="manual">Manual only</option>
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Send time</label>
-                    <input type="time" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={settings.sendTime} onChange={e => setSettings(s => ({ ...s, sendTime: e.target.value }))} />
+                      <input
+                        type="time"
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
+                        value={(savedSettings.schedule === 'weekly' || savedSettings.schedule === 'monthly') ? '00:00' : savedSettings.sendTime}
+                        disabled={savedSettings.schedule === 'weekly' || savedSettings.schedule === 'monthly'}
+                        onChange={e => setSavedSettings(s => ({ ...s, sendTime: e.target.value }))}
+                      />
                   </div>
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Batch Out time</label>
-                    <input type="time" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={settings.batchOutTime || ''} onChange={e => setSettings(s => ({ ...s, batchOutTime: e.target.value }))} />
+                      <input type="time" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={savedSettings.batchOutTime || ''} onChange={e => setSavedSettings(s => ({ ...s, batchOutTime: e.target.value }))} />
                   </div>
                 </div>
-                <div className="text-xs text-zinc-500 -mt-1">This schedule controls batch-out and email timing only.</div>
+                <div className="text-xs text-zinc-500 -mt-1">
+                  This schedule controls batch-out and email timing only.
+                  {(savedSettings.schedule === 'weekly') ? ' Weekly emails send at 12:00 AM Sunday (end-of-week).' : ''}
+                  {(savedSettings.schedule === 'monthly') ? ' Monthly emails send at 12:00 AM on the 1st (covers the previous month).' : ''}
+                </div>
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
-                  <div>Last sent: {settings.lastSentAt ? formatDate(settings.lastSentAt) : 'Not yet sent'}</div>
+                    <div>Last sent: {savedSettings.lastSentAt ? formatDate(savedSettings.lastSentAt) : 'Not yet sent'}</div>
                   <div>Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
                 </div>
                 <div className="flex gap-2">

@@ -30,6 +30,39 @@ function getReceiptFlags() {
   }
 }
 
+function round2(n: number) {
+  return Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function parseDateValue(value: any): Date | null {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const d = new Date(String(value));
+  if (!Number.isNaN(d.getTime())) return d;
+  return null;
+}
+
+function canonicalPaymentType(raw: any): string {
+  const s = String(raw || '').trim();
+  const t = s.toLowerCase();
+  if (t.includes('cash')) return 'Cash';
+  if (t.includes('card') || t.includes('credit') || t.includes('debit')) return 'Card';
+  if (t.includes('apple')) return 'Apple Pay';
+  if (t.includes('google')) return 'Google Pay';
+  if (!s) return 'Other';
+  return s;
+}
+
+function paymentAppliedAmount(p: any): number {
+  const applied = Number(p?.applied);
+  if (Number.isFinite(applied) && applied > 0) return round2(applied);
+  const amount = Number(p?.amount ?? p?.tender ?? p?.paid ?? 0);
+  const change = Number(p?.change ?? p?.changeDue ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (Number.isFinite(change) && change > 0) return round2(Math.max(0, amount - change));
+  return round2(amount);
+}
+
 const CustomerReceiptWindow: React.FC = () => {
   const [data, setData] = useState<any>(() => getPayload() || {});
   const flags = useMemo(() => getReceiptFlags(), []);
@@ -73,6 +106,18 @@ const CustomerReceiptWindow: React.FC = () => {
         }
         if (!wo || !alive) return;
         const enriched: any = { ...wo };
+
+        // If this work order has a linked add-on Sale, include it in the payload.
+        try {
+          const addonSaleId = Number((wo as any).addonSaleId || 0) || 0;
+          if (addonSaleId && api?.dbGet) {
+            const sales = await api.dbGet('sales').catch(() => []);
+            const found = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+            enriched.addonSaleId = addonSaleId;
+            enriched.addonSale = found || null;
+          }
+        } catch {}
+
         if (wo.customerId && api.findCustomers) {
           try {
             const customers = await api.findCustomers({ id: wo.customerId });
@@ -218,6 +263,94 @@ const CustomerReceiptWindow: React.FC = () => {
       return { id: String(it.id || idx), description, qty, price, total };
     });
   }, [isSaleReceipt, items]);
+
+  const addonSale = !isSaleReceipt ? ((data as any).addonSale || null) : null;
+  const addonSaleItems: Array<{ id: string; description: string; qty: number; price: number; total: number }> = useMemo(() => {
+    if (isSaleReceipt) return [];
+    const s = addonSale as any;
+    const rows = Array.isArray(s?.items) ? s.items : [];
+    return rows.map((it: any, idx: number) => {
+      const qty = Number(it.qty ?? it.quantity ?? 1) || 1;
+      const price = Number(it.price ?? it.unitPrice ?? it.unit_cost ?? 0) || 0;
+      const description = String(it.description || it.itemDescription || it.title || it.name || 'Item');
+      const total = qty * price;
+      return { id: String(it.id || idx), description, qty, price, total };
+    });
+  }, [isSaleReceipt, addonSale]);
+
+  const addonSubTotal = Number((addonSale as any)?.totals?.subTotal ?? (addonSale as any)?.partCosts ?? addonSaleItems.reduce((sum, r) => sum + (Number(r.total) || 0), 0)) || 0;
+  const addonTax = Number((addonSale as any)?.totals?.tax ?? 0) || 0;
+  const addonDiscount = Number((addonSale as any)?.discount ?? 0) || 0;
+  const addonTotalDue = Number((addonSale as any)?.totals?.total ?? (Math.max(0, addonSubTotal - addonDiscount) + addonTax)) || 0;
+  const addonAmountPaid = Number((addonSale as any)?.amountPaid ?? 0) || 0;
+  const addonRemaining = Number((addonSale as any)?.totals?.remaining ?? Math.max(0, addonTotalDue - addonAmountPaid)) || 0;
+
+  const displayPartCosts = !isSaleReceipt ? round2(partCosts + addonSubTotal) : partCosts;
+  const displayTaxes = !isSaleReceipt ? round2(taxes + addonTax) : taxes;
+  const displayAmountPaid = !isSaleReceipt ? round2(amountPaid + addonAmountPaid) : amountPaid;
+  const displayRemaining = !isSaleReceipt ? round2(remaining + addonRemaining) : remaining;
+
+  const paymentRows = useMemo(() => {
+    const basePayments: any[] = Array.isArray((data as any)?.payments) ? (data as any).payments : [];
+    const addonPayments: any[] = (!isSaleReceipt && Array.isArray((addonSale as any)?.payments)) ? (addonSale as any).payments : [];
+    const combined = [...basePayments, ...addonPayments].filter(Boolean);
+
+    const fallbackAmountPaid = Number(displayAmountPaid || 0) || 0;
+    const fallbackPaymentType = (data as any)?.paymentType || (data as any)?.paymentMethod || (data as any)?.method || '';
+    const fallbackAt = (data as any)?.checkoutDate || (data as any)?.closedAt || (data as any)?.createdAt || null;
+
+    const source = combined.length
+      ? combined
+      : ((fallbackAmountPaid > 0 && String(fallbackPaymentType || '').trim())
+          ? [{ paymentType: fallbackPaymentType, amount: fallbackAmountPaid, applied: fallbackAmountPaid, change: 0, at: fallbackAt }]
+          : []);
+
+    const map = new Map<string, { label: string; at?: string; sortTs: number; amount: number; change: number }>();
+
+    for (const p of source) {
+      const rawType = (p as any)?.paymentType ?? (p as any)?.method ?? (p as any)?.type ?? '';
+      const type = canonicalPaymentType(rawType);
+      const isCash = type.toLowerCase().includes('cash');
+
+      const applied = paymentAppliedAmount(p);
+      const tenderedRaw = Number((p as any)?.amount ?? (p as any)?.tender ?? (p as any)?.paid ?? applied);
+      const tendered = Number.isFinite(tenderedRaw) ? round2(Math.max(0, tenderedRaw)) : 0;
+      const changeRaw = Number((p as any)?.change ?? (p as any)?.changeDue ?? 0);
+      const change = Number.isFinite(changeRaw) ? round2(Math.max(0, changeRaw)) : 0;
+
+      const d = parseDateValue((p as any)?.at ?? (p as any)?.date ?? (p as any)?.createdAt ?? (p as any)?.timestamp ?? null);
+      const sortTs = d ? d.getTime() : 0;
+      const at = d
+        ? `${d.toLocaleDateString()} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : undefined;
+
+      const label = isCash ? 'Cash received' : type;
+      const key = `${at || ''}|${label}`;
+      const existing = map.get(key);
+
+      const amountToAdd = isCash ? tendered : applied;
+      const changeToAdd = isCash ? change : 0;
+
+      if (existing) {
+        existing.amount = round2(existing.amount + amountToAdd);
+        existing.change = round2(existing.change + changeToAdd);
+        if (!existing.sortTs && sortTs) existing.sortTs = sortTs;
+        if (!existing.at && at) existing.at = at;
+      } else {
+        map.set(key, {
+          label,
+          at,
+          sortTs,
+          amount: round2(amountToAdd),
+          change: round2(changeToAdd),
+        });
+      }
+    }
+
+    return Array.from(map.values())
+      .filter(r => r.amount > 0.009 || r.change > 0.009)
+      .sort((a, b) => (a.sortTs || 0) - (b.sortTs || 0));
+  }, [data, addonSale, isSaleReceipt, displayAmountPaid]);
 
   const consultationType = (data as any).consultationType as string | undefined;
   const isConsultationReceipt = isSaleReceipt && !!consultationType;
@@ -455,6 +588,19 @@ const CustomerReceiptWindow: React.FC = () => {
                     </tr>
                   );
                 })}
+
+                {addonSaleItems.map((it) => {
+                  const qtySuffix = it.qty && it.qty !== 1 ? ` (x${it.qty})` : '';
+                  const desc = `${it.description || ''}${qtySuffix}`.trim();
+                  const parts = Number(it.total || 0) || 0;
+                  return (
+                    <tr key={`addon-${it.id}`}>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', overflowWrap: 'anywhere' }}>{desc}</td>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{parts ? parts.toFixed(2) : ''}</td>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }} />
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
@@ -485,13 +631,13 @@ const CustomerReceiptWindow: React.FC = () => {
         <div className="totals" style={{ marginBottom: 10 }}>
           {!isSaleReceipt ? (
             <>
-              <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{partCosts.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Total Parts</div><div style={{ marginLeft: 'auto' }}>{displayPartCosts.toFixed(2)}</div></div>
               <div className="row"><div className="label">Total Labor</div><div style={{ marginLeft: 'auto' }}>{laborCost.toFixed(2)}</div></div>
               <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{discount.toFixed(2)}</div></div>
-              <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{taxes.toFixed(2)}</div></div>
-              <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{amountPaid.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Taxes ({taxRate.toFixed(2)}%)</div><div style={{ marginLeft: 'auto' }}>{displayTaxes.toFixed(2)}</div></div>
+              <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{displayAmountPaid.toFixed(2)}</div></div>
               <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-              <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{remaining.toFixed(2)}</strong></div></div>
+              <div className="row"><div className="label"><strong>Remaining Balance</strong></div><div style={{ marginLeft: 'auto' }}><strong>{displayRemaining.toFixed(2)}</strong></div></div>
             </>
           ) : (
             <>
@@ -505,6 +651,33 @@ const CustomerReceiptWindow: React.FC = () => {
             </>
           )}
         </div>
+
+        {paymentRows.length ? (
+          <div className="section muted-bg" style={{ width: '48%', marginLeft: 'auto', pageBreakInside: 'avoid' }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Payments</div>
+            <table className="items" role="table" style={{ tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th scope="col">Payment</th>
+                  <th scope="col" style={{ width: 120, textAlign: 'right' }}>Amount</th>
+                  <th scope="col" style={{ width: 110, textAlign: 'right' }}>Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentRows.map((p, idx) => (
+                  <tr key={`${p.label}-${p.at || ''}-${idx}`}>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', overflowWrap: 'anywhere' }}>
+                      <div style={{ fontWeight: 600, color: '#111' }}>{p.label}</div>
+                      {p.at ? <div style={{ fontSize: '9pt', color: '#555', marginTop: 2 }}>{p.at}</div> : null}
+                    </td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{p.amount ? p.amount.toFixed(2) : ''}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', textAlign: 'right' }}>{p.change ? p.change.toFixed(2) : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
 
         {isSaleReceipt ? (
           <div className="section muted-bg terms" style={{ pageBreakInside: 'avoid' }}>

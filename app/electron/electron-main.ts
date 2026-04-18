@@ -6,16 +6,35 @@ const https = require('https');
 const { pathToFileURL } = require('url');
 const os = require('os');
 const { spawn } = require('child_process');
+const { seedTestDataIfNeeded } = require('./seed-test-data');
 
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
-function isExternalUrl(url: string) {
+function isExternalUrl(url: string, sourceUrl?: string) {
   try {
     const u = String(url || '').trim();
     if (!u) return false;
-    // Always treat http(s)/mailto/tel as external
-    if (/^(https?:|mailto:|tel:)/i.test(u)) return true;
+
+    // Always treat mailto/tel as external
+    if (/^(mailto:|tel:)/i.test(u)) return true;
+
+    // Treat http(s) as external unless it matches the current (dev) app origin.
+    // This prevents the app from opening its own localhost URL in the user's browser.
+    if (/^https?:/i.test(u)) {
+      try {
+        if (sourceUrl) {
+          const target = new URL(u);
+          const source = new URL(String(sourceUrl));
+          const sameOrigin = target.origin === source.origin;
+          const host = (source.hostname || '').toLowerCase();
+          const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+          if (sameOrigin && isLocalHost) return false;
+        }
+      } catch {}
+      return true;
+    }
+
     return false;
   } catch {
     return false;
@@ -29,7 +48,10 @@ app.on('web-contents-created', (_event: any, contents: any) => {
     if (typeof contents.setWindowOpenHandler === 'function') {
       contents.setWindowOpenHandler(({ url }: any) => {
         try {
-          if (isExternalUrl(url)) {
+          const sourceUrl = (() => {
+            try { return typeof contents.getURL === 'function' ? contents.getURL() : ''; } catch { return ''; }
+          })();
+          if (isExternalUrl(url, sourceUrl)) {
             try { shell.openExternal(url); } catch {}
           }
         } catch {}
@@ -39,7 +61,10 @@ app.on('web-contents-created', (_event: any, contents: any) => {
 
     contents.on('will-navigate', (event: any, url: string) => {
       try {
-        if (!isExternalUrl(url)) return;
+        const sourceUrl = (() => {
+          try { return typeof contents.getURL === 'function' ? contents.getURL() : ''; } catch { return ''; }
+        })();
+        if (!isExternalUrl(url, sourceUrl)) return;
         event.preventDefault();
         try { shell.openExternal(url); } catch {}
       } catch {}
@@ -442,6 +467,23 @@ function canWriteToFolder(folderPath: string): { ok: boolean; error?: string } {
 function resolveDataRoot(): string {
   if (dataRootCache !== null) return dataRootCache;
 
+  // Optional: allow a transient data root override (does not persist).
+  // Used for local test profiles / sandboxes.
+  const envRootRaw = (process.env.GBPOS_DATA_ROOT || '').toString().trim();
+  if (envRootRaw) {
+    try {
+      const envRoot = path.resolve(envRootRaw);
+      const writeCheck = canWriteToFolder(envRoot);
+      if (writeCheck.ok) {
+        dataRootCache = envRoot;
+        ensureDir(envRoot);
+        return envRoot;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   let resolved: string = '';
   try {
     const cfg = readDataLocationConfig();
@@ -480,6 +522,11 @@ function setDataRoot(newRoot: string) {
   } catch {
     // ignore
   }
+}
+
+function setDataRootTransient(newRoot: string) {
+  dataRootCache = newRoot;
+  ensureDir(newRoot);
 }
 
 function copyDirRecursive(srcDir: string, dstDir: string) {
@@ -1392,10 +1439,39 @@ ipcMain.handle('email:sendQuotePdf', async (_e: any, payload: any) => {
     await win.loadFile(tempHtmlPath);
     await new Promise((r) => setTimeout(r, 200));
 
+    // Best-effort: wait for images, then shrink-to-fit pages before printing to PDF.
+    // The Quote Generator HTML defines window.__gbFitQuotePages when loaded.
+    try {
+      await win.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+          try {
+            const imgs = Array.from(document.images || []);
+            let pending = imgs.filter((img) => !img.complete).length;
+            if (!pending) return resolve(true);
+            const done = () => { pending--; if (pending <= 0) resolve(true); };
+            imgs.forEach((img) => {
+              if (img.complete) return;
+              img.addEventListener('load', done, { once: true });
+              img.addEventListener('error', done, { once: true });
+            });
+            setTimeout(() => resolve(true), 2000);
+          } catch (e) { resolve(true); }
+        });
+      `);
+    } catch {}
+
+    try {
+      await win.webContents.executeJavaScript(`
+        try { window.__gbFitQuotePages && window.__gbFitQuotePages(); } catch (e) {}
+        true;
+      `);
+      await new Promise((r) => setTimeout(r, 80));
+    } catch {}
+
     const pdfBuffer = await win.webContents.printToPDF({
       printBackground: true,
       preferCSSPageSize: true,
-      pageSize: 'Letter',
+      pageSize: 'A4',
       margins: { marginType: 'none' },
     });
 
@@ -2791,10 +2867,39 @@ ipcMain.handle('export-pdf', async (_e: any, html: string, filenameBase?: string
     await win.loadFile(tempPath);
     // Give layout a moment to settle
     await new Promise((r) => setTimeout(r, 150));
+
+    // Best-effort: wait for images, then shrink-to-fit pages before printing to PDF.
+    try {
+      await win.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+          try {
+            const imgs = Array.from(document.images || []);
+            let pending = imgs.filter((img) => !img.complete).length;
+            if (!pending) return resolve(true);
+            const done = () => { pending--; if (pending <= 0) resolve(true); };
+            imgs.forEach((img) => {
+              if (img.complete) return;
+              img.addEventListener('load', done, { once: true });
+              img.addEventListener('error', done, { once: true });
+            });
+            setTimeout(() => resolve(true), 2000);
+          } catch (e) { resolve(true); }
+        });
+      `);
+    } catch {}
+    try {
+      await win.webContents.executeJavaScript(`
+        try { window.__gbFitQuotePages && window.__gbFitQuotePages(); } catch (e) {}
+        true;
+      `);
+      await new Promise((r) => setTimeout(r, 80));
+    } catch {}
+
     const pdfBuffer = await win.webContents.printToPDF({
       printBackground: true,
-      margins: { marginType: 'default' },
+      preferCSSPageSize: true,
       pageSize: 'A4',
+      margins: { marginType: 'none' },
       landscape: false,
     } as any);
     fs.writeFileSync(result.filePath, pdfBuffer);
@@ -3165,22 +3270,43 @@ if (!app.requestSingleInstanceLock()) {
     // Fast path: existing configured installs resolve instantly (read + write check).
     // First-run path: shows the data-folder chooser dialog BEFORE the window opens.
     try {
-      const existing = readDataLocationConfig();
-      if (existing?.dataRoot) {
-        const writeCheck = canWriteToFolder(existing.dataRoot);
-        if (writeCheck.ok) {
-          setDataRoot(existing.dataRoot);
+      // Optional: transient override (does NOT persist to data-location.json)
+      const envRootRaw = (process.env.GBPOS_DATA_ROOT || '').toString().trim();
+      if (envRootRaw) {
+        const envRoot = path.resolve(envRootRaw);
+        const writeCheck = canWriteToFolder(envRoot);
+        if (writeCheck.ok) setDataRootTransient(envRoot);
+        else setDataRootTransient(app.getPath('userData'));
+      } else {
+        const existing = readDataLocationConfig();
+        if (existing?.dataRoot) {
+          const writeCheck = canWriteToFolder(existing.dataRoot);
+          if (writeCheck.ok) {
+            setDataRoot(existing.dataRoot);
+          } else {
+            // Configured folder no longer writable — fall back to userData silently.
+            setDataRoot(app.getPath('userData'));
+          }
         } else {
-          // Configured folder no longer writable — fall back to userData silently.
+          // First run: no config yet — auto-select per-user AppData (no dialog).
+          // Users can change via Admin > Data Tools if needed.
           setDataRoot(app.getPath('userData'));
         }
-      } else {
-        // First run: no config yet — auto-select per-user AppData (no dialog).
-        // Users can change via Admin > Data Tools if needed.
-        setDataRoot(app.getPath('userData'));
       }
     } catch {
       // If anything goes wrong, resolveDataRoot() will handle the fallback.
+    }
+
+    // Optional: seed local test data (never overwrites unless reset flag is set).
+    try {
+      if ((process.env.GBPOS_SEED_TEST_DATA || '').toString().trim() === '1') {
+        const res = seedTestDataIfNeeded(resolveDataRoot());
+        if (res?.ok && res.seeded) {
+          try { console.log('[GBPOS] Seeded test DB:', res.dbPath, res.counts); } catch {}
+        }
+      }
+    } catch (e: any) {
+      try { console.warn('[GBPOS] Test seed failed:', e?.message || String(e)); } catch {}
     }
 
     // Optional: quick startup sync to pull newer server data (offline-first; bounded timeout).
@@ -3304,11 +3430,36 @@ ipcMain.handle('open-eod', async (_event: any) => {
 });
 
 ipcMain.handle('open-repair-categories', async (_event: any) => {
+  const parent = BrowserWindow.getAllWindows()[0] || undefined;
+
+  // Size the window to the current display's work area so it never opens cut off.
+  const { screen } = electron;
+  const display = (() => {
+    try {
+      if (parent && !parent.isDestroyed() && screen?.getDisplayMatching) {
+        return screen.getDisplayMatching(parent.getBounds());
+      }
+    } catch {}
+    try {
+      return screen?.getPrimaryDisplay?.();
+    } catch {}
+    return null;
+  })();
+
+  const workAreaSize = (display as any)?.workAreaSize || (display as any)?.workArea || (display as any)?.bounds || { width: 1400, height: 900 };
+  const waW = Number((workAreaSize as any).width ?? 1400);
+  const waH = Number((workAreaSize as any).height ?? 900);
+
+  const width = Math.min(1400, waW, Math.max(960, Math.floor(waW * 0.95)));
+  const height = Math.min(900, waH, Math.max(680, Math.floor(waH * 0.95)));
+
   const child = new BrowserWindow({
-    width: 1200,
-    height: 960,
+    width,
+    height,
+    minWidth: Math.min(960, width),
+    minHeight: Math.min(680, height),
     resizable: true,
-    parent: BrowserWindow.getAllWindows()[0] || undefined,
+    parent,
     modal: false,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
@@ -3320,7 +3471,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
     show: false,
     title: windowTitle('Work Order Item'),
   });
-  showWindowFast(child);
+  showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?repairCategories=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?repairCategories=true`;
   child.loadURL(url);
@@ -3760,7 +3911,41 @@ function scheduleAllowsToday(schedule: string | undefined, date: Date) {
   const mode = String(schedule || 'daily').trim().toLowerCase();
   if (mode === 'manual') return false;
   if (mode === 'weekly') return date.getDay() === 0;
+  // Monthly emails run at the very start of the 1st (covering the previous month).
+  if (mode === 'monthly') return date.getDate() === 1;
   return true;
+}
+
+function scheduledReportRange(schedule: string | undefined, targetDate: Date) {
+  const mode = String(schedule || 'daily').trim().toLowerCase();
+  const endOfPrevDay = (d: Date) => {
+    const end = new Date(d);
+    end.setHours(0, 0, 0, 0);
+    end.setMilliseconds(-1);
+    return end;
+  };
+
+  if (mode === 'weekly') {
+    const end = endOfPrevDay(targetDate);
+    const start = new Date(end);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 6);
+    return { mode: 'weekly' as const, start, end };
+  }
+
+  if (mode === 'monthly') {
+    const end = endOfPrevDay(targetDate);
+    const start = new Date(end);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(1);
+    return { mode: 'monthly' as const, start, end };
+  }
+
+  const start = new Date(targetDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(targetDate);
+  end.setHours(23, 59, 59, 999);
+  return { mode: 'daily' as const, start, end };
 }
 
 function reportParseDateValue(value: any): Date | null {
@@ -3931,13 +4116,21 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
   const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
   if (!settings) return null;
 
+  const scheduleMode = String(settings?.schedule || 'daily').trim().toLowerCase();
+
+  const includePayments = settings?.includePayments !== false;
+  const includeCounts = settings?.includeCounts !== false;
+  const includeBatchInfo = settings?.includeBatchInfo !== false;
+  const includeWorkOrders = settings?.includeWorkOrders !== false;
+  const includeSales = settings?.includeSales !== false;
+  const includeOutstanding = settings?.includeOutstanding !== false;
+  // Back-compat: older configs didn't have this flag and always included tech lines.
+  const includeTechnicianSummary = settings?.emailIncludeTechnicianSummary !== false;
+
   const recipients = String(settings?.recipients || '').split(/[;,]/).map((value: string) => value.trim()).filter(Boolean);
   if (!recipients.length) return null;
 
-  const start = new Date(targetDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(targetDate);
-  end.setHours(23, 59, 59, 999);
+  const { start, end, mode } = scheduledReportRange(scheduleMode, targetDate);
   const startMs = start.getTime();
   const endMs = end.getTime();
 
@@ -4032,7 +4225,11 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
     }))
     .sort((a, b) => b.collected - a.collected);
 
-  const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateLabel = mode === 'daily'
+    ? start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : mode === 'weekly'
+      ? `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+      : start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const sentLabel = targetDate.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   const escapeHtml = (value: any) => String(value ?? '')
@@ -4042,11 +4239,8 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-  const rawBodyPrefix = String(settings?.emailBody || '').trim();
-  // Many stores had emailBody set to an older report/template (sometimes with blank placeholders).
-  // Avoid duplicating (or showing an empty/blank "header") by only using emailBody as a short intro note.
-  const looksLikeReport = /daily\s+batch|batch\s*out|work\s*orders\s*:|sales\s*:|checked\s*out\s*:|partial\s*paid\s*:|billed\s*:|collected\s*:|remaining\s*:|cash\s*:|card\s*:|other\s*:|change\s*:/i.test(rawBodyPrefix);
-  const intro = looksLikeReport ? '' : rawBodyPrefix;
+  // Scheduled emails no longer support an intro/note block.
+  const intro = '';
 
   const billed = formatCurrency(reportRound2(totals.billed));
   const collected = formatCurrency(reportRound2(totals.collected));
@@ -4057,25 +4251,31 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
   const other = formatCurrency(reportRound2(paymentSummary.other));
   const change = formatCurrency(reportRound2(paymentSummary.change));
 
+  const title = mode === 'daily' ? 'Daily batch report'
+    : mode === 'weekly' ? 'Weekly batch report'
+      : 'Monthly batch report';
+
   const bodyTextLines: string[] = [];
-  bodyTextLines.push(`Daily batch report for ${dateLabel}`);
-  bodyTextLines.push(`Batch Out: ${sentLabel}`);
+  bodyTextLines.push(`${title} for ${dateLabel}`);
+  if (includeBatchInfo) bodyTextLines.push(`Batch Out: ${sentLabel}`);
   if (intro) bodyTextLines.push('', intro);
-  bodyTextLines.push(
-    '',
-    `Work orders: ${totals.workOrders}`,
-    `Sales: ${totals.sales}`,
-    `Checked out: ${totals.checkedOut}`,
-    `Partial paid: ${totals.partialPaid}`,
-    `Billed: ${billed}`,
-    `Collected: ${collected}`,
-    `Remaining: ${remaining}`,
-    `Cash: ${cash}`,
-    `Card: ${card}`,
-    `Other: ${other}`,
-    `Change: ${change}`,
-  );
-  if (techLines.length) {
+  bodyTextLines.push('');
+  if (includeWorkOrders) bodyTextLines.push(`Work orders: ${totals.workOrders}`);
+  if (includeSales) bodyTextLines.push(`Sales: ${totals.sales}`);
+  if (includeCounts) {
+    bodyTextLines.push(`Checked out: ${totals.checkedOut}`);
+    bodyTextLines.push(`Partial paid: ${totals.partialPaid}`);
+  }
+  bodyTextLines.push(`Billed: ${billed}`);
+  bodyTextLines.push(`Collected: ${collected}`);
+  if (includeOutstanding) bodyTextLines.push(`Remaining: ${remaining}`);
+  if (includePayments) {
+    bodyTextLines.push(`Cash: ${cash}`);
+    bodyTextLines.push(`Card: ${card}`);
+    bodyTextLines.push(`Other: ${other}`);
+    bodyTextLines.push(`Change: ${change}`);
+  }
+  if (includeTechnicianSummary && techLines.length) {
     bodyTextLines.push('', 'Technician breakdown:');
     for (const line of techLines) {
       bodyTextLines.push(`${line.label}: WO ${line.workOrders} | Sales ${line.sales} | Checked out ${line.checkedOut} | Partial ${line.partialPaid} | Collected ${formatCurrency(line.collected)} | Remaining ${formatCurrency(line.remaining)}`);
@@ -4087,24 +4287,25 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
 <div style="font-family:Arial,sans-serif;background:#0b0b0c;color:#f4f4f5;padding:14px;">
   <div style="max-width:720px;margin:0 auto;border:1px solid #27272a;border-radius:12px;overflow:hidden;">
     <div style="padding:14px 16px;background:#111113;border-bottom:1px solid #27272a;">
-      <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#a1a1aa;">Daily Batch Report</div>
+      <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#a1a1aa;">${escapeHtml(title)}</div>
       <div style="margin-top:6px;font-size:18px;font-weight:700;color:#39FF14;">${escapeHtml(dateLabel)}</div>
-      <div style="margin-top:2px;font-size:12px;color:#a1a1aa;">Batch Out: ${escapeHtml(sentLabel)}</div>
+      ${includeBatchInfo ? `<div style="margin-top:2px;font-size:12px;color:#a1a1aa;">Batch Out: ${escapeHtml(sentLabel)}</div>` : ''}
     </div>
     ${intro ? `<div style="padding:12px 16px;border-bottom:1px solid #27272a;white-space:pre-wrap;color:#e4e4e7;">${escapeHtml(intro)}</div>` : ''}
     <div style="padding:14px 16px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <tbody>
-          <tr><td style="padding:8px 0;color:#a1a1aa;">Work orders</td><td style="padding:8px 0;text-align:right;">${totals.workOrders}</td></tr>
-          <tr><td style="padding:8px 0;color:#a1a1aa;">Sales</td><td style="padding:8px 0;text-align:right;">${totals.sales}</td></tr>
-          <tr><td style="padding:8px 0;color:#a1a1aa;">Checked out</td><td style="padding:8px 0;text-align:right;">${totals.checkedOut}</td></tr>
-          <tr><td style="padding:8px 0;color:#a1a1aa;">Partial paid</td><td style="padding:8px 0;text-align:right;">${totals.partialPaid}</td></tr>
+          ${includeWorkOrders ? `<tr><td style="padding:8px 0;color:#a1a1aa;">Work orders</td><td style="padding:8px 0;text-align:right;">${totals.workOrders}</td></tr>` : ''}
+          ${includeSales ? `<tr><td style="padding:8px 0;color:#a1a1aa;">Sales</td><td style="padding:8px 0;text-align:right;">${totals.sales}</td></tr>` : ''}
+          ${includeCounts ? `<tr><td style="padding:8px 0;color:#a1a1aa;">Checked out</td><td style="padding:8px 0;text-align:right;">${totals.checkedOut}</td></tr>` : ''}
+          ${includeCounts ? `<tr><td style="padding:8px 0;color:#a1a1aa;">Partial paid</td><td style="padding:8px 0;text-align:right;">${totals.partialPaid}</td></tr>` : ''}
           <tr><td style="padding:8px 0;border-top:1px solid #27272a;color:#a1a1aa;">Billed</td><td style="padding:8px 0;border-top:1px solid #27272a;text-align:right;font-weight:700;">${escapeHtml(billed)}</td></tr>
           <tr><td style="padding:8px 0;color:#a1a1aa;">Collected</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(collected)}</td></tr>
-          <tr><td style="padding:8px 0;color:#a1a1aa;">Remaining</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(remaining)}</td></tr>
+          ${includeOutstanding ? `<tr><td style="padding:8px 0;color:#a1a1aa;">Remaining</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(remaining)}</td></tr>` : ''}
         </tbody>
       </table>
 
+      ${includePayments ? `
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid #27272a;">
         <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a1a1aa;margin-bottom:8px;">Payments</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -4116,8 +4317,9 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
           </tbody>
         </table>
       </div>
+      ` : ''}
 
-      ${techLines.length ? `
+      ${(includeTechnicianSummary && techLines.length) ? `
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid #27272a;">
         <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a1a1aa;margin-bottom:8px;">Technician breakdown</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -4150,7 +4352,12 @@ function buildScheduledEodEmailPayload(targetDate: Date) {
 
   return {
     recipients,
-    subject: String(settings?.subject || 'Daily batch report').trim() || 'Daily batch report',
+    subject: (() => {
+      const configured = String(settings?.subject || '').trim();
+      if (!configured) return title;
+      if (/^daily\s+batch\s+report$/i.test(configured) && mode !== 'daily') return title;
+      return configured;
+    })(),
     bodyText,
     html,
   };
@@ -4204,7 +4411,9 @@ async function checkBatchOutSchedule() {
       }
     }
 
-    const { h: sendHour, m: sendMinute } = parseHhMm(sendTime);
+    const scheduleModeLower = String(scheduleMode || '').trim().toLowerCase();
+    const effectiveSendTime = (scheduleModeLower === 'weekly' || scheduleModeLower === 'monthly') ? '00:00' : sendTime;
+    const { h: sendHour, m: sendMinute } = parseHhMm(effectiveSendTime);
     const emailTarget = new Date();
     emailTarget.setHours(sendHour, sendMinute, 0, 0);
     // Safety valve: if we sent very recently, don't spam even if keys mismatch.

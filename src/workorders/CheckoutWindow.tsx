@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import MoneyInput from '../components/MoneyInput';
 
-export type PaymentType = "Cash" | "Card" | "Apple Pay" | "Google Pay" | "Other";
+export type PaymentType = "Cash" | "Cash + Card" | "Card" | "Apple Pay" | "Google Pay" | "Other";
 
 type CheckoutPayFor = 'both' | 'parts' | 'labor';
 
@@ -13,6 +13,8 @@ export interface CheckoutResult {
   tendered?: number;
   changeDue: number;
   paymentType: PaymentType;
+  /** Optional split tender detail; callers should prefer this when present. */
+  payments?: Array<{ paymentType: PaymentType; applied: number; amount: number; tendered?: number; change?: number }>;
   payFor?: CheckoutPayFor;
   appliedParts?: number;
   appliedLabor?: number;
@@ -34,7 +36,7 @@ function parsePayload(): { amountDue: number; partsDue?: number; laborDue?: numb
   } catch { return null; }
 }
 
-const paymentTypes: PaymentType[] = ["Cash", "Card", "Apple Pay", "Google Pay", "Other"];
+const paymentTypes: PaymentType[] = ["Cash", "Cash + Card", "Card", "Apple Pay", "Google Pay", "Other"];
 
 const CheckoutWindow: React.FC = () => {
   const payload = parsePayload();
@@ -102,15 +104,24 @@ const CheckoutWindow: React.FC = () => {
     return Number.isFinite(n) && n >= 0 ? round2(n) : 0;
   }, [amountToApply]);
 
-  const isCash = (paymentType as any) === 'Cash';
-  const appliedPaid = round2(Math.min(numericAmountToApply, Math.max(0, selectedDue)));
-  const tendered = isCash ? numericCashReceived : undefined;
-  const changeDue = isCash ? Math.max(numericCashReceived - appliedPaid, 0) : 0;
+  const isSplit = (paymentType as any) === 'Cash + Card';
+  const isCashOnly = (paymentType as any) === 'Cash';
+  const isCashLike = isCashOnly || isSplit;
+
+  const nonCashApplied = round2(Math.min(numericAmountToApply, Math.max(0, selectedDue)));
+  const cashApplied = isCashLike ? round2(Math.min(numericCashReceived, Math.max(0, selectedDue))) : 0;
+  const cardRemainder = isSplit ? round2(Math.max(0, round2(selectedDue) - cashApplied)) : 0;
+  const appliedPaid = isSplit
+    ? round2(Math.max(0, selectedDue))
+    : (isCashOnly ? cashApplied : nonCashApplied);
+  const tendered = isCashLike ? numericCashReceived : undefined;
+  const changeDue = isCashOnly ? Math.max(numericCashReceived - cashApplied, 0) : 0;
   const canSave = !!paymentType
     && appliedPaid > 0
     && appliedPaid <= selectedDue + 0.0001
     && (!hasPayFor || selectedDue > 0)
-    && (isCash ? numericCashReceived >= appliedPaid : true);
+    && (isCashLike ? numericCashReceived >= cashApplied : true)
+    && (!isSplit || (cashApplied > 0 && cardRemainder > 0));
 
   const allocation = useMemo(() => {
     if (!hasPayFor) return { appliedParts: undefined as any, appliedLabor: undefined as any };
@@ -126,12 +137,42 @@ const CheckoutWindow: React.FC = () => {
 
   function save() {
     if (!canSave) return;
+    const payments: Array<{ paymentType: PaymentType; applied: number; amount: number; tendered?: number; change?: number }> = [];
+    if (isSplit) {
+      payments.push({
+        paymentType: 'Cash',
+        applied: round2(cashApplied),
+        amount: Number.isFinite(numericCashReceived) ? numericCashReceived : round2(cashApplied),
+        tendered: Number.isFinite(numericCashReceived) ? numericCashReceived : round2(cashApplied),
+        change: Number.isFinite(changeDue) ? round2(changeDue) : 0,
+      });
+      payments.push({
+        paymentType: 'Card',
+        applied: round2(cardRemainder),
+        amount: round2(cardRemainder),
+      });
+    } else if (isCashOnly) {
+      payments.push({
+        paymentType: 'Cash',
+        applied: round2(appliedPaid),
+        amount: Number.isFinite(numericCashReceived) ? numericCashReceived : round2(appliedPaid),
+        tendered: Number.isFinite(numericCashReceived) ? numericCashReceived : round2(appliedPaid),
+        change: Number.isFinite(changeDue) ? round2(changeDue) : 0,
+      });
+    } else {
+      payments.push({
+        paymentType: paymentType as PaymentType,
+        applied: round2(appliedPaid),
+        amount: round2(appliedPaid),
+      });
+    }
     const result: CheckoutResult = {
       amountDue: selectedDue,
       amountPaid: appliedPaid,
-      ...(isCash ? { tendered } : {}),
+      ...(isCashLike ? { tendered } : {}),
       changeDue,
       paymentType: paymentType as PaymentType,
+      payments,
       payFor: hasPayFor ? payFor : undefined,
       appliedParts: hasPayFor ? allocation.appliedParts : undefined,
       appliedLabor: hasPayFor ? allocation.appliedLabor : undefined,
@@ -153,9 +194,15 @@ const CheckoutWindow: React.FC = () => {
 
   useEffect(() => {
     // When the selected due changes, default inputs unless user edited.
-    if (!applyEdited) setAmountToApply(round2(selectedDue));
+    if (!applyEdited && paymentType !== 'Cash + Card') setAmountToApply(round2(selectedDue));
     if (paymentType === 'Cash' && !cashEdited && !applyEdited) setCashReceived(round2(selectedDue));
   }, [selectedDue, cashEdited, paymentType, applyEdited]);
+
+  useEffect(() => {
+    if (!isSplit) return;
+    if (numericCashReceived <= selectedDue) return;
+    setCashReceived(round2(selectedDue));
+  }, [isSplit, numericCashReceived, selectedDue]);
 
   useEffect(() => {
     // When switching to cash, default cash received to amount due (but don't fight user edits for non-cash).
@@ -165,7 +212,7 @@ const CheckoutWindow: React.FC = () => {
         return (Number(prev) > 0) ? prev : round2(appliedPaid || selectedDue);
       });
     }
-  }, [paymentType, selectedDue, cashEdited, appliedPaid]);
+  }, [paymentType, selectedDue, cashEdited, applyEdited, appliedPaid]);
 
   function onRootKeyDownCapture(e: React.KeyboardEvent) {
     if (e.key !== 'Enter') return;
@@ -226,7 +273,7 @@ const CheckoutWindow: React.FC = () => {
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          {isCash ? (
+          {isCashLike ? (
             <div className="col-span-2 grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Cash received</label>
@@ -235,24 +282,34 @@ const CheckoutWindow: React.FC = () => {
                   value={numericCashReceived}
                   onValueChange={(v) => {
                     setCashEdited(true);
-                    setCashReceived(Number(v || 0));
+                    const next = Number(v || 0);
+                    const safe = Number.isFinite(next) ? Math.max(0, next) : 0;
+                    setCashReceived(isSplit ? Math.min(safe, selectedDue) : safe);
                   }}
                 />
               </div>
               <div>
-                <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Amount to apply</label>
-                <MoneyInput
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
-                  value={appliedPaid}
-                  onValueChange={(v) => {
-                    setApplyEdited(true);
-                    const next = Number(v || 0);
-                    const safe = Number.isFinite(next) ? Math.max(0, Math.min(next, selectedDue)) : 0;
-                    setAmountToApply(safe);
-                  }}
+                <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">{isSplit ? 'Card remainder' : 'Applied to balance'}</label>
+                <input
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1"
+                  value={(isSplit ? cardRemainder : cashApplied).toFixed(2)}
+                  readOnly
                 />
               </div>
-              <div className="col-span-2 text-[10px] text-zinc-500">Applied to balance: <span className="text-zinc-200 font-semibold">${appliedPaid.toFixed(2)}</span></div>
+              <div className="col-span-2 text-[10px] text-zinc-500">
+                {isSplit ? (
+                  <>
+                    Cash: <span className="text-zinc-200 font-semibold">${cashApplied.toFixed(2)}</span>
+                    {' '}+ Card: <span className="text-zinc-200 font-semibold">${cardRemainder.toFixed(2)}</span>
+                    {' '}= <span className="text-zinc-200 font-semibold">${selectedDue.toFixed(2)}</span>
+                    {(selectedDue > 0 && numericCashReceived >= selectedDue) ? (
+                      <span className="ml-2 text-amber-400">(Cash covers total — use Cash)</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>Applied to balance: <span className="text-zinc-200 font-semibold">${cashApplied.toFixed(2)}</span></>
+                )}
+              </div>
             </div>
           ) : (
             <div className="col-span-2">
@@ -271,7 +328,7 @@ const CheckoutWindow: React.FC = () => {
             </div>
           )}
 
-          {isCash && (
+          {isCashLike && (
             <div>
               <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Change due</label>
               <input className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1" value={changeDue.toFixed(2)} readOnly />
@@ -282,7 +339,14 @@ const CheckoutWindow: React.FC = () => {
             <select
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
               value={paymentType}
-              onChange={e => setPaymentType(e.target.value as PaymentType)}
+              onChange={e => {
+                const next = e.target.value as PaymentType;
+                setPaymentType(next);
+                if (next === 'Cash + Card') {
+                  setCashEdited(false);
+                  setCashReceived(0);
+                }
+              }}
             >
               <option value="">Select…</option>
               {paymentTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}

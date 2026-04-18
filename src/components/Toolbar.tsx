@@ -94,10 +94,10 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
           {showAdmin && (
             <div className="absolute left-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
               {[
-                { label: 'Inventory',       action: () => dispatchOpenModal('inventory') },
                 { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
                 { label: 'Products',        action: () => dispatchOpenModal('products') },
                 { label: 'Reports',         action: () => dispatchOpenModal('eod') },
+                { label: 'Technicians',     action: () => setShowTechs(true) },
                 { label: 'Data Management', action: () => dispatchOpenModal('backup') },
                 { label: 'Notifications',   action: () => dispatchOpenModal('notificationSettings') },
                 { label: 'Dev Menu',        action: () => dispatchOpenModal('devMenu') },
@@ -139,12 +139,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
               {unread > 99 ? '99+' : unread}
             </span>
           )}
-        </button>
-        <button
-          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={() => setShowTechs(true)}
-        >
-          Technicians
         </button>
         <button
           className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"

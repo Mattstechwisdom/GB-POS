@@ -15,12 +15,23 @@ export type WorkOrderItemRow = {
   note?: string;
 };
 
-interface Props { items: WorkOrderItemRow[]; onChange: (items: WorkOrderItemRow[]) => void }
-
 const MAX_ITEMS = 5;
 
-const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
-  const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
+interface Props {
+  items: WorkOrderItemRow[];
+  onChange: (items: WorkOrderItemRow[]) => void;
+  onAddProduct?: () => void | Promise<void>;
+  addProductDisabled?: boolean;
+  /** Read-only rows (e.g., linked retail add-ons) shown inside the items table. */
+  readonlyItems?: WorkOrderItemRow[];
+  /** Optional handler for removing a read-only row from its backing record (e.g., attached retail Sale). */
+  onRemoveReadonlyItem?: (row: WorkOrderItemRow) => void | Promise<void>;
+}
+
+const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
+  const ro = useMemo(() => (Array.isArray(readonlyItems) ? readonlyItems : []), [readonlyItems]);
+
+  const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
 
   const selectedRow = useMemo(() => {
@@ -29,14 +40,15 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
   }, [items, selected]);
 
   useEffect(() => {
-    if (items.length === 0) {
+    const combined = [...items, ...ro];
+    if (combined.length === 0) {
       setSelected(null);
       return;
     }
-    if (!selected || !items.some(i => i.id === selected)) {
-      setSelected(items[0].id);
+    if (!selected || !combined.some(i => i.id === selected)) {
+      setSelected(items[0]?.id || ro[0]?.id || null);
     }
-  }, [items, selected]);
+  }, [items, ro, selected]);
 
   // Keep the inline editor in sync only after the user explicitly opens it.
   useEffect(() => {
@@ -52,6 +64,25 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
 
   const ctxItems = useMemo<ContextMenuItem[]>(() => {
     if (!ctxRow) return [];
+
+    const isReadonly = ro.some(r => r.id === ctxRow.id);
+    if (isReadonly) {
+      return [
+        { type: 'header', label: `${ctxRow.device || 'Item'} — ${ctxRow.repair || 'Item'}` },
+        { label: 'Edit…', disabled: true, hint: 'Read-only' },
+        { type: 'separator' },
+        {
+          label: 'Remove…',
+          danger: true,
+          disabled: typeof onRemoveReadonlyItem !== 'function',
+          hint: ctxRow.note || 'Sale',
+          onClick: async () => {
+            await onRemoveReadonlyItem?.(ctxRow);
+          },
+        },
+      ];
+    }
+
     return [
       { type: 'header', label: `${ctxRow.device || 'Device'} — ${ctxRow.repair || 'Item'}` },
       {
@@ -85,7 +116,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
         },
       },
     ];
-  }, [ctxRow, items, onChange, selected, editing?.id]);
+  }, [ctxRow, items, onChange, selected, editing?.id, ro, onRemoveReadonlyItem]);
 
   async function newItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -170,7 +201,36 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
                 </tr>
               );
             })}
-            {Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }).map((_, idx) => (
+
+            {ro.map((it, idx) => {
+              const isSel = selected === it.id;
+              return (
+                <tr
+                  key={`readonly-${it.id || idx}`}
+                  onClick={() => setSelected(it.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelected(it.id);
+                    ctx.openFromEvent(e, it);
+                  }}
+                  className={`cursor-pointer transition-colors border-l-4 ${
+                    isSel
+                      ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]'
+                      : 'border-transparent bg-zinc-950/30 hover:bg-zinc-800/40'
+                  }`}
+                >
+                  <td className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
+                  <td className="px-2 py-1 text-left text-zinc-500 text-xs">{it.repairCategory || ''}</td>
+                  <td className="px-2 py-1 text-left">{it.repair}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
+                </tr>
+              );
+            })}
+
+            {/* filler rows only for the editable repair list (keep UI compact when readonly rows are present) */}
+            {(ro.length === 0 ? Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }) : []).map((_, idx) => (
               <tr key={`filler-${idx}`} className="opacity-60">
                 <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-left">&nbsp;</td>
@@ -183,9 +243,18 @@ const ItemsTable: React.FC<Props> = ({ items, onChange }) => {
         </table>
       </div>
 
-      <div className="flex gap-2 mt-2">
+      <div className="flex gap-2 mt-2 items-center">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
-        <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
+        {onAddProduct ? (
+          <button
+            className="px-3 py-1 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { void onAddProduct(); }}
+            disabled={!!addProductDisabled}
+          >
+            Add Product
+          </button>
+        ) : null}
+        <div className="flex-1 self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
       {editing && (

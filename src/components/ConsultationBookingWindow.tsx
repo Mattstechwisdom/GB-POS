@@ -1,8 +1,85 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatPhone } from '../lib/format';
+import { SC_CITIES } from '../lib/scCities';
 
-const HOURLY_RATE_DEFAULT = 75;
-const DRIVER_FEE_DEFAULT = 40;
+const CONSULTATION_BASE_RATE = 75;
+const CONSULTATION_EXTRA_RATE = 50;
+const CONSULTATION_DISTANCE_FEE = 20;
+const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
+
+// Haversine formula – returns distance in miles between two lat/lng points
+function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const GEOCODE_CACHE = new Map<string, { lat: number; lng: number } | null>();
+
+async function geocodeAddress(address: string, near?: { lat: number; lng: number }): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const q = String(address || '').trim();
+    if (!q) return null;
+
+    const cacheKey = `${q.toLowerCase()}|${near ? `${near.lat.toFixed(4)},${near.lng.toFixed(4)}` : ''}`;
+    if (GEOCODE_CACHE.has(cacheKey)) return GEOCODE_CACHE.get(cacheKey) ?? null;
+
+    const params = new URLSearchParams({
+      q,
+      format: 'json',
+      limit: '5',
+      addressdetails: '1',
+      countrycodes: 'us',
+    });
+
+    if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+      const delta = 1.0;
+      const left = (near.lng - delta).toFixed(6);
+      const right = (near.lng + delta).toFixed(6);
+      const top = (near.lat + delta).toFixed(6);
+      const bottom = (near.lat - delta).toFixed(6);
+      params.set('viewbox', `${left},${top},${right},${bottom}`);
+    }
+
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+      { headers: { 'Accept-Language': 'en-US,en' } }
+    );
+    const data = await res.json() as any[];
+    if (!Array.isArray(data) || !data.length) {
+      GEOCODE_CACHE.set(cacheKey, null);
+      return null;
+    }
+
+    const parsed = data
+      .map((d) => ({
+        lat: Number.parseFloat(String(d?.lat ?? '')),
+        lng: Number.parseFloat(String(d?.lon ?? '')),
+      }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    if (!parsed.length) {
+      GEOCODE_CACHE.set(cacheKey, null);
+      return null;
+    }
+
+    let best = parsed[0];
+    if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+      let bestD = Number.POSITIVE_INFINITY;
+      for (const p of parsed) {
+        const d = haversineDistanceMiles(near.lat, near.lng, p.lat, p.lng);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+    }
+
+    GEOCODE_CACHE.set(cacheKey, best);
+    return best;
+  } catch {
+    return null;
+  }
+}
 
 type Customer = {
   id: number;
@@ -59,26 +136,41 @@ export default function ConsultationBookingWindow() {
   const [notes, setNotes] = useState('');
   const [technician, setTechnician] = useState('');
   const [locationType, setLocationType] = useState<'instore' | 'athome'>('instore');
-  const [address, setAddress] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [zip, setZip] = useState('');
   const [hours, setHours] = useState(1);
-  const [hourlyRate, setHourlyRate] = useState(HOURLY_RATE_DEFAULT);
   const [driverFee, setDriverFee] = useState(0);
 
-  type AddressHistoryRecord = { id: number; key?: string; address?: string; usedCount?: number; lastUsedAt?: string };
-  const [addressHistory, setAddressHistory] = useState<AddressHistoryRecord[]>([]);
-  const [addressMatches, setAddressMatches] = useState<AddressHistoryRecord[]>([]);
-  const [addressSuggestOpen, setAddressSuggestOpen] = useState(false);
-  const addressSuggestTimer = useRef<number | undefined>(undefined);
+  // Shop location (used for distance-based driver fee)
+  const [shopAddress, setShopAddress] = useState<string>('');
+  const [shopLat, setShopLat] = useState<number | null>(null);
+  const [shopLng, setShopLng] = useState<number | null>(null);
+  const [distanceMiles, setDistanceMiles] = useState<number | null>(null);
+  const [distanceLoading, setDistanceLoading] = useState(false);
+  const [distanceFeeApplied, setDistanceFeeApplied] = useState(false);
+
   const normalizeAddressKey = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-  const refreshAddressHistory = useCallback(async () => {
-    try {
-      const list = await api.dbGet('addressHistory');
-      setAddressHistory(Array.isArray(list) ? list : []);
-    } catch {
-      setAddressHistory([]);
-    }
-  }, [api]);
+  const formatScAddress = useCallback((street: string, cityName: string, zipCode: string) => {
+    const s = String(street || '').trim();
+    const c = String(cityName || '').trim();
+    const z = String(zipCode || '').trim();
+
+    const parts: string[] = [];
+    if (s) parts.push(s);
+    if (c) parts.push(c);
+
+    const tail = `SC${z ? ` ${z}` : ''}`.trim();
+    if (tail) parts.push(tail);
+
+    return parts.join(', ').trim();
+  }, []);
+
+  const fullAddress = useMemo(
+    () => formatScAddress(streetAddress, city, zip),
+    [city, formatScAddress, streetAddress, zip]
+  );
 
   const upsertAddressHistory = useCallback(async (addr: string) => {
     try {
@@ -88,7 +180,10 @@ export default function ConsultationBookingWindow() {
       const key = normalizeAddressKey(address);
       if (!key) return;
       const now = new Date().toISOString();
-      const existing = (addressHistory || []).find((r) => normalizeAddressKey(String(r.key || r.address || '')) === key);
+
+      const existingList = await api.dbGet('addressHistory').catch(() => []);
+      const arr: any[] = Array.isArray(existingList) ? existingList : [];
+      const existing = arr.find((r) => normalizeAddressKey(String(r?.key || r?.address || '')) === key);
       if (existing?.id != null) {
         await api.dbUpdate('addressHistory', existing.id, {
           ...existing,
@@ -100,21 +195,21 @@ export default function ConsultationBookingWindow() {
       } else {
         await api.dbAdd('addressHistory', { key, address, usedCount: 1, lastUsedAt: now });
       }
+
       const after = await api.dbGet('addressHistory').catch(() => []);
-      const arr: any[] = Array.isArray(after) ? after : [];
+      const afterArr: any[] = Array.isArray(after) ? after : [];
       const CAP = 500;
-      if (arr.length > CAP) {
-        const sorted = [...arr].sort((a, b) => String(b?.lastUsedAt || '').localeCompare(String(a?.lastUsedAt || '')));
+      if (afterArr.length > CAP) {
+        const sorted = [...afterArr].sort((a, b) => String(b?.lastUsedAt || '').localeCompare(String(a?.lastUsedAt || '')));
         const extras = sorted.slice(CAP);
         for (const ex of extras) {
           try { if (ex?.id != null) await api.dbDelete('addressHistory', ex.id); } catch {}
         }
       }
-      refreshAddressHistory();
     } catch {
       // ignore
     }
-  }, [addressHistory, api, refreshAddressHistory]);
+  }, [api]);
 
   // ── Technicians list ────────────────────────────────────────────
   const [techs, setTechs] = useState<Technician[]>([]);
@@ -134,8 +229,22 @@ export default function ConsultationBookingWindow() {
   }, [api]);
 
   useEffect(() => {
-    refreshAddressHistory();
-  }, [refreshAddressHistory]);
+    (async () => {
+      try {
+        const existing = await api.dbGet('settings');
+        const rec = (existing || []).find((s: any) => s?.shopAddress != null || s?.shopLat != null || s?.shopLng != null);
+        if (rec) {
+          setShopAddress(String(rec.shopAddress || '').trim());
+          const slat = rec.shopLat;
+          const slng = rec.shopLng;
+          setShopLat(typeof slat === 'number' ? slat : (slat == null ? null : Number(slat)));
+          setShopLng(typeof slng === 'number' ? slng : (slng == null ? null : Number(slng)));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [api]);
 
   useEffect(() => {
     (async () => {
@@ -205,13 +314,78 @@ export default function ConsultationBookingWindow() {
   const techLabel = (t: Technician) =>
     t.nickname || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.id;
 
-  const laborCost = hours * hourlyRate;
+  const billedHours = Math.max(1, Number(hours) || 1);
+  const extraHours = Math.max(0, billedHours - 1);
+  const laborCost = CONSULTATION_BASE_RATE + (extraHours * CONSULTATION_EXTRA_RATE);
   const totalCost = laborCost + driverFee;
 
-  // Auto-apply driver fee when switching location type
+  const computeDistanceFee = useCallback(async (clientAddress: string) => {
+    const addr = String(clientAddress || '').trim();
+    if (!addr) return { miles: null as number | null, feeApplied: false, fee: 0 };
+    let sLat = shopLat;
+    let sLng = shopLng;
+    let sAddr = shopAddress;
+
+    if ((sLat == null || sLng == null) && sAddr) {
+      const sc = await geocodeAddress(sAddr);
+      if (sc) {
+        sLat = sc.lat;
+        sLng = sc.lng;
+      }
+    }
+
+    if (sLat == null || sLng == null) {
+      return { miles: null as number | null, feeApplied: false, fee: 0 };
+    }
+
+    const clientCoords = await geocodeAddress(addr, { lat: sLat, lng: sLng });
+    if (!clientCoords) {
+      return { miles: null as number | null, feeApplied: false, fee: 0 };
+    }
+
+    const miles = haversineDistanceMiles(sLat, sLng, clientCoords.lat, clientCoords.lng);
+    const feeApplied = miles > CONSULTATION_DISTANCE_THRESHOLD;
+    return { miles, feeApplied, fee: feeApplied ? CONSULTATION_DISTANCE_FEE : 0 };
+  }, [shopAddress, shopLat, shopLng]);
+
+  const checkClientDistance = useCallback(async (clientAddress: string) => {
+    if (!String(clientAddress || '').trim()) return;
+    setDistanceLoading(true);
+    try {
+      const res = await computeDistanceFee(clientAddress);
+      setDistanceMiles(res.miles);
+      setDistanceFeeApplied(res.feeApplied);
+      setDriverFee(res.fee);
+
+      // If we successfully geocoded shop coords on-the-fly, persist them in local state.
+      // (We don't write them back to DB here; Sales window owns shop settings edits.)
+      if ((shopLat == null || shopLng == null) && shopAddress && res.miles != null) {
+        const sc = await geocodeAddress(shopAddress);
+        if (sc) { setShopLat(sc.lat); setShopLng(sc.lng); }
+      }
+    } catch {
+      setDistanceMiles(null);
+      setDistanceFeeApplied(false);
+      setDriverFee(0);
+    } finally {
+      setDistanceLoading(false);
+    }
+  }, [computeDistanceFee, shopAddress, shopLat, shopLng]);
+
   const handleLocationChange = (type: 'instore' | 'athome') => {
     setLocationType(type);
-    setDriverFee(type === 'athome' ? DRIVER_FEE_DEFAULT : 0);
+    if (type === 'instore') {
+      setDriverFee(0);
+      setDistanceMiles(null);
+      setDistanceFeeApplied(false);
+    } else {
+      setDriverFee(0);
+      setDistanceMiles(null);
+      setDistanceFeeApplied(false);
+      if (String(fullAddress || '').trim() && (shopAddress || (shopLat != null && shopLng != null))) {
+        checkClientDistance(fullAddress);
+      }
+    }
   };
 
   const canBook = !saving && date && (selectedCustomer || (showNewCustomer && newCust.firstName.trim() && newCust.lastName.trim()));
@@ -222,7 +396,29 @@ export default function ConsultationBookingWindow() {
     setError('');
     try {
       if (locationType === 'athome') {
-        try { await upsertAddressHistory(address); } catch {}
+        const street = streetAddress.trim();
+        const cityName = city.trim();
+        const zipDigits = zip.replace(/\D/g, '').slice(0, 5);
+        if (!street) throw new Error('Please enter the street address for at-home consultations.');
+        if (!cityName) throw new Error('Please select a South Carolina city for at-home consultations.');
+        const cityOk = SC_CITIES.some((c) => c.toLowerCase() === cityName.toLowerCase());
+        if (!cityOk) throw new Error('Please choose a city from the SC list for at-home consultations.');
+        if (zipDigits.length !== 5) throw new Error('Please enter a 5-digit ZIP code for at-home consultations.');
+      }
+
+      let effectiveDriverFee = 0;
+      if (locationType === 'athome') {
+        const res = await computeDistanceFee(fullAddress);
+        effectiveDriverFee = res.fee;
+        setDistanceMiles(res.miles);
+        setDistanceFeeApplied(res.feeApplied);
+        setDriverFee(res.fee);
+      }
+
+      const effectiveTotalCost = laborCost + effectiveDriverFee;
+
+      if (locationType === 'athome') {
+        try { await upsertAddressHistory(fullAddress); } catch {}
       }
       // 1. Resolve or create customer
       let customer = selectedCustomer;
@@ -251,24 +447,36 @@ export default function ConsultationBookingWindow() {
       const now = new Date().toISOString();
 
       // 2. Create consultation sale record
-      const saleItem = {
+      const purpose = title.trim() || 'Consultation';
+      const baseItem: any = {
         id: crypto.randomUUID(),
-        description: title.trim() || 'Consultation',
-        qty: hours,
-        price: hourlyRate,
-        consultationHours: hours,
+        description: purpose,
+        qty: 1,
+        price: CONSULTATION_BASE_RATE,
+        consultationHours: 1,
         category: 'Consultation',
         inStock: true,
       };
-      const driverItem = driverFee > 0 ? {
+      const extraItem: any = extraHours > 0 ? {
         id: crypto.randomUUID(),
-        description: 'Driver / On-Site Visit Fee',
-        qty: 1,
-        price: driverFee,
+        description: `${purpose} (Additional Hours)`,
+        qty: extraHours,
+        price: CONSULTATION_EXTRA_RATE,
+        consultationHours: extraHours,
         category: 'Consultation',
         inStock: true,
       } : null;
-      const saleItems = driverItem ? [saleItem, driverItem] : [saleItem];
+
+      const driverItem = effectiveDriverFee > 0 ? {
+        id: crypto.randomUUID(),
+        description: `Driver / Distance Fee (> ${CONSULTATION_DISTANCE_THRESHOLD} mi)`,
+        qty: 1,
+        price: effectiveDriverFee,
+        category: 'Consultation',
+        inStock: true,
+      } : null;
+
+      const saleItems = [baseItem, extraItem, driverItem].filter(Boolean);
 
       const saleRecord: any = {
         customerId: customer!.id,
@@ -277,22 +485,22 @@ export default function ConsultationBookingWindow() {
         category: 'Consultation',
         items: saleItems,
         itemDescription: title.trim() || 'Consultation',
-        quantity: hours,
-        price: hourlyRate,
+        quantity: billedHours,
+        price: CONSULTATION_BASE_RATE,
         status: 'open',
         assignedTo: technician || undefined,
         notes: notes.trim() || undefined,
-        consultationHours: hours,
+        consultationHours: billedHours,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? address.trim() : undefined,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
         appointmentDate: date,
         appointmentTime: time || undefined,
         appointmentEndTime: endTime || undefined,
-        driverFee: driverFee > 0 ? driverFee : undefined,
+        driverFee: effectiveDriverFee > 0 ? effectiveDriverFee : undefined,
         laborCost: laborCost,
         partCosts: 0,
-        totals: { subTotal: totalCost, tax: 0, total: totalCost, remaining: totalCost },
-        total: totalCost,
+        totals: { subTotal: effectiveTotalCost, tax: 0, total: effectiveTotalCost, remaining: effectiveTotalCost },
+        total: effectiveTotalCost,
         checkInAt: now,
         createdAt: now,
         updatedAt: now,
@@ -302,7 +510,7 @@ export default function ConsultationBookingWindow() {
 
       // 3. Create calendar event
       const location = locationType === 'athome'
-        ? (address.trim() || 'At Home')
+        ? (fullAddress.trim() || 'At Home')
         : 'In-Store';
 
       await api.dbAdd('calendarEvents', {
@@ -592,67 +800,71 @@ export default function ConsultationBookingWindow() {
           {locationType === 'athome' && (
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Client Address</label>
-              <div className="relative">
-                <input
-                  className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                  placeholder="123 Main St, City, State ZIP"
-                  value={address}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setAddress(v);
-                    if (addressSuggestTimer.current !== undefined) window.clearTimeout(addressSuggestTimer.current);
-                    addressSuggestTimer.current = window.setTimeout(() => {
-                      const q = normalizeAddressKey(v);
-                      if (!q || q.length < 2) {
-                        setAddressMatches([]);
-                        setAddressSuggestOpen(false);
-                        return;
+              <div className="grid grid-cols-4 gap-3">
+                <div className="col-span-4">
+                  <label className="block text-[11px] text-zinc-500 mb-1">Street Address</label>
+                  <input
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    placeholder="123 Main St"
+                    value={streetAddress}
+                    onChange={e => setStreetAddress(e.target.value)}
+                    onBlur={() => {
+                      if (fullAddress) upsertAddressHistory(fullAddress);
+                      if (shopAddress || (shopLat != null && shopLng != null)) {
+                        if (fullAddress) checkClientDistance(fullAddress);
                       }
-                      const list = (addressHistory || [])
-                        .filter((r) => normalizeAddressKey(String(r.address || '')).includes(q))
-                        .sort((a, b) => {
-                          const bc = Number(b.usedCount) || 0;
-                          const ac = Number(a.usedCount) || 0;
-                          if (bc !== ac) return bc - ac;
-                          return String(b.lastUsedAt || '').localeCompare(String(a.lastUsedAt || ''));
-                        })
-                        .slice(0, 8);
-                      setAddressMatches(list);
-                      setAddressSuggestOpen(true);
-                    }, 120);
-                  }}
-                  onFocus={() => {
-                    const q = normalizeAddressKey(address);
-                    if (q.length >= 2) setAddressSuggestOpen(true);
-                  }}
-                  onBlur={() => {
-                    window.setTimeout(() => setAddressSuggestOpen(false), 150);
-                    upsertAddressHistory(address);
-                  }}
-                  autoFocus
-                />
-                {addressSuggestOpen && addressMatches.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-44 overflow-auto">
-                    {addressMatches.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-700"
-                        onMouseDown={(ev) => {
-                          ev.preventDefault();
-                          const addr = String(r.address || '');
-                          setAddress(addr);
-                          setAddressSuggestOpen(false);
-                          setAddressMatches([]);
-                          upsertAddressHistory(addr);
-                        }}
-                      >
-                        <div className="text-zinc-100">{String(r.address || '')}</div>
-                        <div className="text-[11px] text-zinc-400">Used {Number(r.usedCount) || 0}×</div>
-                      </button>
+                    }}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-[11px] text-zinc-500 mb-1">City (SC)</label>
+                  <input
+                    list="sc-cities"
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    placeholder="Start typing…"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                    onBlur={() => {
+                      if (fullAddress) upsertAddressHistory(fullAddress);
+                      if (shopAddress || (shopLat != null && shopLng != null)) {
+                        if (fullAddress) checkClientDistance(fullAddress);
+                      }
+                    }}
+                  />
+                  <datalist id="sc-cities">
+                    {SC_CITIES.map((c) => (
+                      <option key={c} value={c} />
                     ))}
-                  </div>
-                )}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-500 mb-1">State</label>
+                  <input
+                    className="w-full bg-zinc-900/70 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-400"
+                    value="SC"
+                    readOnly
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-zinc-500 mb-1">ZIP</label>
+                  <input
+                    inputMode="numeric"
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    placeholder="#####"
+                    value={zip}
+                    onChange={e => setZip(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                    onBlur={() => {
+                      if (fullAddress) upsertAddressHistory(fullAddress);
+                      if (shopAddress || (shopLat != null && shopLng != null)) {
+                        if (fullAddress) checkClientDistance(fullAddress);
+                      }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -666,23 +878,26 @@ export default function ConsultationBookingWindow() {
               <label className="block text-xs text-zinc-400 mb-1">Estimated Hours</label>
               <input
                 type="number"
-                min="0.5"
+                min="1"
                 step="0.5"
                 className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
                 value={hours}
-                onChange={e => setHours(Math.max(0.5, Number(e.target.value) || 0.5))}
+                onChange={e => setHours(Math.max(1, Number(e.target.value) || 1))}
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Hourly Rate ($)</label>
+              <label className="block text-xs text-zinc-400 mb-1">First Hour ($)</label>
               <input
                 type="number"
                 min="0"
                 step="5"
                 className="w-full bg-yellow-100 text-black border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                value={hourlyRate}
-                onChange={e => setHourlyRate(Math.max(0, Number(e.target.value) || 0))}
+                value={CONSULTATION_BASE_RATE}
+                readOnly
               />
+              <div className="mt-1 text-[11px] text-zinc-500">
+                Additional hours: ${CONSULTATION_EXTRA_RATE}/hr
+              </div>
             </div>
             <div className="text-right">
               <div className="text-xs text-zinc-400 mb-1">Labor</div>
@@ -690,22 +905,43 @@ export default function ConsultationBookingWindow() {
             </div>
           </div>
           {locationType === 'athome' && (
-            <div className="mt-3 pt-3 border-t border-zinc-700 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-300">Driver / On-Site Visit Fee</span>
-                <span className="text-xs text-zinc-500">(auto-applied for at-home calls)</span>
+            <div className="mt-3 pt-3 border-t border-zinc-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-zinc-300">Driver / Distance Fee</span>
+                  <span className="text-xs text-zinc-500">(only if &gt;{CONSULTATION_DISTANCE_THRESHOLD} miles from shop)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-400">$</span>
+                  <input
+                    type="number"
+                    className="w-20 bg-yellow-100 text-black border border-zinc-600 rounded px-2 py-1 text-sm text-right focus:border-blue-400 focus:outline-none"
+                    value={driverFee}
+                    readOnly
+                  />
+                  <button
+                    type="button"
+                    className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => checkClientDistance(fullAddress)}
+                    disabled={distanceLoading || !fullAddress.trim() || !(shopAddress || (shopLat != null && shopLng != null))}
+                    title={!shopAddress && (shopLat == null || shopLng == null) ? 'Set shop location in the Sales window to enable distance checks.' : undefined}
+                  >
+                    {distanceLoading ? 'Checking…' : 'Check'}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="5"
-                  className="w-20 bg-yellow-100 text-black border border-zinc-600 rounded px-2 py-1 text-sm text-right focus:border-blue-400 focus:outline-none"
-                  value={driverFee}
-                  onChange={e => setDriverFee(Math.max(0, Number(e.target.value) || 0))}
-                />
-              </div>
+              {distanceMiles != null && (
+                <div className={`mt-1 text-xs ${distanceFeeApplied ? 'text-orange-400' : 'text-green-400'}`}>
+                  {distanceFeeApplied
+                    ? `⚠ ${distanceMiles.toFixed(1)} mi from shop — $${CONSULTATION_DISTANCE_FEE} fee applied`
+                    : `✓ ${distanceMiles.toFixed(1)} mi from shop — within range`}
+                </div>
+              )}
+              {!shopAddress && (shopLat == null || shopLng == null) && (
+                <div className="mt-1 text-[11px] text-zinc-500">
+                  Shop location not set — distance check unavailable.
+                </div>
+              )}
             </div>
           )}
           <div className="mt-3 pt-3 border-t border-zinc-700 flex items-center justify-between">

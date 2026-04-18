@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { focusNextFocusable } from '../lib/focusNextFocusable';
 
 type ComboInputProps = {
   value: string;
@@ -19,6 +20,7 @@ export const ComboInput: React.FC<ComboInputProps> = ({ value, onChange, options
   const [query, setQuery] = useState(value || '');
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const rootRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setQuery(value || ''), [value]);
@@ -53,13 +55,30 @@ export const ComboInput: React.FC<ComboInputProps> = ({ value, onChange, options
     return () => document.removeEventListener('mousedown', onDocMouseDown, true);
   }, []);
 
-  function handleSelect(option: string) {
+  // Ensure the active option stays visible while navigating with arrow keys.
+  useEffect(() => {
+    if (!open) return;
+    if (activeIndex < 0) return;
+    const el = dropdownRef.current?.querySelector(`[data-idx="${activeIndex}"]`) as HTMLElement | null;
+    try { el?.scrollIntoView({ block: 'nearest' }); } catch {}
+  }, [open, activeIndex]);
+
+  function handleSelect(option: string, focus: 'input' | 'next' | 'none' = 'input') {
     onChange(option);
     setQuery(option);
     setOpen(false);
     setActiveIndex(-1);
-    // Return focus to input for quick continued edits
-    requestAnimationFrame(() => inputRef.current?.focus());
+
+    if (focus === 'input') {
+      // Return focus to input for quick continued edits
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } else if (focus === 'next') {
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        focusNextFocusable(el);
+      });
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -81,7 +100,12 @@ export const ComboInput: React.FC<ComboInputProps> = ({ value, onChange, options
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const pick = activeIndex >= 0 ? filtered[activeIndex] : (filtered[0] ?? query);
-      if (pick != null) handleSelect(pick);
+      if (pick != null) handleSelect(pick, 'next');
+    } else if (e.key === 'Tab') {
+      if (filtered.length === 0) return;
+      const pick = activeIndex >= 0 ? filtered[activeIndex] : (filtered[0] ?? query);
+      if (pick != null) handleSelect(pick, 'none');
+      // Allow normal tab navigation to proceed.
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
@@ -105,15 +129,20 @@ export const ComboInput: React.FC<ComboInputProps> = ({ value, onChange, options
         onKeyDown={onKeyDown}
       />
       {open && filtered.length > 0 && (
-        <div data-combo-dropdown="1" className="absolute z-30 mt-1 w-full max-h-56 overflow-auto rounded border border-zinc-700 bg-zinc-800 shadow-lg">
+        <div
+          ref={dropdownRef}
+          data-combo-dropdown="1"
+          className="absolute z-30 mt-1 w-full max-h-56 overflow-auto rounded border border-zinc-700 bg-zinc-800 shadow-lg"
+        >
           {filtered.map((opt, i) => (
             <div
               key={opt + i}
               data-combo-option="1"
+              data-idx={i}
               className={`px-2 py-1 text-sm cursor-pointer ${i === activeIndex ? 'bg-zinc-700 text-white' : 'text-zinc-100 hover:bg-zinc-700/70'}`}
               onMouseEnter={() => setActiveIndex(i)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => handleSelect(opt)}
+              onClick={() => handleSelect(opt, 'input')}
               title={opt}
             >
               {opt}

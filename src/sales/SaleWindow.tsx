@@ -54,8 +54,8 @@ type SaleRecord = {
 
 const CONSULTATION_BASE_RATE = 75;    // covers first hour + at-home travel within range
 const CONSULTATION_EXTRA_RATE = 50;   // each additional hour after the first
-const CONSULTATION_DISTANCE_FEE = 20; // applied when client is >10 miles from shop
-const CONSULTATION_DISTANCE_THRESHOLD = 10; // miles
+const CONSULTATION_DISTANCE_FEE = 20; // applied when client is >15 miles from shop
+const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
 
 // Haversine formula – returns distance in miles between two lat/lng points
 function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -885,7 +885,7 @@ const SaleWindow: React.FC = () => {
     setShopLng(coords?.lng ?? null);
   }
 
-  // Geocode client address, compute distance, auto-apply $20 surcharge if >10 miles
+  // Geocode client address, compute distance, auto-apply $20 surcharge if >15 miles
   async function checkClientDistance(address: string) {
     if (!address.trim()) return;
     setDistanceLoading(true);
@@ -1044,6 +1044,8 @@ const SaleWindow: React.FC = () => {
             customerPhone: sale.customerPhone,
             customerPhoneAlt,
             customerEmail: (sale as any).customerEmail || '',
+            paymentType: (sale as any).paymentType,
+            payments: (sale as any).payments || [],
             productCategory: 'Retail',
             productDescription: (rows[0]?.description) || sale.itemDescription || 'Sale',
             items: receiptItems,
@@ -1076,7 +1078,25 @@ const SaleWindow: React.FC = () => {
         const amountDue = (sale.totals?.remaining || 0);
         const result = await (window as any).api.openCheckout({ amountDue });
         if (!result) return;
-        const additionalPaid = Number(result.amountPaid || 0);
+        const checkoutLines = Array.isArray(result.payments) ? result.payments : [];
+        const normalizedLines = checkoutLines.length
+          ? checkoutLines
+          : [
+              {
+                paymentType: result.paymentType,
+                applied: Number(result.amountPaid || 0) || 0,
+                amount: (() => {
+                  const pt = String(result.paymentType || '');
+                  const isCash = pt.toLowerCase().includes('cash');
+                  const tendered = Number(result.tendered ?? result.amountPaid);
+                  return isCash ? (Number.isFinite(tendered) ? tendered : Number(result.amountPaid || 0) || 0) : (Number(result.amountPaid || 0) || 0);
+                })(),
+                tendered: result.tendered,
+                change: result.changeDue,
+              },
+            ];
+
+        const additionalPaid = round2(normalizedLines.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
         let newAmountPaid = (sale.amountPaid || 0) + additionalPaid;
         if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = sale.amountPaid || 0;
 
@@ -1084,18 +1104,30 @@ const SaleWindow: React.FC = () => {
         const payments = (() => {
           if (!(additionalPaid > 0)) return prevPayments;
           const now = new Date().toISOString();
-          const pt = String(result.paymentType || '');
-          const isCash = pt.toLowerCase().includes('cash');
-          const tendered = Number(result.tendered ?? additionalPaid);
-          const change = Number(result.changeDue || 0);
-          const entry: any = {
-            amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
-            applied: additionalPaid,
-            paymentType: pt,
-            at: now,
-          };
-          if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-          return [...prevPayments, entry];
+          const newEntries = normalizedLines
+            .map((p: any) => {
+              const pt = String(p?.paymentType || '');
+              const isCash = pt.toLowerCase().includes('cash');
+              const applied = round2(Number(p?.applied || 0) || 0);
+              if (!(applied > 0)) return null;
+
+              const tendered = Number(p?.tendered ?? p?.amount ?? applied);
+              const change = Number(p?.change ?? 0);
+              const amount = isCash
+                ? (Number.isFinite(tendered) ? tendered : applied)
+                : applied;
+
+              const entry: any = {
+                amount,
+                applied,
+                paymentType: pt,
+                at: now,
+              };
+              if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+              return entry;
+            })
+            .filter(Boolean);
+          return [...prevPayments, ...(newEntries as any[])];
         })();
         let status = sale.status;
         let checkoutDate = sale.checkoutDate as string | null;
@@ -1267,6 +1299,8 @@ const SaleWindow: React.FC = () => {
               customerPhone: recordToPersist.customerPhone,
               customerPhoneAlt: checkoutCustomerPhoneAlt,
               customerEmail: (recordToPersist as any).customerEmail || '',
+              paymentType: (recordToPersist as any).paymentType,
+              payments: (recordToPersist as any).payments || [],
               productCategory: 'Retail',
               productDescription: (recordToPersist.items && (recordToPersist.items as any)[0]?.description) || recordToPersist.itemDescription || 'Sale',
               items: receiptItems,

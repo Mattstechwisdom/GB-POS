@@ -2,6 +2,7 @@
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 import { publicAsset } from './lib/publicAsset';
+import { focusNextFocusable } from './lib/focusNextFocusable';
 
 const App = lazy(() => import('./App'));
 const CalendarWindow = lazy(() => import('./components/CalendarWindow'));
@@ -99,6 +100,52 @@ if (typeof window !== 'undefined') {
 
 if (typeof window !== 'undefined') {
 	applyVersionToDocumentTitle();
+}
+
+function installGlobalDropdownKeyboardNav() {
+	try {
+		const w: any = window as any;
+		if (w.__gbpos_dropdownKeyboardNavInstalled) return;
+		w.__gbpos_dropdownKeyboardNavInstalled = true;
+
+		document.addEventListener('keydown', (ev: KeyboardEvent) => {
+			try {
+				// Only handle Enter on dropdown-like controls.
+				if (ev.key !== 'Enter') return;
+				if (ev.defaultPrevented) return;
+
+				const target = ev.target as HTMLElement | null;
+				if (!target) return;
+
+				const tag = (target as any).tagName;
+				if (tag === 'SELECT') {
+					ev.preventDefault();
+					ev.stopPropagation();
+					focusNextFocusable(target);
+					return;
+				}
+
+				if (tag === 'INPUT') {
+					const input = target as HTMLInputElement;
+					// Native datalist inputs behave like dropdowns; treat Enter as “accept + move next”.
+					if (input.list && input.getAttribute('list')) {
+						ev.preventDefault();
+						ev.stopPropagation();
+						focusNextFocusable(input);
+						return;
+					}
+				}
+			} catch {
+				// ignore
+			}
+		}, true);
+	} catch {
+		// ignore
+	}
+}
+
+if (typeof window !== 'undefined') {
+	installGlobalDropdownKeyboardNav();
 }
 
 function getNewWorkOrderPayload() {

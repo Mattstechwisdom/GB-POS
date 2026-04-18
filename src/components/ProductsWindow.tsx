@@ -11,6 +11,12 @@ type Product = {
   condition?: 'New'|'Excellent'|'Good'|'Fair';
   notes?: string;
   category?: 'Device' | 'Accessory' | 'Consultation' | 'Other';
+  itemType?: 'Product' | 'Part';
+  partCategory?: string;
+  distributor?: string;
+  distributorSku?: string;
+  reorderQty?: number;
+  reorderUrlTemplate?: string;
   createdAt?: string;
   updatedAt?: string;
   // Inventory / stock tracking
@@ -22,12 +28,30 @@ type Product = {
 const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [list, setList] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<number|undefined>(undefined);
-  const blank: Product = { itemDescription: '', price: undefined, internalCost: undefined, notes: '', condition: 'New', trackStock: false, stockCount: undefined, lowStockThreshold: undefined };
+  const blank: Product = {
+    itemDescription: '',
+    price: undefined,
+    internalCost: undefined,
+    notes: '',
+    condition: 'New',
+    itemType: 'Product',
+    partCategory: '',
+    distributor: '',
+    distributorSku: '',
+    reorderQty: 1,
+    reorderUrlTemplate: '',
+    trackStock: false,
+    stockCount: undefined,
+    lowStockThreshold: undefined,
+  };
   const [editing, setEditing] = useState<Product>(blank);
   const [search, setSearch] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   const CATEGORY_OPTIONS: Array<Product['category']> = ['Device', 'Accessory', 'Consultation', 'Other'];
   const [categoryFilter, setCategoryFilter] = useState<Product['category'] | ''>('');
+  const [typeFilter, setTypeFilter] = useState<'product' | 'part' | ''>('');
+  const ITEM_TYPE_OPTIONS: Array<NonNullable<Product['itemType']>> = ['Product', 'Part'];
+  const PART_CATEGORY_PRESETS = ['Phone Screen', 'Battery', 'Charging Port', 'Power Supply', 'Cable', 'Adhesive', 'Tools', 'Other'];
   const api = useMemo(() => {
     try {
       const a = (window as any).api || ((window as any).opener && (window as any).opener.api);
@@ -78,11 +102,13 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return list.filter(p => {
+      const type = (p.itemType || 'Product');
       const matchesQ = q ? (p.itemDescription || '').toLowerCase().includes(q) : true;
-      const matchesCat = categoryFilter ? (p.category === categoryFilter) : true;
-      return matchesQ && matchesCat;
+      const matchesType = typeFilter ? (typeFilter === 'product' ? type === 'Product' : type === 'Part') : true;
+      const matchesCat = categoryFilter ? (type === 'Product' ? (p.category === categoryFilter) : false) : true;
+      return matchesQ && matchesType && matchesCat;
     });
-  }, [list, search, categoryFilter]);
+  }, [list, search, typeFilter, categoryFilter]);
 
   useEffect(() => {
     let mounted = true;
@@ -103,7 +129,7 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   useEffect(() => {
     if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; return; }
     const found = list.find(p => p.id === selectedId);
-    setEditing(found ? { ...found } : blank);
+    setEditing(found ? { ...blank, ...found } : blank);
     // Only reset the manual-edit flag when the user picks a *different* item,
     // not when the list refreshes after saving the currently-selected item.
     if (prevSelectedIdRef.current !== selectedId) {
@@ -131,7 +157,17 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       ...editing,
       itemDescription: (editing.itemDescription || '').trim(),
       condition: (editing.condition || 'New') as any,
-      category: (editing.category || 'Other') as any,
+      itemType: (editing.itemType || 'Product') as any,
+      category: ((editing.itemType || 'Product') === 'Product' ? (editing.category || 'Other') : (editing.category || 'Other')) as any,
+      partCategory: ((editing.itemType || 'Product') === 'Part' ? String(editing.partCategory || '').trim() : ''),
+      distributor: String(editing.distributor || '').trim(),
+      distributorSku: String(editing.distributorSku || '').trim(),
+      reorderUrlTemplate: String(editing.reorderUrlTemplate || '').trim(),
+      reorderQty: (() => {
+        const qty = Number(editing.reorderQty);
+        if (!Number.isFinite(qty) || qty <= 0) return 1;
+        return Math.round(qty);
+      })(),
     };
     if (!payload.itemDescription) { alert('Item description is required'); return; }
     try {
@@ -194,6 +230,15 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
         {/* Left pane: filters + list */}
         <div className="flex flex-col min-w-0">
           <div className="flex gap-2 mb-4 p-3 bg-zinc-800 rounded border border-zinc-700">
+            <select value={typeFilter} onChange={e => {
+              const v = (e.target.value || '') as any;
+              setTypeFilter(v);
+              if (v === 'part') setCategoryFilter('');
+            }} className="bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none">
+              <option value="">All Types</option>
+              <option value="product">Products</option>
+              <option value="part">Parts</option>
+            </select>
             <select value={categoryFilter} onChange={e => setCategoryFilter((e.target.value || '') as any)} className="bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none">
               <option value="">All Categories</option>
               {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -218,7 +263,10 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                     className={`px-3 py-2 cursor-pointer hover:bg-zinc-800 ${selectedId === p.id ? 'bg-zinc-800' : ''}`}
                   >
                     <div className="flex justify-between gap-3">
-                      <div className="truncate">{(p.category || 'Other') + ' - ' + (p.itemDescription || '')}</div>
+                      <div className="truncate">
+                        {((p.itemType || 'Product') === 'Part' ? ((p.partCategory || 'Parts') + ' - ') : ((p.category || 'Other') + ' - '))}
+                        {(p.itemDescription || '')}
+                      </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {p.trackStock && (
                           <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
@@ -250,11 +298,44 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
         <div className="flex flex-col">
           <div className="bg-zinc-800 border border-zinc-700 rounded p-4">
             <h3 className="text-lg font-semibold mb-3">Product Details</h3>
-            <label className="block text-sm">Category</label>
-            <select value={editing.category || ''} onChange={e => setEditing(ed => ({ ...ed, category: (e.target.value || undefined) as any }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2">
-              <option value="">—</option>
-              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+
+            <label className="block text-sm">Type</label>
+            <select
+              value={editing.itemType || 'Product'}
+              onChange={e => {
+                const next = (e.target.value as any) as Product['itemType'];
+                setEditing(ed => ({
+                  ...ed,
+                  itemType: next,
+                  partCategory: next === 'Part' ? (ed.partCategory || '') : '',
+                }));
+              }}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2"
+            >
+              {ITEM_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
+
+            <label className="block text-sm">Category</label>
+            {(editing.itemType || 'Product') === 'Part' ? (
+              <>
+                <label className="block text-xs text-zinc-400 -mt-1 mb-1">Part category</label>
+                <input
+                  list="part-category-presets"
+                  value={editing.partCategory || ''}
+                  onChange={e => setEditing(ed => ({ ...ed, partCategory: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2"
+                  placeholder="e.g. Phone Screen, Charging Port"
+                />
+                <datalist id="part-category-presets">
+                  {PART_CATEGORY_PRESETS.map(v => <option key={v} value={v} />)}
+                </datalist>
+              </>
+            ) : (
+              <select value={editing.category || ''} onChange={e => setEditing(ed => ({ ...ed, category: (e.target.value || undefined) as any }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2">
+                <option value="">—</option>
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
 
             <label className="block text-sm">Item description</label>
             <input value={editing.itemDescription || ''} onChange={e => setEditing(ed => ({ ...ed, itemDescription: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2" />
@@ -288,6 +369,51 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
             <label className="block text-sm">Notes</label>
             <textarea value={editing.notes || ''} onChange={e => setEditing(ed => ({ ...ed, notes: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px] mb-3" />
+
+            {/* Reorder */}
+            <div className="border border-zinc-700 rounded p-3 mb-3">
+              <div className="text-sm font-medium mb-2">Reorder</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Distributor</label>
+                  <input
+                    value={editing.distributor || ''}
+                    onChange={e => setEditing(ed => ({ ...ed, distributor: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                    placeholder="e.g. MobileSentrix"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">SKU</label>
+                  <input
+                    value={editing.distributorSku || ''}
+                    onChange={e => setEditing(ed => ({ ...ed, distributorSku: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                    placeholder="Distributor SKU"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Reorder qty</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editing.reorderQty ?? 1}
+                    onChange={e => setEditing(ed => ({ ...ed, reorderQty: e.target.value === '' ? 1 : Number(e.target.value) }))}
+                    className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-zinc-400 mb-1">Add-to-cart URL template</label>
+                  <input
+                    value={editing.reorderUrlTemplate || ''}
+                    onChange={e => setEditing(ed => ({ ...ed, reorderUrlTemplate: e.target.value }))}
+                    className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
+                    placeholder="https://vendor.example/cart/add?sku={{sku}}&qty={{qty}}"
+                  />
+                  <div className="text-[11px] text-zinc-500 mt-1">Tokens supported: {'{{sku}}'}, {'{{qty}}'}</div>
+                </div>
+              </div>
+            </div>
 
             {/* Stock tracking */}
             <div className="border border-zinc-700 rounded p-3 mb-3">

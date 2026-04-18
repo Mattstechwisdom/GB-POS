@@ -221,3 +221,9 @@
 - Sales (Consultations): added a dedicated "Print Consult Sheet" printout containing all vital consultation info (client info, date/time, reason for visit, address, first-hour quote + driver fee) plus a large notes section for the tech.
 - Reports: scheduled Daily Batch email no longer starts with a blank/duplicated section.
 
+## v0.4.24 (2026-04-17)
+- Checkout: added split tender payments (Cash + Card) and persists multiple `payments[]` entries so EOD totals reflect both cash and card.
+- Checkout: Cash and Cash + Card now use a single "Cash received" field with automatic change/remainder calculations.
+- Customer Receipt: printouts now include a Payments section showing cash received/change and card amount (supports Work Orders + linked retail add-on Sales).
+- Work Orders: "Add Product" retail add-ons are tracked via a linked Sale, shown inline as read-only rows, and included in checkout allocation + customer receipts.
+

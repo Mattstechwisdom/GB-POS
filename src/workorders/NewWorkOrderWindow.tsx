@@ -25,6 +25,7 @@ import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPane
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import { computeTotals, round2 } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory } from '../lib/types';
+import type { SaleItemRow } from '../sales/SaleItemsTable';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -102,6 +103,50 @@ function buildNormalizedCheckoutPayments(record: any) {
   }, ...existing];
 }
 
+const ADDON_SALE_MAX_ITEMS = 20;
+
+function isConsultationSaleItem(row: Partial<SaleItemRow> | null | undefined): boolean {
+  const cat = (row as any)?.category;
+  const s = (cat == null ? '' : String(cat)).trim().toLowerCase();
+  return s === 'consultation' || s.startsWith('consult');
+}
+
+function addonSaleUnits(row: Partial<SaleItemRow> | null | undefined): number {
+  if (isConsultationSaleItem(row)) {
+    const hours = Number((row as any)?.consultationHours ?? row?.qty ?? 0);
+    return Number.isFinite(hours) && hours > 0 ? hours : 0;
+  }
+  const qty = Number(row?.qty ?? 0);
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+}
+
+function addonSaleLineTotal(row: Partial<SaleItemRow> | null | undefined): number {
+  return addonSaleUnits(row) * (Number(row?.price) || 0);
+}
+
+function computeAddonSaleTotals(opts: { items: SaleItemRow[]; taxRate: number; discount: number; amountPaid: number }) {
+  const items = Array.isArray(opts.items) ? opts.items : [];
+  const taxRate = Number(opts.taxRate || 0) || 0;
+  const discount = Number(opts.discount || 0) || 0;
+  const amountPaid = Number(opts.amountPaid || 0) || 0;
+
+  const partCosts = round2(items.reduce((sum, r) => sum + addonSaleLineTotal(r), 0));
+  const consultationTotal = round2(items.reduce((sum, r) => (isConsultationSaleItem(r) ? sum + addonSaleLineTotal(r) : sum), 0));
+
+  const discountedTotal = round2(Math.max(0, partCosts - discount));
+  const taxableParts = Math.max(0, discountedTotal - consultationTotal);
+  const subTotal = round2(partCosts);
+  const tax = round2(taxableParts * taxRate / 100);
+  const total = round2(discountedTotal + tax);
+  const remaining = Math.max(0, round2(total - amountPaid));
+
+  return {
+    partCosts,
+    laborCost: 0,
+    totals: { subTotal, tax, total, remaining },
+  };
+}
+
 const NewWorkOrderWindow: React.FC = () => {
   const payload = parsePayload();
   const isEditingExisting = !!payload?.workOrderId;
@@ -128,6 +173,7 @@ const NewWorkOrderWindow: React.FC = () => {
     customerId: initialCustomerId,
   status: 'open',
   assignedTo: null,
+    addonSaleId: null,
     checkInAt: now,
     repairCompletionDate: null,
     checkoutDate: null,
@@ -166,11 +212,33 @@ const NewWorkOrderWindow: React.FC = () => {
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
   const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
+  const [addonSale, setAddonSale] = useState<any | null>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
     close: false,
   });
+
+  // Load the attached retail sale (if any) so we can display quick context.
+  useEffect(() => {
+    const saleId = Number((wo as any).addonSaleId || 0);
+    if (!saleId) { setAddonSale(null); return; }
+
+    let alive = true;
+    (async () => {
+      try {
+        const api: any = (window as any).api;
+        if (!api?.dbGet) { if (alive) setAddonSale(null); return; }
+        const list = await api.dbGet('sales').catch(() => []);
+        const found = Array.isArray(list) ? list.find((s: any) => Number(s?.id || 0) === saleId) : null;
+        if (alive) setAddonSale(found || null);
+      } catch {
+        if (alive) setAddonSale(null);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [wo.addonSaleId]);
 
   const isCustomBuild = wo.workOrderType === 'customBuild';
   const isDrone = wo.workOrderType === 'drone';
@@ -624,6 +692,65 @@ const NewWorkOrderWindow: React.FC = () => {
     return { ...wo, items } as unknown as WorkOrderFull;
   }, [wo]);
 
+  // For the Payment panel + checkout, treat the linked retail sale as additional balance due.
+  // This is UI-only: we do NOT roll retail dollars into the persisted Work Order totals.
+  const paymentWorkOrder = useMemo<WorkOrderFull>(() => {
+    const base: any = workOrderFull as any;
+    const baseTotals = (base as any).totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
+    if (!addonSale) return base as WorkOrderFull;
+
+    const sale: any = addonSale as any;
+    const computed = (() => {
+      const t = sale?.totals;
+      const pc = Number(sale?.partCosts ?? 0) || 0;
+      if (t && typeof t === 'object' && Number.isFinite(pc) && pc > 0) return { partCosts: pc, totals: t };
+      const items = Array.isArray(sale?.items) ? (sale.items as SaleItemRow[]) : [];
+      const taxRate = Number(sale?.taxRate || 0) || 0;
+      const discount = Number(sale?.discount || 0) || 0;
+      const amountPaid = Number(sale?.amountPaid || 0) || 0;
+      return computeAddonSaleTotals({ items, taxRate, discount, amountPaid });
+    })();
+
+    const salePartCosts = round2(Number(computed?.partCosts || 0) || 0);
+    const saleTotals = computed?.totals;
+    const combinedPartCosts = round2((Number(base.partCosts || 0) || 0) + salePartCosts);
+
+    const combinedTotals = {
+      ...baseTotals,
+      subTotal: round2((Number(baseTotals.subTotal || 0) || 0) + (Number(saleTotals?.subTotal || 0) || 0)),
+      tax: round2((Number(baseTotals.tax || 0) || 0) + (Number(saleTotals?.tax || 0) || 0)),
+      total: round2((Number(baseTotals.total || 0) || 0) + (Number(saleTotals?.total || 0) || 0)),
+      remaining: round2((Number(baseTotals.remaining || 0) || 0) + (Number(saleTotals?.remaining || 0) || 0)),
+    };
+
+    return { ...base, partCosts: combinedPartCosts, totals: combinedTotals } as WorkOrderFull;
+  }, [workOrderFull, addonSale]);
+
+  const readonlyAddonRows = useMemo<WorkOrderItemRow[]>(() => {
+    const sale: any = addonSale as any;
+    const list: SaleItemRow[] = Array.isArray(sale?.items) ? (sale.items as SaleItemRow[]) : [];
+    if (!list.length) return [];
+
+    return list.map((row, idx) => {
+      const isConsult = isConsultationSaleItem(row);
+      const units = addonSaleUnits(row);
+      const lineTotal = round2(addonSaleLineTotal(row));
+      const baseDesc = String(row?.description || 'Item').trim();
+      const showUnits = Number.isFinite(units) && units > 0 && Math.abs(units - 1) > 0.0001;
+      const suffix = showUnits ? (isConsult ? ` (${units} hrs)` : ` (x${units})`) : '';
+      return {
+        id: `addon-${String((row as any)?.id || idx)}`,
+        device: 'Retail',
+        repairCategory: String((row as any)?.category || 'Retail'),
+        repair: `${baseDesc}${suffix}`.trim(),
+        parts: lineTotal,
+        labor: 0,
+        status: 'done',
+        note: sale?.id ? `Sale #${sale.id}` : undefined,
+      };
+    });
+  }, [addonSale]);
+
   const handleSidebarChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
@@ -644,6 +771,230 @@ const NewWorkOrderWindow: React.FC = () => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
 
+  async function handleAddProduct() {
+    try {
+      const api: any = (window as any).api;
+      const workOrderId = Number((wo as any).id || 0) || 0;
+      const customerId = Number((wo as any).customerId || 0) || 0;
+      if (!customerId) {
+        triggerWarningBanner('Customer is missing', 'Select a customer, then click Add Product again.');
+        return;
+      }
+      if (!workOrderId) {
+        triggerWarningBanner('Save work order first', 'Wait for the Work Order to get an invoice #, then try again.');
+        return;
+      }
+
+      if (typeof api?.pickSaleProduct !== 'function') {
+        triggerWarningBanner('Product picker unavailable', 'This build is missing the sale product picker IPC bridge.');
+        return;
+      }
+
+      const picked = await api.pickSaleProduct();
+      if (!picked) return; // cancelled
+
+      const row: SaleItemRow = {
+        id: crypto.randomUUID(),
+        description: String(picked.itemDescription || picked.title || picked.name || 'Item'),
+        qty: Number(picked.quantity ?? 1) || 1,
+        price: Number(picked.price ?? 0) || 0,
+        consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
+        internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
+        condition: picked.condition || 'New',
+        inStock: picked.inStock == null ? true : !!picked.inStock,
+        productUrl: picked.productUrl || picked.url || picked.link || '',
+        category: picked.category,
+      };
+
+      // Resolve customer info for the Sale record.
+      let customerName = customerSummary.name || String((wo as any).customerName || '').trim();
+      let customerPhone = customerSummary.phone || String((wo as any).customerPhone || '').trim();
+      try {
+        if (customerId && api?.findCustomers) {
+          const list = await api.findCustomers({ id: customerId });
+          const c = Array.isArray(list) && list.length ? list[0] : null;
+          if (c) {
+            const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+            customerName = full || customerName;
+            customerPhone = c.phone || customerPhone;
+          }
+        }
+      } catch {}
+
+      // Load existing add-on sale if one is already linked.
+      const existingSaleId = Number((wo as any).addonSaleId || 0) || 0;
+      let existingSale: any = null;
+      if (existingSaleId && api?.dbGet) {
+        try {
+          const list = await api.dbGet('sales').catch(() => []);
+          existingSale = Array.isArray(list) ? list.find((s: any) => Number(s?.id || 0) === existingSaleId) : null;
+        } catch {}
+      }
+
+      const existingItems: SaleItemRow[] = Array.isArray(existingSale?.items) ? (existingSale.items as SaleItemRow[]) : [];
+      const nextItems = [...existingItems, row].slice(0, ADDON_SALE_MAX_ITEMS);
+
+      const nowIso = new Date().toISOString();
+      const existingTaxRate = Number(existingSale?.taxRate || 0) || 0;
+      const woTaxRate = Number((wo as any).taxRate || 0) || 0;
+      const taxRate = existingTaxRate > 0 ? existingTaxRate : (woTaxRate > 0 ? woTaxRate : 8);
+      const discount = Number(existingSale?.discount || 0) || 0;
+      const amountPaid = Number(existingSale?.amountPaid || 0) || 0;
+      const { partCosts, laborCost, totals } = computeAddonSaleTotals({ items: nextItems, taxRate, discount, amountPaid });
+
+      const first = nextItems[0];
+
+      const baseRecord: any = {
+        ...(existingSale || {}),
+        customerId,
+        customerName,
+        customerPhone,
+        // multi-item list
+        items: nextItems,
+        // align with shared panels + tables
+        status: (existingSale?.status || (totals.remaining <= 0.009 ? 'closed' : 'open')),
+        assignedTo: (wo as any).assignedTo ?? existingSale?.assignedTo ?? null,
+        checkInAt: (existingSale?.checkInAt || nowIso),
+        createdAt: (existingSale?.createdAt || nowIso),
+        updatedAt: nowIso,
+        inStock: existingSale?.inStock ?? true,
+        // totals
+        partCosts,
+        laborCost,
+        discount,
+        taxRate,
+        amountPaid,
+        totals,
+        total: totals.total,
+        // legacy single-item mirror (kept for backward-compatible prints)
+        itemDescription: first ? first.description : (existingSale?.itemDescription || ''),
+        quantity: first ? addonSaleUnits(first) : (existingSale?.quantity || 1),
+        price: first ? first.price : (existingSale?.price || 0),
+        consultationHours: first && isConsultationSaleItem(first)
+          ? Number((first as any).consultationHours ?? addonSaleUnits(first)) || undefined
+          : (existingSale?.consultationHours || undefined),
+      };
+
+      let savedSale: any = null;
+      if (existingSale?.id) {
+        savedSale = await api.dbUpdate('sales', existingSale.id, { ...baseRecord, id: existingSale.id });
+      } else {
+        savedSale = await api.dbAdd('sales', baseRecord);
+      }
+
+      const newSaleId = Number(savedSale?.id || existingSale?.id || 0) || 0;
+      if (newSaleId) {
+        setWo(w => ({ ...w, addonSaleId: newSaleId }));
+      }
+      setAddonSale(savedSale || { ...baseRecord, id: newSaleId });
+      triggerWarningBanner('Product added', newSaleId ? `Attached to Sale #${newSaleId}.` : undefined);
+    } catch (e) {
+      console.error('Add Product failed', e);
+      triggerWarningBanner('Failed to add product', 'See console for details.');
+    }
+  }
+
+  async function handleRemoveRetailAddonRow(row: WorkOrderItemRow) {
+    try {
+      const api: any = (window as any).api;
+      const addonSaleId = Number((wo as any).addonSaleId || 0) || 0;
+      if (!addonSaleId) {
+        triggerWarningBanner('No retail sale linked', 'There is no add-on Sale attached to this work order.');
+        return;
+      }
+      if (!api?.dbGet || !api?.dbUpdate) {
+        triggerWarningBanner('Database unavailable', 'This build is missing the dbGet/dbUpdate bridge methods.');
+        return;
+      }
+
+      let saleRecord: any = null;
+      if (addonSale && Number((addonSale as any)?.id || 0) === addonSaleId) {
+        saleRecord = addonSale;
+      } else {
+        const list = await api.dbGet('sales').catch(() => []);
+        saleRecord = Array.isArray(list) ? list.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+      }
+      if (!saleRecord) {
+        triggerWarningBanner('Retail sale not found', `Could not load Sale #${addonSaleId}.`);
+        return;
+      }
+
+      const token = String((row as any)?.id || '').trim();
+      const rawId = token.startsWith('addon-') ? token.slice('addon-'.length) : token;
+      const prevItems: SaleItemRow[] = Array.isArray(saleRecord?.items) ? (saleRecord.items as SaleItemRow[]) : [];
+      if (!prevItems.length) {
+        triggerWarningBanner('Retail sale is empty');
+        return;
+      }
+
+      // Prefer stable removal by item.id, but support legacy rows without item ids (fallback to index).
+      let nextItems: SaleItemRow[] = prevItems.filter((it: any) => {
+        try {
+          const itId = it?.id;
+          if (itId != null && String(itId) === rawId) return false;
+        } catch {}
+        return true;
+      });
+
+      if (nextItems.length === prevItems.length) {
+        const idx = Number(rawId);
+        if (Number.isInteger(idx) && idx >= 0 && idx < prevItems.length) {
+          nextItems = prevItems.filter((_it, i) => i !== idx);
+        }
+      }
+
+      if (nextItems.length === prevItems.length) {
+        triggerWarningBanner('Item not found', 'Could not match this row to a Sale item.');
+        return;
+      }
+
+      const taxRate = Number(saleRecord?.taxRate || 0) || (Number((wo as any).taxRate || 0) || 0);
+      const discount = Number(saleRecord?.discount || 0) || 0;
+      const amountPaid = Number(saleRecord?.amountPaid || 0) || 0;
+      const computed = computeAddonSaleTotals({ items: nextItems, taxRate, discount, amountPaid });
+
+      const first = nextItems[0];
+      const prevStatus = String(saleRecord?.status || 'open');
+      const status = prevStatus === 'closed'
+        ? 'closed'
+        : ((computed.totals?.remaining || 0) <= 0.009 ? 'closed' : 'open');
+
+      const nowIso = new Date().toISOString();
+      const nextSale: any = {
+        ...(saleRecord || {}),
+        id: addonSaleId,
+        updatedAt: nowIso,
+        items: nextItems,
+        status,
+        // totals
+        partCosts: computed.partCosts,
+        laborCost: computed.laborCost,
+        totals: computed.totals,
+        total: computed.totals.total,
+        taxRate,
+        discount,
+        amountPaid,
+        // legacy single-item mirror (kept for backward-compatible prints)
+        itemDescription: first ? first.description : '',
+        quantity: first ? addonSaleUnits(first) : 1,
+        price: first ? first.price : 0,
+        consultationHours: first && isConsultationSaleItem(first)
+          ? Number((first as any).consultationHours ?? addonSaleUnits(first)) || undefined
+          : undefined,
+      };
+
+      const savedSale = await api.dbUpdate('sales', addonSaleId, { ...nextSale, id: addonSaleId });
+      setAddonSale(savedSale || nextSale);
+      triggerWarningBanner(
+        'Retail item removed',
+        nextItems.length ? `Remaining retail items: ${nextItems.length}` : 'No retail items remaining.'
+      );
+    } catch (e) {
+      console.error('handleRemoveRetailAddonRow failed', e);
+      triggerWarningBanner('Failed to remove retail item', 'See console for details.');
+    }
+  }
+
   useEffect(() => {
     handleCheckoutRef.current = async () => {
       if (!ensureRequired('checkout', 'checking out')) return;
@@ -656,24 +1007,171 @@ const NewWorkOrderWindow: React.FC = () => {
         return;
       }
       try {
-        const amountDue = wo.totals?.remaining || 0;
+        const api: any = (window as any).api;
+        const woRemaining = Number(wo.totals?.remaining || 0) || 0;
 
-        const partCosts = Number(wo.partCosts || 0) || 0;
-        const laborCost = Number(wo.laborCost || 0) || 0;
-        const discount = Number(wo.discount || 0) || 0;
-        const taxRate = Number(wo.taxRate || 0) || 0;
-        const laborAfterDiscount = Math.max(0, laborCost - discount);
-        const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
+        // If a retail add-on sale is linked, include its remaining balance in the checkout due.
+        const addonSaleId = Number((wo as any).addonSaleId || 0) || 0;
+        let addonSaleRecord: any = null;
+        if (addonSaleId) {
+          if (addonSale && Number((addonSale as any)?.id || 0) === addonSaleId) {
+            addonSaleRecord = addonSale;
+          } else if (api?.dbGet) {
+            try {
+              const list = await api.dbGet('sales').catch(() => []);
+              addonSaleRecord = Array.isArray(list) ? list.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+            } catch {}
+          }
+        }
 
-        const result = await (window as any).api.openCheckout({
+        const addonSaleTotals = (() => {
+          if (!addonSaleRecord) return null;
+          const t = (addonSaleRecord as any)?.totals;
+          if (t && typeof t === 'object') return t;
+          const items = Array.isArray((addonSaleRecord as any)?.items) ? ((addonSaleRecord as any).items as SaleItemRow[]) : [];
+          const taxRate = Number((addonSaleRecord as any)?.taxRate || 0) || 0;
+          const discount = Number((addonSaleRecord as any)?.discount || 0) || 0;
+          const amountPaid = Number((addonSaleRecord as any)?.amountPaid || 0) || 0;
+          return computeAddonSaleTotals({ items, taxRate, discount, amountPaid }).totals;
+        })();
+
+        const addonRemaining = Number(addonSaleTotals?.remaining || 0) || 0;
+        const amountDue = round2(woRemaining + addonRemaining);
+
+        const checkoutPayload: any = {
           amountDue,
-          partsDue: Math.min(partsWithTax, amountDue),
-          laborDue: Math.min(laborAfterDiscount, amountDue),
           title: isCustomBuild ? 'Custom Build Checkout' : 'Work Order Checkout',
-        });
+        };
+
+        // Only show the parts/labor split when this checkout is purely the Work Order balance.
+        if (!(addonRemaining > 0)) {
+          const partCosts = Number(wo.partCosts || 0) || 0;
+          const laborCost = Number(wo.laborCost || 0) || 0;
+          const discount = Number(wo.discount || 0) || 0;
+          const taxRate = Number(wo.taxRate || 0) || 0;
+          const laborAfterDiscount = Math.max(0, laborCost - discount);
+          const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
+          checkoutPayload.partsDue = Math.min(partsWithTax, amountDue);
+          checkoutPayload.laborDue = Math.min(laborAfterDiscount, amountDue);
+        }
+
+        const result = await api.openCheckout(checkoutPayload);
         if (!result) return;
-        const additionalPaid = Number(result.amountPaid || 0);
-        let newAmountPaid = (wo.amountPaid || 0) + additionalPaid;
+
+        const nowIso = new Date().toISOString();
+
+        const checkoutLines = Array.isArray(result.payments) ? result.payments : [];
+        const normalizedLines = checkoutLines.length
+          ? checkoutLines
+          : [
+              {
+                paymentType: result.paymentType,
+                applied: Number(result.amountPaid || 0) || 0,
+                amount: (() => {
+                  const pt = String(result.paymentType || '');
+                  const isCash = pt.toLowerCase().includes('cash');
+                  const tendered = Number(result.tendered ?? result.amountPaid);
+                  return isCash ? (Number.isFinite(tendered) ? tendered : Number(result.amountPaid || 0) || 0) : (Number(result.amountPaid || 0) || 0);
+                })(),
+                tendered: result.tendered,
+                change: result.changeDue,
+              },
+            ];
+
+        const woPaymentAdds: any[] = [];
+        const addonPaymentAdds: any[] = [];
+
+        if (addonSaleRecord && addonRemaining > 0.009) {
+          let remainingWo = woRemaining;
+          let remainingAddon = addonRemaining;
+
+          normalizedLines.forEach((p: any) => {
+            const pt = String(p?.paymentType || '');
+            const isCash = pt.toLowerCase().includes('cash');
+            const lineApplied = round2(Number(p?.applied || 0) || 0);
+            if (!(lineApplied > 0)) return;
+
+            const appliedToWo = round2(Math.min(lineApplied, Math.max(0, remainingWo)));
+            const appliedToAddon = round2(Math.min(lineApplied - appliedToWo, Math.max(0, remainingAddon)));
+
+            remainingWo = round2(Math.max(0, remainingWo - appliedToWo));
+            remainingAddon = round2(Math.max(0, remainingAddon - appliedToAddon));
+
+            const tendered = Number(p?.tendered ?? p?.amount ?? 0);
+            const change = Number(p?.change ?? 0);
+            const primary = appliedToWo > 0 ? 'workorder' : (appliedToAddon > 0 ? 'sale' : null);
+
+            if (appliedToWo > 0) {
+              const entry: any = {
+                amount: isCash
+                  ? (primary === 'workorder' ? (Number.isFinite(tendered) ? tendered : appliedToWo) : 0)
+                  : appliedToWo,
+                applied: appliedToWo,
+                paymentType: pt,
+                at: nowIso,
+              };
+              if (isCash && primary === 'workorder') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+              woPaymentAdds.push(entry);
+            }
+
+            if (appliedToAddon > 0) {
+              const entry: any = {
+                amount: isCash
+                  ? (primary === 'sale' ? (Number.isFinite(tendered) ? tendered : appliedToAddon) : 0)
+                  : appliedToAddon,
+                applied: appliedToAddon,
+                paymentType: pt,
+                at: nowIso,
+              };
+              if (isCash && primary === 'sale') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+              addonPaymentAdds.push(entry);
+            }
+          });
+        } else {
+          let remainingParts = Number(checkoutPayload.partsDue || 0) || 0;
+
+          normalizedLines.forEach((p: any) => {
+            const pt = String(p?.paymentType || '');
+            const isCash = pt.toLowerCase().includes('cash');
+            const applied = round2(Number(p?.applied || 0) || 0);
+            if (!(applied > 0)) return;
+
+            const tendered = Number(p?.tendered ?? p?.amount ?? applied);
+            const change = Number(p?.change ?? 0);
+
+            const entry: any = {
+              amount: isCash ? (Number.isFinite(tendered) ? tendered : applied) : applied,
+              applied,
+              paymentType: pt,
+              at: nowIso,
+            };
+            if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+
+            if (result?.payFor) {
+              entry.payFor = result.payFor;
+              if (result.payFor === 'parts') {
+                entry.appliedParts = applied;
+                entry.appliedLabor = 0;
+              } else if (result.payFor === 'labor') {
+                entry.appliedParts = 0;
+                entry.appliedLabor = applied;
+              } else {
+                const pAmt = round2(Math.min(applied, Math.max(0, remainingParts)));
+                const lAmt = round2(Math.max(0, applied - pAmt));
+                remainingParts = round2(Math.max(0, remainingParts - pAmt));
+                entry.appliedParts = pAmt;
+                entry.appliedLabor = lAmt;
+              }
+            }
+
+            woPaymentAdds.push(entry);
+          });
+        }
+
+        const appliedToWorkOrder = round2(woPaymentAdds.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
+        const appliedToAddonSale = round2(addonPaymentAdds.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
+
+        let newAmountPaid = round2((wo.amountPaid || 0) + appliedToWorkOrder);
         if (!Number.isFinite(newAmountPaid) || newAmountPaid < 0) newAmountPaid = wo.amountPaid || 0;
 
         const updatedTotals = computeTotals({
@@ -687,35 +1185,63 @@ const NewWorkOrderWindow: React.FC = () => {
         let updatedItems = wo.items;
         let status = wo.status;
         let checkoutDate = wo.checkoutDate;
-        const hadOutstandingBalance = Number(wo.totals?.remaining || 0) > 0.009;
+        const hadOutstandingBalance = woRemaining > 0.009;
         if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
           status = 'closed';
-          if (!checkoutDate || (additionalPaid > 0 && hadOutstandingBalance)) {
-            checkoutDate = new Date().toISOString();
+          if (!checkoutDate || (appliedToWorkOrder > 0 && hadOutstandingBalance)) {
+            checkoutDate = nowIso;
           }
           updatedItems = wo.items.map(it => ({ ...it, status: 'done' }));
         }
 
         const prevPayments = buildNormalizedCheckoutPayments(wo as any);
-        const payments = (() => {
-          if (!(additionalPaid > 0)) return prevPayments;
-          const now = new Date().toISOString();
-          const pt = String(result.paymentType || '');
-          const isCash = pt.toLowerCase().includes('cash');
-          const tendered = Number(result.tendered ?? additionalPaid);
-          const change = Number(result.changeDue || 0);
-          const entry: any = {
-            amount: isCash ? (Number.isFinite(tendered) ? tendered : additionalPaid) : additionalPaid,
-            applied: additionalPaid,
-            paymentType: pt,
-            at: now,
-          };
-          if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-          if (result?.payFor) entry.payFor = result.payFor;
-          if (typeof result?.appliedParts === 'number') entry.appliedParts = result.appliedParts;
-          if (typeof result?.appliedLabor === 'number') entry.appliedLabor = result.appliedLabor;
-          return [...prevPayments, entry];
-        })();
+        const payments = appliedToWorkOrder > 0 ? [...prevPayments, ...woPaymentAdds] : prevPayments;
+
+        // Update the linked retail Sale record (if any) with its portion of the payment.
+        let savedAddonSale: any = null;
+        if (addonSaleRecord && addonSaleId && api?.dbUpdate && (appliedToAddonSale > 0 || result.markClosed)) {
+          try {
+            const prevSalePayments = buildNormalizedCheckoutPayments(addonSaleRecord as any);
+            const salePayments = appliedToAddonSale > 0 ? [...prevSalePayments, ...addonPaymentAdds] : prevSalePayments;
+
+            const existingSaleAmountPaid = Number((addonSaleRecord as any)?.amountPaid || 0) || 0;
+            const newSaleAmountPaid = round2(existingSaleAmountPaid + appliedToAddonSale);
+
+            const items = Array.isArray((addonSaleRecord as any)?.items) ? ((addonSaleRecord as any).items as SaleItemRow[]) : [];
+            const taxRate = Number((addonSaleRecord as any)?.taxRate || 0) || 0;
+            const discount = Number((addonSaleRecord as any)?.discount || 0) || 0;
+            const computed = computeAddonSaleTotals({ items, taxRate, discount, amountPaid: newSaleAmountPaid });
+
+            let saleStatus = String((addonSaleRecord as any)?.status || 'open');
+            let saleCheckoutDate = ((addonSaleRecord as any)?.checkoutDate as string | null) || null;
+            const hadSaleOutstanding = addonRemaining > 0.009;
+            if (result.markClosed || (computed.totals?.remaining || 0) <= 0) {
+              saleStatus = 'closed';
+              if (!saleCheckoutDate || (appliedToAddonSale > 0 && hadSaleOutstanding)) {
+                saleCheckoutDate = nowIso;
+              }
+            }
+
+            const nextSale: any = {
+              ...(addonSaleRecord as any),
+              updatedAt: nowIso,
+              amountPaid: newSaleAmountPaid,
+              paymentType: result.paymentType,
+              payments: salePayments,
+              status: saleStatus,
+              checkoutDate: saleCheckoutDate,
+              partCosts: computed.partCosts,
+              laborCost: computed.laborCost,
+              totals: computed.totals,
+              total: computed.totals.total,
+            };
+
+            savedAddonSale = await api.dbUpdate('sales', addonSaleId, { ...nextSale, id: addonSaleId });
+            setAddonSale(savedAddonSale || nextSale);
+          } catch (e) {
+            console.error('Failed updating add-on sale payment', e);
+          }
+        }
 
         const nextWo = {
           ...wo,
@@ -732,7 +1258,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
         if (wo.id && wo.id > 0) {
           try {
-            await (window as any).api.update('workOrders', { ...nextWo });
+            await api.update('workOrders', { ...nextWo });
           } catch (e) {
             console.error('Failed persisting checkout update', e);
           }
@@ -759,6 +1285,15 @@ const NewWorkOrderWindow: React.FC = () => {
               }
             } catch {}
 
+            let addonSale: any = null;
+            try {
+              const addonSaleId = Number((nextWo as any).addonSaleId || (wo as any).addonSaleId || 0) || 0;
+              if (addonSaleId && (window as any).api?.dbGet) {
+                const sales = await (window as any).api.dbGet('sales').catch(() => []);
+                addonSale = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+              }
+            } catch {}
+
             const payload = {
               id: (wo as any).id,
               customerId: (wo as any).customerId,
@@ -766,6 +1301,10 @@ const NewWorkOrderWindow: React.FC = () => {
               customerPhone,
               customerPhoneAlt,
               customerEmail,
+              paymentType: (nextWo as any).paymentType ?? (wo as any).paymentType,
+              payments: (nextWo as any).payments ?? (wo as any).payments ?? [],
+              addonSaleId: addonSale?.id ?? (nextWo as any).addonSaleId ?? (wo as any).addonSaleId ?? null,
+              addonSale: addonSale || null,
               productCategory: wo.productCategory,
               productDescription: wo.productDescription,
               model: (wo as any).model,
@@ -917,9 +1456,23 @@ const NewWorkOrderWindow: React.FC = () => {
           )}
 
           {isCustomBuild ? (
-            <CustomBuildItemsTable items={wo.items} onChange={handleItemsChange} />
+            <CustomBuildItemsTable
+              items={wo.items}
+              onChange={handleItemsChange}
+              onAddProduct={handleAddProduct}
+              addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
+              readonlyItems={readonlyAddonRows as any}
+              onRemoveReadonlyItem={handleRemoveRetailAddonRow as any}
+            />
           ) : (
-            <ItemsTable items={wo.items} onChange={handleItemsChange} />
+            <ItemsTable
+              items={wo.items}
+              onChange={handleItemsChange}
+              onAddProduct={handleAddProduct}
+              addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
+              readonlyItems={readonlyAddonRows as any}
+              onRemoveReadonlyItem={handleRemoveRetailAddonRow as any}
+            />
           )}
 
           <DropoffAccessoriesPanel
@@ -996,7 +1549,22 @@ const NewWorkOrderWindow: React.FC = () => {
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
-          <PaymentPanel workOrder={workOrderFull} onChange={handlePaymentChange} onCheckout={handleCheckout} />
+          <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-zinc-200">Retail add-on</h4>
+              {Number((wo as any).addonSaleId || 0) ? (
+                <div className="text-[11px] text-zinc-500">Sale #{Number((wo as any).addonSaleId || 0)}</div>
+              ) : (
+                <div className="text-[11px] text-zinc-500">No sale linked</div>
+              )}
+            </div>
+            {addonSale && Array.isArray((addonSale as any).items) && (addonSale as any).items.length > 0 ? (
+              <div className="mt-2 text-xs text-zinc-400">
+                Attached items: {(addonSale as any).items.length}
+              </div>
+            ) : null}
+          </div>
+          <PaymentPanel workOrder={paymentWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>
 

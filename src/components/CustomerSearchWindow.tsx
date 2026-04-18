@@ -160,7 +160,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
               type="button"
               aria-label="Close"
               onClick={onClose}
-              className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+              className="h-9 w-9 mr-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
             >
               ✕
             </button>
@@ -176,11 +176,10 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
 				onContextMenu={openContextMenu}
           />
         </div>
-        <div className="mt-auto p-3 border-t border-zinc-700 flex items-center justify-between gap-2 bg-zinc-800/60 sticky bottom-0">
+        <div className="mt-auto p-3 border-t border-zinc-700 flex items-center justify-start gap-2 bg-zinc-800/60 sticky bottom-0">
           <div className="flex gap-2">
             <Button onClick={() => { setEditingCustomer(null); setShowOverview(true); }} className="bg-zinc-700 hover:bg-zinc-600">New Customer</Button>
           </div>
-          <Button neon onClick={onClose}>Close</Button>
         </div>
       </div>
       {showOverview && (

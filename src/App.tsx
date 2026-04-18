@@ -12,7 +12,7 @@ import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
-import { registerOpenModal, unregisterOpenModal } from './lib/modalBus';
+import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib/modalBus';
 import { storeWindowPayload } from './lib/windowPayload';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
@@ -91,17 +91,33 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12"
+      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12 pt-12"
       style={{ zIndex }}
       data-modal-shell="1"
     >
-      {/* Floating close button */}
-      <button
-        onClick={onClose}
-        title="Close window (Esc)"
-        className="fixed top-2 right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white flex items-center justify-center text-lg font-bold leading-none shadow-lg transition-colors select-none"
-        style={{ zIndex: zIndex + 1 }}
-      >✕</button>
+      {/* Floating actions + close button */}
+      <div
+        className="fixed top-2 flex items-center gap-2"
+        style={{ zIndex: zIndex + 1, right: 'calc(0.75rem + 32px)' }}
+      >
+        {entry.type === 'products' && (
+          <button
+            type="button"
+            onClick={() => dispatchOpenModal('inventory')}
+            title="Open Inventory"
+            className="h-8 px-3 rounded-full bg-[#BC13FE] text-white font-semibold text-sm shadow-lg border border-[#BC13FE] hover:brightness-110 transition"
+          >
+            Inventory
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          title="Close window (Esc)"
+          className="w-8 h-8 rounded-full bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white flex items-center justify-center text-lg font-bold leading-none shadow-lg transition-colors select-none"
+        >
+          ✕
+        </button>
+      </div>
       <React.Suspense fallback={
         <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
       }>

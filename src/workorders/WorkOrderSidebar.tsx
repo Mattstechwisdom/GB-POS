@@ -199,12 +199,26 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                       }
                     }
                   } catch {}
+
+                  let addonSale: any = null;
+                  try {
+                    const addonSaleId = Number((workOrder as any).addonSaleId || 0) || 0;
+                    if (addonSaleId && (window as any).api?.dbGet) {
+                      const sales = await (window as any).api.dbGet('sales').catch(() => []);
+                      addonSale = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+                    }
+                  } catch {}
+
                   const payload = {
                     id: (workOrder as any).id,
                     customerId: (workOrder as any).customerId,
                     customerName,
                     customerPhone,
                     customerEmail,
+                    paymentType: (workOrder as any).paymentType,
+                    payments: (workOrder as any).payments || [],
+                    addonSaleId: addonSale?.id ?? (workOrder as any).addonSaleId ?? null,
+                    addonSale: addonSale || null,
                     productCategory: workOrder.productCategory,
                     productDescription: workOrder.productDescription,
                     model: (workOrder as any).model,
@@ -255,6 +269,7 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && String((a as any).clientPickupDate || '') === String((b as any).clientPickupDate || '')
     && String((a as any).customerId || '') === String((b as any).customerId || '')
     && String((a as any).customerName || '') === String((b as any).customerName || '')
+    && String((a as any).addonSaleId || '') === String((b as any).addonSaleId || '')
     && String((a as any).id || '') === String((b as any).id || '')
     && JSON.stringify(a.items) === JSON.stringify(b.items)
     && Number((a as any).totals?.total ?? 0) === Number((b as any).totals?.total ?? 0)

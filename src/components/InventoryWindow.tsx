@@ -1,19 +1,33 @@
 import React, { useEffect, useState, useCallback } from 'react';
 
 type InventoryKind = 'product' | 'repair';
-type FilterTab = 'all' | 'low' | 'products' | 'repairs';
+type FilterTab = 'all' | 'low' | 'products' | 'parts' | 'repairs';
 
 interface InventoryRow {
   id: number;
   kind: InventoryKind;
   name: string;
   category: string;
+  itemType?: 'Product' | 'Part';
+  partCategory?: string;
+  distributor?: string;
+  distributorSku?: string;
+  reorderQty?: number;
+  reorderUrlTemplate?: string;
   trackStock: boolean;
   stockCount: number | undefined;
   lowStockThreshold: number | undefined;
   orderSourceUrl?: string;
   // raw record for updates
   _raw: any;
+}
+
+function fillUrlTemplate(template: string, values: { sku?: string; qty: number }) {
+  const sku = values.sku ?? '';
+  const qty = Number.isFinite(values.qty) && values.qty > 0 ? String(Math.round(values.qty)) : '1';
+  return template
+    .replace(/\{\{\s*sku\s*\}\}/gi, encodeURIComponent(String(sku)))
+    .replace(/\{\{\s*qty\s*\}\}/gi, encodeURIComponent(qty));
 }
 
 function isLow(row: InventoryRow): boolean {
@@ -48,7 +62,13 @@ export default function InventoryWindow() {
         id: p.id,
         kind: 'product',
         name: p.itemDescription || '(unnamed)',
-        category: p.category || 'Other',
+        itemType: (p.itemType || 'Product') as any,
+        partCategory: p.partCategory || '',
+        distributor: p.distributor || '',
+        distributorSku: p.distributorSku || '',
+        reorderQty: typeof p.reorderQty === 'number' ? p.reorderQty : undefined,
+        reorderUrlTemplate: p.reorderUrlTemplate || '',
+        category: (String(p.itemType || 'Product') === 'Part') ? (p.partCategory || 'Parts') : (p.category || 'Other'),
         trackStock: !!p.trackStock,
         stockCount: typeof p.stockCount === 'number' ? p.stockCount : undefined,
         lowStockThreshold: typeof p.lowStockThreshold === 'number' ? p.lowStockThreshold : undefined,
@@ -63,6 +83,12 @@ export default function InventoryWindow() {
         kind: 'repair',
         name: r.title || r.altDescription || '(unnamed)',
         category: r.category || r.repairCategory || 'Repair',
+        itemType: undefined,
+        partCategory: undefined,
+        distributor: undefined,
+        distributorSku: undefined,
+        reorderQty: undefined,
+        reorderUrlTemplate: '',
         trackStock: !!r.trackStock,
         stockCount: typeof r.stockCount === 'number' ? r.stockCount : undefined,
         lowStockThreshold: typeof r.lowStockThreshold === 'number' ? r.lowStockThreshold : undefined,
@@ -80,7 +106,8 @@ export default function InventoryWindow() {
 
   const filteredRows = rows.filter(r => {
     if (tab === 'low') return isLow(r);
-    if (tab === 'products') return r.kind === 'product';
+    if (tab === 'products') return r.kind === 'product' && (r.itemType || 'Product') === 'Product';
+    if (tab === 'parts') return r.kind === 'product' && (r.itemType || 'Product') === 'Part';
     if (tab === 'repairs') return r.kind === 'repair';
     return true;
   });
@@ -163,13 +190,35 @@ export default function InventoryWindow() {
   };
 
   const lowCount = rows.filter(isLow).length;
+  const partsCount = rows.filter(r => r.kind === 'product' && (r.itemType || 'Product') === 'Part').length;
+  const productsCount = rows.filter(r => r.kind === 'product' && (r.itemType || 'Product') === 'Product').length;
 
   const TABS: { id: FilterTab; label: string }[] = [
     { id: 'all', label: 'All Items' },
     { id: 'low', label: `⚠ Low Stock${lowCount > 0 ? ` (${lowCount})` : ''}` },
-    { id: 'products', label: 'Products' },
+    { id: 'products', label: `Products${productsCount ? ` (${productsCount})` : ''}` },
+    { id: 'parts', label: `Parts${partsCount ? ` (${partsCount})` : ''}` },
     { id: 'repairs', label: 'Repairs' },
   ];
+
+  const handleReorder = async (r: InventoryRow) => {
+    try {
+      const m = mergedRow(r);
+      const qty = Number.isFinite(Number(m.reorderQty)) && Number(m.reorderQty) > 0 ? Number(m.reorderQty) : 1;
+      const template = String(m.reorderUrlTemplate || '').trim();
+      const sku = String(m.distributorSku || '').trim();
+      const url = template
+        ? fillUrlTemplate(template, { sku, qty })
+        : String(m.orderSourceUrl || '').trim();
+      if (!url) {
+        alert('No reorder URL configured for this item. Add an Add-to-cart URL template (and SKU) in Products.');
+        return;
+      }
+      await api?.openUrl?.(url);
+    } catch (err) {
+      console.error('InventoryWindow handleReorder error:', err);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-zinc-900 text-gray-100 overflow-hidden">
@@ -249,6 +298,13 @@ export default function InventoryWindow() {
                     {/* Item name */}
                     <td className="py-2 pr-3">
                       <div className="font-medium truncate max-w-[300px]" title={m.name}>{m.name}</div>
+                      {(m.kind === 'product' || m.kind === 'repair') && (m.reorderUrlTemplate || m.orderSourceUrl) && (
+                        <button
+                          onClick={() => handleReorder(r)}
+                          className="mt-1 text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-600 rounded hover:border-[#39FF14] hover:text-[#39FF14]"
+                          title="Open distributor cart / reorder link"
+                        >Reorder</button>
+                      )}
                       {m.kind === 'repair' && m.orderSourceUrl && (
                         <a
                           href={m.orderSourceUrl}
@@ -264,9 +320,13 @@ export default function InventoryWindow() {
 
                     {/* Type badge */}
                     <td className="py-2 pr-3 text-center">
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${m.kind === 'product' ? 'bg-zinc-700 text-zinc-300' : 'bg-blue-900/60 text-blue-300'}`}>
-                        {m.kind === 'product' ? 'Product' : 'Repair'}
-                      </span>
+                      {m.kind === 'product' ? (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${((m.itemType || 'Product') === 'Part') ? 'bg-purple-900/60 text-purple-200' : 'bg-zinc-700 text-zinc-300'}`}>
+                          {(m.itemType || 'Product') === 'Part' ? 'Part' : 'Product'}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300">Repair</span>
+                      )}
                     </td>
 
                     {/* Track checkbox */}
@@ -347,7 +407,8 @@ export default function InventoryWindow() {
       {/* Footer summary */}
       {!loading && (
         <div className="shrink-0 px-5 py-2 border-t border-zinc-700 text-xs text-zinc-500 flex gap-4">
-          <span>{rows.filter(r => r.kind === 'product').length} products</span>
+          <span>{productsCount} products</span>
+          <span>{partsCount} parts</span>
           <span>{rows.filter(r => r.kind === 'repair').length} repair parts</span>
           <span>{rows.filter(r => r.trackStock).length} tracked</span>
           {lowCount > 0 && <span className="text-red-400 font-medium">{lowCount} low stock</span>}

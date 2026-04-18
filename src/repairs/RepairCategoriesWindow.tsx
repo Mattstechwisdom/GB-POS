@@ -39,6 +39,10 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const [paneMode, setPaneMode] = useState<'repair' | 'device' | 'repairType'>('repair');
   const [deviceCategories, setDeviceCategories] = useState<Array<{ id: number; name: string; title?: string }>>([]);
 
+  const isModalShell = useMemo(() => {
+    try { return typeof document !== 'undefined' && !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
+
   const ctx = useContextMenu<RepairItem>();
   const ctxRow = ctx.state.data;
 
@@ -156,9 +160,9 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
+      <div className={`flex ${isModalShell ? 'h-full' : 'h-screen'} overflow-hidden bg-zinc-900 text-gray-100`}>
         {/* Two-column grid: 620px | 1fr with 16px gap */}
-        <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4">
+        <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4 overflow-hidden w-full">
           {/* Left pane: Item list */}
           <div className="flex flex-col min-h-0">
             <RepairItemList 
@@ -176,10 +180,10 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           </div>
 
           {/* Right pane: Form */}
-          <div className="flex flex-col overflow-y-auto min-h-0">
+          <div className="flex flex-col min-h-0 overflow-hidden">
             {/* Header actions: toggle between Repair and Device creation */}
             {mode === 'admin' && (
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-4 shrink-0">
                 <button
                   type="button"
                   className={`px-4 py-2 rounded text-sm border ${paneMode === 'repair' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
@@ -203,44 +207,48 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                 </button>
               </div>
             )}
-            {/** derive initial mappings for DeviceForm outside of JSX hooks to maintain hooks order */}
-            {(() => {
-              return null;
-            })()}
-            {paneMode === 'repair' ? (
-              <RepairItemForm 
-                selectedItem={selectedItem}
-                onSave={handleSave}
-                onCancel={handleCancel}
-                onDelete={mode === 'admin' ? handleDelete : undefined}
-                mode={mode}
-                showCreateAction={false}
-              />
-            ) : paneMode === 'repairType' ? (
-              <RepairTypeManager />
-            ) : (
-              (() => {
-                const initialDeviceName = selectedItem?.category;
-                const initialTitleFromDevice = initialDeviceName ? (deviceCategories.find(d => d.name === initialDeviceName)?.title) : undefined;
-                return (
-              <DeviceForm
-                titles={deviceTitles}
-                devices={deviceCategories}
-                initialDeviceName={initialDeviceName}
-                initialTitle={initialTitleFromDevice}
-                onCancel={() => setPaneMode('repair')}
-                onSaved={async () => {
-                  // Reload device categories to refresh titles list
-                  try {
-                    const devs = await window.api.dbGet('deviceCategories');
-                    setDeviceCategories(Array.isArray(devs) ? devs : []);
-                  } catch (e) {}
-                }}
-              />);
-            })()
-            )}
+
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {/** derive initial mappings for DeviceForm outside of JSX hooks to maintain hooks order */}
+              {(() => {
+                return null;
+              })()}
+              {paneMode === 'repair' ? (
+                <RepairItemForm 
+                  selectedItem={selectedItem}
+                  onSave={handleSave}
+                  onCancel={handleCancel}
+                  onDelete={mode === 'admin' ? handleDelete : undefined}
+                  mode={mode}
+                  showCreateAction={false}
+                />
+              ) : paneMode === 'repairType' ? (
+                <RepairTypeManager />
+              ) : (
+                (() => {
+                  const initialDeviceName = selectedItem?.category;
+                  const initialTitleFromDevice = initialDeviceName ? (deviceCategories.find(d => d.name === initialDeviceName)?.title) : undefined;
+                  return (
+                <DeviceForm
+                  titles={deviceTitles}
+                  devices={deviceCategories}
+                  initialDeviceName={initialDeviceName}
+                  initialTitle={initialTitleFromDevice}
+                  onCancel={() => setPaneMode('repair')}
+                  onSaved={async () => {
+                    // Reload device categories to refresh titles list
+                    try {
+                      const devs = await window.api.dbGet('deviceCategories');
+                      setDeviceCategories(Array.isArray(devs) ? devs : []);
+                    } catch (e) {}
+                  }}
+                />);
+              })()
+              )}
+            </div>
+
             {mode === 'workorder' && selectedItem && (
-              <div className="flex justify-end mt-4">
+              <div className="flex justify-end mt-4 shrink-0">
                 <button
                   className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900"
                   onClick={() => {

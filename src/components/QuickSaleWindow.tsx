@@ -43,7 +43,25 @@ const QuickSaleWindow: React.FC = () => {
       const result = await api.openCheckout({ amountDue });
       if (!result) return;
 
-      const amountPaid = Number(result.amountPaid || 0) || 0;
+      const checkoutLines = Array.isArray(result.payments) ? result.payments : [];
+      const normalizedLines = checkoutLines.length
+        ? checkoutLines
+        : [
+            {
+              paymentType: result.paymentType,
+              applied: Number(result.amountPaid || 0) || 0,
+              amount: (() => {
+                const pt = String(result.paymentType || '');
+                const isCash = pt.toLowerCase().includes('cash');
+                const tendered = Number(result.tendered ?? result.amountPaid);
+                return isCash ? (Number.isFinite(tendered) ? tendered : Number(result.amountPaid || 0) || 0) : (Number(result.amountPaid || 0) || 0);
+              })(),
+              tendered: result.tendered,
+              change: result.changeDue,
+            },
+          ];
+
+      const amountPaid = round2(normalizedLines.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
       const paymentType = result.paymentType;
       const totalsAfter = computeTotals({ laborCost: 0, partCosts: amount, discount: 0, taxRate, amountPaid });
       const remainingAfter = round2(Math.max(0, totalsAfter.remaining || 0));
@@ -58,20 +76,25 @@ const QuickSaleWindow: React.FC = () => {
       };
 
       const payments = (amountPaid > 0)
-        ? (() => {
-            const pt = String(paymentType || '');
-            const isCash = pt.toLowerCase().includes('cash');
-            const tendered = Number(result.tendered ?? amountPaid);
-            const change = Number(result.changeDue || 0);
-            const entry: any = {
-              amount: isCash ? (Number.isFinite(tendered) ? tendered : amountPaid) : amountPaid,
-              applied: amountPaid,
-              paymentType: pt,
-              at: now,
-            };
-            if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-            return [entry];
-          })()
+        ? normalizedLines
+            .map((p: any) => {
+              const pt = String(p?.paymentType || '');
+              const isCash = pt.toLowerCase().includes('cash');
+              const applied = round2(Number(p?.applied || 0) || 0);
+              if (!(applied > 0)) return null;
+
+              const tendered = Number(p?.tendered ?? p?.amount ?? applied);
+              const change = Number(p?.change ?? 0);
+              const entry: any = {
+                amount: isCash ? (Number.isFinite(tendered) ? tendered : applied) : applied,
+                applied,
+                paymentType: pt,
+                at: now,
+              };
+              if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+              return entry;
+            })
+            .filter(Boolean)
         : [];
 
       const saleRecord: any = {
@@ -112,6 +135,8 @@ const QuickSaleWindow: React.FC = () => {
             customerName: '',
             customerPhone: '',
             customerEmail: '',
+            paymentType,
+            payments,
             productCategory: 'Quick Sale',
             productDescription: description.trim(),
             items: [{ description: description.trim(), parts: amount, labor: 0, qty: 1 }],

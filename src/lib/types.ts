@@ -30,6 +30,8 @@ export interface WorkOrderFull {
   status: WorkOrderStatus;
   assignedTo?: string | null;
   customerId: number;
+  /** Optional linked retail sale (e.g., upsell at pickup) that should appear on the WO receipt. */
+  addonSaleId?: number | null;
   checkInAt: string;
   repairCompletionDate?: string | null;
   checkoutDate?: string | null;

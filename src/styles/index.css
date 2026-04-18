@@ -9,6 +9,23 @@ body {
   color: #fff;
 }
 
+/* Electron/Chromium: make native date/time picker icons visible on dark inputs */
+input[type="date"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  /* Tint the built-in calendar icon toward neon green for visibility */
+  filter: invert(67%) sepia(88%) saturate(1200%) hue-rotate(78deg) brightness(108%) contrast(112%);
+  opacity: 1;
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(70%) sepia(92%) saturate(1500%) hue-rotate(78deg) brightness(115%) contrast(115%);
+}
+
 :root {
   --neon-green: #39FF14;
   --neon-purple: #BC13FE;
