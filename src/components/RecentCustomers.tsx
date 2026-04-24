@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { formatPhone } from '../lib/format';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
@@ -15,6 +15,8 @@ const RecentCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const reloadTimerRef = useRef<number | null>(null);
 
 	const ctx = useContextMenu<CustomerLite>();
 	const ctxCustomer = ctx.state.data;
@@ -56,19 +58,22 @@ const RecentCustomers: React.FC = () => {
     setLoading(true); setError(null);
     try {
       const api = (window as any).api;
+
+      // Keep this list lightweight: we only need enough recent work orders to
+      // discover ~8 unique customers. Pulling the entire workOrders collection
+      // can become very expensive as the DB grows.
+      const MAX_WORKORDERS = 400;
       const [allCustomers, workOrders] = await Promise.all([
         api?.getCustomers ? api.getCustomers() : (api?.dbGet ? api.dbGet('customers') : Promise.resolve([])),
-        api?.getWorkOrders ? api.getWorkOrders() : (api?.dbGet ? api.dbGet('workOrders') : Promise.resolve([])),
+        api?.getWorkOrders
+          ? api.getWorkOrders({ limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' })
+          : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' }) : Promise.resolve([])),
       ]);
       const customerMap = new Map<number, CustomerLite>();
       (allCustomers || []).forEach((c: any) => customerMap.set(c.id, c));
 
-      // Sort work orders by most recent activity (checkInAt desc, then id desc)
-      const sorted = (workOrders || []).slice().sort((a: any, b: any) => {
-        const ad = a.checkInAt || ''; const bd = b.checkInAt || '';
-        const cmp = bd.localeCompare(ad);
-        return cmp !== 0 ? cmp : ((b.id || 0) - (a.id || 0));
-      });
+      // workOrders already comes back sorted by checkInAt desc via db-get.
+      const sorted = Array.isArray(workOrders) ? workOrders : [];
 
   // Take first 8 recent customers, prioritizing recent work orders, then fill with newest customers
       const seen = new Set<number | string>();
@@ -125,11 +130,29 @@ const RecentCustomers: React.FC = () => {
   useEffect(() => {
     load();
     const api = (window as any).api;
-    const offWO = api?.onWorkOrdersChanged?.(() => load());
-    const offCust = api?.onCustomersChanged?.(() => load());
-    const offSales = api?.onSalesChanged?.(() => load());
+    const scheduleLoad = () => {
+      if (reloadTimerRef.current !== null) {
+        try { window.clearTimeout(reloadTimerRef.current); } catch {}
+      }
+      reloadTimerRef.current = window.setTimeout(() => {
+        reloadTimerRef.current = null;
+        load();
+      }, 250);
+    };
+    const offWO = api?.onWorkOrdersChanged?.(() => scheduleLoad());
+    const offCust = api?.onCustomersChanged?.(() => scheduleLoad());
+    const offSales = api?.onSalesChanged?.(() => scheduleLoad());
     return () => { try { offWO && offWO(); } catch {} try { offCust && offCust(); } catch {} try { offSales && offSales(); } catch {} };
   }, [load]);
+
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current !== null) {
+        try { window.clearTimeout(reloadTimerRef.current); } catch {}
+        reloadTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="bg-zinc-900 border border-zinc-700 rounded p-3">

@@ -1957,6 +1957,70 @@ function dbLog(...args: any[]) {
   try { if (DB_DEBUG) console.log(...args); } catch {}
 }
 
+let lastPerfLogAt = 0;
+function appendPerfLog(line: string) {
+  try {
+    const msg = `${new Date().toISOString()} ${line}\n`;
+    const p = path.join(resolveDataRoot(), 'gbpos-perf.log');
+    // Async, fire-and-forget to avoid blocking the main thread.
+    try { void (fs.promises as any).appendFile(p, msg, 'utf-8').catch(() => {}); } catch {}
+  } catch {
+    // ignore
+  }
+}
+
+function logSlowDbWrite(details: { bytes: number; stringifyMs: number; totalMs: number; filePath: string }) {
+  // Throttle perf logs to avoid noisy I/O.
+  const now = Date.now();
+  if (now - lastPerfLogAt < 15000) return;
+  lastPerfLogAt = now;
+  try {
+    appendPerfLog(`db-write bytes=${details.bytes} stringifyMs=${details.stringifyMs} totalMs=${details.totalMs} file=${details.filePath}`);
+  } catch {
+    // ignore
+  }
+}
+
+const COLLECTION_CHANGED_EVENT: Record<string, string> = {
+  workOrders: 'workorders:changed',
+  customers: 'customers:changed',
+  sales: 'sales:changed',
+  technicians: 'technicians:changed',
+  deviceCategories: 'deviceCategories:changed',
+  productCategories: 'productCategories:changed',
+  products: 'products:changed',
+  partSources: 'partSources:changed',
+  calendarEvents: 'calendarEvents:changed',
+  timeEntries: 'timeEntries:changed',
+  notifications: 'notifications:changed',
+  notificationSettings: 'notificationSettings:changed',
+};
+
+let changedEmitTimer: NodeJS.Timeout | null = null;
+const pendingChangedEvents = new Set<string>();
+function scheduleCollectionChanged(key: string) {
+  try {
+    const ev = COLLECTION_CHANGED_EVENT[String(key || '')];
+    if (!ev) return;
+    pendingChangedEvents.add(ev);
+    if (changedEmitTimer) return;
+    // Coalesce rapid updates (autosaves/typing) to avoid renderer thrash.
+    changedEmitTimer = setTimeout(() => {
+      changedEmitTimer = null;
+      const events = Array.from(pendingChangedEvents);
+      pendingChangedEvents.clear();
+      const wins = BrowserWindow.getAllWindows();
+      for (const w of wins) {
+        for (const name of events) {
+          try { w.webContents.send(name); } catch {}
+        }
+      }
+    }, 120);
+  } catch {
+    // ignore
+  }
+}
+
 let dbCache: any | null = null;
 
 function defaultDb() {
@@ -1992,8 +2056,26 @@ function flushWriteDb() {
     .then(async () => {
       const p = dbFilePath();
       const tmp = p + '.tmp';
-      await (fs.promises as any).writeFile(tmp, JSON.stringify(snapshot, null, 2), 'utf-8');
+      const t0 = Date.now();
+      let json = '';
+      let stringifyMs = 0;
+      try {
+        const ts = Date.now();
+        // Compact JSON is significantly faster and smaller than pretty-printed.
+        json = JSON.stringify(snapshot);
+        stringifyMs = Date.now() - ts;
+      } catch {
+        const ts = Date.now();
+        json = JSON.stringify(defaultDb());
+        stringifyMs = Date.now() - ts;
+      }
+      const bytes = Buffer.byteLength(json, 'utf8');
+      await (fs.promises as any).writeFile(tmp, json, 'utf-8');
       await (fs.promises as any).rename(tmp, p);
+      const totalMs = Date.now() - t0;
+      if (stringifyMs > 120 || totalMs > 350) {
+        try { logSlowDbWrite({ bytes, stringifyMs, totalMs, filePath: p }); } catch {}
+      }
       // Opportunistic server push; never blocks local writes.
       try { scheduleServerAutoSync(); } catch {}
     })
@@ -2188,31 +2270,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', item?.id);
   const ok = writeDb(db);
   if (ok) {
-    if (key === 'workOrders') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('workorders:changed'));
-    } else if (key === 'customers') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('customers:changed'));
-    } else if (key === 'sales') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('sales:changed'));
-    } else if (key === 'deviceCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('deviceCategories:changed'));
-    } else if (key === 'productCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('productCategories:changed'));
-    } else if (key === 'products') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('products:changed'));
-    } else if (key === 'partSources') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('partSources:changed'));
-    } else if (key === 'technicians') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('technicians:changed'));
-    } else if (key === 'calendarEvents') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
-    } else if (key === 'timeEntries') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
-    } else if (key === 'notifications') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
-    } else if (key === 'notificationSettings') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
-    }
+    scheduleCollectionChanged(key);
     return item;
   }
   return null;
@@ -2317,31 +2375,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   const ok = writeDb(db);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
-    if (key === 'workOrders') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('workorders:changed'));
-    } else if (key === 'customers') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('customers:changed'));
-    } else if (key === 'sales') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('sales:changed'));
-    } else if (key === 'deviceCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('deviceCategories:changed'));
-    } else if (key === 'productCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('productCategories:changed'));
-    } else if (key === 'products') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('products:changed'));
-    } else if (key === 'partSources') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('partSources:changed'));
-    } else if (key === 'technicians') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('technicians:changed'));
-    } else if (key === 'calendarEvents') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
-    } else if (key === 'timeEntries') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
-    } else if (key === 'notifications') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
-    } else if (key === 'notificationSettings') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
-    }
+    scheduleCollectionChanged(key);
     return db[key][idx];
   }
   return null;
@@ -2368,31 +2402,7 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   const ok = writeDb(db);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
-    if (key === 'workOrders') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('workorders:changed'));
-    } else if (key === 'customers') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('customers:changed'));
-    } else if (key === 'sales') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('sales:changed'));
-    } else if (key === 'deviceCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('deviceCategories:changed'));
-    } else if (key === 'productCategories') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('productCategories:changed'));
-    } else if (key === 'products') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('products:changed'));
-    } else if (key === 'partSources') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('partSources:changed'));
-    } else if (key === 'technicians') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('technicians:changed'));
-    } else if (key === 'calendarEvents') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('calendarEvents:changed'));
-    } else if (key === 'timeEntries') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('timeEntries:changed'));
-    } else if (key === 'notifications') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notifications:changed'));
-    } else if (key === 'notificationSettings') {
-      BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => w.webContents.send('notificationSettings:changed'));
-    }
+    scheduleCollectionChanged(key);
   }
   return ok;
 });

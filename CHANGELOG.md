@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.25 (2026-04-24)
+- Quote Generator: Create Sales form flow — select items via checkboxes and auto-create a Sales ticket for the selected customer (opens the Sale ticket for checkout).
+- Performance: main-process DB writes are faster (compact JSON) and collection change events are coalesced to reduce UI freezes during frequent autosaves.
+- Performance: Recent Customers no longer reloads/sorts the full Work Orders list on every change (bounded query + debounced refresh).
+- Calendar: autosave no longer uses expensive deep JSON equality for change detection.
+- Reports: Trends bars now scale with headroom so the biggest bar isn’t always maxed-out.
+- Reports: Popular devices now groups by specific device/model (e.g., “PS5”) instead of the broad category.
+- Repairs: fixed Devices/Repairs edit form lock (fields stayed untypeable after Cancel/Delete) and added Enter-to-save workflow across key forms.
+
 ## v0.2.50 (2026-03-07)
 - Interactive Quote: signature + date fields are inline on the page (no popup/overlay).
 - Interactive Quote: Finalize reliably downloads the signed PDF in one step.

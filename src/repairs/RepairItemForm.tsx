@@ -204,6 +204,49 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setMarkupPct('');
   };
 
+  const submitDisabled =
+    !formData.repairCategory ||
+    !formData.title ||
+    formData.partCost === undefined || isNaN(Number(formData.partCost)) ||
+    formData.laborCost === undefined || isNaN(Number(formData.laborCost));
+
+  function focusRepairCategorySoon() {
+    window.setTimeout(() => {
+      try { repairCategoryRef.current?.focus(); } catch {}
+      try { repairCategoryRef.current?.select?.(); } catch {}
+    }, 0);
+  }
+
+  function submitPrimaryAction() {
+    if (submitDisabled) return;
+
+    const partCost = Number(formData.partCost);
+    const laborCost = Number(formData.laborCost);
+    if (!Number.isFinite(partCost) || !Number.isFinite(laborCost)) return;
+
+    const payload: RepairItem = {
+      ...(formData as any),
+      partCost,
+      laborCost,
+      internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
+      id: mode === 'admin'
+        ? (formData.id || undefined)
+        : (formData.id || Math.random().toString(36).slice(2, 10)),
+    } as RepairItem;
+
+    onSave(payload);
+    if (mode === 'admin' && !formData.id) {
+      clearFormFields();
+      focusRepairCategorySoon();
+    }
+  }
+
+  const handleEnterToSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitPrimaryAction();
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Edit Repair button at top (admin only) */}
@@ -239,6 +282,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               }}
               onFocus={() => setShowRepairCategoryDropdown(true)}
               onBlur={() => setTimeout(() => setShowRepairCategoryDropdown(false), 100)}
+              onKeyDown={handleEnterToSubmit}
               placeholder="e.g. Diagnostic, Screen Repair, Liquid Damage, Extra Fee\u2026"
               className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
             />
@@ -290,6 +334,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   onChange={handleDeviceCategoryInput}
                   onFocus={() => setShowCategoryDropdown(true)}
                   onBlur={handleCategoryBlur}
+                  onKeyDown={handleEnterToSubmit}
                   autoComplete="off"
                   placeholder="e.g. iPhone, Game Console, Android Tablet…"
                   className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
@@ -316,11 +361,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Repair Description <span className="text-red-400">*</span>
             </label>
-            <input type="text" value={formData.title || ''} name="title" onChange={handleChange} placeholder="Short name for this repair or service" className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
+            <input type="text" value={formData.title || ''} name="title" onChange={handleChange} onKeyDown={handleEnterToSubmit} placeholder="Short name for this repair or service" className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-300 mb-1">Alt. description</label>
-            <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
+            <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} onKeyDown={handleEnterToSubmit} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
@@ -328,6 +373,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
               value={Number(formData.partCost || 0)}
               onValueChange={(v) => setFormData(prev => ({ ...prev, partCost: Number(v || 0) }))}
+              onKeyDown={handleEnterToSubmit}
               placeholder="0.00"
             />
           </div>
@@ -337,6 +383,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
               value={Number(formData.laborCost || 0)}
               onValueChange={(v) => setFormData(prev => ({ ...prev, laborCost: Number(v || 0) }))}
+              onKeyDown={handleEnterToSubmit}
               placeholder="0.00"
             />
           </div>
@@ -347,6 +394,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 className="w-full bg-zinc-800 text-gray-100 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
                 value={typeof formData.internalCost === 'number' ? formData.internalCost : undefined}
                 onValueChange={(v) => setFormData(prev => ({ ...prev, internalCost: v == null ? undefined : Number(v || 0) }))}
+                onKeyDown={handleEnterToSubmit}
                 allowEmpty
                 placeholder="0.00"
               />
@@ -404,6 +452,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                         min="0"
                         value={formData.stockCount ?? ''}
                         onChange={e => setFormData(prev => ({ ...prev, stockCount: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                        onKeyDown={handleEnterToSubmit}
                         className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
                       />
                     </div>
@@ -414,6 +463,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                         min="0"
                         value={formData.lowStockThreshold ?? ''}
                         onChange={e => setFormData(prev => ({ ...prev, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                        onKeyDown={handleEnterToSubmit}
                         className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
                       />
                     </div>
@@ -436,6 +486,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               name="partSource"
               value={formData.partSource || ''}
               onChange={handleChange}
+              onKeyDown={handleEnterToSubmit}
               className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
               placeholder="Vendor name (auto from URL)"
             />
@@ -455,6 +506,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     if (v) setFormData(prev => ({ ...prev, partSource: v }));
                   }
                 }}
+                onKeyDown={handleEnterToSubmit}
                 placeholder="https://"
                 className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
               />
@@ -502,49 +554,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           )}
           <button
             type="button"
-            disabled={
-              !formData.repairCategory ||
-              !formData.title ||
-              formData.partCost === undefined || isNaN(Number(formData.partCost)) ||
-              formData.laborCost === undefined || isNaN(Number(formData.laborCost))
-            }
+            disabled={submitDisabled}
             className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => {
-              if (
-                formData.repairCategory &&
-                formData.title &&
-                formData.partCost !== undefined && !isNaN(Number(formData.partCost)) &&
-                formData.laborCost !== undefined && !isNaN(Number(formData.laborCost))
-              ) {
-                onSave({
-                  ...formData,
-                  partCost: Number(formData.partCost),
-                  laborCost: Number(formData.laborCost),
-                  internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
-                  id: formData.id || undefined,
-                } as RepairItem);
-                // Only reset if not editing
-                if (!formData.id) {
-                  setFormData({
-                    category: '',
-                    repairCategory: '',
-                    title: '',
-                    altDescription: '',
-                    partCost: 0,
-                    laborCost: 0,
-                    internalCost: undefined,
-                    orderDate: '',
-                    estDelivery: '',
-                    partSource: '',
-                    orderSourceUrl: '',
-                    type: 'service',
-                    model: '',
-                  });
-                  setDeviceCategoryInput('');
-                  setHasDeviceCategory(false);
-                }
-              }
-            }}
+            onClick={submitPrimaryAction}
           >
             Save
           </button>
@@ -571,29 +583,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </button>
           <button
             type="button"
-            disabled={
-              !formData.repairCategory ||
-              !formData.title ||
-              formData.partCost === undefined || isNaN(Number(formData.partCost)) ||
-              formData.laborCost === undefined || isNaN(Number(formData.laborCost))
-            }
+            disabled={submitDisabled}
             className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => {
-              if (
-                formData.repairCategory &&
-                formData.title &&
-                formData.partCost !== undefined && !isNaN(Number(formData.partCost)) &&
-                formData.laborCost !== undefined && !isNaN(Number(formData.laborCost))
-              ) {
-                onSave({
-                  ...formData,
-                  partCost: Number(formData.partCost),
-                  laborCost: Number(formData.laborCost),
-                  internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
-                  id: formData.id || Math.random().toString(36).slice(2, 10),
-                } as RepairItem);
-              }
-            }}
+            onClick={submitPrimaryAction}
           >
             Add to Work Order
           </button>

@@ -1275,7 +1275,7 @@ const EODWindow: React.FC = () => {
   const topDevices = useMemo(() => {
     const map = new Map<string, number>();
     (workOrders || []).forEach((wo: any) => {
-      const device = (wo.productCategory || wo.productDescription || 'Unknown device').toString().trim();
+      const device = (wo.productDescription || wo.device || wo.productCategory || 'Unknown device').toString().trim();
       if (!device) return;
       map.set(device, (map.get(device) || 0) + 1);
     });
@@ -2620,7 +2620,7 @@ const EODWindow: React.FC = () => {
               <div className="space-y-2">
                 {monthlyTrends.map(item => {
                   const max = Math.max(1, ...monthlyTrends.map(m => m.count));
-                  const pct = Math.round((item.count / max) * 100);
+                  const pct = Math.max(0, Math.min(100, Math.round((item.count / (max * 1.15)) * 100)));
                   return (
                     <div key={item.key} className="flex items-center gap-3">
                       <div className="w-28 text-xs text-zinc-400">{item.label}</div>
@@ -2639,7 +2639,7 @@ const EODWindow: React.FC = () => {
               <div className="space-y-2">
                 {busiestDays.map(item => {
                   const max = Math.max(1, ...busiestDays.map(d => d.count));
-                  const pct = Math.round((item.count / max) * 100);
+                  const pct = Math.max(0, Math.min(100, Math.round((item.count / (max * 1.15)) * 100)));
                   return (
                     <div key={item.label} className="flex items-center gap-3">
                       <div className="w-10 text-xs text-zinc-400">{item.label}</div>
@@ -2658,7 +2658,7 @@ const EODWindow: React.FC = () => {
               <div className="space-y-2">
                 {topDevices.map(item => {
                   const max = Math.max(1, ...topDevices.map(d => d.count));
-                  const pct = Math.round((item.count / max) * 100);
+                  const pct = Math.max(0, Math.min(100, Math.round((item.count / (max * 1.15)) * 100)));
                   return (
                     <div key={item.label} className="flex items-center gap-3">
                       <div className="w-28 text-xs text-zinc-400 truncate">{item.label}</div>
@@ -2677,7 +2677,7 @@ const EODWindow: React.FC = () => {
               <div className="space-y-2">
                 {topRepairs.map(item => {
                   const max = Math.max(1, ...topRepairs.map(d => d.count));
-                  const pct = Math.round((item.count / max) * 100);
+                  const pct = Math.max(0, Math.min(100, Math.round((item.count / (max * 1.15)) * 100)));
                   return (
                     <div key={item.label} className="flex items-center gap-3">
                       <div className="w-28 text-xs text-zinc-400 truncate">{item.label}</div>

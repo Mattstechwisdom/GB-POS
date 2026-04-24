@@ -31,6 +31,22 @@ export default function DataToolsWindow() {
   );
   const [customKey, setCustomKey] = useState('');
 
+  const addCustomCollection = async () => {
+    if (busy || !hasElectron) return;
+    const key = customKey.trim();
+    if (!key) return;
+    try {
+      const arr = await api.dbGet(key);
+      if (!Array.isArray(arr)) { log('error', `Collection "${key}" is not an array or not found.`); return; }
+      setAvailableCollections(prev => prev.some(c => c.key === key) ? prev : [...prev, { key, label: key }]);
+      setSelected(prev => new Set(prev).add(key));
+      log('info', `Added collection: ${key} (${arr.length} items)`);
+      setCustomKey('');
+    } catch (e: any) {
+      log('error', `Failed to load "${key}": ${e?.message || String(e)}`);
+    }
+  };
+
   const log = (level: LogLevel, message: string) => setLogs(prev => [{ ts: new Date().toLocaleTimeString(), level, message }, ...prev].slice(0, 500));
 
   const getDb = async () => {
@@ -258,21 +274,19 @@ export default function DataToolsWindow() {
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-semibold text-zinc-300">Collections</div>
           <div className="flex gap-2 items-center">
-            <input value={customKey} onChange={e => setCustomKey(e.target.value)} placeholder="Add custom (e.g. products2)" className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded outline-none focus:border-[#39FF14] w-48" />
-            <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={async () => {
-              const key = customKey.trim();
-              if (!key) return;
-              try {
-                const arr = await api.dbGet(key);
-                if (!Array.isArray(arr)) { log('error', `Collection "${key}" is not an array or not found.`); return; }
-                setAvailableCollections(prev => prev.some(c => c.key === key) ? prev : [...prev, { key, label: key }]);
-                setSelected(prev => new Set(prev).add(key));
-                log('info', `Added collection: ${key} (${arr.length} items)`);
-                setCustomKey('');
-              } catch (e: any) {
-                log('error', `Failed to load "${key}": ${e?.message || String(e)}`);
-              }
-            }} disabled={busy || !hasElectron}>Add</button>
+            <input
+              value={customKey}
+              onChange={e => setCustomKey(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void addCustomCollection();
+                }
+              }}
+              placeholder="Add custom (e.g. products2)"
+              className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded outline-none focus:border-[#39FF14] w-48"
+            />
+            <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={addCustomCollection} disabled={busy || !hasElectron}>Add</button>
             <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={selectAll} disabled={busy}>Select All</button>
             <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={clearSelection} disabled={busy}>Clear</button>
           </div>

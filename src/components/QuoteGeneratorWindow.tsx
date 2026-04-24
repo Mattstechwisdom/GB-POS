@@ -4,6 +4,7 @@ import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
 import { useAutosave } from '../lib/useAutosave';
+import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
@@ -445,6 +446,11 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Track expanded categories per item for Custom PC (keyed by item index string)
   const [openCats, setOpenCats] = useState<Record<string, Record<string, boolean>>>({});
 
+  // Create Sales form workflow (Quote → Sale)
+  const [createSaleSelecting, setCreateSaleSelecting] = useState(false);
+  const [createSaleSelected, setCreateSaleSelected] = useState<Record<number, boolean>>({});
+  const [createSaleBusy, setCreateSaleBusy] = useState(false);
+
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
@@ -467,6 +473,145 @@ function QuoteGeneratorWindow(): JSX.Element {
       return { subtotal, total: subtotal } as any;
     } catch { return { subtotal: 0, total: 0 } as any; }
   }, [sales]);
+
+  const selectedSaleIndices = useMemo(() => {
+    const max = (sales.items || []).length;
+    const out: number[] = [];
+    for (const [k, v] of Object.entries(createSaleSelected || {})) {
+      if (!v) continue;
+      const idx = Number(k);
+      if (!Number.isFinite(idx)) continue;
+      if (idx < 0 || idx >= max) continue;
+      out.push(idx);
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  }, [createSaleSelected, sales.items]);
+
+  function quoteItemTitle(it: SaleItem, idx: number): string {
+    const model = String((it.model ?? (it as any).dynamic?.model) || '').trim();
+    const desc = String(it.description || '').trim();
+    const base = model || desc || `Item ${idx + 1}`;
+    const brand = String(it.brand || '').trim();
+    if (!brand) return base;
+    const lowerBase = base.toLowerCase();
+    if (lowerBase.includes(brand.toLowerCase())) return base;
+    return `${brand} ${base}`.trim();
+  }
+
+  function normalizeSaleCondition(cond?: string): SaleItemRow['condition'] {
+    const v = String(cond || '').trim().toLowerCase();
+    if (!v) return undefined;
+    if (v.includes('new')) return 'New';
+    if (v.includes('excellent')) return 'Excellent';
+    if (v.includes('fair')) return 'Fair';
+    if (v.includes('good')) return 'Good';
+    // Like New / Poor / For Parts → closest supported values
+    if (v.includes('like')) return 'Excellent';
+    return 'Good';
+  }
+
+  function makeRowId(): string {
+    try {
+      const c: any = (globalThis as any).crypto;
+      if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    } catch {}
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function round2(n: number): number {
+    return Math.round((Number(n) || 0) * 100) / 100;
+  }
+
+  async function createSalesTicketFromSelection() {
+    if (mode !== 'sales') return;
+    const indices = selectedSaleIndices;
+    if (!indices.length) {
+      // Treat as a toggle-off when nothing is selected.
+      setCreateSaleSelecting(false);
+      setCreateSaleSelected({});
+      return;
+    }
+
+    const customerName = String(sales.customerName || '').trim();
+    const customerPhone = String(sales.customerPhone || '').trim();
+    if (!sales.customerId && !customerName && !customerPhone) {
+      setSaveMsg('Select a customer first');
+      setTimeout(() => setSaveMsg(null), 2000);
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const rows: SaleItemRow[] = indices.map((idx) => {
+      const it = sales.items[idx];
+      const description = quoteItemTitle(it, idx);
+      const price = Number(it.price || 0) || 0;
+      const internalCost = Number(it.internalCost);
+      return {
+        id: makeRowId(),
+        description,
+        qty: 1,
+        price,
+        internalCost: Number.isFinite(internalCost) ? internalCost : undefined,
+        condition: normalizeSaleCondition(it.condition),
+        inStock: !!it.inStock,
+        productUrl: String(it.url || '').trim(),
+        category: 'Device',
+      };
+    });
+
+    const taxRate = 8;
+    const subTotal = round2(rows.reduce((sum, r) => sum + (Number(r.qty) || 0) * (Number(r.price) || 0), 0));
+    const tax = round2(subTotal * taxRate / 100);
+    const total = round2(subTotal + tax);
+    const record: any = {
+      customerId: sales.customerId || undefined,
+      customerName,
+      customerPhone,
+      // Mirror customer email if present (safe even if not used by SaleWindow)
+      customerEmail: String((sales as any).customerEmail || '').trim() || undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      checkInAt: nowIso,
+      status: 'open',
+      assignedTo: null,
+      items: rows,
+      // legacy mirror
+      itemDescription: rows[0]?.description || '',
+      quantity: rows[0]?.qty || 1,
+      price: rows[0]?.price || 0,
+      amountPaid: 0,
+      taxRate,
+      discount: 0,
+      totals: { subTotal, tax, total, remaining: total },
+      total,
+    };
+
+    setCreateSaleBusy(true);
+    try {
+      const saved = await (window as any).api.dbAdd('sales', record);
+      if (!saved?.id) throw new Error('Sale create failed');
+
+      setSaveMsg(`Sales ticket created (GB${String(saved.id).padStart(7, '0')})`);
+      setTimeout(() => setSaveMsg(null), 2500);
+      setCreateSaleSelecting(false);
+      setCreateSaleSelected({});
+
+      try {
+        await (window as any).api.openNewSale?.({
+          id: saved.id,
+          customerId: saved.customerId,
+          customerName: saved.customerName,
+          customerPhone: saved.customerPhone,
+        });
+      } catch {}
+    } catch (e: any) {
+      setSaveMsg(`Could not create sale: ${e?.message || e}`);
+      setTimeout(() => setSaveMsg(null), 3000);
+    } finally {
+      setCreateSaleBusy(false);
+    }
+  }
 
   const repairTotals = useMemo(() => {
     try {
@@ -3686,6 +3831,19 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
   function removeSaleItem(idx: number) {
     setSales((s) => ({ ...s, items: s.items.filter((_, i) => i !== idx) }));
+    if (createSaleSelecting) {
+      setCreateSaleSelected((prev) => {
+        const next: Record<number, boolean> = {};
+        for (const [k, v] of Object.entries(prev || {})) {
+          if (!v) continue;
+          const i = Number(k);
+          if (!Number.isFinite(i)) continue;
+          if (i < idx) next[i] = true;
+          else if (i > idx) next[i - 1] = true;
+        }
+        return next;
+      });
+    }
   }
   function toggleSaleItemExpanded(idx: number) {
     setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, expanded: !x.expanded } : x)) }));
@@ -5701,7 +5859,17 @@ function QuoteGeneratorWindow(): JSX.Element {
                 {sales.items.map((it, idx) => (
                   <div key={idx} className="border border-zinc-700 rounded p-2">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm text-zinc-300">{(String(((it.model ?? (it as any).dynamic?.model) || '')).trim()) || it.description || `Item ${idx + 1}`}</div>
+                      <label className="flex items-center gap-2 min-w-0">
+                        {createSaleSelecting && (
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-[#39FF14]"
+                            checked={!!createSaleSelected[idx]}
+                            onChange={(e) => setCreateSaleSelected((prev) => ({ ...prev, [idx]: (e.target as HTMLInputElement).checked }))}
+                          />
+                        )}
+                        <div className="text-sm text-zinc-300 truncate">{quoteItemTitle(it, idx)}</div>
+                      </label>
                       <div className="flex justify-end gap-1">
                         <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title={it.expanded ? 'Hide details' : 'Show details'} onClick={() => toggleSaleItemExpanded(idx)}>{it.expanded ? 'v' : '>'}</button>
                         <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" title="Remove" onClick={() => removeSaleItem(idx)}>Remove</button>
@@ -6067,6 +6235,21 @@ function QuoteGeneratorWindow(): JSX.Element {
           <div className="text-xs text-zinc-400 h-6 flex items-center">{saveMsg}</div>
           <div className="flex flex-wrap items-center gap-1">
             <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'Saving...' : 'Save Quote'}</button>
+            {mode === 'sales' && (
+              <button
+                className={`px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap ${createSaleSelecting ? 'ring-2 ring-[#39FF14]' : ''}`}
+                disabled={createSaleBusy}
+                onClick={async () => {
+                  if (createSaleBusy) return;
+                  if (!createSaleSelecting) {
+                    setCreateSaleSelecting(true);
+                    setCreateSaleSelected({});
+                    return;
+                  }
+                  await createSalesTicketFromSelection();
+                }}
+              >{createSaleBusy ? 'Creating...' : 'Create Sales form'}</button>
+            )}
             <button
               className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
               onClick={openHtmlPreview}

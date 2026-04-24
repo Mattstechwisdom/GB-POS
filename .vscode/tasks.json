@@ -39,6 +39,20 @@
 			"group": "build"
 		},
 		{
+			"label": "Run dev app (test environment)",
+			"type": "shell",
+			"command": "npm run dev",
+			"isBackground": true,
+			"problemMatcher": [],
+			"options": {
+				"env": {
+					"GBPOS_DATA_ROOT": "${env:ProgramData}\\GadgetBoy POS Test",
+					"GBPOS_SEED_TEST_DATA": "1"
+				}
+			},
+			"group": "build"
+		},
+		{
 			"label": "Run dev app",
 			"type": "shell",
 			"command": "npm run dev",

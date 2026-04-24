@@ -210,8 +210,9 @@ const ChartsWindow: React.FC = () => {
           <div className="h-48 flex items-end gap-2">
             {(() => {
               const max = Math.max(1, ...grouped.map(x => x.total));
+              const scaledMax = max * 1.15;
               return grouped.map(g => {
-                const h = Math.round((g.total / max) * 160);
+                const h = Math.max(0, Math.min(160, Math.round((g.total / scaledMax) * 160)));
                 return (
                   <div key={g.date} className="flex-1 flex flex-col items-center" title={`${g.date}\nOrders: ${g.orders}\nRevenue: $${g.total.toFixed(2)}\nProfit: $${g.profit.toFixed(2)}`}>
                     <div className="text-[10px] text-zinc-400 mb-1">${g.total.toFixed(0)}</div>

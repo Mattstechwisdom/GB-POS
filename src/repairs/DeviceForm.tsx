@@ -84,6 +84,8 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const deviceInputRef = useRef<HTMLInputElement | null>(null);
   // Debounce ref so rapid typing doesn't trigger selection-lookup on every keystroke
   const selectionDebounceRef = useRef<number | null>(null);
 
@@ -111,35 +113,73 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
   const effectiveTitle = useMemo(() => (titleText || '').trim(), [titleText]);
   const canSave = (effectiveTitle.length > 0) && (deviceNameText.trim().length > 0 || selectedDeviceId !== undefined);
 
-  async function save() {
-    if (!canSave) return;
+  function clearSelectionDebounce() {
+    if (selectionDebounceRef.current !== null) {
+      window.clearTimeout(selectionDebounceRef.current);
+      selectionDebounceRef.current = null;
+    }
+  }
+
+  function focusTitleSoon() {
+    window.setTimeout(() => {
+      try { titleInputRef.current?.focus(); } catch {}
+      try { titleInputRef.current?.select?.(); } catch {}
+    }, 0);
+  }
+
+  function focusDeviceSoon() {
+    window.setTimeout(() => {
+      try { deviceInputRef.current?.focus(); } catch {}
+      try { deviceInputRef.current?.select?.(); } catch {}
+    }, 0);
+  }
+
+  function resetForNextDeviceEntry(opts?: { clearTitle?: boolean }) {
+    clearSelectionDebounce();
+    try { deviceCtx.close(); } catch {}
+    setSelectedDeviceId(undefined);
+    setDeviceNameText('');
+    if (opts?.clearTitle) setTitleText('');
+  }
+
+  async function save(): Promise<boolean> {
+    if (!canSave || saving) return false;
     setSaving(true);
     try {
       const api: any = (window as any).api || {};
       if (selectedDeviceId !== undefined && typeof api.update === 'function') {
         const updated = await api.update('deviceCategories', { id: selectedDeviceId, title: effectiveTitle });
-        if (updated) { onSaved(); return; }
+        if (updated) { await Promise.resolve(onSaved()); return true; }
       }
       if (selectedDeviceId !== undefined && typeof api.dbUpdate === 'function') {
         const existing = (devices || []).find(d => Number(d.id) === Number(selectedDeviceId));
         const updated = await api.dbUpdate('deviceCategories', selectedDeviceId, { ...(existing || {}), name: (existing?.name || deviceNameText).trim(), title: effectiveTitle });
-        if (updated) { onSaved(); return; }
+        if (updated) { await Promise.resolve(onSaved()); return true; }
       }
       const payload: any = { name: deviceNameText.trim(), title: effectiveTitle };
       if (api.addDeviceCategory) {
         const added = await api.addDeviceCategory(payload);
-        if (added) { onSaved(); return; }
+        if (added) { await Promise.resolve(onSaved()); return true; }
       } else if (api.dbAdd) {
         const added = await api.dbAdd('deviceCategories', payload);
-        if (added) { onSaved(); return; }
+        if (added) { await Promise.resolve(onSaved()); return true; }
       }
       alert('Failed to save device category');
+      return false;
     } catch (e) {
       console.error('save device category failed', e);
       alert('Failed to save device category');
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveAndClearForNext() {
+    const ok = await save();
+    if (!ok) return;
+    resetForNextDeviceEntry({ clearTitle: false });
+    focusDeviceSoon();
   }
 
   const effectiveTitles = useMemo(() => Array.from(new Set([...(titles || [])].filter(Boolean))).sort(), [titles]);
@@ -182,23 +222,33 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTitle, initialDeviceName]);
 
+  // Cleanup: ensure pending debounce timers don't fire after cancel/delete/unmount.
+  useEffect(() => {
+    return () => {
+      clearSelectionDebounce();
+    };
+  }, []);
+
   async function deleteDeviceById(deviceId: number) {
+    clearSelectionDebounce();
     const name = (devices || []).find(d => Number(d.id) === Number(deviceId))?.name || deviceNameText || 'this device';
     const ok = window.confirm(`Delete ${name}? This cannot be undone.`);
-    if (!ok) return;
+    if (!ok) { focusDeviceSoon(); return; }
     try {
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
         const res = await api.dbDelete('deviceCategories', deviceId);
-        if (res) { setSelectedDeviceId(undefined); setDeviceNameText(''); onSaved(); return; }
+        if (res) { resetForNextDeviceEntry({ clearTitle: false }); await Promise.resolve(onSaved()); focusDeviceSoon(); return; }
       } else if (typeof api.deleteFromCollection === 'function') {
         const res = await api.deleteFromCollection('deviceCategories', deviceId);
-        if (res) { setSelectedDeviceId(undefined); setDeviceNameText(''); onSaved(); return; }
+        if (res) { resetForNextDeviceEntry({ clearTitle: false }); await Promise.resolve(onSaved()); focusDeviceSoon(); return; }
       }
       alert('Failed to delete device');
     } catch (e) {
       console.error('delete device failed', e);
       alert('Failed to delete device');
+    } finally {
+      focusDeviceSoon();
     }
   }
 
@@ -216,21 +266,21 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       .filter((id: any) => id != null);
     if (ids.length === 0) { alert('No devices found under this category.'); return; }
     const ok = window.confirm(`Delete category "${title}" and all ${ids.length} device(s) under it? This cannot be undone.`);
-    if (!ok) return;
+    if (!ok) { focusTitleSoon(); return; }
     setSaving(true);
     try {
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
         for (const id of ids) { try { await api.dbDelete('deviceCategories', id); } catch {} }
       }
-      setSelectedDeviceId(undefined);
-      setDeviceNameText('');
-      onSaved();
+      resetForNextDeviceEntry({ clearTitle: true });
+      await Promise.resolve(onSaved());
     } catch (e) {
       console.error('delete category failed', e);
       alert('Failed to delete category');
     } finally {
       setSaving(false);
+      focusTitleSoon();
     }
   }
 
@@ -249,10 +299,17 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Category (device type)</label>
           <input
+            ref={titleInputRef}
             type="text"
             list="gbpos-device-type-list"
             value={titleText}
             onChange={e => { setTitleText(e.target.value); setSelectedDeviceId(undefined); }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void saveAndClearForNext();
+              }
+            }}
             placeholder="e.g. Laptop, Game Console, Tablet"
             className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
           />
@@ -264,6 +321,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Device</label>
           <input
+            ref={deviceInputRef}
             type="text"
             list="gbpos-device-name-list"
             value={deviceNameText}
@@ -281,6 +339,12 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
                 );
                 setSelectedDeviceId(found && typeof found.id === 'number' ? found.id : undefined);
               }, 150);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void saveAndClearForNext();
+              }
             }}
             placeholder={effectiveTitle ? `e.g. a device within ${effectiveTitle}` : 'Type device name…'}
             className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
@@ -333,7 +397,17 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
         </div>
         <div className="flex flex-wrap items-center gap-2 ml-auto">
           <button
-            onClick={onCancel}
+            onClick={() => {
+              // If the form is empty, keep the old behavior (back).
+              // Otherwise, treat Cancel as "reset fields" so the user can continue adding.
+              const hasAny = (titleText || '').trim() || (deviceNameText || '').trim() || selectedDeviceId !== undefined;
+              if (!hasAny) {
+                try { onCancel(); } catch {}
+                return;
+              }
+              resetForNextDeviceEntry({ clearTitle: false });
+              focusDeviceSoon();
+            }}
             className="h-9 px-3 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm"
           >
             Cancel

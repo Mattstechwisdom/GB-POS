@@ -467,17 +467,16 @@ const CalendarWindow: React.FC = () => {
   }
 
   // Autosave editing after 2s of inactivity; keep modal open
-  useAutosave({ ev: editing, deliveryDates }, async (val) => {
+  const autosavePayload = useMemo(() => ({ ev: editing, deliveryDates }), [editing, deliveryDates]);
+  useAutosave(autosavePayload, async (val) => {
     if (!val.ev) return;
     await saveEventSilent(val.ev);
   }, {
     debounceMs: 1000,
     enabled: !!editing,
     skipInitialSave: true,
-    shouldSave: () => canAutosave(editing),
-    equals: (a, b) => {
-      try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
-    }
+    shouldSave: (v) => canAutosave(v.ev),
+    equals: Object.is,
   });
 
   const dailyLookData = useMemo(() => {
