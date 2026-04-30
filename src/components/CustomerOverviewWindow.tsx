@@ -20,8 +20,10 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
+  const editSeqRef = useRef(0);
 
   // If customer not passed, attempt to load by payload store or query param customerOverview
   useEffect(() => {
@@ -42,6 +44,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         const list = await (window as any).api.findCustomers({ id });
         if (Array.isArray(list) && list.length) {
           setLocal(list[0]);
+          setDirty(false);
+          editSeqRef.current = 0;
         }
       } catch (e) {
         console.warn('Failed to load customer by id', e);
@@ -49,7 +53,11 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     })();
   }, [customer]);
 
-  useEffect(() => setLocal(customer || {}), [customer]);
+  useEffect(() => {
+    setLocal(customer || {});
+    setDirty(false);
+    editSeqRef.current = 0;
+  }, [customer]);
 
   // Reload lists when child windows notify about sales changes via postMessage
   useEffect(() => {
@@ -90,6 +98,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   async function ensureCustomerSaved(): Promise<Customer | null> {
     if (!validate()) return null;
     setAutoSaving(true);
+    const saveSeq = editSeqRef.current;
     const payload = { ...local, updatedAt: new Date().toISOString(), createdAt: local.createdAt || new Date().toISOString() } as any;
     try {
       let saved: Customer | null = null;
@@ -100,6 +109,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       }
       if (saved) {
         setLocal(saved);
+        if (editSeqRef.current === saveSeq) setDirty(false);
         if (onSaved) onSaved(saved);
       }
       return saved;
@@ -113,6 +123,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   // Auto-save using shared hook: wait 2s after input settles, only for existing customers and basic validity
   useAutosave(local, async (val) => {
+    const saveSeq = editSeqRef.current;
     setAutoSaving(true);
     try {
       const payload = { ...val, updatedAt: new Date().toISOString(), createdAt: (val as any)?.createdAt || new Date().toISOString() } as any;
@@ -123,16 +134,28 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         saved = await window.api.addCustomer(payload);
       }
       if (saved) {
-        setLocal(saved);
+        // For autosave, avoid clobbering in-progress edits with a round-trip copy.
+        // Only merge the id/timestamps for brand-new customers.
+        if (!(val as any)?.id && (saved as any)?.id) {
+          setLocal(prev => ({
+            ...prev,
+            id: (saved as any).id,
+            createdAt: (saved as any).createdAt ?? (prev as any).createdAt,
+            updatedAt: (saved as any).updatedAt ?? (prev as any).updatedAt,
+          }));
+        }
         if (onSaved) onSaved(saved);
+        if (editSeqRef.current === saveSeq) setDirty(false);
       }
+      return saved;
     } finally {
       setAutoSaving(false);
     }
   }, {
-    debounceMs: 1000,
-    enabled: isCustomerValid(local) || !!(local as any)?.id,
+    debounceMs: 2000,
+    enabled: dirty && (isCustomerValid(local) || !!(local as any)?.id),
     equals: Object.is,
+    getLastSavedValue: (_pending, res) => (res as any) || _pending,
     shouldSave: (v) => {
       if (!v) return false;
       if ((v as any).id) return !!(v as any).firstName && !!(v as any).lastName;
@@ -170,7 +193,14 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         </div>
         <div className="flex gap-4">
           <div className="w-5/12">
-            <CustomerForm customer={local} onChange={c => setLocal(prev => ({ ...prev, ...c }))} />
+            <CustomerForm
+              customer={local}
+              onChange={c => {
+                editSeqRef.current += 1;
+                setDirty(true);
+                setLocal(prev => ({ ...prev, ...c }));
+              }}
+            />
           </div>
           <div className="w-7/12 flex flex-col gap-3">
             {/* Primary actions above filters */}

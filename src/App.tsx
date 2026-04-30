@@ -375,6 +375,7 @@ const AppInner: React.FC<{
             onDateFromChange={setDateFrom}
             onDateToChange={setDateTo}
             onOpenCustomerSearch={() => setShowCustomerSearch(true)}
+            onAddCustomer={() => openModal('customerOverview', 0)}
             mode={mode}
             onModeChange={setMode}
             invoiceQuery={invoiceQuery}

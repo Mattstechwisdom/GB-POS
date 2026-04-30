@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.26 (2026-04-30)
+- Startup: shows the loading screen immediately on launch (no gray flash before the app renders).
+- Customers: autosave is more efficient and avoids save-loops/hangs during data entry (saves serialize and only run after actual edits).
+- Work Orders: autosave triggers after a longer idle window to reduce typing lag.
+- Main screen: replaced Customer Search with separate Add Client and Search Client buttons.
+
 ## v0.4.25 (2026-04-24)
 - Quote Generator: Create Sales form flow — select items via checkboxes and auto-create a Sales ticket for the selected customer (opens the Sale ticket for checkout).
 - Performance: main-process DB writes are faster (compact JSON) and collection change events are coalesced to reduce UI freezes during frequent autosaves.

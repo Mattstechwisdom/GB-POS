@@ -1,4 +1,4 @@
-﻿import React, { Suspense, lazy } from 'react';
+﻿import React, { Suspense, lazy, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 import { publicAsset } from './lib/publicAsset';
@@ -184,10 +184,26 @@ function LoadingScreen() {
 	);
 }
 
+function removeInitialHtmlLoader() {
+	try {
+		const el = document.getElementById('gbpos-initial-loader');
+		if (el) el.remove();
+	} catch {
+		// ignore
+	}
+}
+
+function AppBoot({ children }: { children: React.ReactNode }) {
+	useEffect(() => {
+		removeInitialHtmlLoader();
+	}, []);
+	return <>{children}</>;
+}
+
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
 	root.render(
 		<Suspense fallback={<LoadingScreen />}>
-			{node}
+			<AppBoot>{node}</AppBoot>
 		</Suspense>
 	);
 }

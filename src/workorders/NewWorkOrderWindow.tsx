@@ -527,7 +527,7 @@ const NewWorkOrderWindow: React.FC = () => {
       // silent
     }
   }, {
-    debounceMs: 1000,
+    debounceMs: 2000,
     enabled: true,
     equals: Object.is,
     skipInitialSave: isEditingExisting,

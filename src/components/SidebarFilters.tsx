@@ -12,6 +12,7 @@ interface Props {
   onDateFromChange?: (v: string) => void;
   onDateToChange?: (v: string) => void;
   onOpenCustomerSearch?: () => void;
+  onAddCustomer?: () => void;
   mode?: 'workorders' | 'sales' | 'all';
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
   invoiceQuery?: string;
@@ -22,7 +23,7 @@ interface Props {
   onRefresh?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -158,12 +159,17 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         <button type="button" className="flex-1 bg-zinc-700 rounded px-2 py-1 text-xs" onClick={onClear}>Clear</button>
         <button type="button" className="flex-1 bg-[#39FF14] text-black rounded px-2 py-1 text-xs font-bold" onClick={onRefresh}>Refresh</button>
       </div>
-      <div className="mt-2">
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={() => onAddCustomer && onAddCustomer()}
+          className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
+        >Add Client</button>
         <button
           type="button"
           onClick={() => onOpenCustomerSearch && onOpenCustomerSearch()}
-          className="w-full bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
-        >Customer Search</button>
+          className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
+        >Search Client</button>
       </div>
     </form>
   );
