@@ -121,7 +121,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     }
   }
 
-  // Auto-save using shared hook: wait 2s after input settles, only for existing customers and basic validity
+  // Auto-save using shared hook: wait a bit after input settles, only for existing customers and basic validity
   useAutosave(local, async (val) => {
     const saveSeq = editSeqRef.current;
     setAutoSaving(true);
@@ -152,7 +152,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       setAutoSaving(false);
     }
   }, {
-    debounceMs: 2000,
+    debounceMs: 6000,
     enabled: dirty && (isCustomerValid(local) || !!(local as any)?.id),
     equals: Object.is,
     getLastSavedValue: (_pending, res) => (res as any) || _pending,

@@ -20,11 +20,14 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
   const timerRef = useRef<any>(null);
   const lastSavedRef = useRef<T | null>(null);
   const mountedRef = useRef(true);
+  const lastChangeAtRef = useRef<number>(0);
   const saveRef = useRef(save);
   const shouldSaveRef = useRef(shouldSave);
   const onSavedRef = useRef(onSaved);
   const equalsRef = useRef(equals);
   const getLastSavedValueRef = useRef(getLastSavedValue);
+  const enabledRef = useRef(enabled);
+  const debounceMsRef = useRef(debounceMs);
   const initializedRef = useRef(false);
   const savingRef = useRef(false);
   const queuedValueRef = useRef<T | null>(null);
@@ -35,10 +38,15 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
   useEffect(() => { onSavedRef.current = onSaved; }, [onSaved]);
   useEffect(() => { equalsRef.current = equals; }, [equals]);
   useEffect(() => { getLastSavedValueRef.current = getLastSavedValue; }, [getLastSavedValue]);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { debounceMsRef.current = debounceMs; }, [debounceMs]);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   async function runSave(pendingValue: T) {
     if (!mountedRef.current) return;
+
+    // Guard via predicate (important for queued/stale timers).
+    if (shouldSaveRef.current && !shouldSaveRef.current(pendingValue)) return;
 
     // If a save is already running, remember the latest value and let the in-flight save finish.
     if (savingRef.current) {
@@ -47,7 +55,7 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
     }
 
     // Skip if we believe this exact value is already saved.
-    if (lastSavedRef.current && equalsRef.current(lastSavedRef.current, pendingValue)) return;
+    if (lastSavedRef.current !== null && equalsRef.current(lastSavedRef.current, pendingValue)) return;
 
     savingRef.current = true;
     queuedValueRef.current = null;
@@ -65,19 +73,37 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
       const queued = queuedValueRef.current;
       if (queued) {
         queuedValueRef.current = null;
-        // Save the most recent queued value promptly after the in-flight save finishes.
+        // If autosave is disabled now, drop the queued value.
+        if (!enabledRef.current) return;
+
+        // Respect debounce after the *last* change (prevents back-to-back saves while typing).
         if (timerRef.current) clearTimeout(timerRef.current);
+        const dueAt = (lastChangeAtRef.current || Date.now()) + Math.max(0, debounceMsRef.current || 0);
+        const delay = Math.max(0, dueAt - Date.now());
         timerRef.current = setTimeout(() => {
           void runSave(queued);
-        }, 0);
+        }, delay);
       }
     }
   }
 
   useEffect(() => {
-    if (!enabled) return;
+    // Always cancel any pending timer when inputs/options change.
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    if (!enabled) {
+      queuedValueRef.current = null;
+      return;
+    }
+
     // Guard via predicate
-    if (shouldSaveRef.current && !shouldSaveRef.current(value)) return;
+    if (shouldSaveRef.current && !shouldSaveRef.current(value)) {
+      queuedValueRef.current = null;
+      return;
+    }
+
+    lastChangeAtRef.current = Date.now();
+
     if (!initializedRef.current) {
       initializedRef.current = true;
       if (skipInitialSave) {
@@ -85,7 +111,14 @@ export function useAutosave<T>(value: T, save: (val: T) => Promise<any> | any, o
         return;
       }
     }
-    if (timerRef.current) clearTimeout(timerRef.current);
+
+    // If a save is in-flight, only queue the latest value and let the completion path
+    // schedule the next save after the debounce window.
+    if (savingRef.current) {
+      queuedValueRef.current = value;
+      return;
+    }
+
     const pendingValue = value;
     timerRef.current = setTimeout(async () => {
       void runSave(pendingValue);

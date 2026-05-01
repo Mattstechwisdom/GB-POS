@@ -486,7 +486,7 @@ const NewWorkOrderWindow: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // Autosave work order after 2 seconds of inactivity
+  // Autosave work order after a short idle period (keeps UI responsive during typing)
   useAutosave(wo, async (val) => {
     try {
       const api = (window as any).api || {};
@@ -527,7 +527,7 @@ const NewWorkOrderWindow: React.FC = () => {
       // silent
     }
   }, {
-    debounceMs: 2000,
+    debounceMs: 8000,
     enabled: true,
     equals: Object.is,
     skipInitialSave: isEditingExisting,

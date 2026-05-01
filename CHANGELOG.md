@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.27 (2026-04-30)
+- Autosave: prevents lockups by avoiding back-to-back queued saves while typing (queued saves now respect the idle/debounce window).
+- Customers: improves data entry with auto-capitalized names, phone auto-dashes + format warning, and common email domain suggestions.
+- Work Orders: autosave runs after a longer idle window to reduce typing lag.
+
 ## v0.4.26 (2026-04-30)
 - Startup: shows the loading screen immediately on launch (no gray flash before the app renders).
 - Customers: autosave is more efficient and avoids save-loops/hangs during data entry (saves serialize and only run after actual edits).
