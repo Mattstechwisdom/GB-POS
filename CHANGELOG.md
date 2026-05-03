@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.28 (2026-05-02)
+- Work Order Checkout: add-on products are treated as Parts during checkout (Parts/Labor selection stays available), and payments correctly apply to the attached product sale.
+
 ## v0.4.27 (2026-04-30)
 - Autosave: prevents lockups by avoiding back-to-back queued saves while typing (queued saves now respect the idle/debounce window).
 - Customers: improves data entry with auto-capitalized names, phone auto-dashes + format warning, and common email domain suggestions.

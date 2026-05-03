@@ -1043,16 +1043,22 @@ const NewWorkOrderWindow: React.FC = () => {
           title: isCustomBuild ? 'Custom Build Checkout' : 'Work Order Checkout',
         };
 
-        // Only show the parts/labor split when this checkout is purely the Work Order balance.
-        if (!(addonRemaining > 0)) {
+        // Always show the parts/labor split.
+        // If a retail add-on sale is linked, treat its remaining balance as Parts for checkout allocation.
+        {
           const partCosts = Number(wo.partCosts || 0) || 0;
           const laborCost = Number(wo.laborCost || 0) || 0;
           const discount = Number(wo.discount || 0) || 0;
           const taxRate = Number(wo.taxRate || 0) || 0;
           const laborAfterDiscount = Math.max(0, laborCost - discount);
-          const partsWithTax = Math.round(((partCosts + (partCosts * taxRate / 100)) + Number.EPSILON) * 100) / 100;
-          checkoutPayload.partsDue = Math.min(partsWithTax, amountDue);
-          checkoutPayload.laborDue = Math.min(laborAfterDiscount, amountDue);
+          const partsWithTax = round2(partCosts + (partCosts * taxRate / 100));
+
+          // Work Order buckets should never exceed the Work Order's own remaining balance.
+          const woPartsDue = Math.min(partsWithTax, woRemaining);
+          const woLaborDue = Math.min(laborAfterDiscount, woRemaining);
+
+          checkoutPayload.partsDue = round2(woPartsDue + Math.max(0, addonRemaining));
+          checkoutPayload.laborDue = round2(woLaborDue);
         }
 
         const result = await api.openCheckout(checkoutPayload);
@@ -1081,92 +1087,96 @@ const NewWorkOrderWindow: React.FC = () => {
         const woPaymentAdds: any[] = [];
         const addonPaymentAdds: any[] = [];
 
-        if (addonSaleRecord && addonRemaining > 0.009) {
-          let remainingWo = woRemaining;
-          let remainingAddon = addonRemaining;
+        const partsDue = Number(checkoutPayload.partsDue || 0) || 0;
+        const laborDue = Number(checkoutPayload.laborDue || 0) || 0;
+        let remainingCombinedParts = partsDue;
+        let remainingSaleParts = (addonSaleRecord && addonRemaining > 0.009) ? addonRemaining : 0;
+        let remainingWoParts = Math.max(0, round2(partsDue - remainingSaleParts));
+        let remainingWoLabor = laborDue;
 
-          normalizedLines.forEach((p: any) => {
-            const pt = String(p?.paymentType || '');
-            const isCash = pt.toLowerCase().includes('cash');
-            const lineApplied = round2(Number(p?.applied || 0) || 0);
-            if (!(lineApplied > 0)) return;
+        normalizedLines.forEach((p: any) => {
+          const pt = String(p?.paymentType || '');
+          const isCash = pt.toLowerCase().includes('cash');
+          const lineApplied = round2(Number(p?.applied || 0) || 0);
+          if (!(lineApplied > 0)) return;
 
-            const appliedToWo = round2(Math.min(lineApplied, Math.max(0, remainingWo)));
-            const appliedToAddon = round2(Math.min(lineApplied - appliedToWo, Math.max(0, remainingAddon)));
+          const tendered = Number(p?.tendered ?? p?.amount ?? lineApplied);
+          const change = Number(p?.change ?? 0);
 
-            remainingWo = round2(Math.max(0, remainingWo - appliedToWo));
-            remainingAddon = round2(Math.max(0, remainingAddon - appliedToAddon));
+          // Split this payment line into Parts vs Labor based on the checkout selection.
+          let lineParts = 0;
+          let lineLabor = 0;
+          if (result?.payFor === 'parts') {
+            lineParts = lineApplied;
+            lineLabor = 0;
+          } else if (result?.payFor === 'labor') {
+            lineParts = 0;
+            lineLabor = lineApplied;
+          } else if (result?.payFor) {
+            const pAmt = round2(Math.min(lineApplied, Math.max(0, remainingCombinedParts)));
+            const lAmt = round2(Math.max(0, lineApplied - pAmt));
+            remainingCombinedParts = round2(Math.max(0, remainingCombinedParts - pAmt));
+            lineParts = pAmt;
+            lineLabor = lAmt;
+          } else {
+            // No split selection available — treat as a Work Order payment.
+            lineParts = 0;
+            lineLabor = lineApplied;
+          }
 
-            const tendered = Number(p?.tendered ?? p?.amount ?? 0);
-            const change = Number(p?.change ?? 0);
-            const primary = appliedToWo > 0 ? 'workorder' : (appliedToAddon > 0 ? 'sale' : null);
+          // Allocate Parts: retail add-on Sale first, then Work Order parts.
+          const partsToSale = remainingSaleParts > 0
+            ? round2(Math.min(lineParts, Math.max(0, remainingSaleParts)))
+            : 0;
+          remainingSaleParts = round2(Math.max(0, remainingSaleParts - partsToSale));
 
-            if (appliedToWo > 0) {
-              const entry: any = {
-                amount: isCash
-                  ? (primary === 'workorder' ? (Number.isFinite(tendered) ? tendered : appliedToWo) : 0)
-                  : appliedToWo,
-                applied: appliedToWo,
-                paymentType: pt,
-                at: nowIso,
-              };
-              if (isCash && primary === 'workorder') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-              woPaymentAdds.push(entry);
-            }
+          let partsToWo = round2(Math.max(0, lineParts - partsToSale));
+          const cappedWoParts = round2(Math.min(partsToWo, Math.max(0, remainingWoParts)));
+          remainingWoParts = round2(Math.max(0, remainingWoParts - cappedWoParts));
+          partsToWo = cappedWoParts;
 
-            if (appliedToAddon > 0) {
-              const entry: any = {
-                amount: isCash
-                  ? (primary === 'sale' ? (Number.isFinite(tendered) ? tendered : appliedToAddon) : 0)
-                  : appliedToAddon,
-                applied: appliedToAddon,
-                paymentType: pt,
-                at: nowIso,
-              };
-              if (isCash && primary === 'sale') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
-              addonPaymentAdds.push(entry);
-            }
-          });
-        } else {
-          let remainingParts = Number(checkoutPayload.partsDue || 0) || 0;
+          let laborToWo = round2(Math.max(0, lineLabor));
+          const cappedWoLabor = round2(Math.min(laborToWo, Math.max(0, remainingWoLabor)));
+          remainingWoLabor = round2(Math.max(0, remainingWoLabor - cappedWoLabor));
+          laborToWo = cappedWoLabor;
 
-          normalizedLines.forEach((p: any) => {
-            const pt = String(p?.paymentType || '');
-            const isCash = pt.toLowerCase().includes('cash');
-            const applied = round2(Number(p?.applied || 0) || 0);
-            if (!(applied > 0)) return;
+          const appliedToWo = round2(partsToWo + laborToWo);
+          const appliedToAddon = round2(partsToSale);
+          const primary = appliedToWo > 0 ? 'workorder' : (appliedToAddon > 0 ? 'sale' : null);
 
-            const tendered = Number(p?.tendered ?? p?.amount ?? applied);
-            const change = Number(p?.change ?? 0);
-
+          if (appliedToWo > 0) {
             const entry: any = {
-              amount: isCash ? (Number.isFinite(tendered) ? tendered : applied) : applied,
-              applied,
+              amount: isCash
+                ? (primary === 'workorder' ? (Number.isFinite(tendered) ? tendered : appliedToWo) : 0)
+                : appliedToWo,
+              applied: appliedToWo,
               paymentType: pt,
               at: nowIso,
             };
-            if (isCash) entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+            if (isCash && primary === 'workorder') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
 
             if (result?.payFor) {
               entry.payFor = result.payFor;
-              if (result.payFor === 'parts') {
-                entry.appliedParts = applied;
-                entry.appliedLabor = 0;
-              } else if (result.payFor === 'labor') {
-                entry.appliedParts = 0;
-                entry.appliedLabor = applied;
-              } else {
-                const pAmt = round2(Math.min(applied, Math.max(0, remainingParts)));
-                const lAmt = round2(Math.max(0, applied - pAmt));
-                remainingParts = round2(Math.max(0, remainingParts - pAmt));
-                entry.appliedParts = pAmt;
-                entry.appliedLabor = lAmt;
-              }
+              entry.appliedParts = partsToWo;
+              entry.appliedLabor = laborToWo;
             }
 
             woPaymentAdds.push(entry);
-          });
-        }
+          }
+
+          if (appliedToAddon > 0) {
+            const entry: any = {
+              amount: isCash
+                ? (primary === 'sale' ? (Number.isFinite(tendered) ? tendered : appliedToAddon) : 0)
+                : appliedToAddon,
+              applied: appliedToAddon,
+              paymentType: pt,
+              at: nowIso,
+            };
+            if (isCash && primary === 'sale') entry.change = Number.isFinite(change) ? Math.max(0, change) : 0;
+            addonPaymentAdds.push(entry);
+          }
+        });
 
         const appliedToWorkOrder = round2(woPaymentAdds.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
         const appliedToAddonSale = round2(addonPaymentAdds.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
