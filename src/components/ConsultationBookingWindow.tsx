@@ -676,7 +676,7 @@ export default function ConsultationBookingWindow() {
                 New
               </button>
               {customerResults.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-10 mt-1 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-44 overflow-auto">
+                <div className="mt-2 bg-zinc-800 border border-zinc-600 rounded shadow-xl max-h-44 overflow-auto">
                   {customerResults.map(c => (
                     <button
                       key={c.id}

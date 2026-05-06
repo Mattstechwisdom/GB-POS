@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.29 (2026-05-05)
+- Consultation: fixed untypeable Consultation Details fields caused by the customer search dropdown overlaying the form.
+- Tooling: removed deprecated TypeScript config options to clear VS Code Problems diagnostics.
+
 ## v0.4.28 (2026-05-02)
 - Work Order Checkout: add-on products are treated as Parts during checkout (Parts/Labor selection stays available), and payments correctly apply to the attached product sale.
 

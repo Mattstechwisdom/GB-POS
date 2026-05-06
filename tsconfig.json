@@ -4,7 +4,7 @@
     "module": "ESNext",
     "lib": ["DOM", "ESNext"],
     "jsx": "react",
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
@@ -12,10 +12,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "outDir": "dist",
-    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "./src/*"
       ]
     },
     // Rely on default type resolution; no explicit global types required
