@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.30 (2026-05-11)
+- Performance: reduces intermittent UI freezes during autosave bursts by streaming DB writes in the main process (keeps the event loop responsive during large JSON saves).
+- Performance: prevents customer list reload thrash across windows during frequent autosaves (per-window caching + subscriptions refresh only on `customers:changed`).
+- Performance: faster client lookup while typing in Quote Generator and Consultation booking (precomputed search index + early-exit limiting).
+
 ## v0.4.29 (2026-05-05)
 - Consultation: fixed untypeable Consultation Details fields caused by the customer search dropdown overlaying the form.
 - Tooling: removed deprecated TypeScript config options to clear VS Code Problems diagnostics.
