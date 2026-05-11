@@ -107,9 +107,10 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
     refreshTechs();
     refreshCustomers();
     const api = (window as any).api;
-    const unsubWO = api?.onWorkOrdersChanged?.(() => { load(); refreshCustomers(); });
+    const unsubWO = api?.onWorkOrdersChanged?.(() => { load(); });
+    const unsubCust = api?.onCustomersChanged?.(() => { refreshCustomers(); });
     const unsubTech = api?.onTechniciansChanged?.(() => refreshTechs());
-    return () => { try { unsubWO && unsubWO(); } catch {} try { unsubTech && unsubTech(); } catch {} };
+    return () => { try { unsubWO && unsubWO(); } catch {} try { unsubCust && unsubCust(); } catch {} try { unsubTech && unsubTech(); } catch {} };
   }, [load]);
 
   // Re-fetch when parent requests a manual refresh.

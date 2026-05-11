@@ -41,9 +41,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   useEffect(() => {
     loadCustomers();
     const offCust = (window as any).api.onCustomersChanged?.(() => loadCustomers());
-    const offSales = (window as any).api.onSalesChanged?.(() => loadCustomers());
-    const offWO = (window as any).api.onWorkOrdersChanged?.(() => loadCustomers());
-    return () => { try { offCust && offCust(); } catch {} try { offSales && offSales(); } catch {} try { offWO && offWO(); } catch {} };
+    return () => { try { offCust && offCust(); } catch {} };
   }, [loadCustomers]);
 
   const filtered = useMemo(() => {

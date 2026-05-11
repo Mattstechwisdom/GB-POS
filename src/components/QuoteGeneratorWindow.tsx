@@ -248,23 +248,59 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
   const [busy, setBusy] = React.useState(false);
   const [selected, setSelected] = React.useState<any | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customersIndexRef = React.useRef<Array<{ c: any; fullLower: string; phoneDigits: string }>>([]);
 
-  const search = React.useCallback(async (q: string) => {
+  const loadCustomers = React.useCallback(async () => {
+    try {
+      const api: any = (window as any).api;
+      const list = await (api?.getCustomers ? api.getCustomers() : api?.dbGet ? api.dbGet('customers') : Promise.resolve([])).catch(() => []);
+      const safe = Array.isArray(list) ? list : [];
+      customersIndexRef.current = safe.map((c: any) => ({
+        c,
+        fullLower: `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase(),
+        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
+      }));
+    } catch {
+      customersIndexRef.current = [];
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadCustomers();
+    const off = (window as any).api?.onCustomersChanged?.(() => loadCustomers());
+    return () => { try { off && off(); } catch {} };
+  }, [loadCustomers]);
+
+  React.useEffect(() => () => {
+    if (timerRef.current) {
+      try { clearTimeout(timerRef.current); } catch {}
+      timerRef.current = null;
+    }
+  }, []);
+
+  const search = React.useCallback((q: string) => {
     const v = q.trim();
     if (!v) { setResults([]); return; }
     setBusy(true);
     try {
-      const all = await (window as any).api.dbGet('customers').catch(() => []);
       const digits = v.replace(/\D/g, '');
       const vl = v.toLowerCase();
-      const filtered = (Array.isArray(all) ? all : []).filter((c: any) => {
-        const full = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
-        if (full.includes(vl)) return true;
-        if (digits && String(c.phone || '').replace(/\D/g, '').includes(digits)) return true;
-        return false;
-      });
-      setResults(filtered.slice(0, 8));
-    } catch { setResults([]); } finally { setBusy(false); }
+      const idx = customersIndexRef.current || [];
+      const out: any[] = [];
+      for (const it of idx) {
+        if (it.fullLower.includes(vl)) {
+          out.push(it.c);
+        } else if (digits && it.phoneDigits.includes(digits)) {
+          out.push(it.c);
+        }
+        if (out.length >= 8) break;
+      }
+      setResults(out);
+    } catch {
+      setResults([]);
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
   const handleChange = (v: string) => {

@@ -2048,6 +2048,120 @@ function readDb() {
 let writeQueue: Promise<void> = Promise.resolve();
 let writeTimer: NodeJS.Timeout | null = null;
 let writePending = false;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    try { setImmediate(resolve); } catch { resolve(); }
+  });
+}
+
+async function writeCompactJsonStreamAtomic(tmpPath: string, snapshot: any): Promise<{ bytes: number; stringifyMs: number }> {
+  const t0 = Date.now();
+  const ws = fs.createWriteStream(tmpPath, { encoding: 'utf-8' });
+  let streamError: any = null;
+  try {
+    ws.on('error', (e: any) => {
+      streamError = e || new Error('write stream error');
+    });
+  } catch {
+    // ignore
+  }
+  let bytes = 0;
+  let lastYieldAt = Date.now();
+
+  const writeChunk = async (chunk: string) => {
+    if (streamError) throw streamError;
+    bytes += Buffer.byteLength(chunk, 'utf8');
+    try {
+      const ok = ws.write(chunk);
+      if (!ok) {
+        await new Promise<void>((resolve, reject) => {
+          ws.once('drain', resolve);
+          ws.once('error', reject);
+        });
+      }
+    } catch (e) {
+      try { ws.destroy(); } catch {}
+      throw e;
+    }
+    if (streamError) throw streamError;
+  };
+
+  const maybeYield = async () => {
+    const now = Date.now();
+    if (now - lastYieldAt >= 25) {
+      lastYieldAt = now;
+      await yieldToEventLoop();
+    }
+  };
+
+  const safeStringify = (v: any, forArrayElement: boolean): string | undefined => {
+    try {
+      let s: any;
+      try {
+        s = JSON.stringify(v);
+      } catch {
+        // BigInt-safe fallback to avoid hard failure.
+        s = JSON.stringify(v, (_k, val) => (typeof val === 'bigint' ? val.toString() : val));
+      }
+      if (typeof s !== 'string') return forArrayElement ? 'null' : undefined;
+      return s;
+    } catch {
+      return forArrayElement ? 'null' : undefined;
+    }
+  };
+
+  const obj = (snapshot && typeof snapshot === 'object') ? snapshot : defaultDb();
+  await writeChunk('{');
+  let firstProp = true;
+  for (const key of Object.keys(obj)) {
+    const value = (obj as any)[key];
+    if (Array.isArray(value)) {
+      if (!firstProp) await writeChunk(',');
+      firstProp = false;
+      await writeChunk(JSON.stringify(key));
+      await writeChunk(':[');
+      for (let i = 0; i < value.length; i++) {
+        if (i > 0) await writeChunk(',');
+        const elStr = safeStringify(value[i], true) || 'null';
+        await writeChunk(elStr);
+        if ((i & 0xff) === 0) await maybeYield();
+      }
+      await writeChunk(']');
+      await maybeYield();
+      continue;
+    }
+
+    // Non-array: omit undefined/function/symbol values (matches JSON.stringify object behavior).
+    if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') continue;
+    const valStr = safeStringify(value, false);
+    if (typeof valStr !== 'string') continue;
+
+    if (!firstProp) await writeChunk(',');
+    firstProp = false;
+    await writeChunk(JSON.stringify(key));
+    await writeChunk(':');
+    await writeChunk(valStr);
+    await maybeYield();
+  }
+  await writeChunk('}');
+
+  if (streamError) {
+    try { ws.destroy(); } catch {}
+    throw streamError;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    ws.once('error', reject);
+    ws.once('close', () => resolve());
+    try { ws.end(); } catch (e) { reject(e); }
+  });
+
+  if (streamError) throw streamError;
+
+  return { bytes, stringifyMs: Date.now() - t0 };
+}
+
 function flushWriteDb() {
   if (!writePending) return;
   writePending = false;
@@ -2057,20 +2171,18 @@ function flushWriteDb() {
       const p = dbFilePath();
       const tmp = p + '.tmp';
       const t0 = Date.now();
-      let json = '';
       let stringifyMs = 0;
+      let bytes = 0;
       try {
-        const ts = Date.now();
-        // Compact JSON is significantly faster and smaller than pretty-printed.
-        json = JSON.stringify(snapshot);
-        stringifyMs = Date.now() - ts;
+        // Streamed compact JSON prevents long main-thread stalls during large DB writes.
+        const res = await writeCompactJsonStreamAtomic(tmp, snapshot);
+        bytes = res.bytes;
+        stringifyMs = res.stringifyMs;
       } catch {
-        const ts = Date.now();
-        json = JSON.stringify(defaultDb());
-        stringifyMs = Date.now() - ts;
+        const res = await writeCompactJsonStreamAtomic(tmp, defaultDb());
+        bytes = res.bytes;
+        stringifyMs = res.stringifyMs;
       }
-      const bytes = Buffer.byteLength(json, 'utf8');
-      await (fs.promises as any).writeFile(tmp, json, 'utf-8');
       await (fs.promises as any).rename(tmp, p);
       const totalMs = Date.now() - t0;
       if (stringifyMs > 120 || totalMs > 350) {
@@ -2239,39 +2351,51 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
 });
 
 ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
-  const db = readDb();
-  db[key] = db[key] || [];
+  const prevDb: any = readDb();
+  const prevRaw = prevDb[key];
+  const prevList: any[] = Array.isArray(prevRaw) ? prevRaw : [];
+
   const nowIso = new Date().toISOString();
-  if (!item || typeof item !== 'object') item = {};
-  if (!item.createdAt) item.createdAt = nowIso;
-  if (!item.updatedAt) item.updatedAt = nowIso;
-  if (key === 'workOrders' && !item.activityAt) item.activityAt = getWorkOrderActivityAt(item) || nowIso;
+  const baseItem = (item && typeof item === 'object') ? { ...item } : {};
+  const nextItem: any = { ...baseItem };
+  if (!nextItem.createdAt) nextItem.createdAt = nowIso;
+  if (!nextItem.updatedAt) nextItem.updatedAt = nowIso;
+  if (key === 'workOrders' && !nextItem.activityAt) nextItem.activityAt = getWorkOrderActivityAt(nextItem) || nowIso;
+
+  const nextDb: any = { ...prevDb };
+
   // Assign global invoice id sequence (strictly increasing by entry time) for workOrders and sales
   if (key === 'workOrders' || key === 'sales') {
+    let invoiceSeq = (nextDb as any).invoiceSeq;
     // Initialize invoiceSeq if missing by scanning both collections
-    if (typeof (db as any).invoiceSeq !== 'number' || !Number.isFinite((db as any).invoiceSeq)) {
-      const wo = Array.isArray(db['workOrders']) ? db['workOrders'] : [];
-      const sa = Array.isArray(db['sales']) ? db['sales'] : [];
-      const max = [...wo, ...sa].reduce((m: number, it: any) => Math.max(m, it?.id || 0), 0);
-      (db as any).invoiceSeq = max;
+    if (typeof invoiceSeq !== 'number' || !Number.isFinite(invoiceSeq)) {
+      const wo = Array.isArray(prevDb['workOrders']) ? prevDb['workOrders'] : [];
+      const sa = Array.isArray(prevDb['sales']) ? prevDb['sales'] : [];
+      let max = 0;
+      for (const it of wo) max = Math.max(max, (it as any)?.id || 0);
+      for (const it of sa) max = Math.max(max, (it as any)?.id || 0);
+      invoiceSeq = max;
     }
     // Always override incoming id to prevent duplicates
-    (db as any).invoiceSeq = ((db as any).invoiceSeq || 0) + 1;
-    item.id = (db as any).invoiceSeq;
+    invoiceSeq = (invoiceSeq || 0) + 1;
+    (nextDb as any).invoiceSeq = invoiceSeq;
+    nextItem.id = invoiceSeq;
   } else {
     // For other collections, assign incremental id per-collection if missing
-    if (!item.id) {
-      const max = db[key].reduce((m: number, it: any) => Math.max(m, it.id || 0), 0);
-      item.id = max + 1;
-      dbLog('[DB-ADD] Assigned new ID:', item.id, 'for', key);
+    if (!nextItem.id) {
+      let max = 0;
+      for (const it of prevList) max = Math.max(max, (it as any)?.id || 0);
+      nextItem.id = max + 1;
+      dbLog('[DB-ADD] Assigned new ID:', nextItem.id, 'for', key);
     }
   }
-  db[key].push(item);
-  dbLog('[DB-ADD] Added', key, 'id=', item?.id);
-  const ok = writeDb(db);
+
+  nextDb[key] = [...prevList, nextItem];
+  dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
+  const ok = writeDb(nextDb);
   if (ok) {
     scheduleCollectionChanged(key);
-    return item;
+    return nextItem;
   }
   return null;
 });
@@ -2345,11 +2469,12 @@ ipcMain.handle('db-count', async (_e: any, key: string, q: any) => {
 ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   // Support both forms: (key, item) and (key, id, item)
   const incomingItem = (typeof b !== 'undefined') ? b : a;
-  const db = readDb();
-  db[key] = db[key] || [];
+  const prevDb: any = readDb();
+  const raw = prevDb[key];
+  const list: any[] = Array.isArray(raw) ? raw : [];
   const targetId = (typeof b !== 'undefined') ? a : (incomingItem?.id);
   
-  const idx = db[key].findIndex((it: any) => {
+  const idx = list.findIndex((it: any) => {
     // First try exact string/value comparison
     if (it.id === targetId) return true;
     // Then try numeric comparison for numeric IDs
@@ -2366,40 +2491,45 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   });
   if (idx === -1) return null;
   const updatedAt = new Date().toISOString();
-  const previousItem = db[key][idx];
-  const updatedItem = { ...previousItem, ...incomingItem, id: targetId, updatedAt };
+  const previousItem = list[idx];
+  const safeIncoming = (incomingItem && typeof incomingItem === 'object') ? incomingItem : {};
+  const updatedItem = { ...previousItem, ...safeIncoming, id: targetId, updatedAt };
   if (key === 'workOrders') {
     updatedItem.activityAt = computeWorkOrderActivityAt(previousItem, updatedItem, updatedAt);
   }
-  db[key][idx] = updatedItem;
-  const ok = writeDb(db);
+  const nextList = list.slice();
+  nextList[idx] = updatedItem;
+  const nextDb: any = { ...prevDb, [key]: nextList };
+  const ok = writeDb(nextDb);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
-    return db[key][idx];
+    return updatedItem;
   }
   return null;
 });
 
 
 ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
-  const db = readDb();
-  db[key] = db[key] || [];
+  const prevDb: any = readDb();
+  const raw = prevDb[key];
+  const list: any[] = Array.isArray(raw) ? raw : [];
   // Try exact match first (handles string IDs)
-  let idx = db[key].findIndex((it: any) => it.id === id);
+  let idx = list.findIndex((it: any) => it.id === id);
   if (idx === -1) {
     // Fallback to numeric comparison when both sides are numeric-like
     const target = Number(id);
     if (!Number.isNaN(target)) {
-      idx = db[key].findIndex((it: any) => {
+      idx = list.findIndex((it: any) => {
         const n = Number(it.id);
         return !Number.isNaN(n) && n === target;
       });
     }
   }
   if (idx === -1) return false;
-  db[key].splice(idx, 1);
-  const ok = writeDb(db);
+  const nextList = list.filter((_, i) => i !== idx);
+  const nextDb: any = { ...prevDb, [key]: nextList };
+  const ok = writeDb(nextDb);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
@@ -4388,8 +4518,19 @@ async function trySendScheduledEodEmail(targetDate: Date) {
 
   const db = readDb();
   if (Array.isArray((db as any).eodSettings) && (db as any).eodSettings[0]) {
-    (db as any).eodSettings[0].lastSentAt = new Date().toISOString();
-    writeDb(db);
+    try {
+      const prevDb: any = db;
+      const prevSettings = (prevDb as any).eodSettings;
+      const first = Array.isArray(prevSettings) ? prevSettings[0] : null;
+      if (first) {
+        const nextFirst = { ...(first as any), lastSentAt: new Date().toISOString() };
+        const nextSettings = [nextFirst, ...(Array.isArray(prevSettings) ? prevSettings.slice(1) : [])];
+        const nextDb: any = { ...prevDb, eodSettings: nextSettings };
+        writeDb(nextDb);
+      }
+    } catch {
+      // ignore
+    }
   }
   return { ok: true };
 }
@@ -4563,20 +4704,21 @@ ipcMain.handle('restore-encrypted-backup', async (_event: any, password: string)
     const decompressed = zlib.gunzipSync(decrypted);
     const backupData = JSON.parse(decompressed.toString('utf8'));
 
-    // Restore all collections
-    const db = readDb();
+    // Restore all collections (immutable update)
+    const prevDb: any = readDb();
+    const nextDb: any = { ...prevDb };
     let totalRecords = 0;
 
     for (const [collectionName, items] of Object.entries(backupData.collections)) {
       if (Array.isArray(items)) {
-        db[collectionName] = items;
+        nextDb[collectionName] = items;
         totalRecords += items.length;
         console.log(`[RESTORE] Restored ${items.length} records to ${collectionName}`);
       }
     }
 
     // Write restored data back to database
-    const writeSuccess = writeDb(db);
+    const writeSuccess = writeDb(nextDb);
     if (!writeSuccess) {
       throw new Error('Failed to write restored data to database');
     }

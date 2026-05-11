@@ -17,6 +17,9 @@ const RecentCustomers: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const reloadTimerRef = useRef<number | null>(null);
+  const customersCacheRef = useRef<any[] | null>(null);
+  const customerMapRef = useRef<Map<number, any>>(new Map());
+  const reloadCustomersNextRef = useRef<boolean>(false);
 
 	const ctx = useContextMenu<CustomerLite>();
 	const ctxCustomer = ctx.state.data;
@@ -54,23 +57,39 @@ const RecentCustomers: React.FC = () => {
     ];
   }, [ctxCustomer]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { includeCustomers?: boolean }) => {
     setLoading(true); setError(null);
     try {
       const api = (window as any).api;
+
+      const includeCustomers = !!opts?.includeCustomers || customersCacheRef.current === null;
+
+      if (includeCustomers) {
+        const allCustomers = await (api?.getCustomers
+          ? api.getCustomers()
+          : (api?.dbGet ? api.dbGet('customers') : Promise.resolve([]))
+        );
+        const safeCustomers = Array.isArray(allCustomers) ? allCustomers : [];
+        customersCacheRef.current = safeCustomers;
+        const map = new Map<number, any>();
+        for (const c of safeCustomers) {
+          const id = Number((c as any)?.id);
+          if (Number.isFinite(id) && id > 0) map.set(id, c);
+        }
+        customerMapRef.current = map;
+      }
+
+      const allCustomers = customersCacheRef.current || [];
+      const customerMap = customerMapRef.current;
 
       // Keep this list lightweight: we only need enough recent work orders to
       // discover ~8 unique customers. Pulling the entire workOrders collection
       // can become very expensive as the DB grows.
       const MAX_WORKORDERS = 400;
-      const [allCustomers, workOrders] = await Promise.all([
-        api?.getCustomers ? api.getCustomers() : (api?.dbGet ? api.dbGet('customers') : Promise.resolve([])),
-        api?.getWorkOrders
-          ? api.getWorkOrders({ limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' })
-          : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' }) : Promise.resolve([])),
-      ]);
-      const customerMap = new Map<number, CustomerLite>();
-      (allCustomers || []).forEach((c: any) => customerMap.set(c.id, c));
+      const workOrders = await (api?.getWorkOrders
+        ? api.getWorkOrders({ limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' })
+        : (api?.dbGet ? api.dbGet('workOrders', { limit: MAX_WORKORDERS, sortBy: 'checkInAt', sortDir: 'desc' }) : Promise.resolve([]))
+      );
 
       // workOrders already comes back sorted by checkInAt desc via db-get.
       const sorted = Array.isArray(workOrders) ? workOrders : [];
@@ -128,21 +147,23 @@ const RecentCustomers: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    load();
+    load({ includeCustomers: true });
     const api = (window as any).api;
-    const scheduleLoad = () => {
+    const scheduleLoad = (opts?: { includeCustomers?: boolean }) => {
+      if (opts?.includeCustomers) reloadCustomersNextRef.current = true;
       if (reloadTimerRef.current !== null) {
         try { window.clearTimeout(reloadTimerRef.current); } catch {}
       }
       reloadTimerRef.current = window.setTimeout(() => {
         reloadTimerRef.current = null;
-        load();
+        const includeCustomers = reloadCustomersNextRef.current;
+        reloadCustomersNextRef.current = false;
+        load({ includeCustomers });
       }, 250);
     };
     const offWO = api?.onWorkOrdersChanged?.(() => scheduleLoad());
-    const offCust = api?.onCustomersChanged?.(() => scheduleLoad());
-    const offSales = api?.onSalesChanged?.(() => scheduleLoad());
-    return () => { try { offWO && offWO(); } catch {} try { offCust && offCust(); } catch {} try { offSales && offSales(); } catch {} };
+    const offCust = api?.onCustomersChanged?.(() => scheduleLoad({ includeCustomers: true }));
+    return () => { try { offWO && offWO(); } catch {} try { offCust && offCust(); } catch {} };
   }, [load]);
 
   useEffect(() => {
@@ -158,7 +179,7 @@ const RecentCustomers: React.FC = () => {
     <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="font-bold text-sm">Recent Customers</span>
-        <button onClick={load} className="bg-zinc-700 text-xs px-2 py-1 rounded disabled:opacity-50" disabled={loading}>{loading ? '...' : 'Reload'}</button>
+        <button onClick={() => load({ includeCustomers: true })} className="bg-zinc-700 text-xs px-2 py-1 rounded disabled:opacity-50" disabled={loading}>{loading ? '...' : 'Reload'}</button>
       </div>
       <table className="w-full text-xs">
         <thead>

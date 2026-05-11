@@ -127,6 +127,7 @@ export default function ConsultationBookingWindow() {
   const [newCust, setNewCust] = useState({ firstName: '', lastName: '', phone: '', email: '' });
   const [searchBusy, setSearchBusy] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customerIndexRef = useRef<Array<{ c: Customer; fullLower: string; phoneDigits: string }>>([]);
 
   // ── Consultation state ──────────────────────────────────────────
   const [date, setDate] = useState(todayISO());
@@ -257,6 +258,19 @@ export default function ConsultationBookingWindow() {
     })();
   }, [api]);
 
+  useEffect(() => {
+    try {
+      const safe = Array.isArray(allCustomers) ? allCustomers : [];
+      customerIndexRef.current = safe.map((c) => ({
+        c,
+        fullLower: customerDisplayName(c).toLowerCase(),
+        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
+      }));
+    } catch {
+      customerIndexRef.current = [];
+    }
+  }, [allCustomers]);
+
   useEffect(() => () => {
     if (searchDebounce.current) {
       clearTimeout(searchDebounce.current);
@@ -272,19 +286,23 @@ export default function ConsultationBookingWindow() {
     try {
       const ql = query.toLowerCase();
       const digits = query.replace(/\D/g, '');
-      const filtered = (allCustomers || []).filter(c => {
-        const full = customerDisplayName(c).toLowerCase();
-        if (full.includes(ql)) return true;
-        if (digits && (c.phone || '').replace(/\D/g, '').includes(digits)) return true;
-        return false;
-      });
-      setCustomerResults(filtered.slice(0, 8));
+      const idx = customerIndexRef.current || [];
+      const out: Customer[] = [];
+      for (const it of idx) {
+        if (it.fullLower.includes(ql)) {
+          out.push(it.c);
+        } else if (digits && it.phoneDigits.includes(digits)) {
+          out.push(it.c);
+        }
+        if (out.length >= 8) break;
+      }
+      setCustomerResults(out);
     } catch {
       setCustomerResults([]);
     } finally {
       setSearchBusy(false);
     }
-  }, [allCustomers]);
+  }, []);
 
   const handleQueryChange = (v: string) => {
     setCustomerQuery(v);

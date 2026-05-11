@@ -1,5 +1,40 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Renderer-side caching (per-window) to avoid repeatedly transferring large collections
+// across IPC during autosave bursts.
+let customersCache: any[] | null = null;
+let customersInFlight: Promise<any[]> | null = null;
+
+function getCustomersCached(): Promise<any[]> {
+  try {
+    if (customersCache) return Promise.resolve(customersCache);
+    if (customersInFlight) return customersInFlight;
+    const p = ipcRenderer.invoke('db-get', 'customers')
+      .then((list: any) => {
+        customersCache = Array.isArray(list) ? list : [];
+        customersInFlight = null;
+        return customersCache;
+      })
+      .catch((e: any) => {
+        customersInFlight = null;
+        throw e;
+      });
+    customersInFlight = p;
+    return p;
+  } catch (e: any) {
+    customersInFlight = null;
+    return Promise.reject(e);
+  }
+}
+
+// Invalidate cache whenever customers collection changes.
+try {
+  ipcRenderer.on('customers:changed', () => {
+    customersCache = null;
+    customersInFlight = null;
+  });
+} catch {}
+
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('os:openUrl', url),
@@ -8,7 +43,10 @@ contextBridge.exposeInMainWorld('api', {
   storageEnsure: (): Promise<any> => ipcRenderer.invoke('storage:ensure'),
   runDiagnostics: (): Promise<any> => ipcRenderer.invoke('diagnostics:run'),
   pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
-  getCustomers: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'customers'),
+  getCustomers: (opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => {
+    if (opts) return ipcRenderer.invoke('db-get', 'customers', opts);
+    return getCustomersCached();
+  },
   addCustomer: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'customers', c),
   findCustomers: (q: any): Promise<any[]> => ipcRenderer.invoke('db-find', 'customers', q),
   getWorkOrders: (opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => ipcRenderer.invoke('db-get', 'workOrders', opts),
@@ -78,7 +116,10 @@ contextBridge.exposeInMainWorld('api', {
   getProductCategories: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'productCategories'),
   addProductCategory: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'productCategories', c),
   deleteFromCollection: (key: string, id: number): Promise<boolean> => ipcRenderer.invoke('db-delete', key, id),
-  dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => ipcRenderer.invoke('db-get', key, opts),
+  dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => {
+    if (String(key) === 'customers' && !opts) return getCustomersCached();
+    return ipcRenderer.invoke('db-get', key, opts);
+  },
   dbCount: (key: string, q: any): Promise<number> => ipcRenderer.invoke('db-count', key, q),
   dbAdd: (key: string, item: any): Promise<any> => ipcRenderer.invoke('db-add', key, item),
   dbUpdate: (key: string, id: any, item: any): Promise<any> => ipcRenderer.invoke('db-update', key, id, item),
