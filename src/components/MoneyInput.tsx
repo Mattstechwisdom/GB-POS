@@ -109,6 +109,12 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
         rest.onKeyDown?.(e);
         if (e.defaultPrevented) return;
 
+        const inputEl = e.currentTarget;
+        const hasSelection =
+          inputEl.selectionStart != null &&
+          inputEl.selectionEnd != null &&
+          inputEl.selectionStart !== inputEl.selectionEnd;
+
         const k = e.key;
         if (e.ctrlKey || e.metaKey) return;
         if (k === 'Escape') return;
@@ -117,18 +123,20 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
 
         if (k === 'Backspace') {
           e.preventDefault();
-          commit(digits.slice(0, -1));
+          if (hasSelection) commit(allowEmpty ? '' : '0');
+          else commit(digits.slice(0, -1));
           return;
         }
         if (k === 'Delete') {
           e.preventDefault();
-          commit('0');
+          if (hasSelection) commit(allowEmpty ? '' : '0');
+          else commit('0');
           return;
         }
 
         if (k.length === 1 && /\d/.test(k)) {
           e.preventDefault();
-          const next = (digits === '0' && !allowEmpty) ? k : (digits + k);
+          const next = hasSelection ? k : ((digits === '0' && !allowEmpty) ? k : (digits + k));
           commit(next);
           return;
         }

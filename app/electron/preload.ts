@@ -121,6 +121,7 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke('db-get', key, opts);
   },
   dbCount: (key: string, q: any): Promise<number> => ipcRenderer.invoke('db-count', key, q),
+  searchTickets: (query: string, opts?: { limit?: number }): Promise<any> => ipcRenderer.invoke('tickets:search', query, opts || {}),
   dbAdd: (key: string, item: any): Promise<any> => ipcRenderer.invoke('db-add', key, item),
   dbUpdate: (key: string, id: any, item: any): Promise<any> => ipcRenderer.invoke('db-update', key, id, item),
   dbDelete: (key: string, id: any): Promise<boolean> => ipcRenderer.invoke('db-delete', key, id),
@@ -213,4 +214,28 @@ contextBridge.exposeInMainWorld('api', {
   createEncryptedBackup: (backupData: any, password: string): Promise<any> => ipcRenderer.invoke('create-encrypted-backup', backupData, password),
   restoreEncryptedBackup: (password: string): Promise<any> => ipcRenderer.invoke('restore-encrypted-backup', password),
   getLastBackupPath: (): Promise<string> => ipcRenderer.invoke('get-last-backup-path'),
+
+  // Clover Remote Pay (LAN)
+  cloverGetConfig: (): Promise<any> => ipcRenderer.invoke('clover:getConfig'),
+  cloverSetConfig: (patch: any): Promise<any> => ipcRenderer.invoke('clover:setConfig', patch),
+  cloverGetStatus: (): Promise<any> => ipcRenderer.invoke('clover:getStatus'),
+  cloverConnect: (): Promise<any> => ipcRenderer.invoke('clover:connect'),
+  cloverDisconnect: (): Promise<any> => ipcRenderer.invoke('clover:disconnect'),
+  cloverSale: (amountCents: number): Promise<any> => ipcRenderer.invoke('clover:sale', amountCents),
+  cloverOpenCashDrawer: (payload?: { reason?: string; deviceId?: string }): Promise<any> => ipcRenderer.invoke('clover:openCashDrawer', payload || {}),
+  onCloverStatus: (cb: (status: any) => void) => {
+    const handler = (_event: any, status: any) => cb(status);
+    ipcRenderer.on('clover:status', handler);
+    return () => ipcRenderer.removeListener('clover:status', handler);
+  },
+  onCloverPairingCode: (cb: (code: string) => void) => {
+    const handler = (_event: any, code: any) => cb(String(code || ''));
+    ipcRenderer.on('clover:pairingCode', handler);
+    return () => ipcRenderer.removeListener('clover:pairingCode', handler);
+  },
+  onCloverSaleResponse: (cb: (resp: any) => void) => {
+    const handler = (_event: any, resp: any) => cb(resp);
+    ipcRenderer.on('clover:saleResponse', handler);
+    return () => ipcRenderer.removeListener('clover:saleResponse', handler);
+  },
 });

@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.4.30",
+  "version": "0.4.31",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -35,7 +35,9 @@
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-select": "^5.10.2"
+    "react-select": "^5.10.2",
+    "remote-pay-cloud": "3.1.0",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",

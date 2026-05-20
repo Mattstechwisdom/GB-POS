@@ -3,6 +3,15 @@ import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notifications';
 import { dispatchOpenModal } from '@/lib/modalBus';
 
+type TicketSearchResult = {
+  type: 'workorder' | 'sale';
+  id: number;
+  invoice: string;
+  activityAt: string;
+  customerName?: string;
+  description?: string;
+};
+
 const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void }> = ({ mode, onModeChange }) => {
 
   const [isFull, setIsFull] = useState<boolean>(false);
@@ -72,6 +81,13 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
   const [showAdmin, setShowAdmin] = useState(false);
   const adminRef = useRef<HTMLDivElement>(null);
 
+  const [ticketQuery, setTicketQuery] = useState('');
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketLoading, setTicketLoading] = useState(false);
+  const [ticketResults, setTicketResults] = useState<TicketSearchResult[]>([]);
+  const ticketRef = useRef<HTMLDivElement>(null);
+  const ticketReqRef = useRef(0);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (adminRef.current && !adminRef.current.contains(e.target as Node)) setShowAdmin(false);
@@ -80,11 +96,69 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ticketRef.current && !ticketRef.current.contains(e.target as Node)) setTicketOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    const api: any = (window as any).api;
+    if (!api?.searchTickets) return;
+
+    const q = ticketQuery.trim();
+    if (!q) {
+      setTicketResults([]);
+      setTicketLoading(false);
+      setTicketOpen(false);
+      return;
+    }
+
+    const requestId = ++ticketReqRef.current;
+    setTicketLoading(true);
+    setTicketOpen(true);
+
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await api.searchTickets(q, { limit: 20 });
+        if (ticketReqRef.current !== requestId) return;
+        if (res?.ok && Array.isArray(res?.results)) {
+          setTicketResults(res.results);
+        } else {
+          setTicketResults([]);
+        }
+      } catch {
+        if (ticketReqRef.current === requestId) setTicketResults([]);
+      } finally {
+        if (ticketReqRef.current === requestId) setTicketLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(t);
+  }, [ticketQuery]);
+
+  const openTicket = (r: TicketSearchResult) => {
+    try {
+      setTicketOpen(false);
+      setTicketQuery('');
+      setTicketResults([]);
+      if (r.type === 'workorder') {
+        dispatchOpenModal('newWorkOrder', { workOrderId: r.id });
+      } else {
+        dispatchOpenModal('newSale', { id: r.id });
+      }
+    } catch (e) {
+      console.error('Failed to open ticket from search', e);
+    }
+  };
+
   return (
     <>
-    <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-zinc-900 relative">
+    <div className="flex items-center gap-4 px-4 py-2 border-b border-zinc-700 bg-zinc-900 relative">
       {/* Left side: Admin dropdown + action buttons */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         {/* Admin dropdown */}
         <div ref={adminRef} className="relative">
           <button
@@ -97,6 +171,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
                 { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
                 { label: 'Products',        action: () => dispatchOpenModal('products') },
                 { label: 'Reports',         action: () => dispatchOpenModal('eod') },
+                { label: 'Clover Connection', action: () => dispatchOpenModal('cloverConnection') },
                 { label: 'Technicians',     action: () => setShowTechs(true) },
                 { label: 'Data Management', action: () => dispatchOpenModal('backup') },
                 { label: 'Notifications',   action: () => dispatchOpenModal('notificationSettings') },
@@ -128,7 +203,68 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
           Consultation
         </button>
       </div>
-      <div className="flex items-center gap-3">
+
+      {/* Center: ticket keyword search */}
+      {(window as any).api?.searchTickets ? (
+        <div className="flex-1 min-w-0">
+          <div ref={ticketRef} className="relative max-w-[720px] mx-auto">
+            <input
+              value={ticketQuery}
+              onChange={(e) => setTicketQuery(e.target.value)}
+              onFocus={() => { if (ticketQuery.trim()) setTicketOpen(true); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setTicketOpen(false);
+                }
+                if (e.key === 'Enter') {
+                  const first = ticketResults[0];
+                  if (first) {
+                    e.preventDefault();
+                    openTicket(first);
+                  }
+                }
+              }}
+              placeholder="Search tickets (WO#, device, description, notes…)"
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-[#39FF14]"
+            />
+
+            {ticketOpen && ticketQuery.trim() && (
+              <div className="absolute left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50 overflow-hidden">
+                {ticketLoading && (
+                  <div className="px-3 py-2 text-xs text-zinc-400">Searching…</div>
+                )}
+
+                {!ticketLoading && ticketResults.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-zinc-500">No matches</div>
+                )}
+
+                {ticketResults.map((r) => (
+                  <button
+                    key={`${r.type}-${r.id}`}
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-zinc-800 border-b border-zinc-800 last:border-b-0"
+                    onClick={() => openTicket(r)}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-mono text-sm text-zinc-100">{r.invoice}</div>
+                      <div className="text-xs text-zinc-500">{r.type === 'workorder' ? 'Work Order' : 'Sale'}</div>
+                    </div>
+                    {(r.customerName || r.description) && (
+                      <div className="text-xs text-zinc-300 truncate">
+                        {[r.customerName, r.description].filter(Boolean).join(' — ')}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
+
+      <div className="flex items-center gap-3 shrink-0">
         <button
           className="relative px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
           onClick={() => dispatchOpenModal('notifications')}

@@ -1860,6 +1860,494 @@ ipcMain.handle('server-sync-status', async () => {
   return { ok: true, config: cfg };
 });
 
+// -------------------------------------------------------------
+// Clover Remote Pay (LAN)
+// -------------------------------------------------------------
+
+type CloverConnectionConfig = {
+  ipAddress?: string;
+  // Stored encrypted (base64) when safeStorage is available.
+  authTokenEnc?: string | null;
+  // Fallback when safeStorage is unavailable.
+  authToken?: string | null;
+  updatedAt?: string;
+};
+
+function cloverConfigPath(): string {
+  return path.join(resolveDataRoot(), 'clover-connection.json');
+}
+
+function encryptToBase64(value: string): string | null {
+  try {
+    const v = String(value || '').trim();
+    if (!v) return null;
+    if (safeStorage && typeof safeStorage.encryptString === 'function') {
+      const buf = safeStorage.encryptString(v);
+      return Buffer.from(buf).toString('base64');
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function decryptFromBase64(enc: string): string | null {
+  try {
+    const e = String(enc || '').trim();
+    if (!e) return null;
+    const buf = Buffer.from(e, 'base64');
+    if (safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(buf);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function readCloverConfig(): CloverConnectionConfig {
+  try {
+    const p = cloverConfigPath();
+    if (!fs.existsSync(p)) return { ipAddress: '', authTokenEnc: null, authToken: null };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { ipAddress: '', authTokenEnc: null, authToken: null };
+    return {
+      ipAddress: typeof (json as any).ipAddress === 'string' ? String((json as any).ipAddress) : '',
+      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
+      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
+      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
+    };
+  } catch {
+    return { ipAddress: '', authTokenEnc: null, authToken: null };
+  }
+}
+
+function writeCloverConfig(patch: Partial<CloverConnectionConfig>) {
+  try {
+    const current = readCloverConfig();
+    const next: CloverConnectionConfig = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    ensureDir(path.dirname(cloverConfigPath()));
+    fs.writeFileSync(cloverConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function getCloverAuthToken(cfg?: CloverConnectionConfig): string | null {
+  const c = cfg || readCloverConfig();
+  const dec = c?.authTokenEnc ? decryptFromBase64(c.authTokenEnc) : null;
+  if (dec && dec.trim()) return dec.trim();
+  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
+  if (plain && plain.trim()) return plain.trim();
+  return null;
+}
+
+function persistCloverAuthToken(token: string) {
+  const t = String(token || '').trim();
+  if (!t) return;
+  const enc = encryptToBase64(t);
+  if (enc) {
+    writeCloverConfig({ authTokenEnc: enc, authToken: null });
+  } else {
+    writeCloverConfig({ authToken: t, authTokenEnc: null });
+  }
+}
+
+type CloverStatus = {
+  ok: true;
+  state: 'disconnected' | 'connecting' | 'pairing' | 'connected' | 'ready' | 'error' | string;
+  endpoint?: string;
+  pairingCode?: string | null;
+  lastError?: string | null;
+  updatedAt?: string;
+};
+
+let cloverConnector: any | null = null;
+let cloverStatus: CloverStatus = {
+  ok: true,
+  state: 'disconnected',
+  endpoint: '',
+  pairingCode: null,
+  lastError: null,
+  updatedAt: new Date().toISOString(),
+};
+
+const pendingCloverSales = new Map<string, { resolve: (resp: any) => void; reject: (err: any) => void; timer: any }>();
+
+function emitToAllWindows(channel: string, payload: any) {
+  try {
+    const wins = BrowserWindow.getAllWindows();
+    for (const w of wins) {
+      try { w.webContents.send(channel, payload); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function setCloverStatus(patch: Partial<CloverStatus>) {
+  cloverStatus = {
+    ...cloverStatus,
+    ...patch,
+    ok: true,
+    updatedAt: new Date().toISOString(),
+  };
+  emitToAllWindows('clover:status', cloverStatus);
+}
+
+function rejectAllPendingCloverSales(message: string) {
+  try {
+    for (const [, p] of pendingCloverSales) {
+      try { clearTimeout(p.timer); } catch {}
+      try { p.reject(new Error(message)); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+  pendingCloverSales.clear();
+}
+
+function disposeCloverConnector() {
+  try {
+    if (cloverConnector && typeof cloverConnector.dispose === 'function') {
+      cloverConnector.dispose();
+    }
+  } catch {
+    // ignore
+  }
+  cloverConnector = null;
+  rejectAllPendingCloverSales('Clover disconnected');
+}
+
+function buildCloverEndpoint(ipAddress: string): string {
+  const raw = String(ipAddress || '').trim();
+  if (!raw) return '';
+
+  // If a full ws/wss URL is provided, normalize path to /remote_pay.
+  if (/^wss?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (!u.pathname || u.pathname === '/') u.pathname = '/remote_pay';
+      return u.toString();
+    } catch {
+      const noTrail = raw.replace(/\/+$/, '');
+      return /\/remote_pay$/i.test(noTrail) ? noTrail : `${noTrail}/remote_pay`;
+    }
+  }
+
+  const cleaned = raw.replace(/\/+$/, '');
+  let hostPort = cleaned;
+  let pathPart = '/remote_pay';
+  if (cleaned.includes('/')) {
+    const idx = cleaned.indexOf('/');
+    hostPort = cleaned.slice(0, idx);
+    const p = cleaned.slice(idx);
+    if (p && p !== '/') pathPart = p;
+  }
+  if (!hostPort) return '';
+  const withPort = hostPort.includes(':') ? hostPort : `${hostPort}:12345`;
+  const finalPath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+  return `wss://${withPort}${finalPath}`;
+}
+
+function cloverSaleResponseToSummary(resp: any): any {
+  try {
+    const success = Boolean(resp?.getSuccess?.());
+    const result = resp?.getResult?.();
+    const reason = resp?.getReason?.();
+    const message = resp?.getMessage?.();
+    const payment = resp?.getPayment?.();
+    const paymentId = payment?.getId?.();
+    const externalPaymentId = payment?.getExternalPaymentId?.();
+    const amount = payment?.getAmount?.();
+    const tipAmount = payment?.getTipAmount?.();
+    return {
+      success,
+      result: typeof result !== 'undefined' ? String(result) : null,
+      reason: reason ? String(reason) : null,
+      message: message ? String(message) : null,
+      paymentId: paymentId ? String(paymentId) : null,
+      externalPaymentId: externalPaymentId ? String(externalPaymentId) : null,
+      amount: typeof amount === 'number' ? amount : null,
+      tipAmount: typeof tipAmount === 'number' ? tipAmount : null,
+    };
+  } catch {
+    return { success: false, result: null, reason: null, message: null };
+  }
+}
+
+function makeCloverListener(): any {
+  const noop = () => {};
+  return {
+    onDisconnected: () => {
+      setCloverStatus({ state: 'disconnected', pairingCode: null });
+      rejectAllPendingCloverSales('Clover disconnected');
+    },
+    onDeviceDisconnected: () => {
+      setCloverStatus({ state: 'disconnected', pairingCode: null });
+      rejectAllPendingCloverSales('Clover disconnected');
+    },
+    onDeviceConnected: () => {
+      setCloverStatus({ state: 'connected', lastError: null });
+    },
+    onReady: (_merchantInfo: any) => {
+      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
+    },
+    onDeviceReady: (_merchantInfo: any) => {
+      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
+    },
+    onDeviceActivityStart: noop,
+    onDeviceActivityEnd: noop,
+    onDeviceError: (deviceErrorEvent: any) => {
+      const msg = String(deviceErrorEvent?.getMessage?.() || deviceErrorEvent?.message || 'Clover device error');
+      setCloverStatus({ state: 'error', lastError: msg });
+    },
+    onAuthResponse: noop,
+    onTipAdjustAuthResponse: noop,
+    onCapturePreAuthResponse: noop,
+    onVerifySignatureRequest: noop,
+    onConfirmPaymentRequest: noop,
+    onCloseoutResponse: noop,
+    onSaleResponse: (response: any) => {
+      const summary = cloverSaleResponseToSummary(response);
+      emitToAllWindows('clover:saleResponse', summary);
+
+      const key = String(summary?.externalPaymentId || '').trim();
+      const pending = key ? pendingCloverSales.get(key) : null;
+      if (pending) {
+        try { clearTimeout(pending.timer); } catch {}
+        pendingCloverSales.delete(key);
+        try { pending.resolve(response); } catch {}
+        return;
+      }
+
+      // Fallback: if we couldn't correlate and there is exactly one pending sale, resolve it.
+      if (pendingCloverSales.size === 1) {
+        const [[onlyKey, onlyPending]] = Array.from(pendingCloverSales.entries());
+        try { clearTimeout(onlyPending.timer); } catch {}
+        pendingCloverSales.delete(onlyKey);
+        try { onlyPending.resolve(response); } catch {}
+      }
+    },
+    onManualRefundResponse: noop,
+    onRefundPaymentResponse: noop,
+    onTipAdded: noop,
+    onVoidPaymentResponse: noop,
+    onVoidPaymentRefundResponse: noop,
+    onVaultCardResponse: noop,
+    onPreAuthResponse: noop,
+    onRetrievePendingPaymentsResponse: noop,
+    onReadCardDataResponse: noop,
+    onMessageFromActivity: noop,
+    onCustomActivityResponse: noop,
+    onRetrieveDeviceStatusResponse: noop,
+    onInvalidStateTransitionResponse: noop,
+    onResetDeviceResponse: noop,
+    onRetrievePaymentResponse: noop,
+    onRetrievePrintersResponse: noop,
+    onPrintJobStatusResponse: noop,
+    onPrintManualRefundReceipt: noop,
+    onPrintManualRefundDeclineReceipt: noop,
+    onPrintPaymentReceipt: noop,
+    onPrintPaymentDeclineReceipt: noop,
+    onPrintPaymentMerchantCopyReceipt: noop,
+    onPrintRefundPaymentReceipt: noop,
+    onCustomerProvidedData: noop,
+    onDisplayReceiptOptionsResponse: noop,
+  };
+}
+
+function requireCloverReady(): { ok: true } | { ok: false; error: string } {
+  if (!cloverConnector) return { ok: false, error: 'Clover is not connected.' };
+  if (cloverConnector?.isReady !== true) return { ok: false, error: 'Clover is not ready yet. Finish pairing and wait for Ready.' };
+  return { ok: true };
+}
+
+// Best-effort cleanup on quit.
+try {
+  app.on('before-quit', () => {
+    try { disposeCloverConnector(); } catch {}
+  });
+} catch {}
+
+ipcMain.handle('clover:getConfig', async () => {
+  const cfg = readCloverConfig();
+  return {
+    ok: true,
+    ipAddress: String(cfg.ipAddress || ''),
+    hasAuthToken: Boolean(getCloverAuthToken(cfg)),
+  };
+});
+
+ipcMain.handle('clover:setConfig', async (_e: any, patch: any) => {
+  try {
+    const p = (patch && typeof patch === 'object') ? patch : {};
+    const next: Partial<CloverConnectionConfig> = {};
+    if (typeof p.ipAddress === 'string') next.ipAddress = String(p.ipAddress || '').trim();
+    if (p.clearAuthToken === true) {
+      next.authToken = null;
+      next.authTokenEnc = null;
+    }
+    if (Object.keys(next).length > 0) writeCloverConfig(next);
+    const cfg = readCloverConfig();
+    return {
+      ok: true,
+      ipAddress: String(cfg.ipAddress || ''),
+      hasAuthToken: Boolean(getCloverAuthToken(cfg)),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:getStatus', async () => {
+  return cloverStatus;
+});
+
+ipcMain.handle('clover:connect', async () => {
+  try {
+    const cfg = readCloverConfig();
+    const ip = String(cfg.ipAddress || '').trim();
+    if (!ip) return { ok: false, error: 'Clover IP address is not set.' };
+
+    const endpoint = buildCloverEndpoint(ip);
+    if (!endpoint) return { ok: false, error: 'Invalid Clover IP address.' };
+
+    // Dispose any prior connection.
+    disposeCloverConnector();
+
+    setCloverStatus({ state: 'connecting', endpoint, pairingCode: null, lastError: null });
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const CloverWebSocketInterface = remotePayCloud.CloverWebSocketInterface;
+
+    class NodeWebSocketImpl extends CloverWebSocketInterface {
+      constructor(ep: string) { super(ep); }
+      public createWebSocket(ep: string): any {
+        const WS = require('ws');
+        // Clover devices frequently use self-signed certs on LAN.
+        return new WS(ep, { rejectUnauthorized: false });
+      }
+      public sendPong(): any {
+        try { (this as any).webSocket?.pong?.(); } catch {}
+        return this;
+      }
+      public sendPing(): any {
+        try { (this as any).webSocket?.ping?.(); } catch {}
+        return this;
+      }
+      public static createInstance(ep: string): any { return new NodeWebSocketImpl(ep); }
+    }
+
+    const appVersion = (() => { try { return app.getVersion(); } catch { return '0.0.0'; } })();
+    const applicationId = `com.gadgetboy.pos:${appVersion}`;
+    const posName = 'GadgetBoy POS';
+    const serialNumber = `GBPOS-${String(os.hostname?.() || 'POS')}`;
+    const authToken = getCloverAuthToken(cfg);
+
+    const onPairingCode = (code: string) => {
+      const c = String(code || '').trim();
+      if (!c) return;
+      setCloverStatus({ state: 'pairing', pairingCode: c });
+      emitToAllWindows('clover:pairingCode', c);
+    };
+
+    const onPairingSuccess = (token: string) => {
+      try { persistCloverAuthToken(token); } catch {}
+      setCloverStatus({ pairingCode: null });
+    };
+
+    const builder = new remotePayCloud.WebSocketPairedCloverDeviceConfigurationBuilder(
+      applicationId,
+      endpoint,
+      posName,
+      serialNumber,
+      authToken || null,
+      onPairingCode,
+      onPairingSuccess,
+    );
+    builder.setWebSocketFactoryFunction(NodeWebSocketImpl.createInstance);
+
+    const deviceConfig = builder.build();
+    cloverConnector = new remotePayCloud.CloverConnector(deviceConfig);
+    cloverConnector.addCloverConnectorListener(makeCloverListener());
+    cloverConnector.initializeConnection();
+
+    return { ok: true, endpoint };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    setCloverStatus({ state: 'error', lastError: msg });
+    return { ok: false, error: msg };
+  }
+});
+
+ipcMain.handle('clover:disconnect', async () => {
+  try {
+    disposeCloverConnector();
+    setCloverStatus({ state: 'disconnected', pairingCode: null });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:sale', async (_e: any, amountCents: any) => {
+  try {
+    const ready = requireCloverReady();
+    if (!ready.ok) return { ok: false, error: ready.error };
+
+    const amt = Number(amountCents);
+    if (!Number.isFinite(amt) || amt <= 0) return { ok: false, error: 'Invalid amount.' };
+    if (pendingCloverSales.size > 0) return { ok: false, error: 'Another Clover sale is already in progress.' };
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const req = new remotePayCloud.remotepay.SaleRequest();
+    req.setAmount(Math.round(amt));
+    const externalId = `GBPOS-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    req.setExternalId(externalId);
+
+    const response = await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingCloverSales.delete(externalId);
+        reject(new Error('Timed out waiting for Clover sale response.'));
+      }, 120000);
+      pendingCloverSales.set(externalId, { resolve, reject, timer });
+      cloverConnector.sale(req);
+    });
+
+    return { ok: true, response: cloverSaleResponseToSummary(response) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:openCashDrawer', async (_e: any, payload: any) => {
+  try {
+    const ready = requireCloverReady();
+    if (!ready.ok) return { ok: false, error: ready.error };
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const reason = String(payload?.reason || 'GadgetBoy POS').trim() || 'GadgetBoy POS';
+    const deviceId = String(payload?.deviceId || '').trim();
+    if (deviceId) {
+      const req = new remotePayCloud.remotepay.OpenCashDrawerRequest();
+      req.setReason(reason);
+      req.setDeviceId(deviceId);
+      cloverConnector.openCashDrawer(req);
+    } else {
+      cloverConnector.openCashDrawer(reason);
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 // Open Clock In window
 ipcMain.handle('open-clock-in', async () => {
   console.log('[IPC] open-clock-in invoked');
@@ -2454,6 +2942,176 @@ function matchesDbQuery(it: any, q: any): boolean {
   }
   return true;
 }
+
+type TicketSearchResult = {
+  type: 'workorder' | 'sale';
+  id: number;
+  invoice: string;
+  activityAt: string;
+  customerName?: string;
+  description?: string;
+};
+
+ipcMain.handle('tickets:search', async (_e: any, query: any, opts?: { limit?: number }) => {
+  try {
+    const qRaw = String(query || '').trim();
+    const limitRaw = Number(opts?.limit ?? 30);
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 200)) : 30;
+    if (!qRaw) return { ok: true, results: [] as TicketSearchResult[] };
+
+    // Normalize query into simple lowercase terms.
+    const qLower = qRaw.toLowerCase();
+    const cleaned = qLower.replace(/[^a-z0-9]+/g, ' ').trim();
+    const terms = cleaned.split(/\s+/).filter(Boolean);
+    const digits = cleaned.replace(/\D/g, '');
+
+    // Avoid scanning the whole DB for 1-letter non-numeric queries.
+    if (terms.length === 0) return { ok: true, results: [] as TicketSearchResult[] };
+    if (cleaned.length < 2 && !digits) return { ok: true, results: [] as TicketSearchResult[] };
+
+    const db: any = readDb();
+    const workOrders: any[] = Array.isArray(db.workOrders) ? db.workOrders : [];
+    const sales: any[] = Array.isArray(db.sales) ? db.sales : [];
+    const customers: any[] = Array.isArray(db.customers) ? db.customers : [];
+
+    const customerNameById = new Map<number, string>();
+    for (const c of customers) {
+      const idNum = Number((c as any)?.id);
+      if (!Number.isFinite(idNum) || idNum <= 0) continue;
+      const first = String((c as any)?.firstName || '').trim();
+      const last = String((c as any)?.lastName || '').trim();
+      const full = [first, last].filter(Boolean).join(' ').trim();
+      const fallback = String((c as any)?.name || '').trim() || String((c as any)?.email || '').trim();
+      const name = full || fallback;
+      if (name) customerNameById.set(idNum, name);
+    }
+
+    const norm = (v: any): string => {
+      if (v === null || typeof v === 'undefined') return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      try { return JSON.stringify(v); } catch { return String(v); }
+    };
+
+    const invoiceForId = (id: number): string => `GB${String(id).padStart(7, '0')}`;
+
+    const buildHay = (rec: any, type: 'workorder' | 'sale') => {
+      const idNum = Number(rec?.id ?? 0);
+      const invoice = invoiceForId(idNum);
+      const activityAt = String(type === 'workorder' ? (getWorkOrderActivityAt(rec) || '') : (getSaleActivityAt(rec) || ''));
+
+      const cid = Number(rec?.customerId ?? 0);
+      const nameFromCustomer = (Number.isFinite(cid) && cid > 0) ? (customerNameById.get(cid) || '') : '';
+      const nameFromRecord = String(rec?.customerName || rec?.clientName || '').trim()
+        || [rec?.firstName, rec?.lastName].filter(Boolean).map((x: any) => String(x || '').trim()).filter(Boolean).join(' ').trim();
+      const customerName = nameFromCustomer || nameFromRecord;
+
+      const parts: string[] = [];
+      if (Number.isFinite(idNum) && idNum > 0) {
+        parts.push(String(idNum));
+        parts.push(invoice);
+        parts.push(`gb${idNum}`);
+        parts.push(`gb${String(idNum).padStart(7, '0')}`);
+        parts.push(`#${idNum}`);
+      }
+      if (customerName) parts.push(customerName);
+
+      // Device/description-ish fields
+      const descCandidates = [
+        rec?.productCategory,
+        rec?.productDescription,
+        rec?.deviceType,
+        rec?.device,
+        rec?.summary,
+        rec?.description,
+        rec?.issue,
+        rec?.problem,
+        rec?.diagnosis,
+        rec?.notes,
+        rec?.techNotes,
+        rec?.category,
+      ];
+      for (const v of descCandidates) {
+        const s = String(v || '').trim();
+        if (s) parts.push(s);
+      }
+
+      // Items/lines (repairs, sales items, etc.)
+      const items = Array.isArray(rec?.items) ? rec.items : [];
+      for (const it of items) {
+        const s = [it?.description, it?.name, it?.title, it?.repair, it?.category, it?.sku].map(norm).join(' ').trim();
+        if (s) parts.push(s);
+      }
+
+      const repairs = Array.isArray(rec?.repairs) ? rec.repairs : [];
+      for (const r of repairs) {
+        const s = [r?.name, r?.description, r?.category].map(norm).join(' ').trim();
+        if (s) parts.push(s);
+      }
+
+      const contact = [rec?.customerPhone, rec?.phone, rec?.phoneAlt, rec?.customerEmail, rec?.email].map(norm).join(' ').trim();
+      if (contact) parts.push(contact);
+
+      const hay = parts.join(' ').toLowerCase();
+
+      const description = (() => {
+        const first = String(rec?.productDescription || rec?.summary || rec?.description || rec?.productCategory || '').trim();
+        if (first) return first;
+        if (items.length > 0) {
+          const d = String(items[0]?.description || items[0]?.name || '').trim();
+          if (d) return d;
+        }
+        return '';
+      })();
+
+      return { hay, customerName, invoice, activityAt, description };
+    };
+
+    const matches = (hay: string): boolean => terms.every((t) => hay.includes(t));
+
+    const out: TicketSearchResult[] = [];
+
+    for (const w of workOrders) {
+      const idNum = Number((w as any)?.id ?? 0);
+      if (!Number.isFinite(idNum) || idNum <= 0) continue;
+      const built = buildHay(w, 'workorder');
+      if (!matches(built.hay)) continue;
+      out.push({
+        type: 'workorder',
+        id: idNum,
+        invoice: built.invoice,
+        activityAt: built.activityAt,
+        customerName: built.customerName || undefined,
+        description: built.description || undefined,
+      });
+    }
+
+    for (const s of sales) {
+      const idNum = Number((s as any)?.id ?? 0);
+      if (!Number.isFinite(idNum) || idNum <= 0) continue;
+      const built = buildHay(s, 'sale');
+      if (!matches(built.hay)) continue;
+      out.push({
+        type: 'sale',
+        id: idNum,
+        invoice: built.invoice,
+        activityAt: built.activityAt,
+        customerName: built.customerName || undefined,
+        description: built.description || undefined,
+      });
+    }
+
+    const toTs = (iso: string): number => {
+      const t = new Date(iso || 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    out.sort((a, b) => (toTs(b.activityAt) - toTs(a.activityAt)) || (b.id - a.id));
+    return { ok: true, results: out.slice(0, limit) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e), results: [] as TicketSearchResult[] };
+  }
+});
 
 ipcMain.handle('db-count', async (_e: any, key: string, q: any) => {
   const db = readDb();

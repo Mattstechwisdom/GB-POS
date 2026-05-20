@@ -40,6 +40,7 @@ declare global {
     deleteFromCollection: (key: string, id: number) => Promise<boolean>;
     dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => Promise<any[]>;
     dbCount: (key: string, q: any) => Promise<number>;
+    searchTickets: (query: string, opts?: { limit?: number }) => Promise<{ ok: boolean; results: Array<{ type: 'workorder' | 'sale'; id: number; invoice: string; activityAt: string; customerName?: string; description?: string }>; error?: string }>;
     dbAdd: (key: string, item: any) => Promise<any>;
     dbUpdate: (key: string, id: any, item: any) => Promise<any>;
   dbDelete: (key: string, id: any) => Promise<boolean>;

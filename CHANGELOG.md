@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.31 (2026-05-20)
+- Tickets: added keyword search across Work Orders + Sales (toolbar search scans the whole DB).
+- Money input: selecting the full amount and pressing Backspace now clears the field.
+- Customer Overview: improved matching so customer history links more reliably.
+- Clover: added Clover Connection (LAN pairing + sale send + open cash drawer).
+
 ## v0.4.30 (2026-05-11)
 - Performance: reduces intermittent UI freezes during autosave bursts by streaming DB writes in the main process (keeps the event loop responsive during large JSON saves).
 - Performance: prevents customer list reload thrash across windows during frequent autosaves (per-window caching + subscriptions refresh only on `customers:changed`).

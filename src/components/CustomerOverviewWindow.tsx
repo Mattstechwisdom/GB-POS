@@ -284,14 +284,39 @@ function saleMatchesCustomer(sale: any, customer: any) {
   if (customerId > 0 && saleCustomerId > 0 && saleCustomerId === customerId) return true;
 
   const customerName = normalizeCustomerName(customer?.name || `${customer?.firstName || ''} ${customer?.lastName || ''}`);
-  const customerPhone = normalizeCustomerPhone(customer?.phone);
+  const customerPhones = [customer?.phone, customer?.phoneAlt].map(normalizeCustomerPhone).filter(Boolean);
   const saleName = normalizeCustomerName(sale?.customerName);
   const salePhone = normalizeCustomerPhone(sale?.customerPhone);
 
   const hasCustomerName = !!customerName;
-  const hasCustomerPhone = !!customerPhone;
+  const hasCustomerPhone = customerPhones.length > 0;
   const nameMatches = hasCustomerName && !!saleName && saleName === customerName;
-  const phoneMatches = hasCustomerPhone && !!salePhone && salePhone === customerPhone;
+  const phoneMatches = hasCustomerPhone && !!salePhone && customerPhones.includes(salePhone);
+
+  if (hasCustomerName && hasCustomerPhone) return nameMatches && phoneMatches;
+  if (hasCustomerName) return nameMatches;
+  if (hasCustomerPhone) return phoneMatches;
+  return false;
+}
+
+function workOrderMatchesCustomer(workOrder: any, customer: any) {
+  const customerId = Number(customer?.id || 0);
+  const woCustomerId = Number(workOrder?.customerId || 0);
+  if (customerId > 0 && woCustomerId > 0) return woCustomerId === customerId;
+
+  // Only use fuzzy matching when the work order is not already linked.
+  if (woCustomerId > 0) return false;
+
+  const customerName = normalizeCustomerName(customer?.name || `${customer?.firstName || ''} ${customer?.lastName || ''}`);
+  const customerPhones = [customer?.phone, customer?.phoneAlt].map(normalizeCustomerPhone).filter(Boolean);
+
+  const woName = normalizeCustomerName(workOrder?.customerName || `${workOrder?.firstName || ''} ${workOrder?.lastName || ''}`);
+  const woPhone = normalizeCustomerPhone(workOrder?.customerPhone || workOrder?.phone);
+
+  const hasCustomerName = !!customerName;
+  const hasCustomerPhone = customerPhones.length > 0;
+  const nameMatches = hasCustomerName && !!woName && woName === customerName;
+  const phoneMatches = hasCustomerPhone && !!woPhone && customerPhones.includes(woPhone);
 
   if (hasCustomerName && hasCustomerPhone) return nameMatches && phoneMatches;
   if (hasCustomerName) return nameMatches;
@@ -316,14 +341,15 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
     // New (unsaved) customers have no history — skip all IPC calls.
     if (!customerId) { setOrders([]); setSales([]); return; }
     try {
-      const [wo, allSales] = await Promise.all([
-        (window as any).api.findWorkOrders({ customerId }).catch(() => []),
-        (window as any).api.dbGet('sales').catch(() => []),
+      const api = (window as any).api;
+      const [allWorkOrders, allSales] = await Promise.all([
+        (api?.getWorkOrders ? api.getWorkOrders({ sortBy: 'activityAt', sortDir: 'desc' }) : api.dbGet('workOrders')).catch(() => []),
+        api.dbGet('sales').catch(() => []),
       ]);
       // Read latest customer from ref so filtering is always accurate even if the
       // parent re-rendered after load started.
       const cust = customerRef.current;
-      setOrders(Array.isArray(wo) ? wo : []);
+      setOrders((Array.isArray(allWorkOrders) ? allWorkOrders : []).filter((w: any) => workOrderMatchesCustomer(w, cust)));
       setSales((Array.isArray(allSales) ? allSales : []).filter((s: any) => saleMatchesCustomer(s, cust)));
     } catch (e) {
       setOrders([]); setSales([]);
