@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.32 (2026-05-22)
+- Tickets: keyword search dropdown supports ↑/↓ to move selection, Enter to open, and shows a 5-row scrollable results list.
+
 ## v0.4.31 (2026-05-20)
 - Tickets: added keyword search across Work Orders + Sales (toolbar search scans the whole DB).
 - Money input: selecting the full amount and pressing Backspace now clears the field.

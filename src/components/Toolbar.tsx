@@ -85,7 +85,10 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
   const [ticketResults, setTicketResults] = useState<TicketSearchResult[]>([]);
+  const [ticketActiveIndex, setTicketActiveIndex] = useState<number>(-1);
   const ticketRef = useRef<HTMLDivElement>(null);
+  const ticketListRef = useRef<HTMLDivElement>(null);
+  const ticketItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const ticketReqRef = useRef(0);
 
   useEffect(() => {
@@ -111,6 +114,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     const q = ticketQuery.trim();
     if (!q) {
       setTicketResults([]);
+      setTicketActiveIndex(-1);
       setTicketLoading(false);
       setTicketOpen(false);
       return;
@@ -126,11 +130,16 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         if (ticketReqRef.current !== requestId) return;
         if (res?.ok && Array.isArray(res?.results)) {
           setTicketResults(res.results);
+          setTicketActiveIndex(res.results.length > 0 ? 0 : -1);
         } else {
           setTicketResults([]);
+          setTicketActiveIndex(-1);
         }
       } catch {
-        if (ticketReqRef.current === requestId) setTicketResults([]);
+        if (ticketReqRef.current === requestId) {
+          setTicketResults([]);
+          setTicketActiveIndex(-1);
+        }
       } finally {
         if (ticketReqRef.current === requestId) setTicketLoading(false);
       }
@@ -144,6 +153,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
       setTicketOpen(false);
       setTicketQuery('');
       setTicketResults([]);
+      setTicketActiveIndex(-1);
       if (r.type === 'workorder') {
         dispatchOpenModal('newWorkOrder', { workOrderId: r.id });
       } else {
@@ -153,6 +163,19 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
       console.error('Failed to open ticket from search', e);
     }
   };
+
+  useEffect(() => {
+    try {
+      if (!ticketOpen) return;
+      if (ticketActiveIndex < 0) return;
+      const el = ticketItemRefs.current[ticketActiveIndex];
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    } catch {
+      // ignore
+    }
+  }, [ticketOpen, ticketActiveIndex, ticketResults.length]);
 
   return (
     <>
@@ -215,12 +238,36 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   setTicketOpen(false);
+                  setTicketActiveIndex(-1);
+                }
+                if (e.key === 'ArrowDown') {
+                  if (!ticketQuery.trim()) return;
+                  if (!ticketOpen) setTicketOpen(true);
+                  if (ticketResults.length === 0) return;
+                  e.preventDefault();
+                  setTicketActiveIndex((prev) => {
+                    if (prev < 0) return 0;
+                    return Math.min(prev + 1, ticketResults.length - 1);
+                  });
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  if (!ticketQuery.trim()) return;
+                  if (!ticketOpen) setTicketOpen(true);
+                  if (ticketResults.length === 0) return;
+                  e.preventDefault();
+                  setTicketActiveIndex((prev) => {
+                    const next = Math.max((prev < 0 ? 0 : prev) - 1, 0);
+                    return next;
+                  });
+                  return;
                 }
                 if (e.key === 'Enter') {
-                  const first = ticketResults[0];
-                  if (first) {
+                  const idx = ticketActiveIndex >= 0 ? ticketActiveIndex : 0;
+                  const r = ticketResults[idx];
+                  if (r) {
                     e.preventDefault();
-                    openTicket(first);
+                    openTicket(r);
                   }
                 }
               }}
@@ -238,24 +285,30 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
                   <div className="px-3 py-2 text-xs text-zinc-500">No matches</div>
                 )}
 
-                {ticketResults.map((r) => (
-                  <button
-                    key={`${r.type}-${r.id}`}
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-zinc-800 border-b border-zinc-800 last:border-b-0"
-                    onClick={() => openTicket(r)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-mono text-sm text-zinc-100">{r.invoice}</div>
-                      <div className="text-xs text-zinc-500">{r.type === 'workorder' ? 'Work Order' : 'Sale'}</div>
-                    </div>
-                    {(r.customerName || r.description) && (
-                      <div className="text-xs text-zinc-300 truncate">
-                        {[r.customerName, r.description].filter(Boolean).join(' — ')}
-                      </div>
-                    )}
-                  </button>
-                ))}
+                {ticketResults.length > 0 && (
+                  <div ref={ticketListRef} className="max-h-[320px] overflow-y-auto">
+                    {ticketResults.map((r, idx) => (
+                      <button
+                        key={`${r.type}-${r.id}`}
+                        ref={(el) => { ticketItemRefs.current[idx] = el; }}
+                        type="button"
+                        className={
+                          `w-full text-left px-3 py-2 border-b border-zinc-800 last:border-b-0 h-16 ` +
+                          (idx === ticketActiveIndex ? 'bg-zinc-800' : 'hover:bg-zinc-800')
+                        }
+                        onClick={() => openTicket(r)}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-mono text-sm text-zinc-100">{r.invoice}</div>
+                          <div className="text-xs text-zinc-500">{r.type === 'workorder' ? 'Work Order' : 'Sale'}</div>
+                        </div>
+                        <div className="text-xs text-zinc-300 truncate">
+                          {[r.customerName, r.description].filter(Boolean).join(' — ') || ' '}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
