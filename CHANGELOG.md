@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.33 (2026-05-22)
+- Checkout: updated the checkout window to the new button-based payment selection (Cash / Card / Split Pay).
+
 ## v0.4.32 (2026-05-22)
 - Tickets: keyword search dropdown supports ↑/↓ to move selection, Enter to open, and shows a 5-row scrollable results list.
 
