@@ -21,6 +21,20 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const [errors, setErrors] = useState<string[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsTo, setSmsTo] = useState('');
+  const [smsBody, setSmsBody] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [smsSuccess, setSmsSuccess] = useState<string | null>(null);
+  const [smsConfigLoading, setSmsConfigLoading] = useState(false);
+  const [smsConfig, setSmsConfig] = useState<{ accountSid: string; fromNumber: string; hasAuthToken: boolean } | null>(null);
+  const [smsSettingsOpen, setSmsSettingsOpen] = useState(false);
+  const [smsAccountSid, setSmsAccountSid] = useState('');
+  const [smsAuthSid, setSmsAuthSid] = useState('');
+  const [smsFromNumber, setSmsFromNumber] = useState('');
+  const [smsAuthToken, setSmsAuthToken] = useState('');
+  const [smsSavingConfig, setSmsSavingConfig] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
   const editSeqRef = useRef(0);
@@ -171,6 +185,92 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
   }
 
+  async function loadSmsConfig() {
+    setSmsConfigLoading(true);
+    try {
+      const res: any = await window.api.twilioGetConfig();
+      if (res && res.ok) {
+        const cfg = {
+          accountSid: String(res.accountSid || ''),
+          fromNumber: String(res.fromNumber || ''),
+          hasAuthToken: Boolean(res.hasAuthToken),
+        };
+        setSmsConfig(cfg);
+        setSmsAccountSid(cfg.accountSid);
+        setSmsAuthSid(String(res.authSid || ''));
+        setSmsFromNumber(cfg.fromNumber);
+        return;
+      }
+      setSmsConfig(null);
+    } catch (e) {
+      setSmsConfig(null);
+    } finally {
+      setSmsConfigLoading(false);
+    }
+  }
+
+  async function openSmsComposer() {
+    setSmsError(null);
+    setSmsSuccess(null);
+    setSmsBody('');
+    const primary = String((local as any)?.phone || '').trim();
+    const alt = String((local as any)?.phoneAlt || '').trim();
+    setSmsTo(primary || alt || '');
+    setSmsSettingsOpen(false);
+    setSmsOpen(true);
+    await loadSmsConfig();
+  }
+
+  async function saveSmsSettings() {
+    setSmsSavingConfig(true);
+    setSmsError(null);
+    setSmsSuccess(null);
+    try {
+      const patch: any = {
+        accountSid: String(smsAccountSid || '').trim(),
+        authSid: String(smsAuthSid || '').trim(),
+        fromNumber: String(smsFromNumber || '').trim(),
+      };
+      const token = String(smsAuthToken || '').trim();
+      if (token) patch.authToken = token;
+      const res: any = await window.api.twilioSetConfig(patch);
+      if (!res || res.ok !== true) {
+        setSmsError(String(res?.error || 'Failed to save SMS settings'));
+        return;
+      }
+      setSmsAuthToken('');
+      setSmsSuccess('SMS settings saved.');
+      await loadSmsConfig();
+    } catch (e: any) {
+      setSmsError(String(e?.message || e || 'Failed to save SMS settings'));
+    } finally {
+      setSmsSavingConfig(false);
+    }
+  }
+
+  async function sendSmsNow() {
+    setSmsSending(true);
+    setSmsError(null);
+    setSmsSuccess(null);
+    try {
+      const to = String(smsTo || '').trim();
+      const body = String(smsBody || '').trim();
+      if (!to) { setSmsError('Missing recipient phone number.'); return; }
+      if (!body) { setSmsError('Message is empty.'); return; }
+      const res: any = await window.api.twilioSendSms({ to, body });
+      if (!res || res.ok !== true) {
+        setSmsError(String(res?.error || 'Failed to send text.'));
+        return;
+      }
+      setSmsSuccess('Text sent.');
+      setSmsBody('');
+    } catch (e: any) {
+      setSmsError(String(e?.message || e || 'Failed to send text.'));
+    } finally {
+      setSmsSending(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6">
       <div className="bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
@@ -219,6 +319,10 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                   await (window as any).api.openNewSale(payload);
                 }}
               >New Sale</Button>
+              <Button
+                className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
+                onClick={openSmsComposer}
+              >Text Customer</Button>
             </div>
             {/* Filter toggle (smaller) with hover-highlight / solid-when-selected */}
             <div className="flex items-center gap-2 mb-1">
@@ -261,6 +365,131 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
           <div />
         </div>
       </div>
+
+      {smsOpen && (
+        <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/70 p-6">
+          <div className="bg-zinc-900 border border-zinc-700 rounded w-[700px] max-w-[95vw] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-semibold text-zinc-200">Text Customer</div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => { setSmsOpen(false); setSmsError(null); setSmsSuccess(null); setSmsAuthToken(''); }}
+                className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+              >✕</button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-zinc-400 mb-1">To</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={smsTo}
+                    onChange={(e) => setSmsTo(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                    placeholder="Customer phone (e.g. 8645551234 or +18645551234)"
+                  />
+                  {String((local as any)?.phone || '').trim() && (
+                    <button
+                      type="button"
+                      className="px-2 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
+                      title="Use primary phone"
+                      onClick={() => setSmsTo(String((local as any)?.phone || '').trim())}
+                    >Primary</button>
+                  )}
+                  {String((local as any)?.phoneAlt || '').trim() && (
+                    <button
+                      type="button"
+                      className="px-2 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
+                      title="Use alternate phone"
+                      onClick={() => setSmsTo(String((local as any)?.phoneAlt || '').trim())}
+                    >Alt</button>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-zinc-400 mb-1">Message</div>
+                <textarea
+                  value={smsBody}
+                  onChange={(e) => setSmsBody(e.target.value)}
+                  rows={5}
+                  className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                  placeholder="Type your update…"
+                />
+              </div>
+
+              {smsError && <div className="text-sm text-red-400">{smsError}</div>}
+              {smsSuccess && <div className="text-sm text-[#39FF14]">{smsSuccess}</div>}
+
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-zinc-500">
+                  {smsConfigLoading && 'Checking SMS settings…'}
+                  {!smsConfigLoading && smsConfig && smsConfig.hasAuthToken && smsConfig.accountSid && smsConfig.fromNumber && 'SMS configured'}
+                  {!smsConfigLoading && (!smsConfig || !smsConfig.hasAuthToken || !smsConfig.accountSid || !smsConfig.fromNumber) && 'SMS not configured'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    className="px-4 py-2 text-sm bg-zinc-800 border border-zinc-700 text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+                    onClick={() => setSmsSettingsOpen(v => !v)}
+                  >SMS Settings</Button>
+                  <Button neon disabled={smsSending} onClick={sendSmsNow}>{smsSending ? 'Sending…' : 'Send Text'}</Button>
+                </div>
+              </div>
+
+              {smsSettingsOpen && (
+                <div className="border-t border-zinc-700 pt-3 space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-xs text-zinc-400 mb-1">Twilio Account SID</div>
+                      <input
+                        value={smsAccountSid}
+                        onChange={(e) => setSmsAccountSid(e.target.value)}
+                        className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                        placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-400 mb-1">From Number</div>
+                      <input
+                        value={smsFromNumber}
+                        onChange={(e) => setSmsFromNumber(e.target.value)}
+                        className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                        placeholder="+18645551234"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-400 mb-1">API Key SID (optional)</div>
+                    <input
+                      value={smsAuthSid}
+                      onChange={(e) => setSmsAuthSid(e.target.value)}
+                      className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                      placeholder="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    />
+                    <div className="text-[11px] text-zinc-500 mt-1">Leave blank to use Account SID for auth.</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-400 mb-1">Auth Token / API Secret</div>
+                    <input
+                      value={smsAuthToken}
+                      onChange={(e) => setSmsAuthToken(e.target.value)}
+                      type="password"
+                      className="w-full px-3 py-2 rounded bg-zinc-800 border border-zinc-700 text-zinc-100"
+                      placeholder={smsConfig?.hasAuthToken ? '•••••••••• (set)' : 'Enter Auth Token / API Secret'}
+                    />
+                    <div className="text-[11px] text-zinc-500 mt-1">Token is stored encrypted (when supported).</div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button neon disabled={smsSavingConfig} onClick={saveSmsSettings}>{smsSavingConfig ? 'Saving…' : 'Save Settings'}</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

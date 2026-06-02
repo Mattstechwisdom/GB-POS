@@ -2348,6 +2348,294 @@ ipcMain.handle('clover:openCashDrawer', async (_e: any, payload: any) => {
   }
 });
 
+// -------------------------------------------------------------
+// Twilio SMS
+// -------------------------------------------------------------
+
+type TwilioSmsConfig = {
+  accountSid?: string;
+  // Optional: when using Twilio API Keys, this can be the API Key SID (SK...).
+  // When omitted, accountSid is used as the HTTP Basic auth username.
+  authSid?: string;
+  fromNumber?: string;
+  // Stored encrypted (base64) when safeStorage is available.
+  authTokenEnc?: string | null;
+  // Fallback when safeStorage is unavailable.
+  authToken?: string | null;
+  updatedAt?: string;
+};
+
+function twilioConfigPath(): string {
+  return path.join(resolveDataRoot(), 'twilio-config.json');
+}
+
+function readTwilioConfig(): TwilioSmsConfig {
+  try {
+    const p = twilioConfigPath();
+    if (!fs.existsSync(p)) return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+    return {
+      accountSid: typeof (json as any).accountSid === 'string' ? String((json as any).accountSid) : '',
+      authSid: typeof (json as any).authSid === 'string' ? String((json as any).authSid) : '',
+      fromNumber: typeof (json as any).fromNumber === 'string' ? String((json as any).fromNumber) : '',
+      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
+      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
+      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
+    };
+  } catch {
+    return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+  }
+}
+
+function writeTwilioConfig(patch: Partial<TwilioSmsConfig>) {
+  try {
+    const current = readTwilioConfig();
+    const next: TwilioSmsConfig = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    ensureDir(path.dirname(twilioConfigPath()));
+    fs.writeFileSync(twilioConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function getTwilioAuthToken(cfg?: TwilioSmsConfig): string | null {
+  const c = cfg || readTwilioConfig();
+  const dec = c?.authTokenEnc ? decryptFromBase64(String(c.authTokenEnc)) : null;
+  if (dec && dec.trim()) return dec.trim();
+  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
+  if (plain && plain.trim()) return plain.trim();
+  return null;
+}
+
+function normalizePhoneE164(raw: any): string | null {
+  try {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    if (s.startsWith('+')) {
+      const digits = s.replace(/[^0-9]/g, '');
+      if (digits.length < 10) return null;
+      return `+${digits}`;
+    }
+    const digits = s.replace(/\D+/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function twilioSendSms(toRaw: any, bodyRaw: any): Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }> {
+  try {
+    const cfg = readTwilioConfig();
+    const accountSid = String(cfg.accountSid || '').trim();
+    const authSid = String((cfg as any).authSid || accountSid).trim();
+    const authToken = String(getTwilioAuthToken(cfg) || '').trim();
+    const fromNumberRaw = String(cfg.fromNumber || '').trim();
+
+    if (!accountSid) return { ok: false, error: 'Twilio not configured: missing Account SID.' };
+    if (!authSid) return { ok: false, error: 'Twilio not configured: missing Auth SID (API Key SID) / Account SID.' };
+    if (!authToken) return { ok: false, error: 'Twilio not configured: missing Auth Token.' };
+    if (!fromNumberRaw) return { ok: false, error: 'Twilio not configured: missing From Number.' };
+
+    const to = normalizePhoneE164(toRaw);
+    if (!to) return { ok: false, error: 'Invalid recipient phone number.' };
+
+    const from = normalizePhoneE164(fromNumberRaw);
+    if (!from) return { ok: false, error: 'Invalid From phone number. Use +E.164 or a 10-digit US number.' };
+
+    const body = String(bodyRaw || '').trim();
+    if (!body) return { ok: false, error: 'Message body is empty.' };
+
+    const postData = new URLSearchParams({ To: to, From: from, Body: body }).toString();
+    const auth = Buffer.from(`${authSid}:${authToken}`).toString('base64');
+
+    const result = await new Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }>((resolve) => {
+      try {
+        const req = https.request({
+          method: 'POST',
+          hostname: 'api.twilio.com',
+          path: `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData),
+          },
+          timeout: 15000,
+        }, (res: any) => {
+          let data = '';
+          res.on('data', (chunk: any) => { data += String(chunk ?? ''); });
+          res.on('end', () => {
+            const status = Number(res?.statusCode || 0);
+            const ok = status >= 200 && status < 300;
+            if (ok) {
+              try {
+                const json = JSON.parse(data || '{}');
+                resolve({ ok: true, sid: json?.sid || null });
+              } catch {
+                resolve({ ok: true, sid: null });
+              }
+              return;
+            }
+
+            try {
+              const json = JSON.parse(data || '{}');
+              const msg = String(json?.message || '').trim();
+              resolve({ ok: false, error: msg || `Twilio error (${status || 'unknown'})` });
+            } catch {
+              resolve({ ok: false, error: `Twilio error (${status || 'unknown'})` });
+            }
+          });
+        });
+
+        req.on('timeout', () => {
+          try { req.destroy(new Error('Request timed out')); } catch {}
+        });
+        req.on('error', (err: any) => {
+          resolve({ ok: false, error: String(err?.message || err) });
+        });
+        req.write(postData);
+        req.end();
+      } catch (e: any) {
+        resolve({ ok: false, error: String(e?.message || e) });
+      }
+    });
+
+    return result;
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+function normalizeStatusForCompare(raw: any): string {
+  try {
+    return String(raw || '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function maybeAutoTextOnStatusChange(key: string, previousItem: any, updatedItem: any, db: any) {
+  try {
+    const k = String(key || '').trim();
+    if (k !== 'workOrders' && k !== 'sales') return;
+
+    const cfg = readTwilioConfig();
+    const hasConfig = Boolean(String(cfg?.accountSid || '').trim())
+      && Boolean(String(cfg?.fromNumber || '').trim())
+      && Boolean(getTwilioAuthToken(cfg));
+    if (!hasConfig) return;
+
+    const prevStatus = normalizeStatusForCompare(previousItem?.status);
+    const nextStatus = normalizeStatusForCompare(updatedItem?.status);
+    if (!prevStatus || !nextStatus || prevStatus === nextStatus) return;
+
+    const statusDisplay = String(updatedItem?.status || '').trim();
+    if (!statusDisplay) return;
+
+    let phoneRaw = String(updatedItem?.customerPhone || updatedItem?.phone || '').trim();
+    const cid = Number(updatedItem?.customerId || 0);
+    if (Number.isFinite(cid) && cid > 0) {
+      try {
+        const customers: any[] = Array.isArray(db?.customers) ? db.customers : [];
+        const c = customers.find((x: any) => Number(x?.id || 0) === cid);
+        if (c) {
+          const p1 = String((c as any)?.phone || '').trim();
+          const p2 = String((c as any)?.phoneAlt || '').trim();
+          phoneRaw = p1 || p2 || phoneRaw;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!normalizePhoneE164(phoneRaw)) return;
+
+    const idNum = Number(updatedItem?.id || 0);
+    const invoice = (Number.isFinite(idNum) && idNum > 0) ? `GB${String(idNum).padStart(7, '0')}` : '';
+    const label = invoice || (Number.isFinite(idNum) && idNum > 0 ? `#${idNum}` : 'ticket');
+    const typeLabel = k === 'sales' ? 'sale' : 'ticket';
+    const body = `GadgetBoy Update: Your ${typeLabel} ${label} status is now ${statusDisplay}.`;
+
+    // Fire-and-forget: never block DB writes.
+    void twilioSendSms(phoneRaw, body).then((res) => {
+      if (!res?.ok) {
+        console.warn('[Twilio] auto status SMS failed:', res?.error || 'unknown error');
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
+
+ipcMain.handle('twilio:getConfig', async () => {
+  const cfg = readTwilioConfig();
+  return {
+    ok: true,
+    accountSid: String(cfg.accountSid || ''),
+    authSid: String((cfg as any).authSid || ''),
+    fromNumber: String(cfg.fromNumber || ''),
+    hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
+  };
+});
+
+ipcMain.handle('twilio:setConfig', async (_e: any, patch: any) => {
+  try {
+    const p = (patch && typeof patch === 'object') ? patch : {};
+    const next: Partial<TwilioSmsConfig> = {};
+
+    if (typeof p.accountSid === 'string') next.accountSid = String(p.accountSid || '').trim();
+    if (typeof p.authSid === 'string') (next as any).authSid = String(p.authSid || '').trim();
+    if (typeof p.fromNumber === 'string') next.fromNumber = String(p.fromNumber || '').trim();
+
+    if (p.clearAuthToken === true) {
+      next.authToken = null;
+      next.authTokenEnc = null;
+    }
+
+    if (typeof p.authToken === 'string') {
+      const token = String(p.authToken || '').trim();
+      if (token) {
+        const enc = encryptToBase64(token);
+        if (enc) {
+          next.authTokenEnc = enc;
+          next.authToken = null;
+        } else {
+          next.authToken = token;
+          next.authTokenEnc = null;
+        }
+      }
+    }
+
+    if (Object.keys(next).length > 0) writeTwilioConfig(next);
+    const cfg = readTwilioConfig();
+    return {
+      ok: true,
+      accountSid: String(cfg.accountSid || ''),
+      authSid: String((cfg as any).authSid || ''),
+      fromNumber: String(cfg.fromNumber || ''),
+      hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('twilio:sendSms', async (_e: any, payload: any) => {
+  try {
+    const to = payload?.to;
+    const body = payload?.body;
+    return await twilioSendSms(to, body);
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 // Open Clock In window
 ipcMain.handle('open-clock-in', async () => {
   console.log('[IPC] open-clock-in invoked');
@@ -3162,6 +3450,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
+    try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
   return null;

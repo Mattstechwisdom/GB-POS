@@ -95,6 +95,10 @@ contextBridge.exposeInMainWorld('api', {
   emailSendQuotePdf: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuotePdf', payload),
   emailSendReportCsv: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportCsv', payload),
   emailSendReportHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportHtml', payload),
+  // SMS (Twilio)
+  twilioGetConfig: (): Promise<any> => ipcRenderer.invoke('twilio:getConfig'),
+  twilioSetConfig: (patch: any): Promise<any> => ipcRenderer.invoke('twilio:setConfig', patch),
+  twilioSendSms: (payload: { to: string; body: string }): Promise<any> => ipcRenderer.invoke('twilio:sendSms', payload),
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),

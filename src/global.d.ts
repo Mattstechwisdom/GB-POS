@@ -85,6 +85,10 @@ declare global {
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     emailSendReportCsv: (payload: { to: string; subject: string; bodyText: string; filename: string; csv: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
+    // sms (twilio)
+    twilioGetConfig: () => Promise<{ ok: boolean; accountSid?: string; authSid?: string; fromNumber?: string; hasAuthToken?: boolean; error?: string }>;
+    twilioSetConfig: (patch: { accountSid?: string; authSid?: string; fromNumber?: string; authToken?: string; clearAuthToken?: boolean }) => Promise<{ ok: boolean; accountSid?: string; authSid?: string; fromNumber?: string; hasAuthToken?: boolean; error?: string }>;
+    twilioSendSms: (payload: { to: string; body: string }) => Promise<{ ok: boolean; sid?: string | null; error?: string }>;
     openReporting: () => Promise<any>;
     openReportEmail: (payload: any) => Promise<any>;
     openCustomBuildItem: (payload: any) => Promise<any>;

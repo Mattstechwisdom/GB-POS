@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.34 (2026-06-02)
+- Sales: added Consultation sale type with full consultation details (for on-the-spot consult ring-ups).
+- Sales: consultation pricing is itemized (base + additional hours + driver fee) to keep totals/prints consistent.
+- SMS: added Twilio SMS support (configure in Customer Overview → Text Customer).
+- SMS: manual “Text Customer” sending from the client info window.
+- SMS: automatic text when a ticket status changes.
+
 ## v0.4.33 (2026-05-22)
 - Checkout: updated the checkout window to the new button-based payment selection (Cash / Card / Split Pay).
 
