@@ -44,7 +44,6 @@ const ClearDatabaseWindow       = React.lazy(() => import('./components/ClearDat
 const RepairCategoriesWindow    = React.lazy(() => import('./repairs/RepairCategoriesWindow'));
 const DeviceCategoriesWindow    = React.lazy(() => import('./components/DeviceCategoriesWindow'));
 const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBuildItemWindow'));
-const CloverConnectionWindow    = React.lazy(() => import('./components/CloverConnectionWindow'));
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -159,7 +158,6 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'repairCategories':       return <RepairCategoriesWindow mode="admin" />;
     case 'deviceCategories':       return <DeviceCategoriesWindow />;
     case 'customBuildItem':        return <CustomBuildItemWindow />;
-    case 'cloverConnection':       return <CloverConnectionWindow />;
     default:                       return <div className="p-8 text-zinc-400">Unknown modal: {type}</div>;
   }
 }

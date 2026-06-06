@@ -20,7 +20,6 @@ type SaleRecord = {
   customerId?: number;
   customerName?: string;
   customerPhone?: string;
-  category?: string;
   // legacy single-item fields (kept for backward-compat in prints/receipt)
   itemDescription?: string;
   quantity?: number;
@@ -50,14 +49,7 @@ type SaleRecord = {
   totals?: { subTotal: number; tax: number; total: number; remaining: number };
   internalCost?: number; // deprecated: moved per-item; kept for old records
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair'; // deprecated: moved per-item
-  // Consultation metadata
-  consultationType?: 'instore' | 'athome' | string;
-  consultationAddress?: string;
-  appointmentDate?: string; // YYYY-MM-DD
-  appointmentTime?: string; // HH:mm
-  appointmentEndTime?: string; // HH:mm
-  consultationHours?: number; // billed hours
-  driverFee?: number;
+  consultationHours?: number; // legacy mirror of first consultation item
 };
 
 const CONSULTATION_BASE_RATE = 75;    // covers first hour + at-home travel within range
@@ -155,134 +147,6 @@ function addHoursToTime(time: string, hours: number): string | null {
   const hh = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
   const mm = String(totalMin % 60).padStart(2, '0');
   return `${hh}:${mm}`;
-}
-
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function nowLocalTimeHHmm() {
-  const d = new Date();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
-function newId(): string {
-  try {
-    const c: any = (globalThis as any).crypto;
-    if (c?.randomUUID) return c.randomUUID();
-  } catch {}
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function isConsultationItemRow(row: Partial<SaleItemRow> | null | undefined) {
-  const cat = String((row as any)?.category || '').trim().toLowerCase();
-  return cat === 'consultation' || cat.startsWith('consult');
-}
-
-function isConsultationDriverRow(row: Partial<SaleItemRow> | null | undefined) {
-  if (!isConsultationItemRow(row)) return false;
-  const desc = String((row as any)?.description || '').toLowerCase();
-  return desc.includes('driver') || desc.includes('distance fee') || desc.includes('on-site') || desc.includes('on site');
-}
-
-function isConsultationExtraHoursRow(row: Partial<SaleItemRow> | null | undefined) {
-  if (!isConsultationItemRow(row)) return false;
-  const desc = String((row as any)?.description || '').toLowerCase();
-  return desc.includes('additional hours') || desc.includes('additional hour');
-}
-
-function consultationPurposeFromItems(items: SaleItemRow[] | null | undefined, fallback?: string) {
-  const rows = Array.isArray(items) ? items : [];
-  const base = rows.find((r) => isConsultationItemRow(r) && !isConsultationDriverRow(r) && !isConsultationExtraHoursRow(r))
-    || rows.find((r) => isConsultationItemRow(r) && !isConsultationDriverRow(r))
-    || null;
-  return String(base?.description || fallback || 'Consultation').trim() || 'Consultation';
-}
-
-function consultationBilledHoursFromItems(items: SaleItemRow[] | null | undefined) {
-  const rows = Array.isArray(items) ? items : [];
-  let sum = 0;
-  for (const r of rows) {
-    if (!isConsultationItemRow(r)) continue;
-    if (isConsultationDriverRow(r)) continue;
-    const hrs = Number((r as any).consultationHours ?? (r as any).qty ?? 0);
-    if (Number.isFinite(hrs) && hrs > 0) sum += hrs;
-  }
-  return sum > 0 ? sum : 1;
-}
-
-function upsertConsultationLineItems(
-  currentItems: SaleItemRow[] | null | undefined,
-  opts: { purpose: string; billedHours: number; driverFee: number }
-): SaleItemRow[] {
-  const items = Array.isArray(currentItems) ? currentItems : [];
-  const purpose = String(opts.purpose || '').trim() || 'Consultation';
-  const billedHours = Math.max(1, Number(opts.billedHours) || 1);
-  const extraHours = Math.max(0, billedHours - 1);
-  const driverFee = Math.max(0, Number(opts.driverFee) || 0);
-
-  const consultItems = items.filter((r) => isConsultationItemRow(r));
-  const otherItems = items.filter((r) => !isConsultationItemRow(r));
-
-  const driverExisting = consultItems.find((r) => isConsultationDriverRow(r)) || null;
-  const extraExisting = consultItems.find((r) => isConsultationExtraHoursRow(r)) || null;
-  const baseExisting = consultItems.find((r) => !isConsultationDriverRow(r) && !isConsultationExtraHoursRow(r))
-    || consultItems.find((r) => !isConsultationDriverRow(r))
-    || null;
-
-  const next: SaleItemRow[] = [];
-
-  const baseRow: SaleItemRow = {
-    ...(baseExisting as any),
-    id: String((baseExisting as any)?.id || newId()),
-    description: purpose,
-    qty: 1,
-    price: CONSULTATION_BASE_RATE,
-    consultationHours: 1,
-    category: 'Consultation',
-    inStock: true,
-  };
-  next.push(baseRow);
-
-  if (extraHours > 0) {
-    const extraRow: SaleItemRow = {
-      ...(extraExisting as any),
-      id: String((extraExisting as any)?.id || newId()),
-      description: `${purpose} (Additional Hours)`,
-      qty: extraHours,
-      price: CONSULTATION_EXTRA_RATE,
-      consultationHours: extraHours,
-      category: 'Consultation',
-      inStock: true,
-    };
-    next.push(extraRow);
-  }
-
-  if (driverFee > 0) {
-    const driverRow: SaleItemRow = {
-      ...(driverExisting as any),
-      id: String((driverExisting as any)?.id || newId()),
-      description: `Driver / Distance Fee (> ${CONSULTATION_DISTANCE_THRESHOLD} mi)`,
-      qty: 1,
-      price: driverFee,
-      category: 'Consultation',
-      inStock: true,
-    };
-    next.push(driverRow);
-  }
-
-  // Preserve any non-consultation items (rare, but safe).
-  next.push(...otherItems);
-  return next;
-}
-
-function isConsultationSaleRecord(record: any): boolean {
-  const cat = String(record?.category || '').trim().toLowerCase();
-  const cType = String(record?.consultationType || '').trim();
-  return !!cType || cat === 'consultation' || cat.startsWith('consult');
 }
 
 type SaleRequiredKey = 'assignedTo' | 'itemDetails';
@@ -544,39 +408,22 @@ const SaleWindow: React.FC = () => {
     refreshAddressHistory();
   }, [refreshAddressHistory]);
 
-  // Consultation normalization: when loading an existing consultation sale,
-  // ensure line items are itemized (base + extra + driver fee) and hydrate
-  // distance-fee UI state from the saved record.
-  const consultInitKeyRef = useRef<number | string | null>(null);
+  // Auto-update consultation item price whenever hours or distanceFee changes
   useEffect(() => {
-    const key = (sale as any).id ?? '__new__';
-    if (consultInitKeyRef.current === key) return;
-    consultInitKeyRef.current = key;
-
-    const isConsult = !!String((sale as any).consultationType || '').trim() || String((sale as any).category || '').toLowerCase().startsWith('consult');
+    const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
     if (!isConsult) return;
-
-    const fee = Number((sale as any).driverFee || 0) || 0;
-    setDistanceFeeApplied(fee > 0);
-
-    setSale(prev => {
-      const stillConsult = !!String((prev as any).consultationType || '').trim() || String((prev as any).category || '').toLowerCase().startsWith('consult');
-      if (!stillConsult) return prev;
-
-      const billedHours = Math.max(1, Number((prev as any).consultationHours) || consultationBilledHoursFromItems((prev as any).items) || 1);
-      const purpose = consultationPurposeFromItems((prev as any).items, 'Consultation');
-      const driverFee = Number((prev as any).driverFee || 0) || 0;
-      const nextItems = upsertConsultationLineItems((prev as any).items, { purpose, billedHours, driverFee });
-
-      return {
-        ...prev,
-        category: (prev as any).category || 'Consultation',
-        consultationHours: billedHours,
-        inStock: true,
-        items: nextItems,
-      } as any;
-    });
-  }, [(sale as any).id]);
+    const hours = Number((sale as any).consultationHours) || 1;
+    const newPrice = calcConsultationPrice(hours, distanceFeeApplied);
+    setSale(s => ({
+      ...s,
+      items: ((s.items || []) as SaleItemRow[]).map(r =>
+        String(r.category || '').toLowerCase().startsWith('consult')
+          ? { ...r, price: newPrice }
+          : r
+      ),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(sale as any).consultationHours, distanceFeeApplied]);
 
   useEffect(() => () => {
     if (warningHideTimer.current !== undefined) {
@@ -814,18 +661,9 @@ const SaleWindow: React.FC = () => {
       itemDescription: sale.items && sale.items[0] ? sale.items[0].description : (sale as any).itemDescription,
       quantity: sale.items && sale.items[0] ? itemUnits(sale.items[0]) : (sale as any).quantity,
       price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
-      consultationHours: (() => {
-        const raw = Number((sale as any).consultationHours);
-        if (Number.isFinite(raw) && raw > 0) return raw;
-        const rows = Array.isArray(sale.items) ? sale.items : [];
-        let sum = 0;
-        for (const r of rows) {
-          if (!isConsultationItemRow(r) || isConsultationDriverRow(r)) continue;
-          const hrs = Number((r as any).consultationHours ?? itemUnits(r));
-          if (Number.isFinite(hrs) && hrs > 0) sum += hrs;
-        }
-        return sum > 0 ? sum : undefined;
-      })(),
+      consultationHours: sale.items && sale.items[0] && isConsultationItem(sale.items[0])
+        ? Number(sale.items[0].consultationHours ?? itemUnits(sale.items[0])) || undefined
+        : (sale as any).consultationHours,
       // If inStock, null out order/delivery fields to avoid confusion
       orderedDate: sale.inStock ? null : sale.orderedDate || null,
       estimatedDeliveryDate: sale.inStock ? null : sale.estimatedDeliveryDate || null,
@@ -1060,47 +898,16 @@ const SaleWindow: React.FC = () => {
         if (sc) { sLat = sc.lat; sLng = sc.lng; setShopLat(sc.lat); setShopLng(sc.lng); }
       }
       if (sLat == null || sLng == null) {
+        setDistanceLoading(false);
         return;
       }
       const clientCoords = await geocodeAddress(address, { lat: sLat, lng: sLng });
-      if (!clientCoords) {
-        setDistanceMiles(null);
-        setDistanceFeeApplied(false);
-        setSale(prev => {
-          const isConsult = !!String((prev as any).consultationType || '').trim() || String((prev as any).category || '').toLowerCase().startsWith('consult');
-          if (!isConsult) return prev;
-          const billedHours = Math.max(1, Number((prev as any).consultationHours) || consultationBilledHoursFromItems((prev as any).items) || 1);
-          const purpose = consultationPurposeFromItems((prev as any).items, 'Consultation');
-          const nextItems = upsertConsultationLineItems((prev as any).items, { purpose, billedHours, driverFee: 0 });
-          return { ...prev, driverFee: undefined, items: nextItems } as any;
-        });
-        return;
-      }
+      if (!clientCoords) { setDistanceMiles(null); setDistanceFeeApplied(false); setDistanceLoading(false); return; }
       const dist = haversineDistanceMiles(sLat, sLng, clientCoords.lat, clientCoords.lng);
-      const feeApplied = dist > CONSULTATION_DISTANCE_THRESHOLD;
-      const driverFee = feeApplied ? CONSULTATION_DISTANCE_FEE : 0;
       setDistanceMiles(dist);
-      setDistanceFeeApplied(feeApplied);
-      setSale(prev => {
-        const isConsult = !!String((prev as any).consultationType || '').trim() || String((prev as any).category || '').toLowerCase().startsWith('consult');
-        if (!isConsult) return prev;
-        const billedHours = Math.max(1, Number((prev as any).consultationHours) || consultationBilledHoursFromItems((prev as any).items) || 1);
-        const purpose = consultationPurposeFromItems((prev as any).items, 'Consultation');
-        const nextItems = upsertConsultationLineItems((prev as any).items, { purpose, billedHours, driverFee });
-        return {
-          ...prev,
-          category: (prev as any).category || 'Consultation',
-          inStock: true,
-          driverFee: driverFee > 0 ? driverFee : undefined,
-          items: nextItems,
-        } as any;
-      });
-    } catch {
-      setDistanceMiles(null);
-      setDistanceFeeApplied(false);
-    } finally {
-      setDistanceLoading(false);
-    }
+      setDistanceFeeApplied(dist > CONSULTATION_DISTANCE_THRESHOLD);
+    } catch { setDistanceMiles(null); }
+    setDistanceLoading(false);
   }
 
 
@@ -1120,7 +927,7 @@ const SaleWindow: React.FC = () => {
       <button
         className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
         onClick={async () => {
-          const isConsult = isConsultationSaleRecord(sale);
+          const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
           if (isConsult && (window as any).api?.openConsultSheet) {
             let customerPhoneAlt = '';
             let customerEmail = String((sale as any).customerEmail || '').trim();
@@ -1211,7 +1018,7 @@ const SaleWindow: React.FC = () => {
           }));
           const partCosts = Number(sale.partCosts ?? 0) || 0;
           const laborCost = Number(sale.laborCost ?? 0) || 0;
-          const consultationMeta = isConsultationSaleRecord(sale) ? {
+          const consultationMeta = (sale as any).consultationType ? {
             consultationType: (sale as any).consultationType,
             consultationAddress: (sale as any).consultationAddress,
             appointmentDate: (sale as any).appointmentDate,
@@ -1259,7 +1066,7 @@ const SaleWindow: React.FC = () => {
           });
         }}
       >
-        {isConsultationSaleRecord(sale) ? 'Print Consult Sheet' : 'Print Customer Receipt'}
+        {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'Print Consult Sheet' : 'Print Customer Receipt'}
       </button>
     </>
   ), [sale]);
@@ -1375,7 +1182,7 @@ const SaleWindow: React.FC = () => {
 
         if (result.printReceipt) {
           try {
-            const isConsult = isConsultationSaleRecord(recordToPersist);
+            const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
             if (isConsult && (window as any).api?.openConsultSheet) {
               let customerPhoneAlt = '';
               let customerEmail = String((recordToPersist as any).customerEmail || (sale as any).customerEmail || '').trim();
@@ -1590,9 +1397,6 @@ const SaleWindow: React.FC = () => {
     };
   }, []);
 
-  const isConsultSale = isConsultationSaleRecord(sale);
-  const consultPurpose = consultationPurposeFromItems((sale as any).items, (sale as any).itemDescription || 'Consultation');
-
   return (
     <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
       {warningBanner && (
@@ -1616,100 +1420,8 @@ const SaleWindow: React.FC = () => {
   <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <h1 className="text-xl font-semibold mb-2">New Sale</h1>
 
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-zinc-200">Sale Type</div>
-              <div className="text-xs text-zinc-500">Switching types can clear fields</div>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button
-                className={`px-3 py-1.5 rounded border text-sm ${!isConsultSale ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
-                onClick={() => {
-                  if (!isConsultSale) return;
-                  const rows = (sale.items || []) as any[];
-                  const hasData = Boolean(
-                    rows.some((r) => isConsultationItemRow(r)) ||
-                    String((sale as any).consultationAddress || '').trim() ||
-                    String((sale as any).appointmentDate || '').trim() ||
-                    String((sale as any).appointmentTime || '').trim() ||
-                    String((sale as any).appointmentEndTime || '').trim() ||
-                    Number((sale as any).consultationHours || 0) > 0 ||
-                    Number((sale as any).driverFee || 0) > 0
-                  );
-                  if (hasData && !confirm('Switch to Standard Sale? This will clear consultation-only fields and remove consultation line items.')) return;
-                  setDistanceMiles(null);
-                  setDistanceFeeApplied(false);
-                  setSale(prev => {
-                    const keptItems = Array.isArray((prev as any).items)
-                      ? ((prev as any).items as any[]).filter((r) => !isConsultationItemRow(r))
-                      : [];
-                    const prevCat = String((prev as any).category || '').toLowerCase();
-                    return {
-                      ...prev,
-                      category: prevCat.startsWith('consult') ? undefined : (prev as any).category,
-                      consultationType: undefined,
-                      consultationAddress: undefined,
-                      appointmentDate: undefined,
-                      appointmentTime: undefined,
-                      appointmentEndTime: undefined,
-                      consultationHours: undefined,
-                      driverFee: undefined,
-                      items: keptItems,
-                    } as any;
-                  });
-                }}
-              >
-                Sale
-              </button>
-              <button
-                className={`px-3 py-1.5 rounded border text-sm ${isConsultSale ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
-                onClick={() => {
-                  if (isConsultSale) return;
-                  const rows = (sale.items || []) as any[];
-                  const hasData = Boolean(
-                    rows.length > 0 ||
-                    String(sale.orderedDate || '').trim() ||
-                    String(sale.estimatedDeliveryDate || '').trim() ||
-                    String((sale as any).partsOrderUrl || '').trim() ||
-                    String((sale as any).partsTrackingUrl || '').trim()
-                  );
-                  if (hasData && !confirm('Switch to Consultation? This will replace the current line items with consultation items and clear order/delivery fields.')) return;
-                  setDistanceMiles(null);
-                  setDistanceFeeApplied(false);
-                  setSale(prev => {
-                    const purpose = consultationPurposeFromItems((prev as any).items, (prev as any).itemDescription || 'Consultation');
-                    const billedHours = Math.max(1, Number((prev as any).consultationHours) || 1);
-                    const date = String((prev as any).appointmentDate || '').trim() || todayISO();
-                    const time = String((prev as any).appointmentTime || '').trim() || nowLocalTimeHHmm();
-                    const endTime = String((prev as any).appointmentEndTime || '').trim() || (addHoursToTime(time, billedHours) || '');
-                    const items = upsertConsultationLineItems([], { purpose, billedHours, driverFee: 0 });
-                    return {
-                      ...prev,
-                      category: 'Consultation',
-                      inStock: true,
-                      consultationType: (prev as any).consultationType || 'instore',
-                      consultationAddress: undefined,
-                      appointmentDate: date,
-                      appointmentTime: time,
-                      appointmentEndTime: endTime || undefined,
-                      consultationHours: billedHours,
-                      driverFee: undefined,
-                      orderedDate: null,
-                      estimatedDeliveryDate: null,
-                      partsOrderUrl: '',
-                      partsTrackingUrl: '',
-                      items,
-                    } as any;
-                  });
-                }}
-              >
-                Consultation
-              </button>
-            </div>
-          </div>
-
           {/* ── Consultation Details Panel ──────────────────────── */}
-          {isConsultSale && (
+          {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
             <div className="bg-zinc-800 border border-yellow-500/50 rounded p-3 space-y-3">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-yellow-400 font-semibold text-sm uppercase tracking-wide">Consultation Details</span>
@@ -1724,6 +1436,36 @@ const SaleWindow: React.FC = () => {
                     onChange={e => setSale(s => ({ ...s, appointmentDate: e.target.value } as any))}
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                      value={(sale as any).appointmentTime || ''}
+                      onChange={e => {
+                        const t = e.target.value;
+                        const hrs = Number((sale as any).consultationHours) || 1;
+                        setSale(s => ({ ...s, appointmentTime: t, appointmentEndTime: addHoursToTime(t, hrs) || (s as any).appointmentEndTime } as any));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Hours Worked</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                      value={(sale as any).consultationHours || 1}
+                      onChange={e => {
+                        const hrs = Math.max(0.5, Number(e.target.value) || 0.5);
+                        const startTime = (sale as any).appointmentTime || '';
+                        setSale(s => ({ ...s, consultationHours: hrs, appointmentEndTime: startTime ? addHoursToTime(startTime, hrs) : (s as any).appointmentEndTime } as any));
+                      }}
+                    />
+                  </div>
+                </div>
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">Location Type</label>
                   <select
@@ -1732,18 +1474,11 @@ const SaleWindow: React.FC = () => {
                     onChange={e => {
                       const t = e.target.value;
                       if (t === 'instore') { setDistanceMiles(null); setDistanceFeeApplied(false); }
-                      setSale(prev => {
-                        const billedHours = Math.max(1, Number((prev as any).consultationHours) || 1);
-                        const driverFee = t === 'instore' ? 0 : (Number((prev as any).driverFee || 0) || 0);
-                        const nextItems = upsertConsultationLineItems((prev as any).items, { purpose: consultPurpose, billedHours, driverFee });
-                        return {
-                          ...prev,
-                          consultationType: t,
-                          consultationAddress: t === 'instore' ? undefined : (prev as any).consultationAddress,
-                          driverFee: driverFee > 0 ? driverFee : undefined,
-                          items: nextItems,
-                        } as any;
-                      });
+                      setSale(s => ({
+                        ...s,
+                        consultationType: t,
+                        consultationAddress: t === 'instore' ? undefined : (s as any).consultationAddress,
+                      } as any));
                     }}
                   >
                     <option value="instore">In-Store</option>
@@ -1751,84 +1486,12 @@ const SaleWindow: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Start Time</label>
-                  <input
-                    type="time"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                    value={(sale as any).appointmentTime || ''}
-                    onChange={e => {
-                      const t = e.target.value;
-                      setSale(prev => {
-                        const billedHours = Math.max(1, Number((prev as any).consultationHours) || 1);
-                        return {
-                          ...prev,
-                          appointmentTime: t,
-                          appointmentEndTime: t ? (addHoursToTime(t, billedHours) || (prev as any).appointmentEndTime) : (prev as any).appointmentEndTime,
-                        } as any;
-                      });
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">End Time</label>
-                  <input
-                    type="time"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                    value={(sale as any).appointmentEndTime || ''}
-                    onChange={e => setSale(s => ({ ...s, appointmentEndTime: e.target.value } as any))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Estimated Hours</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="0.5"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                    value={(sale as any).consultationHours ?? 1}
-                    onChange={e => {
-                      const billedHours = Math.max(1, Number(e.target.value) || 1);
-                      setSale(prev => {
-                        const startTime = String((prev as any).appointmentTime || '');
-                        const driverFee = Number((prev as any).driverFee || 0) || 0;
-                        const nextItems = upsertConsultationLineItems((prev as any).items, { purpose: consultPurpose, billedHours, driverFee });
-                        return {
-                          ...prev,
-                          category: (prev as any).category || 'Consultation',
-                          inStock: true,
-                          consultationHours: billedHours,
-                          appointmentEndTime: startTime ? (addHoursToTime(startTime, billedHours) || (prev as any).appointmentEndTime) : (prev as any).appointmentEndTime,
-                          items: nextItems,
-                        } as any;
-                      });
-                    }}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-zinc-400 mb-1">Purpose / Title</label>
+                  <label className="block text-xs text-zinc-400 mb-1">Assigned Technician</label>
                   <input
                     className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                    placeholder="e.g. Home network setup, device audit, data recovery consult…"
-                    value={consultPurpose}
-                    onChange={e => {
-                      const purpose = e.target.value;
-                      setSale(prev => {
-                        const billedHours = Math.max(1, Number((prev as any).consultationHours) || 1);
-                        const driverFee = Number((prev as any).driverFee || 0) || 0;
-                        const nextItems = upsertConsultationLineItems((prev as any).items, { purpose, billedHours, driverFee });
-                        return { ...prev, category: (prev as any).category || 'Consultation', inStock: true, items: nextItems } as any;
-                      });
-                    }}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-zinc-400 mb-1">Notes</label>
-                  <textarea
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none resize-none"
-                    rows={2}
-                    placeholder="Additional notes for this consultation…"
-                    value={sale.notes || ''}
-                    onChange={e => setSale(s => ({ ...s, notes: e.target.value }))}
+                    value={sale.assignedTo || ''}
+                    onChange={e => setSale(s => ({ ...s, assignedTo: e.target.value }))}
+                    placeholder="Technician name"
                   />
                 </div>
               </div>
@@ -1944,17 +1607,13 @@ const SaleWindow: React.FC = () => {
                       )}
                     </div>
                     {/* Distance result badge */}
-                    {distanceMiles != null && (() => {
-                      const fee = Math.max(0, Number((sale as any).driverFee || 0) || 0);
-                      const feeApplied = fee > 0;
-                      return (
-                        <div className={`mt-1 text-xs flex items-center gap-1 ${feeApplied ? 'text-orange-400' : 'text-green-400'}`}>
-                          {feeApplied
-                            ? `⚠ ${distanceMiles.toFixed(1)} mi from shop — $${fee} distance surcharge added`
-                            : `✓ ${distanceMiles.toFixed(1)} mi from shop — within range, no surcharge`}
-                        </div>
-                      );
-                    })()}
+                    {distanceMiles != null && (
+                      <div className={`mt-1 text-xs flex items-center gap-1 ${distanceFeeApplied ? 'text-orange-400' : 'text-green-400'}`}>
+                        {distanceFeeApplied
+                          ? `⚠ ${distanceMiles.toFixed(1)} mi from shop — $${CONSULTATION_DISTANCE_FEE} distance surcharge added`
+                          : `✓ ${distanceMiles.toFixed(1)} mi from shop — within range, no surcharge`}
+                      </div>
+                    )}
                     {shopAddress && (
                       <div className="mt-0.5 text-[11px] text-zinc-500 flex items-center gap-1">
                         Shop: {shopAddress}
@@ -1977,7 +1636,7 @@ const SaleWindow: React.FC = () => {
                   const hours = Number((sale as any).consultationHours) || 1;
                   const extraHrs = Math.max(0, hours - 1);
                   const extraCost = extraHrs * CONSULTATION_EXTRA_RATE;
-                  const distCost = Math.max(0, Number((sale as any).driverFee || 0) || 0);
+                  const distCost = distanceFeeApplied ? CONSULTATION_DISTANCE_FEE : 0;
                   const total = CONSULTATION_BASE_RATE + extraCost + distCost;
                   return (
                     <div className="bg-zinc-900/60 rounded p-2 text-xs space-y-1">
@@ -2007,6 +1666,7 @@ const SaleWindow: React.FC = () => {
                 })()}
               </div>
 
+              <div className="text-xs text-zinc-500">Purpose / title is shown in the items list below.</div>
             </div>
           )}
 
@@ -2017,67 +1677,63 @@ const SaleWindow: React.FC = () => {
               showRequiredIndicator={itemsSectionNeedsAttention}
             />
 
-            {!isConsultSale && (
-              <>
-                {/* Ordered and ETA date inputs side-by-side */}
-                <div className="col-span-2 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
-                    <input
-                      type="date"
-                      className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                      value={sale.orderedDate || ''}
-                      disabled={!!sale.inStock}
-                      onChange={e => setSale(s => ({ ...s, orderedDate: e.target.value || null }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-1">Estimated delivery</label>
-                    <input
-                      type="date"
-                      className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                      value={sale.estimatedDeliveryDate || ''}
-                      disabled={!!sale.inStock}
-                      onChange={e => setSale(s => ({ ...s, estimatedDeliveryDate: e.target.value || null }))}
-                    />
-                  </div>
-                </div>
 
-                {/* Parts URLs */}
-                <div className="col-span-2 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
-                    <input
-                      className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                      placeholder="https://..."
-                      value={(sale as any).partsOrderUrl || ''}
-                      disabled={!!sale.inStock}
-                      onChange={e => setSale(s => ({ ...s, partsOrderUrl: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-1">Tracking URL</label>
-                    <input
-                      className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                      placeholder="https://..."
-                      value={(sale as any).partsTrackingUrl || ''}
-                      disabled={!!sale.inStock}
-                      onChange={e => setSale(s => ({ ...s, partsTrackingUrl: e.target.value }))}
-                    />
-                  </div>
-                </div>
+            {/* Ordered and ETA date inputs side-by-side */}
+            <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
+                <input
+                  type="date"
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  value={sale.orderedDate || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, orderedDate: e.target.value || null }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Estimated delivery</label>
+                <input
+                  type="date"
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  value={sale.estimatedDeliveryDate || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, estimatedDeliveryDate: e.target.value || null }))}
+                />
+              </div>
+            </div>
 
-                <div className="col-span-2">
-                  <label className="block text-sm text-zinc-400 mb-1">Notes</label>
-                  <textarea
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px]"
-                    value={sale.notes || ''}
-                    onChange={e => setSale(s => ({ ...s, notes: e.target.value }))}
-                    placeholder="Optional notes"
-                  />
-                </div>
-              </>
-            )}
+            {/* Parts URLs */}
+            <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
+                <input
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  placeholder="https://..."
+                  value={(sale as any).partsOrderUrl || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, partsOrderUrl: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Tracking URL</label>
+                <input
+                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
+                  placeholder="https://..."
+                  value={(sale as any).partsTrackingUrl || ''}
+                  disabled={!!sale.inStock}
+                  onChange={e => setSale(s => ({ ...s, partsTrackingUrl: e.target.value }))}
+                />
+              </div>
+            </div>
+          <div className="col-span-2">
+            <label className="block text-sm text-zinc-400 mb-1">Notes</label>
+            <textarea
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px]"
+              value={sale.notes || ''}
+              onChange={e => setSale(s => ({ ...s, notes: e.target.value }))}
+              placeholder="Optional notes"
+            />
+          </div>
         </div>
 
         <div className="mt-2 flex items-center justify-end">

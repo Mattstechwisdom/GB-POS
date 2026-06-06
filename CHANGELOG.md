@@ -1,23 +1,11 @@
 # Changelog
 
-## v0.4.34 (2026-06-02)
-- Sales: added Consultation sale type with full consultation details (for on-the-spot consult ring-ups).
-- Sales: consultation pricing is itemized (base + additional hours + driver fee) to keep totals/prints consistent.
-- SMS: added Twilio SMS support (configure in Customer Overview → Text Customer).
-- SMS: manual “Text Customer” sending from the client info window.
-- SMS: automatic text when a ticket status changes.
-
-## v0.4.33 (2026-05-22)
-- Checkout: updated the checkout window to the new button-based payment selection (Cash / Card / Split Pay).
-
-## v0.4.32 (2026-05-22)
-- Tickets: keyword search dropdown supports ↑/↓ to move selection, Enter to open, and shows a 5-row scrollable results list.
-
-## v0.4.31 (2026-05-20)
-- Tickets: added keyword search across Work Orders + Sales (toolbar search scans the whole DB).
-- Money input: selecting the full amount and pressing Backspace now clears the field.
-- Customer Overview: improved matching so customer history links more reliably.
-- Clover: added Clover Connection (LAN pairing + sale send + open cash drawer).
+## v0.4.35 (2026-06-06)
+- Calendar: Daily Look consultations now include direct actions to open the linked consultation sale and customer info.
+- Calendar: consultation event edit popup now also includes "View Consultation Sale" and "View Client Info" actions.
+- Printouts: work order release/receipt and sales receipt flows now consistently show full client contact details (name, phone, email, and alt phone when available).
+- Quick Sale: window now closes automatically after a successful checkout flow.
+- SMS: Customer Overview includes in-window Twilio SMS settings and direct Text Customer sending.
 
 ## v0.4.30 (2026-05-11)
 - Performance: reduces intermittent UI freezes during autosave bursts by streaming DB writes in the main process (keeps the event loop responsive during large JSON saves).

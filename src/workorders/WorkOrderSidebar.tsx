@@ -125,6 +125,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                 try {
                   let customerName = (workOrder as any).customerName;
                   let customerPhone = (workOrder as any).customerPhone;
+                  let customerPhoneAlt = '';
                   let customerEmail = '';
                   try {
                     const id = (workOrder as any).customerId;
@@ -135,6 +136,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                         const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
                         customerName = full || customerName;
                         customerPhone = c.phone || customerPhone;
+                        customerPhoneAlt = c.phoneAlt || '';
                         customerEmail = c.email || '';
                       }
                     }
@@ -153,6 +155,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     dateTimeISO: (workOrder as any).checkInAt || new Date().toISOString(),
                     clientName: customerName || `${(workOrder as any).firstName ?? ''} ${(workOrder as any).lastName ?? ''}`.trim(),
                     phone: customerPhone || (workOrder as any).phone || '',
+                    phoneAlt: customerPhoneAlt,
                     email: customerEmail,
 
                     device: workOrder.productCategory || '',
@@ -185,6 +188,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                 try {
                   let customerName = (workOrder as any).customerName;
                   let customerPhone = (workOrder as any).customerPhone;
+                  let customerPhoneAlt = '';
                   let customerEmail = (workOrder as any).customerEmail;
                   try {
                     const id = (workOrder as any).customerId;
@@ -195,6 +199,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                         const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
                         customerName = full || customerName;
                         customerPhone = c.phone || customerPhone;
+                        customerPhoneAlt = c.phoneAlt || '';
                         customerEmail = c.email || customerEmail;
                       }
                     }
@@ -214,6 +219,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     customerId: (workOrder as any).customerId,
                     customerName,
                     customerPhone,
+                    customerPhoneAlt,
                     customerEmail,
                     paymentType: (workOrder as any).paymentType,
                     payments: (workOrder as any).payments || [],

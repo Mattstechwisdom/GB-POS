@@ -4,6 +4,7 @@ export type WorkOrder = {
   dateTimeISO: string;
   clientName: string;
   phone: string;
+  phoneAlt?: string;
   email: string;
 
   device: string;
@@ -92,6 +93,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const now = new Date();
   const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
   const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
+  const displayPhoneAlt = formatPhone(String(wo.phoneAlt || '')) || String(wo.phoneAlt || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
   const sanitizedItems = itemList.map(li => ({
     description: htmlEscape(li.description || ''),
@@ -211,6 +213,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
           <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
           <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>
           <div><strong>Phone:</strong> ${htmlEscape(displayPhone)}</div>
+          ${displayPhoneAlt ? `<div><strong>Alt Phone:</strong> ${htmlEscape(displayPhoneAlt)}</div>` : ''}
           <div><strong>Email:</strong> ${htmlEscape(wo.email)}</div>
         </div>
       </div>

@@ -88,49 +88,67 @@ const CustomerReceiptWindow: React.FC = () => {
   // Enrich from DB when only workOrderId is provided (e.g. from context menu)
   useEffect(() => {
     const payload = data as any;
-    if (!payload.workOrderId || payload.customerName) return;
+    const hasContactBasics = Boolean(
+      String(payload.customerName || '').trim()
+      && String(payload.customerPhone || '').trim()
+      && String(payload.customerEmail || '').trim()
+    );
+    const customerId = Number(payload.customerId || 0) || 0;
+    const workOrderId = Number(payload.workOrderId || 0) || 0;
+    if (!workOrderId && !customerId) return;
+    if (hasContactBasics && String(payload.customerPhoneAlt || '').trim()) return;
     let alive = true;
     (async () => {
       try {
         const api = (window as any).api;
-        let wo: any = null;
-        try {
-          const list = await api.findWorkOrders?.({ id: payload.workOrderId });
-          wo = Array.isArray(list) && list.length ? list[0] : null;
-        } catch {}
-        if (!wo) {
+        const enriched: any = { ...payload };
+
+        // Work-order payload path: hydrate from work order for missing structured fields.
+        if (workOrderId) {
+          let wo: any = null;
           try {
-            const list = await api.dbGet?.('workOrders');
-            wo = Array.isArray(list) ? list.find((w: any) => w.id === payload.workOrderId) || null : null;
+            const list = await api.findWorkOrders?.({ id: workOrderId });
+            wo = Array.isArray(list) && list.length ? list[0] : null;
           } catch {}
-        }
-        if (!wo || !alive) return;
-        const enriched: any = { ...wo };
-
-        // If this work order has a linked add-on Sale, include it in the payload.
-        try {
-          const addonSaleId = Number((wo as any).addonSaleId || 0) || 0;
-          if (addonSaleId && api?.dbGet) {
-            const sales = await api.dbGet('sales').catch(() => []);
-            const found = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
-            enriched.addonSaleId = addonSaleId;
-            enriched.addonSale = found || null;
+          if (!wo) {
+            try {
+              const list = await api.dbGet?.('workOrders');
+              wo = Array.isArray(list) ? list.find((w: any) => Number(w?.id || 0) === workOrderId) || null : null;
+            } catch {}
           }
-        } catch {}
+          if (wo) {
+            Object.assign(enriched, { ...wo, ...enriched });
+            if (!enriched.customerId && wo.customerId) enriched.customerId = wo.customerId;
 
-        if (wo.customerId && api.findCustomers) {
+            // If this work order has a linked add-on Sale, include it in the payload.
+            try {
+              const addonSaleId = Number((wo as any).addonSaleId || 0) || 0;
+              if (addonSaleId && api?.dbGet) {
+                const sales = await api.dbGet('sales').catch(() => []);
+                const found = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === addonSaleId) : null;
+                enriched.addonSaleId = addonSaleId;
+                enriched.addonSale = found || null;
+              }
+            } catch {}
+          }
+        }
+
+        // Customer payload path: always try to fill missing contact details from customer record.
+        const cid = Number(enriched.customerId || customerId || 0) || 0;
+        if (cid > 0 && api.findCustomers) {
           try {
-            const customers = await api.findCustomers({ id: wo.customerId });
+            const customers = await api.findCustomers({ id: cid });
             const c = Array.isArray(customers) && customers.length ? customers[0] : null;
             if (c) {
               const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
-              enriched.customerName = full || wo.customerName;
-              enriched.customerPhone = c.phone || wo.customerPhone;
-              enriched.customerPhoneAlt = c.phoneAlt || '';
-              enriched.customerEmail = c.email || wo.customerEmail;
+              if (full) enriched.customerName = full;
+              if (c.phone) enriched.customerPhone = c.phone;
+              if (c.phoneAlt) enriched.customerPhoneAlt = c.phoneAlt;
+              if (c.email) enriched.customerEmail = c.email;
             }
           } catch {}
         }
+
         if (alive) setData(enriched);
       } catch {}
     })();

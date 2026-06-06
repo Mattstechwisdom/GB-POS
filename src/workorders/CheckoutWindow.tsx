@@ -36,6 +36,8 @@ function parsePayload(): { amountDue: number; partsDue?: number; laborDue?: numb
   } catch { return null; }
 }
 
+const paymentTypes: PaymentType[] = ["Cash", "Cash + Card", "Card", "Apple Pay", "Google Pay", "Other"];
+
 const CheckoutWindow: React.FC = () => {
   const payload = parsePayload();
   const originalAmountDue = payload?.amountDue ?? 0;
@@ -105,14 +107,6 @@ const CheckoutWindow: React.FC = () => {
   const isSplit = (paymentType as any) === 'Cash + Card';
   const isCashOnly = (paymentType as any) === 'Cash';
   const isCashLike = isCashOnly || isSplit;
-
-  const setPaymentChoice = (next: PaymentType) => {
-    setPaymentType(next);
-    if (next === 'Cash + Card') {
-      setCashEdited(false);
-      setCashReceived(0);
-    }
-  };
 
   const nonCashApplied = round2(Math.min(numericAmountToApply, Math.max(0, selectedDue)));
   const cashApplied = isCashLike ? round2(Math.min(numericCashReceived, Math.max(0, selectedDue))) : 0;
@@ -278,51 +272,6 @@ const CheckoutWindow: React.FC = () => {
           </div>
         )}
 
-        <div className="bg-zinc-950/30 border border-zinc-800 rounded p-2">
-          <div className="text-[9px] uppercase tracking-wide text-zinc-500">Payment</div>
-          <div className="mt-1 grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
-                (paymentType === 'Cash'
-                  ? 'bg-zinc-800 border-neon-green text-neon-green'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
-              }
-              onClick={() => setPaymentChoice('Cash')}
-            >
-              Cash
-            </button>
-            <button
-              type="button"
-              className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
-                (paymentType === 'Card'
-                  ? 'bg-zinc-800 border-neon-green text-neon-green'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
-              }
-              onClick={() => setPaymentChoice('Card')}
-            >
-              Card
-            </button>
-            <button
-              type="button"
-              className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
-                (paymentType === 'Cash + Card'
-                  ? 'bg-zinc-800 border-neon-green text-neon-green'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
-              }
-              onClick={() => setPaymentChoice('Cash + Card')}
-            >
-              Split Pay
-            </button>
-          </div>
-          {!paymentType && (
-            <div className="mt-1 text-[10px] text-zinc-500">Select a payment type to continue.</div>
-          )}
-        </div>
-
         <div className="grid grid-cols-2 gap-2">
           {isCashLike ? (
             <div className="col-span-2 grid grid-cols-2 gap-2">
@@ -385,6 +334,24 @@ const CheckoutWindow: React.FC = () => {
               <input className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1" value={changeDue.toFixed(2)} readOnly />
             </div>
           )}
+          <div>
+            <label className="block text-[9px] uppercase tracking-wide text-zinc-500 mb-0.5">Payment type</label>
+            <select
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-neon-green"
+              value={paymentType}
+              onChange={e => {
+                const next = e.target.value as PaymentType;
+                setPaymentType(next);
+                if (next === 'Cash + Card') {
+                  setCashEdited(false);
+                  setCashReceived(0);
+                }
+              }}
+            >
+              <option value="">Select…</option>
+              {paymentTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">

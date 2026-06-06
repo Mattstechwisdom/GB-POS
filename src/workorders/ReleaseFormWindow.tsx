@@ -42,34 +42,41 @@ const ReleaseFormWindow: React.FC = () => {
   // Enrich from DB when only workOrderId is provided (e.g. from context menu)
   useEffect(() => {
     const payload = data as any;
-    if (!payload.workOrderId || payload.customerName) return;
+    const workOrderId = Number(payload.workOrderId || 0) || 0;
+    const hasCoreContact = Boolean(
+      String(payload.customerName || '').trim()
+      && String(payload.customerPhone || '').trim()
+      && String(payload.customerEmail || '').trim()
+    );
+    if (!workOrderId) return;
+    if (hasCoreContact && String(payload.customerPhoneAlt || '').trim()) return;
     let alive = true;
     (async () => {
       try {
         const api = (window as any).api;
         let wo: any = null;
         try {
-          const list = await api.findWorkOrders?.({ id: payload.workOrderId });
+          const list = await api.findWorkOrders?.({ id: workOrderId });
           wo = Array.isArray(list) && list.length ? list[0] : null;
         } catch {}
         if (!wo) {
           try {
             const list = await api.dbGet?.('workOrders');
-            wo = Array.isArray(list) ? list.find((w: any) => w.id === payload.workOrderId) || null : null;
+            wo = Array.isArray(list) ? list.find((w: any) => Number(w?.id || 0) === workOrderId) || null : null;
           } catch {}
         }
         if (!wo || !alive) return;
-        const enriched: any = { ...wo };
+        const enriched: any = { ...wo, ...payload };
         if (wo.customerId && api.findCustomers) {
           try {
             const customers = await api.findCustomers({ id: wo.customerId });
             const c = Array.isArray(customers) && customers.length ? customers[0] : null;
             if (c) {
               const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
-              enriched.customerName = full || wo.customerName;
-              enriched.customerPhone = c.phone || wo.customerPhone;
-              enriched.customerPhoneAlt = c.phoneAlt || '';
-              enriched.customerEmail = c.email || wo.customerEmail;
+              if (full) enriched.customerName = full;
+              if (c.phone) enriched.customerPhone = c.phone;
+              if (c.phoneAlt) enriched.customerPhoneAlt = c.phoneAlt;
+              if (c.email) enriched.customerEmail = c.email;
             }
           } catch {}
         }
@@ -108,6 +115,7 @@ const ReleaseFormWindow: React.FC = () => {
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
   const phoneAltRaw = (data as any).customerPhoneAlt || (data as any).customer?.phoneAlt || '';
   const phoneAlt = formatPhone(String(phoneAltRaw || '')) || String(phoneAltRaw || '');
+  const email = (data as any).customerEmail || (data as any).customer?.email || '';
 
   return (
     <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -148,6 +156,7 @@ const ReleaseFormWindow: React.FC = () => {
           <div><div style={{ color: '#666', fontSize: 11 }}>Customer</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{fullName}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phone}</div></div>
           {phoneAlt ? <div><div style={{ color: '#666', fontSize: 11 }}>Alt Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phoneAlt}</div></div> : null}
+          {email ? <div><div style={{ color: '#666', fontSize: 11 }}>Email</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{email}</div></div> : null}
           <div><div style={{ color: '#666', fontSize: 11 }}>Device</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productDescription || data.productCategory || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Model</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.model || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Serial</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || ''}</div></div>

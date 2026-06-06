@@ -40,7 +40,6 @@ declare global {
     deleteFromCollection: (key: string, id: number) => Promise<boolean>;
     dbGet: (key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => Promise<any[]>;
     dbCount: (key: string, q: any) => Promise<number>;
-    searchTickets: (query: string, opts?: { limit?: number }) => Promise<{ ok: boolean; results: Array<{ type: 'workorder' | 'sale'; id: number; invoice: string; activityAt: string; customerName?: string; description?: string }>; error?: string }>;
     dbAdd: (key: string, item: any) => Promise<any>;
     dbUpdate: (key: string, id: any, item: any) => Promise<any>;
   dbDelete: (key: string, id: any) => Promise<boolean>;
@@ -85,10 +84,6 @@ declare global {
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     emailSendReportCsv: (payload: { to: string; subject: string; bodyText: string; filename: string; csv: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
-    // sms (twilio)
-    twilioGetConfig: () => Promise<{ ok: boolean; accountSid?: string; authSid?: string; fromNumber?: string; hasAuthToken?: boolean; error?: string }>;
-    twilioSetConfig: (patch: { accountSid?: string; authSid?: string; fromNumber?: string; authToken?: string; clearAuthToken?: boolean }) => Promise<{ ok: boolean; accountSid?: string; authSid?: string; fromNumber?: string; hasAuthToken?: boolean; error?: string }>;
-    twilioSendSms: (payload: { to: string; body: string }) => Promise<{ ok: boolean; sid?: string | null; error?: string }>;
     openReporting: () => Promise<any>;
     openReportEmail: (payload: any) => Promise<any>;
     openCustomBuildItem: (payload: any) => Promise<any>;

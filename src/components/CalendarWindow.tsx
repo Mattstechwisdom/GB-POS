@@ -14,7 +14,7 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder';
+  source?: 'sale' | 'workorder' | 'consultation';
   saleId?: number;
   notes?: string;
   // Optional linkage
@@ -23,6 +23,7 @@ type CalendarEvent = {
   orderUrl?: string;
   trackingUrl?: string;
   // Optional contact/location details
+  customerId?: number;
   customerName?: string;
   customerPhone?: string;
   technician?: string;
@@ -176,6 +177,79 @@ const CalendarWindow: React.FC = () => {
     events: true,
     consultation: true
   });
+
+  async function resolveConsultationLinks(ev: CalendarEvent) {
+    const api: any = (window as any).api;
+    let sale: any = null;
+    const eventSaleId = Number((ev as any).saleId || 0) || 0;
+    if (eventSaleId > 0 && api?.dbGet) {
+      try {
+        const sales = await api.dbGet('sales');
+        sale = Array.isArray(sales) ? sales.find((s: any) => Number(s?.id || 0) === eventSaleId) || null : null;
+      } catch {}
+    }
+
+    let customerId = Number((ev as any).customerId || 0) || Number(sale?.customerId || 0) || 0;
+    let customerName = String(sale?.customerName || ev.customerName || '').trim();
+    let customerPhone = String(sale?.customerPhone || ev.customerPhone || '').trim();
+
+    // Fallback: try to resolve customer by exact phone/name when event has no customerId.
+    if (!customerId && api?.dbGet) {
+      try {
+        const customers = await api.dbGet('customers');
+        const needlePhone = String(ev.customerPhone || '').replace(/\D+/g, '').slice(-10);
+        const needleName = String(ev.customerName || '').trim().toLowerCase();
+        const found = Array.isArray(customers) ? customers.find((c: any) => {
+          const cPhone = String(c?.phone || '').replace(/\D+/g, '').slice(-10);
+          const cPhoneAlt = String(c?.phoneAlt || '').replace(/\D+/g, '').slice(-10);
+          const cName = String(([c?.firstName, c?.lastName].filter(Boolean).join(' ') || c?.name || '')).trim().toLowerCase();
+          const phoneMatch = !!needlePhone && (cPhone === needlePhone || cPhoneAlt === needlePhone);
+          const nameMatch = !!needleName && !!cName && cName === needleName;
+          return phoneMatch || nameMatch;
+        }) : null;
+        if (found) {
+          customerId = Number(found.id || 0) || 0;
+          if (!customerName) customerName = String(([found.firstName, found.lastName].filter(Boolean).join(' ') || found.name || '')).trim();
+          if (!customerPhone) customerPhone = String(found.phone || '').trim();
+        }
+      } catch {}
+    }
+
+    return {
+      sale,
+      saleId: Number(sale?.id || eventSaleId || 0) || 0,
+      customerId,
+      customerName,
+      customerPhone,
+    };
+  }
+
+  async function openConsultationSale(ev: CalendarEvent) {
+    const api: any = (window as any).api;
+    const links = await resolveConsultationLinks(ev);
+    if (!links.saleId) {
+      alert('No linked sale found for this consultation event.');
+      return;
+    }
+    if (!api?.openNewSale) return;
+    await api.openNewSale({
+      id: links.saleId,
+      customerId: links.customerId || undefined,
+      customerName: links.customerName || undefined,
+      customerPhone: links.customerPhone || undefined,
+    });
+  }
+
+  async function openConsultationCustomer(ev: CalendarEvent) {
+    const api: any = (window as any).api;
+    const links = await resolveConsultationLinks(ev);
+    if (!links.customerId) {
+      alert('No linked customer found for this consultation event.');
+      return;
+    }
+    if (!api?.openCustomerOverview) return;
+    await api.openCustomerOverview(links.customerId);
+  }
 
   // Load events on open
   useEffect(() => {
@@ -754,6 +828,24 @@ const CalendarWindow: React.FC = () => {
                     <label className="block text-xs text-zinc-400">Title (optional)</label>
                     <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} />
                   </div>
+                  <div className="col-span-2 flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
+                      onClick={() => { void openConsultationSale(editing); }}
+                      title="Open linked consultation sale"
+                    >
+                      View Consultation Sale
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
+                      onClick={() => { void openConsultationCustomer(editing); }}
+                      title="Open linked customer record"
+                    >
+                      View Client Info
+                    </button>
+                  </div>
                 </>
               )}
               {/* Schedule entries are managed in Admin → Technicians and are not editable here */}
@@ -872,7 +964,7 @@ const CalendarWindow: React.FC = () => {
                 ) : (
                   <div className="space-y-2">
                     {dailyLookData.consultations.map((c, idx) => (
-                      <div key={(c.id ?? idx) as any} className="text-sm">
+                      <div key={(c.id ?? idx) as any} className="text-sm border border-zinc-800 rounded p-2 bg-zinc-900/50">
                         <div className="flex items-center justify-between gap-2">
                           <div className="truncate">
                             <span className="text-zinc-400 mr-2">{formatTime12FromHHmm(c.time || '')}</span>
@@ -882,6 +974,22 @@ const CalendarWindow: React.FC = () => {
                           {c.technician ? <div className="text-xs text-zinc-400 whitespace-nowrap">{c.technician}</div> : null}
                         </div>
                         {c.customerPhone ? <div className="text-xs text-zinc-500">{formatPhone(String(c.customerPhone || '')) || c.customerPhone}</div> : null}
+                        <div className="mt-1 flex gap-2">
+                          <button
+                            className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
+                            onClick={() => { void openConsultationSale(c); }}
+                            title="Open linked consultation sale"
+                          >
+                            View Consultation Sale
+                          </button>
+                          <button
+                            className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
+                            onClick={() => { void openConsultationCustomer(c); }}
+                            title="Open linked customer record"
+                          >
+                            View Client Info
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
