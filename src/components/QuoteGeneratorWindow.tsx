@@ -695,7 +695,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
 
   function buildInteractiveSalesHtml(logoDataUrl?: string): string {
-    const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const esc = (s: any) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const cust = `${sales.customerName || ''}`.trim();
     const phoneRaw = `${sales.customerPhone || ''}`.trim();
     const phone = (formatPhone(phoneRaw) || phoneRaw).trim();
@@ -851,8 +851,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
             (v as any[]).forEach((s: any, i: number) => {
-              const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
-              const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+              const rawDesc = s?.desc ?? s?.description ?? s?.name;
+              const rawVal = s?.value ?? s?.val;
+              const desc = asPrintableText(rawDesc == null ? '' : rawDesc).trim();
+              const val = asPrintableText(rawVal == null ? '' : rawVal).trim();
               if (!desc && !val) return;
               rows.push([desc || `Spec ${i + 1}`, val]);
             });
@@ -861,7 +863,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           if (Array.isArray(v)) {
             const list = (v as any[])
-              .map((x) => (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean') ? String(x).trim() : '')
+              .map((x) => asPrintableText(x))
+              .map((s) => s.trim())
               .filter(Boolean);
             rows.push([titleCase(k), list.length ? list.join(', ') : `${v.length} item(s)`]);
             return;
@@ -2947,7 +2950,7 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   // Build a dedicated, print-only HTML document for Sales quotes.
   function buildSalesPrintHtml(logoDataUrl?: string) {
-    const esc = (s: string) => String(s || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const esc = (s: any) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
     const escAttr = (s: string) => esc(String(s || '')).replace(/"/g, '&quot;');
     const labels = sales.items.map((it, idx) => {
       const model = String(((it.model ?? (it as any).dynamic?.model) || '')).trim();
@@ -3322,8 +3325,10 @@ function QuoteGeneratorWindow(): JSX.Element {
         // 'Other' / 'Drone' ad-hoc spec rows are arrays of {desc,value}.
         if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
           (v as any[]).forEach((s: any, i: number) => {
-            const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
-            const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+            const rawDesc = s?.desc ?? s?.description ?? s?.name;
+            const rawVal = s?.value ?? s?.val;
+            const desc = asPrintableText(rawDesc == null ? '' : rawDesc).trim();
+            const val = asPrintableText(rawVal == null ? '' : rawVal).trim();
             if (!desc && !val) return;
             rows.push([desc || `Spec ${i + 1}`, val]);
           });
@@ -3332,7 +3337,8 @@ function QuoteGeneratorWindow(): JSX.Element {
 
         if (Array.isArray(v)) {
           const primitiveList = (v as any[])
-            .map((x) => (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean' ? String(x).trim() : ''))
+            .map((x) => asPrintableText(x))
+            .map((s) => s.trim())
             .filter(Boolean);
           rows.push([k, primitiveList.length ? primitiveList.join(', ') : `${v.length} item(s)`]);
           return;
@@ -6865,8 +6871,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                                                   if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
                                                     (v as any[]).forEach((s: any, i: number) => {
-                                                      const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
-                                                      const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+                                                      const rawDesc = s?.desc ?? s?.description ?? s?.name;
+                                                      const rawVal = s?.value ?? s?.val;
+                                                      const desc = asPrintableText(rawDesc == null ? '' : rawDesc).trim();
+                                                      const val = asPrintableText(rawVal == null ? '' : rawVal).trim();
                                                       if (!desc && !val) return;
                                                       rows.push([desc || `Spec ${i + 1}`, val]);
                                                     });
@@ -6894,7 +6902,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                 return rows.map(([k, v]) => (
                                                   <tr key={k}>
                                                     <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{k}</td>
-                                                    <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{v}</td>
+                                                    <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{String(v)}</td>
                                                   </tr>
                                                 ));
                                               })()}
@@ -6997,8 +7005,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
                                                       if ((k === 'otherSpecs' || k === 'droneSpecs') && Array.isArray(v)) {
                                                         (v as any[]).forEach((s: any, i: number) => {
-                                                          const desc = asPrintableText(s?.desc ?? s?.description ?? s?.name ?? '').trim();
-                                                          const val = asPrintableText(s?.value ?? s?.val ?? '').trim();
+                                                          const rawDesc = s?.desc ?? s?.description ?? s?.name;
+                                                          const rawVal = s?.value ?? s?.val;
+                                                          const desc = asPrintableText(rawDesc == null ? '' : rawDesc).trim();
+                                                          const val = asPrintableText(rawVal == null ? '' : rawVal).trim();
                                                           if (!desc && !val) return;
                                                           rows.push([desc || `Spec ${i + 1}`, val]);
                                                         });
@@ -7026,7 +7036,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                                     return rows.map(([k, v]) => (
                                                       <tr key={k}>
                                                         <td style={{ border: '1px solid #FF0000', padding: '6px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{k}</td>
-                                                        <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{v}</td>
+                                                        <td style={{ border: '1px solid #FF0000', padding: '6px 14px' }}>{String(v)}</td>
                                                       </tr>
                                                     ));
                                                   })()}
