@@ -6,6 +6,7 @@ import PaymentPanel from '@/workorders/PaymentPanel';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
+import { printSaleReleaseForm, SaleOrderPrint } from './salePrint';
 
 type SalePayload = {
   customerId?: number;
@@ -1067,6 +1068,51 @@ const SaleWindow: React.FC = () => {
         }}
       >
         {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'Print Consult Sheet' : 'Print Customer Receipt'}
+      </button>
+      <button
+        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+        onClick={async () => {
+          try {
+            const rows = (sale.items || []) as SaleItemRow[];
+            const printItems = rows.map(r => ({
+              description: String(r.description || ''),
+              qty: Number(r.qty) || 1,
+              price: Number(r.price) || 0,
+            }));
+            let customerPhoneAlt = '';
+            let customerEmail = String((sale as any).customerEmail || '').trim();
+            try {
+              const cid = sale.customerId;
+              if (cid && (window as any).api?.findCustomers) {
+                const list = await (window as any).api.findCustomers({ id: cid });
+                const c = Array.isArray(list) && list.length ? list[0] : null;
+                if (c) {
+                  customerPhoneAlt = c.phoneAlt || '';
+                  if (!customerEmail) customerEmail = c.email || '';
+                }
+              }
+            } catch {}
+            const printSale: SaleOrderPrint = {
+              invoiceId: String((sale as any).id ?? ''),
+              id: Number((sale as any).id || 0) || 0,
+              dateTimeISO: (sale as any).checkInAt || (sale as any).createdAt || new Date().toISOString(),
+              clientName: sale.customerName || '',
+              phone: sale.customerPhone || '',
+              phoneAlt: customerPhoneAlt,
+              email: customerEmail,
+              items: printItems,
+              subTotal: Number(sale.totals?.subTotal ?? 0),
+              discount: Number(sale.discount ?? 0),
+              taxRate: Number(sale.taxRate ?? 0),
+              taxes: Number(sale.totals?.tax ?? 0),
+              amountPaid: Number(sale.amountPaid ?? 0),
+              notes: String((sale as any).notes || ''),
+            };
+            await printSaleReleaseForm(printSale, { autoCloseMs: 0, autoPrint: true });
+          } catch (e) { console.error('Failed to open sale release form', e); }
+        }}
+      >
+        Print release form
       </button>
     </>
   ), [sale]);

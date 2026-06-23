@@ -40,6 +40,8 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .result-title{font-size:20px;font-weight:800;margin-bottom:8px}
 .result-sub{font-size:13px;color:#a1a1aa;line-height:1.6}
 .btns-wrap.hidden{display:none}
+.type-bar{display:flex;align-items:center;justify-content:space-between;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:11px 14px;margin-bottom:16px}
+.type-label{font-size:12px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 </style>
 </head>
 <body>
@@ -53,13 +55,32 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
   </div>
 </div>
 <div class="container">
-  <div class="info-card">
+  <!-- Repair / Sale type switcher -->
+  <div class="type-bar">
+    <span class="type-label">Record type</span>
+    <div class="toggle-wrap">
+      <button class="toggle-opt active" id="typeRepair" onclick="setType('repair')">🔧 Repair</button>
+      <button class="toggle-opt" id="typeSale" onclick="setType('sale')">🛍 Sale</button>
+    </div>
+  </div>
+
+  <!-- Info card — repair -->
+  <div class="info-card" id="infoRepair">
     <div class="info-row"><span class="info-label">Order</span><span class="info-value">WO-000042</span></div>
     <div class="info-row"><span class="info-label">Client</span><span class="info-value">John Smith</span></div>
     <div class="info-row"><span class="info-label">Phone</span><span class="info-value">(803) 555-1234</span></div>
     <div class="info-row"><span class="info-label">Alt Phone</span><span class="info-value">(803) 555-5678</span></div>
     <div class="info-row"><span class="info-label">Email</span><span class="info-value">john@example.com</span></div>
     <div class="info-row"><span class="info-label">Device</span><span class="info-value">MacBook Pro 13 – Screen Replacement</span></div>
+  </div>
+
+  <!-- Info card — sale -->
+  <div class="info-card" id="infoSale" style="display:none">
+    <div class="info-row"><span class="info-label">Order</span><span class="info-value">INV-000017</span></div>
+    <div class="info-row"><span class="info-label">Client</span><span class="info-value">Jane Doe</span></div>
+    <div class="info-row"><span class="info-label">Phone</span><span class="info-value">(803) 555-9090</span></div>
+    <div class="info-row"><span class="info-label">Email</span><span class="info-value">jane@example.com</span></div>
+    <div class="info-row"><span class="info-label">Item</span><span class="info-value">iPhone 15 Pro Max – Space Titanium 256GB</span></div>
   </div>
   <div class="btns-wrap" id="btnsWrap">
     <div class="notify-row">
@@ -71,6 +92,8 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
     </div>
     <div class="section-title">Send Status Update to Client</div>
 
+    <!-- Repair buttons -->
+    <div id="repairBtns">
     <button class="status-btn" onclick="sendStatus('diagnosis','Diagnosis In Process')"
       style="border-left:4px solid #3b82f6">
       <span class="btn-icon">🔍</span>
@@ -100,6 +123,22 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
       <span class="btn-icon">❌</span>
       <span class="btn-label">Repair Not Possible</span>
     </button>
+    </div>
+
+    <!-- Sale buttons -->
+    <div id="saleBtns" style="display:none">
+    <button class="status-btn" onclick="sendStatus('product_ordered','Product Ordered')"
+      style="border-left:4px solid #f59e0b">
+      <span class="btn-icon">📦</span>
+      <span class="btn-label">Product Ordered</span>
+    </button>
+
+    <button class="status-btn" onclick="sendStatus('product_in_shop','Product In Shop')"
+      style="border-left:4px solid #22c55e">
+      <span class="btn-icon">🏪</span>
+      <span class="btn-label">Product In Shop</span>
+    </button>
+    </div>
   </div>
 
   <div class="result-card" id="resultCard">
@@ -114,10 +153,20 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 </div>
 <script>
 var notifyVia = 'email';
+var currentType = 'repair';
 function setNotify(val) {
   notifyVia = val;
   document.getElementById('optEmail').classList.toggle('active', val === 'email');
   document.getElementById('optSms').classList.toggle('active', val === 'sms');
+}
+function setType(val) {
+  currentType = val;
+  document.getElementById('typeRepair').classList.toggle('active', val === 'repair');
+  document.getElementById('typeSale').classList.toggle('active', val === 'sale');
+  document.getElementById('infoRepair').style.display = val === 'repair' ? '' : 'none';
+  document.getElementById('infoSale').style.display = val === 'sale' ? '' : 'none';
+  document.getElementById('repairBtns').style.display = val === 'repair' ? '' : 'none';
+  document.getElementById('saleBtns').style.display = val === 'sale' ? '' : 'none';
 }
 /* In preview mode the buttons just show the success card locally */
 function sendStatus(key, label) {
