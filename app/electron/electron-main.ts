@@ -4468,6 +4468,10 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .result-title{font-size:20px;font-weight:800;margin-bottom:8px}
 .result-sub{font-size:13px;color:#a1a1aa;line-height:1.6}
 .btns-wrap.hidden{display:none}
+.header-action{margin-left:auto;flex-shrink:0}
+.storage-fee-header-btn{display:flex;align-items:center;gap:7px;background:#7f1d1d;border:1.5px solid #ef4444;border-radius:8px;padding:8px 14px;color:#fef2f2;cursor:pointer;font-size:13px;font-weight:700;-webkit-tap-highlight-color:transparent;transition:background .15s;white-space:nowrap}
+.storage-fee-header-btn:hover{background:#991b1b}
+.storage-fee-header-btn:active{background:#b91c1c}
 </style>
 </head>
 <body>
@@ -4622,6 +4626,7 @@ async function handleQrRequest(req: any, res: any) {
         const statusKey = String(payload?.status || '').trim();
         const statusLabel = String(payload?.label || '').trim();
         const notifyVia = String(payload?.notifyVia || 'email').trim().toLowerCase();
+        const isStorageFee = statusKey === 'storage_fee';
         if (!statusKey || !statusLabel) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Missing status/label' }));
@@ -4674,7 +4679,9 @@ async function handleQrRequest(req: any, res: any) {
           } else {
             // Try sending a short SMS via email-to-SMS gateways for the major US carriers.
             // The message is sent to all common gateways; carriers silently discard non-matching ones.
-            const smsText = `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
+            const smsText = isStorageFee
+            ? `GadgetBoy: ${orderId} STORAGE FEE NOTICE — Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Items uncollected after 7 days are subject to a $25/day storage fee. Call (803) 708-0101.`
+            : `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
             const gateways = [
               `${clientPhone}@vtext.com`,       // Verizon
               `${clientPhone}@tmomail.net`,      // T-Mobile
@@ -4704,7 +4711,31 @@ async function handleQrRequest(req: any, res: any) {
           if (!customerEmail) {
             notifyResult = { ok: false, error: 'No email on file for this client.' };
           } else {
-            const emailHtml = `<!DOCTYPE html>
+            const emailHtml = isStorageFee ? `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #ef4444;">
+    <div style="font-size:20px;font-weight:900;color:#ef4444;letter-spacing:-.5px;">⚠️ GADGETBOY — Storage Fee Notice</div>
+    <div style="font-size:12px;color:#a1a1aa;margin-top:4px;">Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">Action Required — ${escHtml(orderId)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, your <strong>${escHtml(deviceDisplay)}</strong> is ready for pickup.</p>
+    <div style="background:#fef2f2;border:1.5px solid #ef4444;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#b91c1c;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Storage Fee Policy</div>
+      <div style="font-size:15px;font-weight:700;color:#7f1d1d;margin-bottom:8px;">$25 / day after 7-day grace period</div>
+      <div style="font-size:13px;color:#374151;line-height:1.6;">Per our signed policy, items not collected within <strong>7 days</strong> of completion or arrival are subject to a <strong>$25/day storage fee</strong>. Devices left unclaimed for <strong>45 days</strong> become the property of GADGETBOY LLC.</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
+      Please arrange pickup as soon as possible. Call us at <strong>(803) 708-0101</strong> or reply to this email.
+    </p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
+      GADGETBOY Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;·&nbsp; gadgetboysc@gmail.com
+    </div>
+  </div>
+</div>
+</body></html>` : `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
@@ -4730,8 +4761,12 @@ async function handleQrRequest(req: any, res: any) {
 </body></html>`;
             notifyResult = await sendConfiguredEmail({
               to: customerEmail,
-              subject: `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
-              text: `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
+              subject: isStorageFee
+                ? `[${escHtml(orderId)}] ⚠️ Storage Fee Notice — Please Arrange Pickup`
+                : `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
+              text: isStorageFee
+                ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${orderId}: ${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
+                : `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
             });
             if (notifyResult.ok) notifyResult.message = `Email sent to ${customerEmail}.`;
