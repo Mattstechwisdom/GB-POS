@@ -155,6 +155,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
 
                   const wo: PrintWorkOrder = {
                     invoiceId: String((workOrder as any).id ?? ''),
+                    id: Number((workOrder as any).id || 0) || 0,
+                    type: 'repair',
                     dateTimeISO: (workOrder as any).checkInAt || new Date().toISOString(),
                     clientName: customerName || `${(workOrder as any).firstName ?? ''} ${(workOrder as any).lastName ?? ''}`.trim(),
                     phone: customerPhone || (workOrder as any).phone || '',

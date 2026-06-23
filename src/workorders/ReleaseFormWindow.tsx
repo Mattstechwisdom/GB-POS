@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
@@ -27,6 +28,7 @@ const ReleaseFormWindow: React.FC = () => {
   const [data, setData] = useState<any>(() => getPayload() || {});
 
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const didAutoPrintRef = useRef(false);
 
   useEffect(() => {
@@ -38,6 +40,34 @@ const ReleaseFormWindow: React.FC = () => {
     })();
     return () => { alive = false; };
   }, []);
+
+  // Generate technician QR code for status page
+  useEffect(() => {
+    const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
+    if (!recordId) return;
+    const type = (data as any).receiptType === 'sale' ? 'sale' : 'repair';
+    let alive = true;
+    (async () => {
+      try {
+        let lanIp = 'localhost';
+        try {
+          const ipRes = await fetch('http://localhost:7777/ip');
+          if (ipRes.ok) {
+            const json = await ipRes.json();
+            if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+          }
+        } catch { /* QR server not running */ }
+        const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+          width: 176, margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
+      } catch { /* QR generation failed silently */ }
+    })();
+    return () => { alive = false; };
+  }, [(data as any).id, (data as any).workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Enrich from DB when only workOrderId is provided (e.g. from context menu)
   useEffect(() => {
@@ -134,20 +164,34 @@ const ReleaseFormWindow: React.FC = () => {
       `}</style>
       <div className="page">
         <div className="page-inner">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+        {/* Left — logo + shop name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 36, width: 'auto' }} />
+          <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR</div>
             <div style={{ fontSize: 11, color: '#666' }}>Work Order Release Form</div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>2822 Devine Street, Columbia, SC 29205</div>
+            <div style={{ fontSize: 10, color: '#888' }}>803-708-0101 · Mon–Fri 10–7 · Sat 10–8</div>
           </div>
         </div>
+        {/* Center — technician QR code */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 16px' }}>
+          {qrDataUrl ? (
+            <>
+              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 80, height: 80, display: 'block' }} />
+              <div style={{ fontSize: 7, color: '#555', textAlign: 'center', marginTop: 3, letterSpacing: '0.4px' }}>TECH SCAN</div>
+            </>
+          ) : null}
+        </div>
+        {/* Right — WO info + client */}
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: '#111' }}>2822 Devine Street, Columbia, SC 29205</div>
-          <div style={{ fontSize: 11, color: '#111' }}>803-708-0101</div>
-          <div style={{ fontSize: 10, color: '#666' }}>Mon–Fri 10am–7pm · Sat 10am–8pm</div>
-          <div style={{ marginTop: 2, fontSize: 11, color: '#666' }}>WO: {data.id ? String(data.id).padStart(6, '0') : '—'}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#111' }}>WO: {data.id ? String(data.id).padStart(6, '0') : '—'}</div>
           <div style={{ fontSize: 11, color: '#666' }}>Date: {new Date().toLocaleDateString()}</div>
+          {fullName ? <div style={{ fontSize: 11, color: '#111', marginTop: 4 }}><strong>Client:</strong> {fullName}</div> : null}
+          {phone ? <div style={{ fontSize: 11, color: '#111' }}><strong>Phone:</strong> {phone}</div> : null}
+          {phoneAlt ? <div style={{ fontSize: 11, color: '#111' }}><strong>Alt:</strong> {phoneAlt}</div> : null}
+          {email ? <div style={{ fontSize: 11, color: '#666' }}>{email}</div> : null}
         </div>
       </div>
 

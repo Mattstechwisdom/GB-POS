@@ -1,6 +1,10 @@
 export type LineItem = { description: string; parts: number; labor: number; qty?: number };
 export type WorkOrder = {
   invoiceId: string;
+  /** Numeric work-order / sale ID used to build the technician QR URL. Falls back to Number(invoiceId). */
+  id?: number;
+  /** Record type for the QR status URL — defaults to 'repair'. */
+  type?: 'repair' | 'sale';
   dateTimeISO: string;
   clientName: string;
   phone: string;
@@ -86,7 +90,7 @@ function htmlEscape(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): string {
+function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean; qrSrc?: string }): string {
   const logoSrc = opts?.logoSrc ?? '';
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
@@ -148,6 +152,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
       .brand-left { display:flex; align-items:center; gap:12px; }
       .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
+      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 16px; }
       .brand-title { font-weight:700; letter-spacing:0.3px; }
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
@@ -208,6 +213,12 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
             <div class="slogan">The Solution Lives Here!</div>
           </div>
         </div>
+        ${opts?.qrSrc ? `
+        <div class="brand-center">
+          <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:88px; height:88px; display:block;" />
+          <div style="font-size:6.5pt; color:#555; text-align:center; margin-top:3px; letter-spacing:0.4px;">TECH SCAN</div>
+        </div>
+        ` : ''}
         <div class="brand-right">
           <div><strong>Invoice:</strong> ${htmlEscape(invoiceDisplay)}</div>
           <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
@@ -371,7 +382,33 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
   if (!resolvedLogoSrc) {
     resolvedLogoSrc = (await fetchPublicAssetAsDataUrlCached('logo.png')) || (await fetchPublicAssetAsDataUrlCached('logo-spin.gif')) || '';
   }
-  const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc });
+
+  // Generate technician QR code pointing to the status page
+  let qrSrc = '';
+  const recordId = Number(workOrder.id || workOrder.invoiceId || 0) || 0;
+  if (recordId > 0) {
+    try {
+      const type = workOrder.type || 'repair';
+      let lanIp = 'localhost';
+      try {
+        const ipRes = await fetch('http://localhost:7777/ip');
+        if (ipRes.ok) {
+          const json = await ipRes.json();
+          if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+        }
+      } catch { /* QR server not running */ }
+      const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+        width: 176, margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+      if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
+    } catch { /* QR generation failed — print without it */ }
+  }
+
+  const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });
   const ok = openPopupAndPrint(html);
   if (!ok) iframeFallback(html);
 }

@@ -3,8 +3,6 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
-import QRCode from 'qrcode';
-
 function getPayload() {
   try {
     const stored = consumeWindowPayload('customerReceipt');
@@ -73,63 +71,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [qrStatusUrl, setQrStatusUrl] = useState<string>('');
-  const [qrLoading, setQrLoading] = useState<boolean>(false);
-  const [qrError, setQrError] = useState<string>('');
-  // qrReady = true once QR has either loaded OR definitively failed (so silent print can proceed)
-  const [qrReady, setQrReady] = useState<boolean>(false);
-  // Ref mirror of qrReady so that the silent-print interval can read the *current* value
-  // without being affected by stale closures (intervals capture the value at creation time).
-  const qrReadyRef = useRef(false);
-  useEffect(() => { qrReadyRef.current = qrReady; }, [qrReady]);
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
-
-  // Load QR code for status page
-  useEffect(() => {
-    const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
-    if (!recordId) { setQrReady(true); return; } // no ID — nothing to load, unblock print
-    const type: 'repair' | 'sale' = isSaleReceipt ? 'sale' : 'repair';
-    let alive = true;
-    setQrLoading(true);
-    setQrError('');
-    (async () => {
-      try {
-        // Use the QR HTTP server's /ip endpoint to get the LAN IP.
-        // Works in both Electron (renderer can fetch localhost) and browser.
-        // Avoids IPC which can fail silently in packaged builds.
-        let lanIp = 'localhost';
-        try {
-          const ipRes = await fetch('http://localhost:7777/ip');
-          if (ipRes.ok) {
-            const ipJson = await ipRes.json();
-            if (ipJson?.ip && String(ipJson.ip).trim()) lanIp = String(ipJson.ip).trim();
-          }
-        } catch { /* QR server not running — fall back to localhost */ }
-
-        const statusUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
-        setQrStatusUrl(statusUrl);
-
-        // Generate the QR image client-side using the bundled qrcode package.
-        const dataUrl: string = await QRCode.toDataURL(statusUrl, {
-          width: 200, margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (!alive) return;
-        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
-          throw new Error('QR generation returned unexpected result');
-        }
-        setQrDataUrl(dataUrl);
-        setQrLoading(false);
-        setQrReady(true);
-      } catch (e: any) {
-        if (alive) { setQrLoading(false); setQrError(String(e?.message || e)); setQrReady(true); }
-      }
-    })();
-    return () => { alive = false; };
-  }, [(data as any).id, (data as any).workOrderId, isSaleReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let alive = true;
@@ -280,20 +223,6 @@ const CustomerReceiptWindow: React.FC = () => {
             ]);
           }
         } catch {}
-        // Wait for QR to finish loading (or time out after 2 s to avoid blocking print).
-        // Use qrReadyRef (not qrReady state) so the interval reads the current value,
-        // not the stale closure captured when this effect ran.
-        if (!qrReadyRef.current) {
-          await Promise.race([
-            new Promise<void>((resolve) => {
-              // Poll via ref — always reflects the latest React state
-              const id = window.setInterval(() => {
-                if (qrReadyRef.current) { window.clearInterval(id); resolve(); }
-              }, 30);
-            }),
-            new Promise<void>((r) => window.setTimeout(r, 2000)),
-          ]);
-        }
         // One rAF to flush the current paint cycle before printing
         await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       } finally {
@@ -569,30 +498,7 @@ const CustomerReceiptWindow: React.FC = () => {
               <div className="slogan">The Solution Lives Here!</div>
             </div>
           </div>
-          <div className="brand-right" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            {/* QR Code — left of client info */}
-            {qrDataUrl ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                <img
-                  src={qrDataUrl}
-                  alt="Status QR"
-                  style={{ width: 72, height: 72, border: '1px solid #d1d5db', borderRadius: 6, display: 'block' }}
-                />
-                <div style={{ fontSize: '7.5pt', color: '#555', textAlign: 'center', lineHeight: 1.2, maxWidth: 72 }}>Scan to update status</div>
-              </div>
-            ) : qrLoading ? (
-              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #ccc', borderRadius: 6, background: '#f9f9f9' }}>
-                <div style={{ fontSize: '7pt', color: '#888', textAlign: 'center' }}>Loading QR…</div>
-              </div>
-            ) : qrError ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #f87171', borderRadius: 6, background: '#fff5f5' }}>
-                <div style={{ fontSize: '6.5pt', color: '#ef4444', textAlign: 'center', padding: '0 4px' }}>QR unavailable</div>
-              </div>
-            ) : (
-              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #d4d4d4', borderRadius: 6, background: '#fafafa' }}>
-                <div style={{ fontSize: '6.5pt', color: '#a3a3a3', textAlign: 'center', padding: '0 4px' }}>QR available after save</div>
-              </div>
-            )}
+          <div className="brand-right">
             <div style={{ textAlign: 'right', fontSize: '10pt', lineHeight: '1.2' }}>
               <div><strong>Invoice:</strong> {invoiceNo}</div>
               <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
