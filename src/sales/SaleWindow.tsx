@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { printSaleReleaseForm, SaleOrderPrint } from './salePrint';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
 import PaymentPanel from '@/workorders/PaymentPanel';
@@ -924,6 +925,54 @@ const SaleWindow: React.FC = () => {
 
   const renderSidebarActions = useCallback(() => (
     <>
+      {/* Print Sales Form — tech copy with QR code */}
+      {!((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
+        <button
+          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-1"
+          onClick={async () => {
+            try {
+              const rows = (sale.items || []) as SaleItemRow[];
+              const saleItems = (rows.length
+                ? rows
+                : [{ description: sale.itemDescription || 'Sale', qty: (sale as any).quantity || 1, price: sale.price || 0 }]
+              ).map(r => ({
+                description: r.description || '',
+                qty: itemUnits(r) || 1,
+                price: Number(r.price) || 0,
+              }));
+              let customerPhoneAlt = '';
+              let customerEmail = String((sale as any).customerEmail || '').trim();
+              try {
+                const cid = sale.customerId;
+                if (cid && (window as any).api?.findCustomers) {
+                  const list = await (window as any).api.findCustomers({ id: cid });
+                  const c = Array.isArray(list) && list.length ? list[0] : null;
+                  if (c) { customerPhoneAlt = c.phoneAlt || ''; if (!customerEmail) customerEmail = c.email || ''; }
+                }
+              } catch {}
+              const payload: SaleOrderPrint = {
+                invoiceId: String((sale as any).invoiceId || (sale as any).id || ''),
+                id: Number((sale as any).id) || 0,
+                dateTimeISO: sale.checkInAt || new Date().toISOString(),
+                clientName: sale.customerName || '',
+                phone: sale.customerPhone || '',
+                phoneAlt: customerPhoneAlt,
+                email: customerEmail,
+                items: saleItems,
+                subTotal: sale.totals?.subTotal ?? 0,
+                discount: sale.discount || 0,
+                taxRate: sale.taxRate || 0,
+                taxes: sale.totals?.tax ?? 0,
+                amountPaid: sale.amountPaid || 0,
+                notes: (sale as any).notes || '',
+              };
+              await printSaleReleaseForm(payload);
+            } catch (e) { console.error('Print Sales Form failed', e); }
+          }}
+        >
+          Print Sales Form
+        </button>
+      )}
       <button
         className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
         onClick={async () => {
