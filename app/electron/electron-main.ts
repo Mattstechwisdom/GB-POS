@@ -4611,9 +4611,24 @@ async function handleQrRequest(req: any, res: any) {
     return;
   }
 
+  // If the record has no inline customerName, look it up from the customers collection
+  // (WorkOrderFull stores customerId only; Sales may store customerName directly)
+  let enrichedRecord = record;
+  if (!String(record?.customerName || record?.client || '').trim()) {
+    const customerId0 = Number(record?.customerId || 0);
+    if (customerId0 > 0) {
+      const customers0: any[] = Array.isArray(db['customers']) ? db['customers'] : [];
+      const cust0 = customers0.find((c: any) => Number(c?.id || 0) === customerId0);
+      if (cust0) {
+        const fullName = [cust0.firstName, cust0.lastName].filter(Boolean).join(' ').trim();
+        if (fullName) enrichedRecord = { ...record, customerName: fullName, customerEmail: record.customerEmail || cust0.email || '', customerPhone: record.customerPhone || cust0.phone || '', customerPhoneAlt: record.customerPhoneAlt || cust0.phoneAlt || '' };
+      }
+    }
+  }
+
   if (req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(buildStatusPageHtml(type, record));
+    res.end(buildStatusPageHtml(type, enrichedRecord));
     return;
   }
 
@@ -4633,10 +4648,10 @@ async function handleQrRequest(req: any, res: any) {
           return;
         }
 
-        const clientName = String(record?.customerName || record?.client || 'Client').trim() || 'Client';
+        const clientName = String(enrichedRecord?.customerName || enrichedRecord?.client || 'Client').trim() || 'Client';
         const rawDevice = type === 'repair'
-          ? String(record?.productDescription || record?.productCategory || record?.description || record?.device || record?.deviceModel || 'your device').trim()
-          : String(record?.productDescription || record?.category || 'your order').trim();
+          ? String(enrichedRecord?.productDescription || enrichedRecord?.productCategory || enrichedRecord?.description || enrichedRecord?.device || enrichedRecord?.deviceModel || 'your device').trim()
+          : String(enrichedRecord?.productDescription || enrichedRecord?.category || 'your order').trim();
         const deviceDisplay = rawDevice.length > 100 ? rawDevice.slice(0, 100) + '…' : rawDevice;
         const orderId = type === 'repair' ? `WO-${id}` : `INV-${id}`;
 
@@ -4681,7 +4696,7 @@ async function handleQrRequest(req: any, res: any) {
         if (notifyVia === 'sms') {
           // SMS: use email-to-SMS gateway based on stored carrier, or fall back to a
           // plain-text email-to-SMS address if the customer's phone is on file.
-          const clientPhone = String(record?.customerPhone || record?.phone || '').replace(/\D/g, '');
+          const clientPhone = String(enrichedRecord?.customerPhone || enrichedRecord?.phone || '').replace(/\D/g, '');
           if (!clientPhone || clientPhone.length < 10) {
             notifyResult = { ok: false, error: 'No phone number on file for this client.' };
           } else {
@@ -4708,8 +4723,8 @@ async function handleQrRequest(req: any, res: any) {
           }
         } else {
           // Email (default)
-          let customerEmail = String(record?.customerEmail || record?.email || '').trim();
-          const customerId2 = Number(record?.customerId || 0);
+          let customerEmail = String(enrichedRecord?.customerEmail || enrichedRecord?.email || '').trim();
+          const customerId2 = Number(enrichedRecord?.customerId || 0);
           if (!customerEmail && customerId2 > 0) {
             const freshDb3 = readDb();
             const customers3: any[] = Array.isArray(freshDb3['customers']) ? freshDb3['customers'] : [];
@@ -4719,16 +4734,36 @@ async function handleQrRequest(req: any, res: any) {
           if (!customerEmail) {
             notifyResult = { ok: false, error: 'No email on file for this client.' };
           } else {
+            // Embed logo as base64 so it renders in all email clients (no public URL needed)
+            let logoImgHtml = '<div style="font-size:20px;font-weight:900;color:#39FF14;letter-spacing:-.5px;">GADGETBOY</div>';
+            try {
+              const logoPath = isDev
+                ? path.join(app.getAppPath(), 'public', 'logo.png')
+                : path.join(app.getAppPath(), 'dist', 'logo.png');
+              const logoB64 = fs.readFileSync(logoPath).toString('base64');
+              if (logoB64) logoImgHtml = `<img src="data:image/png;base64,${logoB64}" alt="GadgetBoy" style="height:44px;width:auto;display:block;">`;
+            } catch { /* use text fallback */ }
+
+            const friendlyTitle = isStorageFee
+              ? `⚠️ Action Required — Please Arrange Pickup`
+              : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
+            const emailSubject = isStorageFee
+              ? `⚠️ Storage Fee Notice — Please Arrange Pickup`
+              : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
+
             const emailHtml = isStorageFee ? `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #ef4444;">
-    <div style="font-size:20px;font-weight:900;color:#ef4444;letter-spacing:-.5px;">⚠️ GADGETBOY — Storage Fee Notice</div>
-    <div style="font-size:12px;color:#a1a1aa;margin-top:4px;">Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #ef4444;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#fef2f2;letter-spacing:-.3px;">GADGETBOY</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+    </div>
   </div>
   <div style="padding:24px;">
-    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">Action Required — ${escHtml(orderId)}</h2>
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
     <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, your <strong>${escHtml(deviceDisplay)}</strong> is ready for pickup.</p>
     <div style="background:#fef2f2;border:1.5px solid #ef4444;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
       <div style="font-size:12px;color:#b91c1c;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Storage Fee Policy</div>
@@ -4739,7 +4774,7 @@ async function handleQrRequest(req: any, res: any) {
       Please arrange pickup as soon as possible. Call us at <strong>(803) 708-0101</strong> or reply to this email.
     </p>
     <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
-      GADGETBOY Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;·&nbsp; gadgetboysc@gmail.com
+      GADGETBOY Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com
     </div>
   </div>
 </div>
@@ -4747,12 +4782,15 @@ async function handleQrRequest(req: any, res: any) {
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #39FF14;">
-    <div style="font-size:20px;font-weight:900;color:#39FF14;letter-spacing:-.5px;">⚡ GADGETBOY</div>
-    <div style="font-size:12px;color:#a1a1aa;margin-top:4px;">Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #39FF14;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;">GADGETBOY</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+    </div>
   </div>
   <div style="padding:24px;">
-    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">Status Update for ${escHtml(orderId)}</h2>
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
     <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, here's the latest on <strong>${escHtml(deviceDisplay)}</strong>:</p>
     <div style="background:#f0fdf4;border:1.5px solid #22c55e;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
       <div style="font-size:12px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current Status</div>
@@ -4762,19 +4800,17 @@ async function handleQrRequest(req: any, res: any) {
       Questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
     </p>
     <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
-      GADGETBOY Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;·&nbsp; gadgetboysc@gmail.com
+      GADGETBOY Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com
     </div>
   </div>
 </div>
 </body></html>`;
             notifyResult = await sendConfiguredEmail({
               to: customerEmail,
-              subject: isStorageFee
-                ? `[${escHtml(orderId)}] ⚠️ Storage Fee Notice — Please Arrange Pickup`
-                : `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
+              subject: emailSubject,
               text: isStorageFee
-                ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${orderId}: ${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
-                : `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
+                ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
+                : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
             });
             if (notifyResult.ok) notifyResult.message = `Email sent to ${customerEmail}.`;
