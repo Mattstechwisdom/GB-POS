@@ -1748,7 +1748,7 @@ const SaleWindow: React.FC = () => {
         </div>
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
+          <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} recordType="sale" onChange={handleIntakeChange} />
           <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>

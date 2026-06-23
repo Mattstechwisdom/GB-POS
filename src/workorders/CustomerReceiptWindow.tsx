@@ -523,13 +523,25 @@ const CustomerReceiptWindow: React.FC = () => {
               <div className="slogan">The Solution Lives Here!</div>
             </div>
           </div>
-          <div className="brand-right">
-            <div><strong>Invoice:</strong> {invoiceNo}</div>
-            <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
-            <div><strong>Client:</strong> {fullName}</div>
-            <div><strong>Phone:</strong> {phone}</div>
-            {phoneAlt ? <div><strong>Alt Phone:</strong> {phoneAlt}</div> : null}
-            {email ? <div><strong>Email:</strong> {email}</div> : null}
+          <div className="brand-right" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            {qrDataUrl ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <img
+                  src={qrDataUrl}
+                  alt="Status QR"
+                  style={{ width: 72, height: 72, border: '1px solid #d1d5db', borderRadius: 6, display: 'block' }}
+                />
+                <div style={{ fontSize: '7.5pt', color: '#555', textAlign: 'center', lineHeight: 1.2, maxWidth: 72 }}>Scan to update status</div>
+              </div>
+            ) : null}
+            <div style={{ textAlign: 'right', fontSize: '10pt', lineHeight: '1.2' }}>
+              <div><strong>Invoice:</strong> {invoiceNo}</div>
+              <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
+              <div><strong>Client:</strong> {fullName}</div>
+              <div><strong>Phone:</strong> {phone}</div>
+              {phoneAlt ? <div><strong>Alt Phone:</strong> {phoneAlt}</div> : null}
+              {email ? <div><strong>Email:</strong> {email}</div> : null}
+            </div>
           </div>
         </div>
 
@@ -743,21 +755,7 @@ const CustomerReceiptWindow: React.FC = () => {
           </div>
         ) : null}
 
-        {/* QR Code status panel */}
-        {qrDataUrl ? (
-          <div style={{ marginTop: 16, padding: '12px 14px', background: '#f8fafc', border: '1px solid #d1d5db', borderRadius: 10, display: 'flex', gap: 16, alignItems: 'center', pageBreakInside: 'avoid' }}>
-            <img src={qrDataUrl} alt="Status QR Code" style={{ width: 80, height: 80, flexShrink: 0, borderRadius: 6, border: '1px solid #e5e7eb' }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: '10pt', marginBottom: 3 }}>📱 Check Repair Status</div>
-              <div style={{ fontSize: '9pt', color: '#444', lineHeight: 1.5 }}>
-                Scan this QR code to receive real-time status updates on your {isSaleReceipt ? 'order' : 'repair'} by email.
-              </div>
-              {qrStatusUrl ? (
-                <div style={{ fontSize: '8pt', color: '#6b7280', marginTop: 4, wordBreak: 'break-all' }}>{qrStatusUrl}</div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        {/* end receipt body */}
 
         </div>
       </div>
