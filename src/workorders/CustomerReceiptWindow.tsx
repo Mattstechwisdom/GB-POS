@@ -74,26 +74,36 @@ const CustomerReceiptWindow: React.FC = () => {
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [qrStatusUrl, setQrStatusUrl] = useState<string>('');
+  const [qrLoading, setQrLoading] = useState<boolean>(false);
+  const [qrError, setQrError] = useState<string>('');
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
 
   // Load QR code for status page
   useEffect(() => {
     const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
-    if (!recordId) return;
+    console.log('[QR] recordId:', recordId, '| data.id:', (data as any).id, '| data.workOrderId:', (data as any).workOrderId);
+    if (!recordId) { console.log('[QR] No recordId — skipping'); return; }
     const type: 'repair' | 'sale' = isSaleReceipt ? 'sale' : 'repair';
     let alive = true;
+    setQrLoading(true);
+    setQrError('');
     (async () => {
       try {
         const api = (window as any).api;
-        if (!api?.qrGetStatusUrl) return;
+        if (!api?.qrGetStatusUrl) { console.warn('[QR] api.qrGetStatusUrl not available'); if (alive) { setQrLoading(false); setQrError('api unavailable'); } return; }
         const urlRes = await api.qrGetStatusUrl(type, recordId);
-        if (!alive || !urlRes?.ok || !urlRes?.url) return;
+        console.log('[QR] urlRes:', urlRes);
+        if (!alive) return;
+        if (!urlRes?.ok || !urlRes?.url) { setQrLoading(false); setQrError('getStatusUrl failed: ' + (urlRes?.error || 'no url')); return; }
         setQrStatusUrl(urlRes.url);
         const qrRes = await api.qrGetDataUrl(urlRes.url);
-        if (!alive || !qrRes?.ok || !qrRes?.dataUrl) return;
+        console.log('[QR] qrRes.ok:', qrRes?.ok);
+        if (!alive) return;
+        if (!qrRes?.ok || !qrRes?.dataUrl) { setQrLoading(false); setQrError('getDataUrl failed: ' + (qrRes?.error || 'no dataUrl')); return; }
         setQrDataUrl(qrRes.dataUrl);
-      } catch {}
+        setQrLoading(false);
+      } catch (e: any) { if (alive) { setQrLoading(false); setQrError(String(e?.message || e)); } console.error('[QR] Error:', e); }
     })();
     return () => { alive = false; };
   }, [(data as any).id, (data as any).workOrderId, isSaleReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -455,7 +465,7 @@ const CustomerReceiptWindow: React.FC = () => {
         .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
         .terms { font-size:9pt; color:#222; }
         .toolbar { display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px; position:sticky; top:0; background:#fff; padding-bottom:6px; z-index:5; }
-        @media print { .toolbar { display:none; } }
+        @media print { .toolbar { display:none; } .no-print { display:none !important; } }
       `}</style>
       <div className="page">
         <svg className="circuit" width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -524,6 +534,7 @@ const CustomerReceiptWindow: React.FC = () => {
             </div>
           </div>
           <div className="brand-right" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            {/* QR Code — left of client info */}
             {qrDataUrl ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <img
@@ -532,6 +543,15 @@ const CustomerReceiptWindow: React.FC = () => {
                   style={{ width: 72, height: 72, border: '1px solid #d1d5db', borderRadius: 6, display: 'block' }}
                 />
                 <div style={{ fontSize: '7.5pt', color: '#555', textAlign: 'center', lineHeight: 1.2, maxWidth: 72 }}>Scan to update status</div>
+              </div>
+            ) : qrLoading ? (
+              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #ccc', borderRadius: 6, background: '#f9f9f9' }}>
+                <div style={{ fontSize: '7pt', color: '#888', textAlign: 'center' }}>Loading QR…</div>
+              </div>
+            ) : qrError ? (
+              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #f87171', borderRadius: 6, background: '#fff5f5' }}>
+                <div style={{ fontSize: '6.5pt', color: '#ef4444', textAlign: 'center', padding: '0 4px' }}>QR unavailable</div>
+                <div style={{ fontSize: '5.5pt', color: '#aaa', textAlign: 'center', padding: '0 4px', maxWidth: 68, wordBreak: 'break-all' }}>{qrError}</div>
               </div>
             ) : null}
             <div style={{ textAlign: 'right', fontSize: '10pt', lineHeight: '1.2' }}>
