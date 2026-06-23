@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Status Update – GadgetBoy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh}
+.header{background:#09090b;border-bottom:3px solid #39FF14;padding:14px 20px;display:flex;align-items:center;gap:14px}
+.header-logo{display:flex;align-items:center;gap:12px}
+.header-logo img{height:44px;width:auto;display:block}
+.header-text-title{font-size:18px;font-weight:900;color:#f4f4f5;letter-spacing:-0.3px;line-height:1.1}
+.header-text-sub{font-size:11px;color:#a1a1aa;margin-top:2px}
+.container{max-width:480px;margin:0 auto;padding:20px 16px 48px}
+.info-card{background:#27272a;border:1px solid #3f3f46;border-radius:12px;padding:16px;margin-bottom:20px}
+.info-row{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid #3f3f46}
+.info-row:last-child{border-bottom:none}
+.info-label{font-size:11px;color:#71717a;min-width:72px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
+.info-value{font-size:14px;color:#f4f4f5;font-weight:500;word-break:break-word}
+.section-title{font-size:12px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}
+.status-btn{display:flex;align-items:center;gap:14px;width:100%;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;text-align:left;color:#f4f4f5;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+.status-btn:hover{background:#3f3f46;transform:translateY(-1px)}
+.status-btn:active{transform:translateY(0);background:#52525b}
+.btn-icon{font-size:22px;flex-shrink:0}
+.btn-label{font-size:15px;font-weight:600;line-height:1.3}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.overlay.active{display:flex}
+.spinner{width:44px;height:44px;border:4px solid #3f3f46;border-top-color:#39FF14;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay-text{color:#f4f4f5;font-size:16px;font-weight:600}
+.result-card{display:none;background:#27272a;border:1px solid #3f3f46;border-radius:14px;padding:28px 24px;text-align:center;margin-top:8px}
+.result-card.show{display:block}
+.result-icon{font-size:52px;margin-bottom:14px}
+.result-title{font-size:20px;font-weight:800;margin-bottom:8px}
+.result-sub{font-size:13px;color:#a1a1aa;line-height:1.6}
+.btns-wrap.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-logo">
+    <img src="../public/logo.png" alt="GadgetBoy">
+    <div>
+      <div class="header-text-title">GADGETBOY</div>
+      <div class="header-text-sub">Repair &amp; Retail &nbsp;&middot;&nbsp; Status Update Portal</div>
+    </div>
+  </div>
+</div>
+<div class="container">
+  <div class="info-card">
+    <div class="info-row"><span class="info-label">Order</span><span class="info-value">WO-000042</span></div>
+    <div class="info-row"><span class="info-label">Client</span><span class="info-value">John Smith</span></div>
+    <div class="info-row"><span class="info-label">Phone</span><span class="info-value">(803) 555-1234</span></div>
+    <div class="info-row"><span class="info-label">Alt Phone</span><span class="info-value">(803) 555-5678</span></div>
+    <div class="info-row"><span class="info-label">Email</span><span class="info-value">john@example.com</span></div>
+    <div class="info-row"><span class="info-label">Device</span><span class="info-value">MacBook Pro 13 – Screen Replacement</span></div>
+  </div>
+  <div class="btns-wrap" id="btnsWrap">
+    <div class="section-title">Send Status Update to Client</div>
+
+    <button class="status-btn" onclick="sendStatus('diagnosis','Diagnosis In Process')"
+      style="border-left:4px solid #3b82f6">
+      <span class="btn-icon">🔍</span>
+      <span class="btn-label">Diagnosis In Process</span>
+    </button>
+
+    <button class="status-btn" onclick="sendStatus('part_ordered','Part Ordered')"
+      style="border-left:4px solid #f59e0b">
+      <span class="btn-icon">📦</span>
+      <span class="btn-label">Part Ordered</span>
+    </button>
+
+    <button class="status-btn" onclick="sendStatus('waiting_part','Waiting on Part Delivery')"
+      style="border-left:4px solid #f97316">
+      <span class="btn-icon">🚚</span>
+      <span class="btn-label">Waiting on Part Delivery</span>
+    </button>
+
+    <button class="status-btn" onclick="sendStatus('repair_complete','Repair Complete')"
+      style="border-left:4px solid #22c55e">
+      <span class="btn-icon">✅</span>
+      <span class="btn-label">Repair Complete</span>
+    </button>
+
+    <button class="status-btn" onclick="sendStatus('not_possible','Repair Not Possible')"
+      style="border-left:4px solid #ef4444">
+      <span class="btn-icon">❌</span>
+      <span class="btn-label">Repair Not Possible</span>
+    </button>
+  </div>
+
+  <div class="result-card" id="resultCard">
+    <div class="result-icon" id="resultIcon">✅</div>
+    <div class="result-title" id="resultTitle">Update Sent!</div>
+    <div class="result-sub" id="resultSub">The client has been notified by email.</div>
+  </div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="overlay-text">Sending notification…</div>
+</div>
+<script>
+/* In preview mode the buttons just show the success card locally */
+function sendStatus(key, label) {
+  document.getElementById('overlay').classList.add('active');
+  setTimeout(function () {
+    document.getElementById('overlay').classList.remove('active');
+    document.getElementById('btnsWrap').classList.add('hidden');
+    document.getElementById('resultIcon').textContent = '✅';
+    document.getElementById('resultTitle').textContent = 'Update Sent!';
+    document.getElementById('resultSub').textContent = 'The client has been notified by email. (preview simulation)';
+    document.getElementById('resultCard').classList.add('show');
+  }, 900);
+}
+</script>
+</body>
+</html>

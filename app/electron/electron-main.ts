@@ -4387,9 +4387,11 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
   const isRepair = type === 'repair';
   const clientName = escHtml(String(record?.customerName || record?.client || 'Client').trim() || 'Client');
   const clientEmail = String(record?.customerEmail || record?.email || '').trim();
+  const clientPhone = String(record?.customerPhone || record?.phone || '').trim();
+  const clientPhoneAlt = String(record?.customerPhoneAlt || record?.phoneAlt || '').trim();
   const rawDevice = isRepair
-    ? String(record?.items || record?.device || record?.deviceModel || 'Device').trim()
-    : String(record?.items || 'Order').trim();
+    ? String(record?.productDescription || record?.productCategory || record?.description || record?.device || record?.deviceModel || 'Device').trim()
+    : String(record?.productDescription || record?.category || 'Order').trim();
   const device = escHtml(rawDevice.length > 80 ? rawDevice.slice(0, 80) + '…' : rawDevice);
   const orderId = isRepair ? `WO-${record?.id ?? '?'}` : `INV-${record?.id ?? '?'}`;
 
@@ -4416,6 +4418,12 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
   const emailRow = clientEmail
     ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${escHtml(clientEmail)}</span></div>`
     : '';
+  const phoneRow = clientPhone
+    ? `<div class="info-row"><span class="info-label">Phone</span><span class="info-value">${escHtml(clientPhone)}</span></div>`
+    : '';
+  const phoneAltRow = clientPhoneAlt
+    ? `<div class="info-row"><span class="info-label">Alt Phone</span><span class="info-value">${escHtml(clientPhoneAlt)}</span></div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -4426,9 +4434,11 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh}
-.header{background:#09090b;border-bottom:3px solid #39FF14;padding:16px 20px}
-.header-logo{font-size:22px;font-weight:900;color:#39FF14;letter-spacing:-0.5px}
-.header-sub{font-size:12px;color:#a1a1aa;margin-top:3px}
+.header{background:#09090b;border-bottom:3px solid #39FF14;padding:14px 20px;display:flex;align-items:center;gap:14px}
+.header-logo{display:flex;align-items:center;gap:12px}
+.header-logo img{height:44px;width:auto;display:block}
+.header-text-title{font-size:18px;font-weight:900;color:#f4f4f5;letter-spacing:-0.3px;line-height:1.1}
+.header-text-sub{font-size:11px;color:#a1a1aa;margin-top:2px}
 .container{max-width:480px;margin:0 auto;padding:20px 16px 48px}
 .info-card{background:#27272a;border:1px solid #3f3f46;border-radius:12px;padding:16px;margin-bottom:20px}
 .info-row{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid #3f3f46}
@@ -4456,13 +4466,20 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 </head>
 <body>
 <div class="header">
-  <div class="header-logo">⚡ GADGETBOY</div>
-  <div class="header-sub">Repair &amp; Retail &nbsp;·&nbsp; Status Update Portal</div>
+  <div class="header-logo">
+    <img src="/logo" alt="GadgetBoy" onerror="this.style.display='none'">
+    <div>
+      <div class="header-text-title">GADGETBOY</div>
+      <div class="header-text-sub">Repair &amp; Retail &nbsp;·&nbsp; Status Update Portal</div>
+    </div>
+  </div>
 </div>
 <div class="container">
   <div class="info-card">
     <div class="info-row"><span class="info-label">Order</span><span class="info-value">${escHtml(orderId)}</span></div>
     <div class="info-row"><span class="info-label">Client</span><span class="info-value">${clientName}</span></div>
+    ${phoneRow}
+    ${phoneAltRow}
     ${emailRow}
     <div class="info-row"><span class="info-label">${isRepair ? 'Device' : 'Item(s)'}</span><span class="info-value">${device}</span></div>
   </div>
@@ -4530,6 +4547,22 @@ async function handleQrRequest(req: any, res: any) {
       'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify({ ip: getLanIp() }));
+    return;
+  }
+
+  // Serve the shop logo so the status page can display it when scanned from a phone.
+  if (url === '/logo') {
+    const logoPath = isDev
+      ? path.join(app.getAppPath(), 'public', 'logo.png')
+      : path.join(app.getAppPath(), 'dist', 'logo.png');
+    try {
+      const data = fs.readFileSync(logoPath);
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=86400' });
+      res.end(data);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('logo not found');
+    }
     return;
   }
 
