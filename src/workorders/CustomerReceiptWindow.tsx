@@ -3,6 +3,7 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
+import QRCode from 'qrcode';
 
 function getPayload() {
   try {
@@ -82,8 +83,7 @@ const CustomerReceiptWindow: React.FC = () => {
   // Load QR code for status page
   useEffect(() => {
     const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
-    console.log('[QR] recordId:', recordId, '| data.id:', (data as any).id, '| data.workOrderId:', (data as any).workOrderId);
-    if (!recordId) { console.log('[QR] No recordId — skipping'); return; }
+    if (!recordId) return;
     const type: 'repair' | 'sale' = isSaleReceipt ? 'sale' : 'repair';
     let alive = true;
     setQrLoading(true);
@@ -91,19 +91,37 @@ const CustomerReceiptWindow: React.FC = () => {
     (async () => {
       try {
         const api = (window as any).api;
-        if (!api?.qrGetStatusUrl) { console.warn('[QR] api.qrGetStatusUrl not available'); if (alive) { setQrLoading(false); setQrError('api unavailable'); } return; }
-        const urlRes = await api.qrGetStatusUrl(type, recordId);
-        console.log('[QR] urlRes:', urlRes);
-        if (!alive) return;
-        if (!urlRes?.ok || !urlRes?.url) { setQrLoading(false); setQrError('getStatusUrl failed: ' + (urlRes?.error || 'no url')); return; }
-        setQrStatusUrl(urlRes.url);
-        const qrRes = await api.qrGetDataUrl(urlRes.url);
-        console.log('[QR] qrRes.ok:', qrRes?.ok);
-        if (!alive) return;
-        if (!qrRes?.ok || !qrRes?.dataUrl) { setQrLoading(false); setQrError('getDataUrl failed: ' + (qrRes?.error || 'no dataUrl')); return; }
-        setQrDataUrl(qrRes.dataUrl);
+        let statusUrl: string;
+
+        if (api?.qrGetStatusUrl) {
+          // Electron path — ask main process for the LAN URL
+          const urlRes = await api.qrGetStatusUrl(type, recordId);
+          if (!alive) return;
+          if (!urlRes?.ok || !urlRes?.url) { setQrLoading(false); setQrError('Status URL failed'); return; }
+          statusUrl = urlRes.url;
+          setQrStatusUrl(statusUrl);
+          const qrRes = await api.qrGetDataUrl(statusUrl);
+          if (!alive) return;
+          if (!qrRes?.ok || !qrRes?.dataUrl) { setQrLoading(false); setQrError('QR generate failed'); return; }
+          setQrDataUrl(qrRes.dataUrl);
+        } else {
+          // Browser / non-Electron fallback — generate QR client-side
+          // Use localhost so the code is still scannable when previewing on the same machine
+          statusUrl = `http://localhost:7777/status/${type}/${recordId}`;
+          setQrStatusUrl(statusUrl);
+          const dataUrl: string = await QRCode.toDataURL(statusUrl, {
+            width: 200, margin: 1,
+            color: { dark: '#000000', light: '#ffffff' },
+            errorCorrectionLevel: 'M',
+          });
+          if (!alive) return;
+          setQrDataUrl(dataUrl);
+        }
+
         setQrLoading(false);
-      } catch (e: any) { if (alive) { setQrLoading(false); setQrError(String(e?.message || e)); } console.error('[QR] Error:', e); }
+      } catch (e: any) {
+        if (alive) { setQrLoading(false); setQrError(String(e?.message || e)); }
+      }
     })();
     return () => { alive = false; };
   }, [(data as any).id, (data as any).workOrderId, isSaleReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
