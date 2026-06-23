@@ -79,6 +79,10 @@ const CustomerReceiptWindow: React.FC = () => {
   const [qrError, setQrError] = useState<string>('');
   // qrReady = true once QR has either loaded OR definitively failed (so silent print can proceed)
   const [qrReady, setQrReady] = useState<boolean>(false);
+  // Ref mirror of qrReady so that the silent-print interval can read the *current* value
+  // without being affected by stale closures (intervals capture the value at creation time).
+  const qrReadyRef = useRef(false);
+  useEffect(() => { qrReadyRef.current = qrReady; }, [qrReady]);
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
 
@@ -283,13 +287,15 @@ const CustomerReceiptWindow: React.FC = () => {
             ]);
           }
         } catch {}
-        // Wait for QR to finish loading (or time out after 2 s to avoid blocking print)
-        if (!qrReady) {
+        // Wait for QR to finish loading (or time out after 2 s to avoid blocking print).
+        // Use qrReadyRef (not qrReady state) so the interval reads the current value,
+        // not the stale closure captured when this effect ran.
+        if (!qrReadyRef.current) {
           await Promise.race([
             new Promise<void>((resolve) => {
-              // Poll qrReady state via a short interval — resolves as soon as it flips
+              // Poll via ref — always reflects the latest React state
               const id = window.setInterval(() => {
-                if (qrReady) { window.clearInterval(id); resolve(); }
+                if (qrReadyRef.current) { window.clearInterval(id); resolve(); }
               }, 30);
             }),
             new Promise<void>((r) => window.setTimeout(r, 2000)),
@@ -310,7 +316,7 @@ const CustomerReceiptWindow: React.FC = () => {
       cancelled = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [flags.autoPrint, flags.silent, logoSrc, qrReady]);
+  }, [flags.autoPrint, flags.silent, logoSrc]); // qrReady accessed via qrReadyRef — no re-run needed
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';

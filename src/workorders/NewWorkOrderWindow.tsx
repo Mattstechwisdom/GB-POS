@@ -755,6 +755,31 @@ const NewWorkOrderWindow: React.FC = () => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
 
+  // Stable ref so handleSidebarForceSave doesn't change on every render
+  const workOrderFullRef = useRef<WorkOrderFull>(workOrderFull);
+  useEffect(() => { workOrderFullRef.current = workOrderFull; }, [workOrderFull]);
+
+  // Called by the sidebar "Print customer receipt" button when the work order
+  // hasn't been persisted yet (id=0). Saves immediately so the receipt can
+  // embed a real QR-code status URL.
+  const handleSidebarForceSave = useCallback(async (): Promise<number> => {
+    const current = workOrderFullRef.current as any;
+    const existingId = Number(current?.id || 0) || 0;
+    if (existingId > 0) return existingId; // already saved — nothing to do
+    const api: any = (window as any).api;
+    if (typeof api.addWorkOrder !== 'function') return 0;
+    try {
+      const added = await api.addWorkOrder({ ...current });
+      if (added?.id) {
+        const newId = Number(added.id) || 0;
+        // Sync React state so the autosave takes the UPDATE path, not CREATE again
+        setWo(w => ({ ...w, id: newId }));
+        return newId;
+      }
+    } catch (e) { console.error('Force-save before receipt failed', e); }
+    return 0;
+  }, []); // stable — reads latest workOrder from ref
+
   const handleFormChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
@@ -1266,11 +1291,28 @@ const NewWorkOrderWindow: React.FC = () => {
 
         setWo(() => nextWo);
 
-        if (wo.id && wo.id > 0) {
+        // Persist the work order. If it's brand-new (id=0) we create it here so the
+        // receipt can include a real QR-code URL. If already saved, update it.
+        let effectiveId = Number((wo as any).id || 0) || 0;
+        if (effectiveId > 0) {
           try {
             await api.update('workOrders', { ...nextWo });
           } catch (e) {
             console.error('Failed persisting checkout update', e);
+          }
+        } else {
+          // Brand-new work order — save it now so we have a real ID for the receipt QR
+          try {
+            const added = typeof api.addWorkOrder === 'function'
+              ? await api.addWorkOrder({ ...nextWo })
+              : await api.dbAdd('workOrders', { ...nextWo });
+            if (added?.id) {
+              effectiveId = Number(added.id) || 0;
+              // Sync state so autosave won't create a duplicate
+              setWo(w => ({ ...w, id: effectiveId }));
+            }
+          } catch (e) {
+            console.error('Failed creating work order on checkout', e);
           }
         }
 
@@ -1305,7 +1347,7 @@ const NewWorkOrderWindow: React.FC = () => {
             } catch {}
 
             const payload = {
-              id: (wo as any).id,
+              id: effectiveId || (wo as any).id,
               customerId: (wo as any).customerId,
               customerName,
               customerPhone,
@@ -1387,7 +1429,7 @@ const NewWorkOrderWindow: React.FC = () => {
         </div>
       )}
       <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-        <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} validationFlags={sidebarValidationFlags} />
+        <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} validationFlags={sidebarValidationFlags} onRequestForceSave={handleSidebarForceSave} />
         <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="flex items-center justify-between">

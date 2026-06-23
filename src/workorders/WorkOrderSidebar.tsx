@@ -13,9 +13,12 @@ interface Props {
   hideOrderDeliveryDates?: boolean; // when true in Sale window, hide Product ordered & Product delivered (keep Client pickup)
   renderActions?: (workOrder: WorkOrderFull) => React.ReactNode; // override default print buttons
   validationFlags?: Partial<Record<'assignedTo', boolean>>;
+  /** Called when the receipt button needs a saved work-order ID but the record is still unsaved.
+   *  Should persist the work order immediately and return its new numeric ID (0 if it fails). */
+  onRequestForceSave?: () => Promise<number>;
 }
 
-const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags }) => {
+const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags, onRequestForceSave }) => {
   const [techs, setTechs] = useState<any[]>([]);
   useEffect(() => {
     let mounted = true;
@@ -214,8 +217,15 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     }
                   } catch {}
 
+                  // If the work order hasn't been saved yet (id=0), force-save now so the
+                  // receipt can embed a real QR-code status URL.
+                  let effectiveId = Number((workOrder as any).id || 0) || 0;
+                  if (!effectiveId && typeof onRequestForceSave === 'function') {
+                    try { effectiveId = (await onRequestForceSave()) || 0; } catch {}
+                  }
+
                   const payload = {
-                    id: (workOrder as any).id,
+                    id: effectiveId || (workOrder as any).id,
                     customerId: (workOrder as any).customerId,
                     customerName,
                     customerPhone,
@@ -267,6 +277,7 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && prev.hideDates === next.hideDates
     && prev.hideOrderDeliveryDates === next.hideOrderDeliveryDates
     && prev.renderActions === next.renderActions
+    && prev.onRequestForceSave === next.onRequestForceSave
     && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
     && String(a.status || '') === String(b.status || '')
     && String(a.assignedTo || '') === String(b.assignedTo || '')
