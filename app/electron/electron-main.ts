@@ -4647,6 +4647,12 @@ async function handleQrRequest(req: any, res: any) {
           waiting_part:    'Waiting on Part Delivery',
           repair_complete: 'Repair Complete',
           not_possible:    'Repair Not Possible',
+          storage_fee:     'Storage Fee Notice',
+        };
+        const saleStatusMap: Record<string, string> = {
+          product_ordered: 'Product Ordered',
+          product_in_shop: 'Product In Shop',
+          storage_fee:     'Storage Fee Notice',
         };
         try {
           const updates: any = {
@@ -4655,6 +4661,8 @@ async function handleQrRequest(req: any, res: any) {
           };
           if (type === 'repair' && repairStatusMap[statusKey]) {
             updates.repairStatus = repairStatusMap[statusKey];
+          } else if (type === 'sale' && saleStatusMap[statusKey]) {
+            updates.status = saleStatusMap[statusKey];
           }
           const freshDb2 = readDb();
           const col: any[] = Array.isArray(freshDb2[collection]) ? freshDb2[collection] : [];
