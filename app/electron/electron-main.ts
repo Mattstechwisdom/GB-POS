@@ -4347,6 +4347,369 @@ if (!app.requestSingleInstanceLock()) {
       if (win) win.focus();
     }
   });
+// ─────────────────────────────────────────────────────────────────────────────
+// QR Code Status Server
+// Serves a mobile-friendly status update page at http://[LAN-IP]:7777/status/{repair|sale}/{id}
+// Technician scans QR on receipt → taps status → client gets email notification.
+// ─────────────────────────────────────────────────────────────────────────────
+const httpMod = require('http');
+
+const QR_PORT = 7777;
+let qrHttpServer: any = null;
+
+function getLanIp(): string {
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const iface of (ifaces[name] || [])) {
+        if (!(iface as any).internal && (iface as any).family === 'IPv4') {
+          return (iface as any).address;
+        }
+      }
+    }
+  } catch {}
+  return '127.0.0.1';
+}
+
+function qrStatusUrl(type: 'repair' | 'sale', id: number | string): string {
+  return `http://${getLanIp()}:${QR_PORT}/status/${type}/${id}`;
+}
+
+function escHtml(s: any): string {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
+  const isRepair = type === 'repair';
+  const clientName = escHtml(String(record?.customerName || record?.client || 'Client').trim() || 'Client');
+  const clientEmail = String(record?.customerEmail || record?.email || '').trim();
+  const rawDevice = isRepair
+    ? String(record?.items || record?.device || record?.deviceModel || 'Device').trim()
+    : String(record?.items || 'Order').trim();
+  const device = escHtml(rawDevice.length > 80 ? rawDevice.slice(0, 80) + '…' : rawDevice);
+  const orderId = isRepair ? `WO-${record?.id ?? '?'}` : `INV-${record?.id ?? '?'}`;
+
+  const repairStatuses = [
+    { key: 'diagnosis',       label: 'Diagnosis In Process',      icon: '🔍', color: '#3b82f6' },
+    { key: 'part_ordered',    label: 'Part Ordered',              icon: '📦', color: '#f59e0b' },
+    { key: 'waiting_part',    label: 'Waiting on Part Delivery',  icon: '🚚', color: '#f97316' },
+    { key: 'repair_complete', label: 'Repair Complete',           icon: '✅', color: '#22c55e' },
+    { key: 'not_possible',    label: 'Repair Not Possible',       icon: '❌', color: '#ef4444' },
+  ];
+  const saleStatuses = [
+    { key: 'product_ordered',  label: 'Product Ordered',   icon: '📦', color: '#f59e0b' },
+    { key: 'product_in_shop',  label: 'Product In Shop',   icon: '🏪', color: '#22c55e' },
+  ];
+
+  const statuses = isRepair ? repairStatuses : saleStatuses;
+  const buttonsHtml = statuses.map(s => `
+    <button class="status-btn" onclick="sendStatus('${s.key}','${escHtml(s.label)}')"
+      style="border-left:4px solid ${s.color}">
+      <span class="btn-icon">${s.icon}</span>
+      <span class="btn-label">${escHtml(s.label)}</span>
+    </button>`).join('\n');
+
+  const emailRow = clientEmail
+    ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${escHtml(clientEmail)}</span></div>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Status Update – GadgetBoy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh}
+.header{background:#09090b;border-bottom:3px solid #39FF14;padding:16px 20px}
+.header-logo{font-size:22px;font-weight:900;color:#39FF14;letter-spacing:-0.5px}
+.header-sub{font-size:12px;color:#a1a1aa;margin-top:3px}
+.container{max-width:480px;margin:0 auto;padding:20px 16px 48px}
+.info-card{background:#27272a;border:1px solid #3f3f46;border-radius:12px;padding:16px;margin-bottom:20px}
+.info-row{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid #3f3f46}
+.info-row:last-child{border-bottom:none}
+.info-label{font-size:11px;color:#71717a;min-width:72px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
+.info-value{font-size:14px;color:#f4f4f5;font-weight:500;word-break:break-word}
+.section-title{font-size:12px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}
+.status-btn{display:flex;align-items:center;gap:14px;width:100%;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;text-align:left;color:#f4f4f5;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+.status-btn:hover{background:#3f3f46;transform:translateY(-1px)}
+.status-btn:active{transform:translateY(0);background:#52525b}
+.btn-icon{font-size:22px;flex-shrink:0}
+.btn-label{font-size:15px;font-weight:600;line-height:1.3}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.overlay.active{display:flex}
+.spinner{width:44px;height:44px;border:4px solid #3f3f46;border-top-color:#39FF14;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay-text{color:#f4f4f5;font-size:16px;font-weight:600}
+.result-card{display:none;background:#27272a;border:1px solid #3f3f46;border-radius:14px;padding:28px 24px;text-align:center;margin-top:8px}
+.result-card.show{display:block}
+.result-icon{font-size:52px;margin-bottom:14px}
+.result-title{font-size:20px;font-weight:800;margin-bottom:8px}
+.result-sub{font-size:13px;color:#a1a1aa;line-height:1.6}
+.btns-wrap.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-logo">⚡ GADGETBOY</div>
+  <div class="header-sub">Repair &amp; Retail &nbsp;·&nbsp; Status Update Portal</div>
+</div>
+<div class="container">
+  <div class="info-card">
+    <div class="info-row"><span class="info-label">Order</span><span class="info-value">${escHtml(orderId)}</span></div>
+    <div class="info-row"><span class="info-label">Client</span><span class="info-value">${clientName}</span></div>
+    ${emailRow}
+    <div class="info-row"><span class="info-label">${isRepair ? 'Device' : 'Item(s)'}</span><span class="info-value">${device}</span></div>
+  </div>
+  <div class="btns-wrap" id="btnsWrap">
+    <div class="section-title">Send Status Update to Client</div>
+    ${buttonsHtml}
+  </div>
+  <div class="result-card" id="resultCard">
+    <div class="result-icon" id="resultIcon">✅</div>
+    <div class="result-title" id="resultTitle">Update Sent!</div>
+    <div class="result-sub" id="resultSub">The client has been notified.</div>
+  </div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="overlay-text">Sending notification…</div>
+</div>
+<script>
+function sendStatus(key,label){
+  document.getElementById('overlay').classList.add('active');
+  fetch(window.location.pathname,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({status:key,label:label})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    document.getElementById('overlay').classList.remove('active');
+    document.getElementById('btnsWrap').classList.add('hidden');
+    var ok=data.ok!==false;
+    document.getElementById('resultIcon').textContent=ok?'✅':'⚠️';
+    document.getElementById('resultTitle').textContent=ok?'Update Sent!':'Status Logged';
+    document.getElementById('resultSub').textContent=data.message||(ok?'The client has been notified by email.':'Status was saved but email could not be sent. Check email configuration in the POS.');
+    document.getElementById('resultCard').classList.add('show');
+  })
+  .catch(function(){
+    document.getElementById('overlay').classList.remove('active');
+    document.getElementById('resultIcon').textContent='❌';
+    document.getElementById('resultTitle').textContent='Connection Error';
+    document.getElementById('resultSub').textContent='Could not reach the POS. Make sure the app is running on the same network.';
+    document.getElementById('resultCard').classList.add('show');
+    document.getElementById('btnsWrap').classList.add('hidden');
+  });
+}
+</script>
+</body>
+</html>`;
+}
+
+async function handleQrRequest(req: any, res: any) {
+  const rawUrl = String(req.url || '');
+  const url = rawUrl.split('?')[0];
+
+  if (url === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('pong');
+    return;
+  }
+
+  const match = url.match(/^\/status\/(repair|sale)\/(\d+)$/);
+  if (!match) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
+
+  const type = match[1] as 'repair' | 'sale';
+  const id = parseInt(match[2], 10);
+  const collection = type === 'repair' ? 'workOrders' : 'sales';
+
+  const db = readDb();
+  const records: any[] = Array.isArray(db[collection]) ? db[collection] : [];
+  const record = records.find((r: any) => Number(r?.id || 0) === id) || null;
+
+  if (!record) {
+    const notFoundHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found</title><style>body{background:#18181b;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px}.card{background:#27272a;border:1px solid #3f3f46;border-radius:14px;padding:32px;max-width:360px}</style></head><body><div class="card"><div style="font-size:48px;margin-bottom:16px">🔍</div><h2 style="margin-bottom:8px">Record Not Found</h2><p style="color:#a1a1aa;font-size:14px">Order #${id} could not be located. It may have been removed.</p></div></body></html>`;
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(notFoundHtml);
+    return;
+  }
+
+  if (req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(buildStatusPageHtml(type, record));
+    return;
+  }
+
+  if (req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk: any) => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const statusKey = String(payload?.status || '').trim();
+        const statusLabel = String(payload?.label || '').trim();
+        if (!statusKey || !statusLabel) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Missing status/label' }));
+          return;
+        }
+
+        // Resolve client email — try record first, then customer record
+        let customerEmail = String(record?.customerEmail || record?.email || '').trim();
+        const customerId = Number(record?.customerId || 0);
+        if (!customerEmail && customerId > 0) {
+          const freshDb = readDb();
+          const customers: any[] = Array.isArray(freshDb['customers']) ? freshDb['customers'] : [];
+          const cust = customers.find((c: any) => Number(c?.id || 0) === customerId);
+          if (cust) customerEmail = String(cust?.email || '').trim();
+        }
+
+        const clientName = String(record?.customerName || record?.client || 'Client').trim() || 'Client';
+        const rawDevice = type === 'repair'
+          ? String(record?.items || record?.device || record?.deviceModel || 'your device').trim()
+          : String(record?.items || 'your order').trim();
+        const deviceDisplay = rawDevice.length > 100 ? rawDevice.slice(0, 100) + '…' : rawDevice;
+        const orderId = type === 'repair' ? `WO-${id}` : `INV-${id}`;
+
+        // Persist status update to record
+        const repairStatusMap: Record<string, string> = {
+          diagnosis:       'Diagnosis In Process',
+          part_ordered:    'Part Ordered',
+          waiting_part:    'Waiting on Part Delivery',
+          repair_complete: 'Repair Complete',
+          not_possible:    'Repair Not Possible',
+        };
+        try {
+          const updates: any = {
+            statusUpdate:    statusLabel,
+            statusUpdatedAt: new Date().toISOString(),
+          };
+          if (type === 'repair' && repairStatusMap[statusKey]) {
+            updates.repairStatus = repairStatusMap[statusKey];
+          }
+          const freshDb2 = readDb();
+          const col: any[] = Array.isArray(freshDb2[collection]) ? freshDb2[collection] : [];
+          const idx = col.findIndex((r: any) => Number(r?.id || 0) === id);
+          if (idx >= 0) {
+            col[idx] = { ...col[idx], ...updates };
+            freshDb2[collection] = col;
+            writeDb(freshDb2);
+            scheduleCollectionChanged(collection);
+          }
+        } catch { /* non-fatal */ }
+
+        // Send email notification
+        let emailResult: any = { ok: false, error: 'No email on file for this client.' };
+        if (customerEmail) {
+          const emailHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #39FF14;">
+    <div style="font-size:20px;font-weight:900;color:#39FF14;letter-spacing:-.5px;">⚡ GADGETBOY</div>
+    <div style="font-size:12px;color:#a1a1aa;margin-top:4px;">Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">Status Update for ${escHtml(orderId)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, here's the latest on <strong>${escHtml(deviceDisplay)}</strong>:</p>
+    <div style="background:#f0fdf4;border:1.5px solid #22c55e;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current Status</div>
+      <div style="font-size:20px;font-weight:800;color:#166534;">${escHtml(statusLabel)}</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
+      Questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
+    </p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
+      GADGETBOY Repair &amp; Retail &nbsp;·&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;·&nbsp; gadgetboysc@gmail.com
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+          emailResult = await sendConfiguredEmail({
+            to: customerEmail,
+            subject: `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
+            text: `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
+            html: emailHtml,
+          });
+        }
+
+        const message = emailResult.ok
+          ? `Email sent to ${customerEmail}.`
+          : (emailResult.error || 'Status saved; no email sent.');
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: emailResult.ok, message }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
+  }
+
+  res.writeHead(405, { 'Content-Type': 'text/plain' });
+  res.end('Method Not Allowed');
+}
+
+function startQrStatusServer() {
+  if (qrHttpServer) return;
+  try {
+    qrHttpServer = httpMod.createServer(handleQrRequest);
+    qrHttpServer.on('error', (e: any) => {
+      if (e.code === 'EADDRINUSE') {
+        console.warn(`[QR Server] Port ${QR_PORT} already in use — status server unavailable.`);
+      } else {
+        console.error('[QR Server] Error:', e);
+      }
+    });
+    qrHttpServer.listen(QR_PORT, '0.0.0.0', () => {
+      console.log(`[QR Server] Running on port ${QR_PORT} — accessible at http://${getLanIp()}:${QR_PORT}`);
+    });
+  } catch (e) {
+    console.error('[QR Server] Failed to start:', e);
+  }
+}
+
+// IPC: generate QR code data URL for a given URL string
+ipcMain.handle('qr:getDataUrl', async (_event: any, url: string) => {
+  try {
+    const QRCode = require('qrcode');
+    const dataUrl: string = await QRCode.toDataURL(String(url || ''), {
+      width: 200,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    });
+    return { ok: true, dataUrl };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+// IPC: return the LAN-accessible status URL for a work order or sale
+ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => {
+  try {
+    const t = String(type || '') === 'sale' ? 'sale' : 'repair';
+    const safeId = Number(id) || 0;
+    return { ok: true, url: qrStatusUrl(t as 'repair' | 'sale', safeId) };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
@@ -4409,6 +4772,7 @@ if (!app.requestSingleInstanceLock()) {
       // ignore
     }
     createWindow();
+    startQrStatusServer();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

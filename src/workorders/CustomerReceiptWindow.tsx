@@ -72,8 +72,31 @@ const CustomerReceiptWindow: React.FC = () => {
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrStatusUrl, setQrStatusUrl] = useState<string>('');
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Load QR code for status page
+  useEffect(() => {
+    const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
+    if (!recordId) return;
+    const type: 'repair' | 'sale' = isSaleReceipt ? 'sale' : 'repair';
+    let alive = true;
+    (async () => {
+      try {
+        const api = (window as any).api;
+        if (!api?.qrGetStatusUrl) return;
+        const urlRes = await api.qrGetStatusUrl(type, recordId);
+        if (!alive || !urlRes?.ok || !urlRes?.url) return;
+        setQrStatusUrl(urlRes.url);
+        const qrRes = await api.qrGetDataUrl(urlRes.url);
+        if (!alive || !qrRes?.ok || !qrRes?.dataUrl) return;
+        setQrDataUrl(qrRes.dataUrl);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [(data as any).id, (data as any).workOrderId, isSaleReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let alive = true;
@@ -719,6 +742,23 @@ const CustomerReceiptWindow: React.FC = () => {
             </div>
           </div>
         ) : null}
+
+        {/* QR Code status panel */}
+        {qrDataUrl ? (
+          <div style={{ marginTop: 16, padding: '12px 14px', background: '#f8fafc', border: '1px solid #d1d5db', borderRadius: 10, display: 'flex', gap: 16, alignItems: 'center', pageBreakInside: 'avoid' }}>
+            <img src={qrDataUrl} alt="Status QR Code" style={{ width: 80, height: 80, flexShrink: 0, borderRadius: 6, border: '1px solid #e5e7eb' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: '10pt', marginBottom: 3 }}>📱 Check Repair Status</div>
+              <div style={{ fontSize: '9pt', color: '#444', lineHeight: 1.5 }}>
+                Scan this QR code to receive real-time status updates on your {isSaleReceipt ? 'order' : 'repair'} by email.
+              </div>
+              {qrStatusUrl ? (
+                <div style={{ fontSize: '8pt', color: '#6b7280', marginTop: 4, wordBreak: 'break-all' }}>{qrStatusUrl}</div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         </div>
       </div>
     </div>
