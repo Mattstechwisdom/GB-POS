@@ -126,6 +126,12 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-2"
               onClick={async () => {
                 try {
+                  // Force-save brand-new (id=0) work orders so the QR URL points to a real record
+                  let releaseId = Number((workOrder as any).id || 0) || 0;
+                  if (!releaseId && typeof onRequestForceSave === 'function') {
+                    try { releaseId = (await onRequestForceSave()) || 0; } catch {}
+                  }
+
                   let customerName = (workOrder as any).customerName;
                   let customerPhone = (workOrder as any).customerPhone;
                   let customerPhoneAlt = '';
@@ -154,8 +160,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                   }));
 
                   const wo: PrintWorkOrder = {
-                    invoiceId: String((workOrder as any).id ?? ''),
-                    id: Number((workOrder as any).id || 0) || 0,
+                    invoiceId: String(releaseId || ((workOrder as any).id ?? '')),
+                    id: releaseId,
                     type: 'repair',
                     dateTimeISO: (workOrder as any).checkInAt || new Date().toISOString(),
                     clientName: customerName || `${(workOrder as any).firstName ?? ''} ${(workOrder as any).lastName ?? ''}`.trim(),

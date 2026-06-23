@@ -164,7 +164,7 @@ const ReleaseFormWindow: React.FC = () => {
       `}</style>
       <div className="page">
         <div className="page-inner">
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
         {/* Left — logo + shop name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
@@ -179,7 +179,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 16px' }}>
           {qrDataUrl ? (
             <>
-              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 80, height: 80, display: 'block' }} />
+              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 72, height: 72, display: 'block' }} />
               <div style={{ fontSize: 7, color: '#555', textAlign: 'center', marginTop: 3, letterSpacing: '0.4px' }}>TECH SCAN</div>
             </>
           ) : null}
