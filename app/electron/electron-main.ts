@@ -4734,14 +4734,17 @@ async function handleQrRequest(req: any, res: any) {
           if (!customerEmail) {
             notifyResult = { ok: false, error: 'No email on file for this client.' };
           } else {
-            // Embed logo as base64 so it renders in all email clients (no public URL needed)
+            // Embed logo via CID inline attachment — works in Gmail, Outlook, Apple Mail
             let logoImgHtml = '<div style="font-size:20px;font-weight:900;color:#39FF14;letter-spacing:-.5px;">GADGETBOY</div>';
+            let logoAttachment: any = null;
             try {
               const logoPath = isDev
                 ? path.join(app.getAppPath(), 'public', 'logo.png')
                 : path.join(app.getAppPath(), 'dist', 'logo.png');
-              const logoB64 = fs.readFileSync(logoPath).toString('base64');
-              if (logoB64) logoImgHtml = `<img src="data:image/png;base64,${logoB64}" alt="GadgetBoy" style="height:44px;width:auto;display:block;">`;
+              if (fs.existsSync(logoPath)) {
+                logoAttachment = { filename: 'logo.png', path: logoPath, cid: 'logo@gadgetboy' };
+                logoImgHtml = `<img src="cid:logo@gadgetboy" alt="GadgetBoy" style="height:44px;width:auto;display:block;">`;
+              }
             } catch { /* use text fallback */ }
 
             const friendlyTitle = isStorageFee
@@ -4812,6 +4815,7 @@ async function handleQrRequest(req: any, res: any) {
                 ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
+              attachments: logoAttachment ? [logoAttachment] : [],
             });
             if (notifyResult.ok) notifyResult.message = `Email sent to ${customerEmail}.`;
           }
