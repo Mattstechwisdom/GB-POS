@@ -105,9 +105,18 @@ const CustomerReceiptWindow: React.FC = () => {
           if (!qrRes?.ok || !qrRes?.dataUrl) { setQrLoading(false); setQrError('QR generate failed'); return; }
           setQrDataUrl(qrRes.dataUrl);
         } else {
-          // Browser / non-Electron fallback — generate QR client-side
-          // Use localhost so the code is still scannable when previewing on the same machine
-          statusUrl = `http://localhost:7777/status/${type}/${recordId}`;
+          // Browser / non-Electron fallback — generate QR client-side.
+          // Ask the QR server for the machine's LAN IP so the QR is scannable
+          // from a phone on the same network (localhost would only work on this PC).
+          let lanIp = 'localhost';
+          try {
+            const ipRes = await fetch('http://localhost:7777/ip');
+            if (ipRes.ok) {
+              const ipJson = await ipRes.json();
+              if (ipJson?.ip && String(ipJson.ip).trim()) lanIp = String(ipJson.ip).trim();
+            }
+          } catch { /* QR server not running — fall back to localhost */ }
+          statusUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
           setQrStatusUrl(statusUrl);
           const dataUrl: string = await QRCode.toDataURL(statusUrl, {
             width: 200, margin: 1,

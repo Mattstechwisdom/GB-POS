@@ -4522,6 +4522,17 @@ async function handleQrRequest(req: any, res: any) {
     return;
   }
 
+  // Allow browser/preview to discover the machine's LAN IP so QR codes point to
+  // the right address when scanned from a phone on the same network.
+  if (url === '/ip') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({ ip: getLanIp() }));
+    return;
+  }
+
   const match = url.match(/^\/status\/(repair|sale)\/(\d+)$/);
   if (!match) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
