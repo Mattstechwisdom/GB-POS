@@ -880,7 +880,7 @@ function decryptAppPassword(cfg: any): string | null {
   }
 }
 
-async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[] }) {
+async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
   if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
@@ -903,6 +903,7 @@ async function sendConfiguredEmail(payload: { to: string; subject: string; text?
   const info = await transporter.sendMail({
     from,
     to,
+    bcc: payload?.bcc ? String(payload.bcc) : undefined,
     subject: String(payload?.subject || 'GadgetBoy POS Report'),
     text: String(payload?.text || ''),
     html: payload?.html ? String(payload.html) : undefined,
@@ -4446,6 +4447,11 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .info-label{font-size:11px;color:#71717a;min-width:72px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
 .info-value{font-size:14px;color:#f4f4f5;font-weight:500;word-break:break-word}
 .section-title{font-size:12px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}
+.notify-row{display:flex;align-items:center;justify-content:space-between;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:11px 14px;margin-bottom:14px}
+.notify-label{font-size:12px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.toggle-wrap{display:flex;background:#18181b;border-radius:8px;padding:3px;gap:2px}
+.toggle-opt{border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;color:#a1a1aa;background:transparent;transition:background .15s,color .15s;-webkit-tap-highlight-color:transparent}
+.toggle-opt.active{background:#39FF14;color:#18181b}
 .status-btn{display:flex;align-items:center;gap:14px;width:100%;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;text-align:left;color:#f4f4f5;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent}
 .status-btn:hover{background:#3f3f46;transform:translateY(-1px)}
 .status-btn:active{transform:translateY(0);background:#52525b}
@@ -4484,6 +4490,13 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
     <div class="info-row"><span class="info-label">${isRepair ? 'Device' : 'Item(s)'}</span><span class="info-value">${device}</span></div>
   </div>
   <div class="btns-wrap" id="btnsWrap">
+    <div class="notify-row">
+      <span class="notify-label">Notify via</span>
+      <div class="toggle-wrap">
+        <button class="toggle-opt active" id="optEmail" onclick="setNotify('email')">✉ Email</button>
+        <button class="toggle-opt" id="optSms" onclick="setNotify('sms')">📱 SMS</button>
+      </div>
+    </div>
     <div class="section-title">Send Status Update to Client</div>
     ${buttonsHtml}
   </div>
@@ -4498,12 +4511,18 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
   <div class="overlay-text">Sending notification…</div>
 </div>
 <script>
+var notifyVia='email';
+function setNotify(val){
+  notifyVia=val;
+  document.getElementById('optEmail').classList.toggle('active',val==='email');
+  document.getElementById('optSms').classList.toggle('active',val==='sms');
+}
 function sendStatus(key,label){
   document.getElementById('overlay').classList.add('active');
   fetch(window.location.pathname,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({status:key,label:label})
+    body:JSON.stringify({status:key,label:label,notifyVia:notifyVia})
   })
   .then(function(r){return r.json();})
   .then(function(data){
@@ -4602,26 +4621,17 @@ async function handleQrRequest(req: any, res: any) {
         const payload = JSON.parse(body || '{}');
         const statusKey = String(payload?.status || '').trim();
         const statusLabel = String(payload?.label || '').trim();
+        const notifyVia = String(payload?.notifyVia || 'email').trim().toLowerCase();
         if (!statusKey || !statusLabel) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Missing status/label' }));
           return;
         }
 
-        // Resolve client email — try record first, then customer record
-        let customerEmail = String(record?.customerEmail || record?.email || '').trim();
-        const customerId = Number(record?.customerId || 0);
-        if (!customerEmail && customerId > 0) {
-          const freshDb = readDb();
-          const customers: any[] = Array.isArray(freshDb['customers']) ? freshDb['customers'] : [];
-          const cust = customers.find((c: any) => Number(c?.id || 0) === customerId);
-          if (cust) customerEmail = String(cust?.email || '').trim();
-        }
-
         const clientName = String(record?.customerName || record?.client || 'Client').trim() || 'Client';
         const rawDevice = type === 'repair'
-          ? String(record?.items || record?.device || record?.deviceModel || 'your device').trim()
-          : String(record?.items || 'your order').trim();
+          ? String(record?.productDescription || record?.productCategory || record?.description || record?.device || record?.deviceModel || 'your device').trim()
+          : String(record?.productDescription || record?.category || 'your order').trim();
         const deviceDisplay = rawDevice.length > 100 ? rawDevice.slice(0, 100) + '…' : rawDevice;
         const orderId = type === 'repair' ? `WO-${id}` : `INV-${id}`;
 
@@ -4652,10 +4662,49 @@ async function handleQrRequest(req: any, res: any) {
           }
         } catch { /* non-fatal */ }
 
-        // Send email notification
-        let emailResult: any = { ok: false, error: 'No email on file for this client.' };
-        if (customerEmail) {
-          const emailHtml = `<!DOCTYPE html>
+        // Send notification — email or SMS depending on tech's selection
+        let notifyResult: any = { ok: false, error: 'No contact info on file for this client.' };
+
+        if (notifyVia === 'sms') {
+          // SMS: use email-to-SMS gateway based on stored carrier, or fall back to a
+          // plain-text email-to-SMS address if the customer's phone is on file.
+          const clientPhone = String(record?.customerPhone || record?.phone || '').replace(/\D/g, '');
+          if (!clientPhone || clientPhone.length < 10) {
+            notifyResult = { ok: false, error: 'No phone number on file for this client.' };
+          } else {
+            // Try sending a short SMS via email-to-SMS gateways for the major US carriers.
+            // The message is sent to all common gateways; carriers silently discard non-matching ones.
+            const smsText = `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
+            const gateways = [
+              `${clientPhone}@vtext.com`,       // Verizon
+              `${clientPhone}@tmomail.net`,      // T-Mobile
+              `${clientPhone}@txt.att.net`,      // AT&T
+              `${clientPhone}@messaging.sprintpcs.com`, // Sprint/T-Mobile
+            ];
+            // Send to first gateway as primary; others as BCC handled by email provider
+            notifyResult = await sendConfiguredEmail({
+              to: gateways[0],
+              bcc: gateways.slice(1).join(','),
+              subject: '',
+              text: smsText,
+              html: `<p>${escHtml(smsText)}</p>`,
+            });
+            if (notifyResult.ok) notifyResult.message = `SMS sent to ${clientPhone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}.`;
+          }
+        } else {
+          // Email (default)
+          let customerEmail = String(record?.customerEmail || record?.email || '').trim();
+          const customerId2 = Number(record?.customerId || 0);
+          if (!customerEmail && customerId2 > 0) {
+            const freshDb3 = readDb();
+            const customers3: any[] = Array.isArray(freshDb3['customers']) ? freshDb3['customers'] : [];
+            const cust3 = customers3.find((c: any) => Number(c?.id || 0) === customerId2);
+            if (cust3) customerEmail = String(cust3?.email || '').trim();
+          }
+          if (!customerEmail) {
+            notifyResult = { ok: false, error: 'No email on file for this client.' };
+          } else {
+            const emailHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
@@ -4679,21 +4728,19 @@ async function handleQrRequest(req: any, res: any) {
   </div>
 </div>
 </body></html>`;
-
-          emailResult = await sendConfiguredEmail({
-            to: customerEmail,
-            subject: `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
-            text: `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
-            html: emailHtml,
-          });
+            notifyResult = await sendConfiguredEmail({
+              to: customerEmail,
+              subject: `[${escHtml(orderId)}] Status Update: ${escHtml(statusLabel)}`,
+              text: `Hi ${clientName},\n\nYour ${type === 'repair' ? 'repair' : 'order'} status has been updated:\n\n  ${statusLabel}\n\nOrder: ${orderId}\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
+              html: emailHtml,
+            });
+            if (notifyResult.ok) notifyResult.message = `Email sent to ${customerEmail}.`;
+          }
         }
 
-        const message = emailResult.ok
-          ? `Email sent to ${customerEmail}.`
-          : (emailResult.error || 'Status saved; no email sent.');
-
+        const message = notifyResult.message || notifyResult.error || 'Status saved.';
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: emailResult.ok, message }));
+        res.end(JSON.stringify({ ok: notifyResult.ok, message }));
       } catch (e: any) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));

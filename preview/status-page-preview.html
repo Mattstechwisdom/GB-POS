@@ -19,6 +19,11 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .info-label{font-size:11px;color:#71717a;min-width:72px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
 .info-value{font-size:14px;color:#f4f4f5;font-weight:500;word-break:break-word}
 .section-title{font-size:12px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px}
+.notify-row{display:flex;align-items:center;justify-content:space-between;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:11px 14px;margin-bottom:14px}
+.notify-label{font-size:12px;color:#a1a1aa;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.toggle-wrap{display:flex;background:#18181b;border-radius:8px;padding:3px;gap:2px}
+.toggle-opt{border:none;border-radius:6px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;color:#a1a1aa;background:transparent;transition:background .15s,color .15s;-webkit-tap-highlight-color:transparent}
+.toggle-opt.active{background:#39FF14;color:#18181b}
 .status-btn{display:flex;align-items:center;gap:14px;width:100%;background:#27272a;border:1px solid #3f3f46;border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;text-align:left;color:#f4f4f5;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent}
 .status-btn:hover{background:#3f3f46;transform:translateY(-1px)}
 .status-btn:active{transform:translateY(0);background:#52525b}
@@ -57,6 +62,13 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
     <div class="info-row"><span class="info-label">Device</span><span class="info-value">MacBook Pro 13 – Screen Replacement</span></div>
   </div>
   <div class="btns-wrap" id="btnsWrap">
+    <div class="notify-row">
+      <span class="notify-label">Notify via</span>
+      <div class="toggle-wrap">
+        <button class="toggle-opt active" id="optEmail" onclick="setNotify('email')">✉ Email</button>
+        <button class="toggle-opt" id="optSms" onclick="setNotify('sms')">📱 SMS</button>
+      </div>
+    </div>
     <div class="section-title">Send Status Update to Client</div>
 
     <button class="status-btn" onclick="sendStatus('diagnosis','Diagnosis In Process')"
@@ -101,6 +113,12 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
   <div class="overlay-text">Sending notification…</div>
 </div>
 <script>
+var notifyVia = 'email';
+function setNotify(val) {
+  notifyVia = val;
+  document.getElementById('optEmail').classList.toggle('active', val === 'email');
+  document.getElementById('optSms').classList.toggle('active', val === 'sms');
+}
 /* In preview mode the buttons just show the success card locally */
 function sendStatus(key, label) {
   document.getElementById('overlay').classList.add('active');
@@ -109,7 +127,7 @@ function sendStatus(key, label) {
     document.getElementById('btnsWrap').classList.add('hidden');
     document.getElementById('resultIcon').textContent = '✅';
     document.getElementById('resultTitle').textContent = 'Update Sent!';
-    document.getElementById('resultSub').textContent = 'The client has been notified by email. (preview simulation)';
+    document.getElementById('resultSub').textContent = (notifyVia === 'sms' ? 'SMS sent to client phone.' : 'Email sent to client.') + ' (preview simulation)';
     document.getElementById('resultCard').classList.add('show');
   }, 900);
 }
