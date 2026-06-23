@@ -1844,7 +1844,7 @@ ipcMain.handle('open-notification-settings', async (event: any) => {
 
 // ─── Clover IPC handlers ───────────────────────────────────────────────────
 
-ipcMain.handle('clover:getConfig', async () => {
+ipcMain.handle('clover:rest:getConfig', async () => {
   const cfg = readCloverRestConfig();
   return {
     merchantId: cfg.merchantId || '',

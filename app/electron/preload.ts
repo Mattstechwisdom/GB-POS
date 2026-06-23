@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('api', {
   openNotifications: (): Promise<any> => ipcRenderer.invoke('open-notifications'),
   openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
   openCloverSettings: (): Promise<any> => ipcRenderer.invoke('open-clover-settings'),
-  cloverGetConfig: (): Promise<any> => ipcRenderer.invoke('clover:getConfig'),
+  cloverGetConfig: (): Promise<any> => ipcRenderer.invoke('clover:rest:getConfig'),
   cloverSaveConfig: (data: any): Promise<any> => ipcRenderer.invoke('clover:saveConfig', data),
   cloverSetAccessToken: (token: string): Promise<any> => ipcRenderer.invoke('clover:setAccessToken', token),
   cloverTestConnection: (): Promise<any> => ipcRenderer.invoke('clover:testConnection'),
