@@ -1558,7 +1558,7 @@ const NewWorkOrderWindow: React.FC = () => {
           />
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} recordType="repair" onChange={handleIntakeChange} />
+          <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
           <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-zinc-200">Retail add-on</h4>
