@@ -96,38 +96,31 @@ const CustomerReceiptWindow: React.FC = () => {
     setQrError('');
     (async () => {
       try {
-        let statusUrl: string;
-        const api = (window as any).api;
+        // Use the QR HTTP server's /ip endpoint to get the LAN IP.
+        // Works in both Electron (renderer can fetch localhost) and browser.
+        // Avoids IPC which can fail silently in packaged builds.
+        let lanIp = 'localhost';
+        try {
+          const ipRes = await fetch('http://localhost:7777/ip');
+          if (ipRes.ok) {
+            const ipJson = await ipRes.json();
+            if (ipJson?.ip && String(ipJson.ip).trim()) lanIp = String(ipJson.ip).trim();
+          }
+        } catch { /* QR server not running — fall back to localhost */ }
 
-        if (api?.qrGetStatusUrl) {
-          // Electron path — ask main process for the LAN IP URL
-          const urlRes = await api.qrGetStatusUrl(type, recordId);
-          if (!alive) return;
-          if (!urlRes?.ok || !urlRes?.url) { setQrLoading(false); setQrError('Status URL failed'); return; }
-          statusUrl = urlRes.url;
-        } else {
-          // Browser fallback — ask QR server for the LAN IP
-          let lanIp = 'localhost';
-          try {
-            const ipRes = await fetch('http://localhost:7777/ip');
-            if (ipRes.ok) {
-              const ipJson = await ipRes.json();
-              if (ipJson?.ip && String(ipJson.ip).trim()) lanIp = String(ipJson.ip).trim();
-            }
-          } catch { /* server not running — fall back to localhost */ }
-          statusUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
-        }
-
+        const statusUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
         setQrStatusUrl(statusUrl);
 
-        // Always generate the QR image client-side using the bundled qrcode package.
-        // Avoids any IPC round-trip that could fail in packaged Electron.
+        // Generate the QR image client-side using the bundled qrcode package.
         const dataUrl: string = await QRCode.toDataURL(statusUrl, {
           width: 200, margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
           errorCorrectionLevel: 'M',
         });
         if (!alive) return;
+        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+          throw new Error('QR generation returned unexpected result');
+        }
         setQrDataUrl(dataUrl);
         setQrLoading(false);
         setQrReady(true);
@@ -592,7 +585,7 @@ const CustomerReceiptWindow: React.FC = () => {
                 <div style={{ fontSize: '7pt', color: '#888', textAlign: 'center' }}>Loading QR…</div>
               </div>
             ) : qrError ? (
-              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #f87171', borderRadius: 6, background: '#fff5f5' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, width: 72, height: 72, border: '1px dashed #f87171', borderRadius: 6, background: '#fff5f5' }}>
                 <div style={{ fontSize: '6.5pt', color: '#ef4444', textAlign: 'center', padding: '0 4px' }}>QR unavailable</div>
               </div>
             ) : (
