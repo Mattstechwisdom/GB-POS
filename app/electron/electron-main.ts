@@ -4402,19 +4402,36 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
     { key: 'waiting_part',    label: 'Waiting on Part Delivery',  icon: '🚚', color: '#f97316' },
     { key: 'repair_complete', label: 'Repair Complete',           icon: '✅', color: '#22c55e' },
     { key: 'not_possible',    label: 'Repair Not Possible',       icon: '❌', color: '#ef4444' },
+    { key: 'pickup_reminder', label: 'Pickup Reminder',           icon: '🔔', color: '#06b6d4' },
   ];
   const saleStatuses = [
     { key: 'product_ordered',  label: 'Product Ordered',   icon: '📦', color: '#f59e0b' },
     { key: 'product_in_shop',  label: 'Product In Shop',   icon: '🏪', color: '#22c55e' },
+    { key: 'pickup_reminder',  label: 'Pickup Reminder',   icon: '🔔', color: '#06b6d4' },
   ];
 
-  const statuses = isRepair ? repairStatuses : saleStatuses;
-  const buttonsHtml = statuses.map(s => `
-    <button class="status-btn" onclick="sendStatus('${s.key}','${escHtml(s.label)}')"
-      style="border-left:4px solid ${s.color}">
+  // Keys that expand a detail panel; others send immediately
+  const detailPanelMap: Record<string, 'date' | 'notes'> = isRepair
+    ? { part_ordered: 'date', waiting_part: 'date', repair_complete: 'notes', not_possible: 'notes' }
+    : { product_ordered: 'date' };
+  const allStatuses = isRepair ? repairStatuses : saleStatuses;
+  const buttonsHtml = allStatuses.map(s => {
+    const panelType = detailPanelMap[s.key];
+    const btnOnClick = panelType ? `toggleDetail('${s.key}')` : `sendStatus('${s.key}','${s.label}')`;
+    const arrowSpan = panelType ? `<span class="btn-arrow" id="arrow_${s.key}">&rsaquo;</span>` : '';
+    let panelHtml = '';
+    if (panelType === 'date') {
+      const fieldLabel = s.key === 'waiting_part' ? 'Estimated Arrival Date' : 'Estimated Delivery Date';
+      panelHtml = `<div class="detail-panel" id="detail_${s.key}"><label class="detail-label">${fieldLabel}</label><input type="date" class="detail-input" id="field_${s.key}"><button class="send-detail-btn" onclick="sendStatusWithDetail('${s.key}','${s.label}')">Send Update</button></div>`;
+    } else if (panelType === 'notes') {
+      panelHtml = `<div class="detail-panel" id="detail_${s.key}"><label class="detail-label">Notes for Customer <span class="detail-optional">(optional)</span></label><textarea class="detail-textarea" id="field_${s.key}" placeholder="Add details about the repair…"></textarea><button class="send-detail-btn" onclick="sendStatusWithDetail('${s.key}','${s.label}')">Send Update</button></div>`;
+    }
+    return `    <button class="status-btn" onclick="${btnOnClick}" style="border-left:4px solid ${s.color}">
       <span class="btn-icon">${s.icon}</span>
       <span class="btn-label">${escHtml(s.label)}</span>
-    </button>`).join('\n');
+      ${arrowSpan}
+    </button>${panelHtml}`;
+  }).join('\n');
 
   const emailRow = clientEmail
     ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${escHtml(clientEmail)}</span></div>`
@@ -4472,6 +4489,16 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .storage-fee-header-btn{display:flex;align-items:center;gap:7px;background:#7f1d1d;border:1.5px solid #ef4444;border-radius:8px;padding:8px 14px;color:#fef2f2;cursor:pointer;font-size:13px;font-weight:700;-webkit-tap-highlight-color:transparent;transition:background .15s;white-space:nowrap}
 .storage-fee-header-btn:hover{background:#991b1b}
 .storage-fee-header-btn:active{background:#b91c1c}
+.btn-arrow{margin-left:auto;font-size:20px;color:#71717a;font-weight:600;transition:transform .2s;display:inline-block;line-height:1}
+.detail-panel{display:none;background:#1c1c20;border:1px solid #52525b;border-top:none;border-radius:0 0 10px 10px;padding:14px 16px 16px;margin-top:-10px;margin-bottom:10px}
+.detail-panel.open{display:block}
+.detail-label{font-size:11px;font-weight:700;color:#a1a1aa;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;display:block}
+.detail-optional{font-weight:400;text-transform:none;letter-spacing:0;font-size:11px}
+.detail-input,.detail-textarea{width:100%;background:#27272a;border:1.5px solid #52525b;border-radius:8px;padding:10px 12px;color:#f4f4f5;font-size:14px;display:block;margin-bottom:12px;font-family:inherit}
+.detail-input:focus,.detail-textarea:focus{outline:none;border-color:#39FF14}
+.detail-textarea{resize:vertical;min-height:80px;line-height:1.5}
+.send-detail-btn{width:100%;background:#39FF14;color:#18181b;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:-.2px;transition:opacity .15s}
+.send-detail-btn:active{opacity:.85}
 </style>
 </head>
 <body>
@@ -4521,12 +4548,33 @@ function setNotify(val){
   document.getElementById('optEmail').classList.toggle('active',val==='email');
   document.getElementById('optSms').classList.toggle('active',val==='sms');
 }
-function sendStatus(key,label){
+function toggleDetail(key){
+  var panels=document.querySelectorAll('.detail-panel');
+  var arrows=document.querySelectorAll('.btn-arrow');
+  var panel=document.getElementById('detail_'+key);
+  var isOpen=panel&&panel.classList.contains('open');
+  panels.forEach(function(p){p.classList.remove('open');});
+  arrows.forEach(function(a){a.style.transform='';});
+  if(!isOpen&&panel){
+    panel.classList.add('open');
+    var arrow=document.getElementById('arrow_'+key);
+    if(arrow)arrow.style.transform='rotate(90deg)';
+  }
+}
+function sendStatusWithDetail(key,label){
+  var extra={};
+  var field=document.getElementById('field_'+key);
+  if(field&&field.tagName==='INPUT'&&field.value)extra.estimatedDate=field.value;
+  if(field&&field.tagName==='TEXTAREA'&&field.value)extra.notes=field.value;
+  sendStatus(key,label,extra);
+}
+function sendStatus(key,label,extra){
+  extra=extra||{};
   document.getElementById('overlay').classList.add('active');
   fetch(window.location.pathname,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({status:key,label:label,notifyVia:notifyVia})
+    body:JSON.stringify(Object.assign({status:key,label:label,notifyVia:notifyVia},extra))
   })
   .then(function(r){return r.json();})
   .then(function(data){
@@ -4535,7 +4583,7 @@ function sendStatus(key,label){
     var ok=data.ok!==false;
     document.getElementById('resultIcon').textContent=ok?'✅':'⚠️';
     document.getElementById('resultTitle').textContent=ok?'Update Sent!':'Status Logged';
-    document.getElementById('resultSub').textContent=data.message||(ok?'The client has been notified by email.':'Status was saved but email could not be sent. Check email configuration in the POS.');
+    document.getElementById('resultSub').textContent=data.message||(ok?'The client has been notified.':'Status was saved but notification could not be sent.');
     document.getElementById('resultCard').classList.add('show');
   })
   .catch(function(){
@@ -4642,6 +4690,9 @@ async function handleQrRequest(req: any, res: any) {
         const statusLabel = String(payload?.label || '').trim();
         const notifyVia = String(payload?.notifyVia || 'email').trim().toLowerCase();
         const isStorageFee = statusKey === 'storage_fee';
+        const isPickupReminder = statusKey === 'pickup_reminder';
+        const estimatedDate = String(payload?.estimatedDate || '').trim();
+        const techNotes = String(payload?.notes || '').trim();
         if (!statusKey || !statusLabel) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Missing status/label' }));
@@ -4674,6 +4725,8 @@ async function handleQrRequest(req: any, res: any) {
             statusUpdate:    statusLabel,
             statusUpdatedAt: new Date().toISOString(),
           };
+          if (estimatedDate) updates.estimatedDate = estimatedDate;
+          if (techNotes) updates.techNotes = techNotes;
           if (type === 'repair' && repairStatusMap[statusKey]) {
             updates.repairStatus = repairStatusMap[statusKey];
           } else if (type === 'sale' && saleStatusMap[statusKey]) {
@@ -4704,6 +4757,8 @@ async function handleQrRequest(req: any, res: any) {
             // The message is sent to all common gateways; carriers silently discard non-matching ones.
             const smsText = isStorageFee
             ? `GadgetBoy: ${orderId} STORAGE FEE NOTICE — Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Items uncollected after 7 days are subject to a $25/day storage fee. Call (803) 708-0101.`
+            : isPickupReminder
+            ? `GadgetBoy: ${orderId} - Pickup Reminder! Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Stop by at 2822 Devine St or call (803) 708-0101.`
             : `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
             const gateways = [
               `${clientPhone}@vtext.com`,       // Verizon
@@ -4749,10 +4804,29 @@ async function handleQrRequest(req: any, res: any) {
 
             const friendlyTitle = isStorageFee
               ? `⚠️ Action Required — Please Arrange Pickup`
+              : isPickupReminder
+              ? `Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup!`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
             const emailSubject = isStorageFee
               ? `⚠️ Storage Fee Notice — Please Arrange Pickup`
+              : isPickupReminder
+              ? `Reminder: Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup – GadgetBoy`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
+
+            // Build extra info blocks for delivery date / tech notes
+            let extraInfoHtml = '';
+            let extraInfoText = '';
+            if (estimatedDate) {
+              const dateLabel = statusKey === 'waiting_part' ? 'Estimated Arrival Date' : 'Estimated Delivery Date';
+              let formattedDate = estimatedDate;
+              try { formattedDate = new Date(estimatedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); } catch {}
+              extraInfoHtml += `<div style="background:#fef9c3;border:1.5px solid #facc15;border-radius:10px;padding:14px 18px;margin-bottom:20px;"><div style="font-size:11px;color:#854d0e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${escHtml(dateLabel)}</div><div style="font-size:17px;font-weight:700;color:#713f12;">${escHtml(formattedDate)}</div></div>`;
+              extraInfoText += `\n${dateLabel}: ${formattedDate}`;
+            }
+            if (techNotes) {
+              extraInfoHtml += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:20px;"><div style="font-size:11px;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Technician Notes</div><div style="font-size:14px;color:#1e293b;line-height:1.6;">${escHtml(techNotes)}</div></div>`;
+              extraInfoText += `\n\nTechnician Notes: ${techNotes}`;
+            }
 
             const emailHtml = isStorageFee ? `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -4776,8 +4850,36 @@ async function handleQrRequest(req: any, res: any) {
     <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
       Please arrange pickup as soon as possible. Call us at <strong>(803) 708-0101</strong> or reply to this email.
     </p>
-    <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
-      GADGETBOY Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+</div>
+</body></html>` : isPickupReminder ? `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #06b6d4;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;">GADGETBOY</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, just a friendly reminder that your <strong>${escHtml(deviceDisplay)}</strong> is ready and waiting for you!</p>
+    <div style="background:#ecfeff;border:1.5px solid #06b6d4;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#0e7490;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Pickup Location</div>
+      <div style="font-size:15px;font-weight:700;color:#164e63;margin-bottom:4px;">GadgetBoy Repair &amp; Retail</div>
+      <div style="font-size:14px;color:#0e7490;margin-bottom:4px;">2822 Devine Street, Columbia, SC 29205</div>
+      <div style="font-size:14px;color:#0e7490;">(803) 708-0101</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">If you have any questions or need to reach us, give us a call or simply reply to this email. We look forward to seeing you!</p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
     </div>
   </div>
 </div>
@@ -4799,11 +4901,13 @@ async function handleQrRequest(req: any, res: any) {
       <div style="font-size:12px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current Status</div>
       <div style="font-size:20px;font-weight:800;color:#166534;">${escHtml(statusLabel)}</div>
     </div>
+    ${extraInfoHtml}
     <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
       Questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
     </p>
-    <div style="border-top:1px solid #e5e7eb;padding-top:16px;font-size:12px;color:#9ca3af;">
-      GADGETBOY Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
     </div>
   </div>
 </div>
@@ -4813,7 +4917,9 @@ async function handleQrRequest(req: any, res: any) {
               subject: emailSubject,
               text: isStorageFee
                 ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
-                : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
+                : isPickupReminder
+                ? `Hi ${clientName},\n\nJust a friendly reminder that your ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup!\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205\n(803) 708-0101 · gadgetboysc@gmail.com`
+                : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}${extraInfoText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
               attachments: logoAttachment ? [logoAttachment] : [],
             });
