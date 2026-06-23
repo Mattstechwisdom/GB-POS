@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "outDir": "dist",
+    "rootDir": "src",
     "paths": {
       "@/*": [
         "./src/*"
@@ -19,6 +20,6 @@
     },
     // Rely on default type resolution; no explicit global types required
   },
-  "include": ["src", "app/electron"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }
