@@ -880,6 +880,87 @@ function decryptAppPassword(cfg: any): string | null {
   }
 }
 
+// ─── Clover REST config helpers ───────────────────────────────────────────
+function cloverRestConfigPath(): string {
+  return path.join(resolveDataRoot(), 'clover-config.json');
+}
+
+function readCloverRestConfig(): any {
+  try {
+    const p = cloverRestConfigPath();
+    if (!fs.existsSync(p)) return {};
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeCloverRestConfig(cfg: any) {
+  try {
+    fs.writeFileSync(cloverRestConfigPath(), JSON.stringify(cfg || {}, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function decryptCloverToken(cfg: any): string | null {
+  try {
+    const enc = cfg?.accessTokenEnc;
+    if (!enc || typeof enc !== 'string') return null;
+    const buf = Buffer.from(enc, 'base64');
+    if (safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(buf);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function cloverApiRequest(opts: {
+  method: string;
+  urlPath: string;
+  accessToken: string;
+  body?: any;
+  baseUrl?: string;
+}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const base = opts.baseUrl || 'https://api.clover.com';
+    const url = new URL(opts.urlPath, base);
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const reqOpts: any = {
+      method: opts.method,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      headers: {
+        'Authorization': `Bearer ${opts.accessToken}`,
+        'Accept': 'application/json',
+        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+      },
+    };
+    const req = https.request(reqOpts, (res: any) => {
+      let data = '';
+      res.on('data', (chunk: any) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+          } else {
+            reject(new Error(`Clover API error ${res.statusCode}: ${parsed?.message || data}`));
+          }
+        } catch {
+          reject(new Error(`Clover API non-JSON response (${res.statusCode}): ${data.slice(0, 200)}`));
+        }
+      });
+    });
+    req.on('error', (e: any) => reject(e));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
 async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
@@ -1758,6 +1839,171 @@ ipcMain.handle('open-notification-settings', async (event: any) => {
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?notificationSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notificationSettings=true`;
   child.loadURL(url).catch((e: any) => console.error('[NotificationSettings] loadURL failed', e));
+  return { ok: true };
+});
+
+// ─── Clover IPC handlers ───────────────────────────────────────────────────
+
+ipcMain.handle('clover:getConfig', async () => {
+  const cfg = readCloverRestConfig();
+  return {
+    merchantId: cfg.merchantId || '',
+    deviceSerial: cfg.deviceSerial || '',
+    environment: cfg.environment || 'production',
+    hasToken: !!cfg.accessTokenEnc,
+  };
+});
+
+ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    if (data.merchantId !== undefined) cfg.merchantId = String(data.merchantId).trim();
+    if (data.deviceSerial !== undefined) cfg.deviceSerial = String(data.deviceSerial).trim();
+    if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
+    writeCloverRestConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:setAccessToken', async (_e: any, token: string) => {
+  try {
+    const trimmed = String(token || '').trim();
+    const cfg = readCloverRestConfig();
+    if (!trimmed) {
+      delete cfg.accessTokenEnc;
+    } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
+      cfg.accessTokenEnc = safeStorage.encryptString(trimmed).toString('base64');
+    } else {
+      return { ok: false, error: 'safeStorage not available' };
+    }
+    writeCloverRestConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:testConnection', async () => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const merchant = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${cfg.merchantId}`, accessToken: token, baseUrl: base });
+    return { ok: true, merchantName: merchant?.name || cfg.merchantId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:chargeCard', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const mId = cfg.merchantId;
+    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
+    const label: string = String(payload?.label || 'Service');
+
+    // 1. Create order
+    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
+    const orderId: string = order?.id;
+    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
+
+    // 2. Add line item
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
+
+    // 3. Get device ID by serial
+    let deviceId: string | null = null;
+    if (cfg.deviceSerial) {
+      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices?filter=serial%3D${encodeURIComponent(cfg.deviceSerial)}`, accessToken: token, baseUrl: base });
+      deviceId = devResp?.elements?.[0]?.id || null;
+    }
+    if (!deviceId) {
+      // Fall back to first device
+      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices`, accessToken: token, baseUrl: base });
+      deviceId = devResp?.elements?.[0]?.id || null;
+    }
+    if (!deviceId) return { ok: false, error: 'No Clover device found on this account' };
+
+    // 4. Send order to Pay Display
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/devices/${deviceId}/pay_display`, accessToken: token, body: { action: 'SHOW_ORDER', order: { id: orderId } }, baseUrl: base });
+
+    return { ok: true, orderId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:cashSale', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const mId = cfg.merchantId;
+    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
+    const tenderedCents: number = Math.round(Number(payload?.tenderedCents) || amountCents);
+    const label: string = String(payload?.label || 'Service');
+
+    // 1. Create order
+    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
+    const orderId: string = order?.id;
+    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
+
+    // 2. Add line item
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
+
+    // 3. Record cash payment (triggers drawer)
+    await cloverApiRequest({
+      method: 'POST',
+      urlPath: `/v3/merchants/${mId}/orders/${orderId}/payments`,
+      accessToken: token,
+      body: {
+        tender: { labelKey: 'com.clover.tender.cash' },
+        amount: amountCents,
+        cashTendered: tenderedCents,
+      },
+      baseUrl: base,
+    });
+
+    return { ok: true, orderId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('open-clover-settings', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 680,
+    height: 580,
+    resizable: false,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Clover Settings'),
+  });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?cloverSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?cloverSettings=true`;
+  child.loadURL(url).catch((e: any) => console.error('[CloverSettings] loadURL failed', e));
   return { ok: true };
 });
 

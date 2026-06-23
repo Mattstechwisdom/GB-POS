@@ -71,10 +71,14 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
 
   const [showAdmin, setShowAdmin] = useState(false);
   const adminRef = useRef<HTMLDivElement>(null);
+  const [showIntegrations, setShowIntegrations] = useState(false);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (adminRef.current && !adminRef.current.contains(e.target as Node)) setShowAdmin(false);
+      if (adminRef.current && !adminRef.current.contains(e.target as Node)) {
+        setShowAdmin(false);
+        setShowIntegrations(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -92,18 +96,47 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
             onClick={() => setShowAdmin(v => !v)}
           >Admin ▾</button>
           {showAdmin && (
-            <div className="absolute left-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
+            <div className="absolute left-0 top-full mt-1 w-52 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
               {[
                 { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
                 { label: 'Products',        action: () => dispatchOpenModal('products') },
                 { label: 'Reports',         action: () => dispatchOpenModal('eod') },
                 { label: 'Technicians',     action: () => setShowTechs(true) },
                 { label: 'Data Management', action: () => dispatchOpenModal('backup') },
-                { label: 'Notifications',   action: () => dispatchOpenModal('notificationSettings') },
                 { label: 'Dev Menu',        action: () => dispatchOpenModal('devMenu') },
               ].map(item => (
                 <button key={item.label} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => { setShowAdmin(false); item.action(); }}>{item.label}</button>
               ))}
+              {/* Integrations sub-menu */}
+              <div className="relative" onMouseEnter={() => setShowIntegrations(true)} onMouseLeave={() => setShowIntegrations(false)}>
+                <button
+                  type="button"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 flex items-center justify-between text-[#39FF14]"
+                  onClick={() => setShowIntegrations(v => !v)}
+                >
+                  <span>Integrations</span>
+                  <span className="text-zinc-400 text-xs">▶</span>
+                </button>
+                {showIntegrations && (
+                  <div className="absolute left-full top-0 ml-1 w-52 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-500 border-b border-zinc-800">External APIs</div>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800"
+                      onClick={() => { setShowAdmin(false); setShowIntegrations(false); (window as any).api?.openCloverSettings?.(); }}
+                    >
+                      ⬛ Clover (Pay Display)
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800"
+                      onClick={() => { setShowAdmin(false); setShowIntegrations(false); dispatchOpenModal('notificationSettings'); }}
+                    >
+                      📱 Notifications / SMS
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
