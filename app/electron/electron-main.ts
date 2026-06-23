@@ -4835,8 +4835,8 @@ async function handleQrRequest(req: any, res: any) {
   <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #ef4444;display:flex;align-items:center;gap:14px;">
     ${logoImgHtml}
     <div>
-      <div style="font-size:15px;font-weight:900;color:#fef2f2;letter-spacing:-.3px;">GADGETBOY</div>
-      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+      <div style="font-size:15px;font-weight:900;color:#fef2f2;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
     </div>
   </div>
   <div style="padding:24px;">
@@ -4863,19 +4863,13 @@ async function handleQrRequest(req: any, res: any) {
   <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #06b6d4;display:flex;align-items:center;gap:14px;">
     ${logoImgHtml}
     <div>
-      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;">GADGETBOY</div>
-      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
     </div>
   </div>
   <div style="padding:24px;">
     <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
     <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, just a friendly reminder that your <strong>${escHtml(deviceDisplay)}</strong> is ready and waiting for you!</p>
-    <div style="background:#ecfeff;border:1.5px solid #06b6d4;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
-      <div style="font-size:12px;color:#0e7490;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Pickup Location</div>
-      <div style="font-size:15px;font-weight:700;color:#164e63;margin-bottom:4px;">GadgetBoy Repair &amp; Retail</div>
-      <div style="font-size:14px;color:#0e7490;margin-bottom:4px;">2822 Devine Street, Columbia, SC 29205</div>
-      <div style="font-size:14px;color:#0e7490;">(803) 708-0101</div>
-    </div>
     <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">If you have any questions or need to reach us, give us a call or simply reply to this email. We look forward to seeing you!</p>
     <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
       <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
@@ -4890,8 +4884,8 @@ async function handleQrRequest(req: any, res: any) {
   <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #39FF14;display:flex;align-items:center;gap:14px;">
     ${logoImgHtml}
     <div>
-      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;">GADGETBOY</div>
-      <div style="font-size:11px;color:#a1a1aa;margin-top:2px;">Repair &amp; Retail &nbsp;&middot;&nbsp; 2822 Devine Street, Columbia, SC 29205</div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
     </div>
   </div>
   <div style="padding:24px;">
