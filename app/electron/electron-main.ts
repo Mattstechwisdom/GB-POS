@@ -4643,27 +4643,32 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
   const orderId = isRepair ? `WO-${record?.id ?? '?'}` : `INV-${record?.id ?? '?'}`;
 
   const repairStatuses = [
-    { key: 'diagnosis',       label: 'Diagnosis In Process',      icon: '🔍', color: '#3b82f6' },
-    { key: 'part_ordered',    label: 'Part Ordered',              icon: '📦', color: '#f59e0b' },
-    { key: 'waiting_part',    label: 'Waiting on Part Delivery',  icon: '🚚', color: '#f97316' },
-    { key: 'repair_complete', label: 'Repair Complete',           icon: '✅', color: '#22c55e' },
-    { key: 'not_possible',    label: 'Repair Not Possible',       icon: '❌', color: '#ef4444' },
-    { key: 'pickup_reminder', label: 'Pickup Reminder',           icon: '🔔', color: '#06b6d4' },
-    { key: 'manual_update',   label: 'Send Update',               icon: '✏️', color: '#8b5cf6' },
+    { key: 'pickup_reminder',  label: 'Pickup Reminder',           icon: '🔔', color: '#06b6d4' },
+    { key: 'manual_update',    label: 'Send Update',               icon: '✏️', color: '#8b5cf6' },
+    { key: 'diagnosis',        label: 'Diagnosis In Process',      icon: '🔍', color: '#3b82f6' },
+    { key: 'waiting_device',   label: 'Waiting on Device',         icon: '📲', color: '#1d4ed8' },
+    { key: 'part_ordered',     label: 'Part Ordered',              icon: '📦', color: '#f59e0b' },
+    { key: 'waiting_part',     label: 'Waiting on Part Delivery',  icon: '🚚', color: '#f97316' },
+    { key: 'part_delivered',   label: 'Part Delivered',            icon: '🎉', color: '#16a34a' },
+    { key: 'repair_complete',  label: 'Repair Complete',           icon: '✅', color: '#22c55e' },
+    { key: 'not_possible',     label: 'Repair Not Possible',       icon: '❌', color: '#ef4444' },
   ];
   const saleStatuses = [
-    { key: 'product_ordered',  label: 'Product Ordered',   icon: '📦', color: '#f59e0b' },
-    { key: 'product_in_shop',  label: 'Product In Shop',   icon: '🏪', color: '#22c55e' },
     { key: 'pickup_reminder',  label: 'Pickup Reminder',   icon: '🔔', color: '#06b6d4' },
     { key: 'manual_update',    label: 'Send Update',        icon: '✏️', color: '#8b5cf6' },
+    { key: 'product_ordered',  label: 'Product Ordered',   icon: '📦', color: '#f59e0b' },
+    { key: 'product_in_shop',  label: 'Product In Shop',   icon: '🏪', color: '#22c55e' },
   ];
 
   // Keys that expand a detail panel; others send immediately
   const detailPanelMap: Record<string, 'date' | 'notes'> = isRepair
     ? { part_ordered: 'date', waiting_part: 'date', repair_complete: 'notes', not_possible: 'notes', manual_update: 'notes' }
     : { product_ordered: 'date', manual_update: 'notes' };
+
+  // Top-action keys rendered ABOVE the client info card
+  const topKeys = ['pickup_reminder', 'manual_update'];
   const allStatuses = isRepair ? repairStatuses : saleStatuses;
-  const buttonsHtml = allStatuses.map(s => {
+  const renderBtn = (s: { key: string; label: string; icon: string; color: string }) => {
     const panelType = detailPanelMap[s.key];
     const btnOnClick = panelType ? `toggleDetail('${s.key}')` : `sendStatus('${s.key}','${s.label}')`;
     const arrowSpan = panelType ? `<span class="btn-arrow" id="arrow_${s.key}">&rsaquo;</span>` : '';
@@ -4672,14 +4677,18 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
       const fieldLabel = s.key === 'waiting_part' ? 'Estimated Arrival Date' : 'Estimated Delivery Date';
       panelHtml = `<div class="detail-panel" id="detail_${s.key}"><label class="detail-label">${fieldLabel}</label><input type="date" class="detail-input" id="field_${s.key}"><button class="send-detail-btn" onclick="sendStatusWithDetail('${s.key}','${s.label}')">Send Update</button></div>`;
     } else if (panelType === 'notes') {
-      panelHtml = `<div class="detail-panel" id="detail_${s.key}"><label class="detail-label">Notes for Customer <span class="detail-optional">(optional)</span></label><textarea class="detail-textarea" id="field_${s.key}" placeholder="Add details about the repair…"></textarea><button class="send-detail-btn" onclick="sendStatusWithDetail('${s.key}','${s.label}')">Send Update</button></div>`;
+      const notesPlaceholder = s.key === 'manual_update' ? 'Type your update message to the customer…' : 'Add details about the repair…';
+      const notesLabel = s.key === 'manual_update' ? 'Message for Customer' : 'Notes for Customer <span class="detail-optional">(optional)</span>';
+      panelHtml = `<div class="detail-panel" id="detail_${s.key}"><label class="detail-label">${notesLabel}</label><textarea class="detail-textarea" id="field_${s.key}" placeholder="${notesPlaceholder}"></textarea><button class="send-detail-btn" onclick="sendStatusWithDetail('${s.key}','${s.label}')">Send Update</button></div>`;
     }
     return `    <button class="status-btn" onclick="${btnOnClick}" style="border-left:4px solid ${s.color}">
       <span class="btn-icon">${s.icon}</span>
       <span class="btn-label">${escHtml(s.label)}</span>
       ${arrowSpan}
     </button>${panelHtml}`;
-  }).join('\n');
+  };
+  const topButtonsHtml  = allStatuses.filter(s =>  topKeys.includes(s.key)).map(renderBtn).join('\n');
+  const mainButtonsHtml = allStatuses.filter(s => !topKeys.includes(s.key)).map(renderBtn).join('\n');
 
   const emailRow = clientEmail
     ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${escHtml(clientEmail)}</span></div>`
@@ -4732,7 +4741,7 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
 .result-icon{font-size:52px;margin-bottom:14px}
 .result-title{font-size:20px;font-weight:800;margin-bottom:8px}
 .result-sub{font-size:13px;color:#a1a1aa;line-height:1.6}
-.btns-wrap.hidden{display:none}
+.btns-wrap.hidden,.hidden{display:none}
 .header-action{margin-left:auto;flex-shrink:0}
 .storage-fee-header-btn{display:flex;align-items:center;gap:7px;background:#7f1d1d;border:1.5px solid #ef4444;border-radius:8px;padding:8px 14px;color:#fef2f2;cursor:pointer;font-size:13px;font-weight:700;-webkit-tap-highlight-color:transparent;transition:background .15s;white-space:nowrap}
 .storage-fee-header-btn:hover{background:#991b1b}
@@ -4760,6 +4769,17 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
   </div>
 </div>
 <div class="container">
+  <div class="notify-row" id="notifyRow">
+    <span class="notify-label">Notify via</span>
+    <div class="toggle-wrap">
+      <button class="toggle-opt active" id="optEmail" onclick="setNotify('email')">✉ Email</button>
+      <button class="toggle-opt" id="optSms" onclick="setNotify('sms')">📱 SMS</button>
+    </div>
+  </div>
+  <div id="topActionsWrap">
+    <div class="section-title" style="margin-bottom:12px">Quick Actions</div>
+    ${topButtonsHtml}
+  </div>
   <div class="info-card">
     <div class="info-row"><span class="info-label">Order</span><span class="info-value">${escHtml(orderId)}</span></div>
     <div class="info-row"><span class="info-label">Client</span><span class="info-value">${clientName}</span></div>
@@ -4769,15 +4789,8 @@ body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFo
     <div class="info-row"><span class="info-label">${isRepair ? 'Device' : 'Item(s)'}</span><span class="info-value">${device}</span></div>
   </div>
   <div class="btns-wrap" id="btnsWrap">
-    <div class="notify-row">
-      <span class="notify-label">Notify via</span>
-      <div class="toggle-wrap">
-        <button class="toggle-opt active" id="optEmail" onclick="setNotify('email')">✉ Email</button>
-        <button class="toggle-opt" id="optSms" onclick="setNotify('sms')">📱 SMS</button>
-      </div>
-    </div>
     <div class="section-title">Send Status Update to Client</div>
-    ${buttonsHtml}
+    ${mainButtonsHtml}
   </div>
   <div class="result-card" id="resultCard">
     <div class="result-icon" id="resultIcon">✅</div>
@@ -4827,6 +4840,8 @@ function sendStatus(key,label,extra){
   .then(function(r){return r.json();})
   .then(function(data){
     document.getElementById('overlay').classList.remove('active');
+    document.getElementById('notifyRow').classList.add('hidden');
+    document.getElementById('topActionsWrap').classList.add('hidden');
     document.getElementById('btnsWrap').classList.add('hidden');
     var ok=data.ok!==false;
     document.getElementById('resultIcon').textContent=ok?'✅':'⚠️';
@@ -4840,6 +4855,8 @@ function sendStatus(key,label,extra){
     document.getElementById('resultTitle').textContent='Connection Error';
     document.getElementById('resultSub').textContent='Could not reach the POS. Make sure the app is running on the same network.';
     document.getElementById('resultCard').classList.add('show');
+    document.getElementById('notifyRow').classList.add('hidden');
+    document.getElementById('topActionsWrap').classList.add('hidden');
     document.getElementById('btnsWrap').classList.add('hidden');
   });
 }
@@ -4940,6 +4957,8 @@ async function handleQrRequest(req: any, res: any) {
         const isStorageFee = statusKey === 'storage_fee';
         const isPickupReminder = statusKey === 'pickup_reminder';
         const isManualUpdate = statusKey === 'manual_update';
+        const isWaitingDevice = statusKey === 'waiting_device';
+        const isPartDelivered = statusKey === 'part_delivered';
         const estimatedDate = String(payload?.estimatedDate || '').trim();
         const techNotes = String(payload?.notes || '').trim();
         if (!statusKey || !statusLabel) {
@@ -4958,8 +4977,10 @@ async function handleQrRequest(req: any, res: any) {
         // Persist status update to record
         const repairStatusMap: Record<string, string> = {
           diagnosis:       'Diagnosis In Process',
+          waiting_device:  'Waiting for Device Drop-off',
           part_ordered:    'Part Ordered',
           waiting_part:    'Waiting on Part Delivery',
+          part_delivered:  'Part Delivered – Repairs Starting',
           repair_complete: 'Repair Complete',
           not_possible:    'Repair Not Possible',
           storage_fee:     'Storage Fee Notice',
@@ -5015,6 +5036,10 @@ async function handleQrRequest(req: any, res: any) {
             ? `GadgetBoy: ${orderId} - Pickup Reminder! Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Stop by at 2822 Devine St or call (803) 708-0101.`
             : isManualUpdate
             ? `GadgetBoy: ${orderId} - ${techNotes || 'Update from your technician'}. Questions? Call (803) 708-0101.`
+            : isWaitingDevice
+            ? `GadgetBoy: ${orderId} - We're ready to begin repairs but still need you to drop off your device. Stop by 2822 Devine St or call (803) 708-0101.`
+            : isPartDelivered
+            ? `GadgetBoy: ${orderId} - Great news! Your part has arrived and we're starting repairs now. Questions? Call (803) 708-0101.`
             : `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
             const gateways = [
               `${clientPhone}@vtext.com`,       // Verizon
@@ -5064,6 +5089,10 @@ async function handleQrRequest(req: any, res: any) {
               ? `Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup!`
               : isManualUpdate
               ? `A message from your GadgetBoy technician`
+              : isWaitingDevice
+              ? `We're ready — please drop off your device`
+              : isPartDelivered
+              ? `Great news! Your part has arrived`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
             const emailSubject = isStorageFee
               ? `⚠️ Storage Fee Notice — Please Arrange Pickup`
@@ -5071,6 +5100,10 @@ async function handleQrRequest(req: any, res: any) {
               ? `Reminder: Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup – GadgetBoy`
               : isManualUpdate
               ? `Update from GadgetBoy — ${orderId}`
+              : isWaitingDevice
+              ? `Action Needed: Please Drop Off Your Device — ${orderId}`
+              : isPartDelivered
+              ? `Your Part Has Arrived — Repairs Starting Soon (${orderId})`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
 
             // Build extra info blocks for delivery date / tech notes
@@ -5116,7 +5149,64 @@ async function handleQrRequest(req: any, res: any) {
   </div>
 </div>
 </body></html>`;
-            const emailHtml = isManualUpdate ? manualUpdateEmailHtml : isStorageFee ? `<!DOCTYPE html>
+            const waitingDeviceEmailHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #2563eb;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, we're all set to begin work on your <strong>${escHtml(deviceDisplay)}</strong> (${escHtml(orderId)}) — we just need you to drop it off!</p>
+    <div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#1d4ed8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Action Required</div>
+      <div style="font-size:15px;font-weight:700;color:#1e3a8a;">Please drop off your device at our shop</div>
+      <div style="font-size:13px;color:#1e40af;margin-top:4px;">2822 Devine Street, Columbia, SC 29205</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
+      Our hours are Mon–Fri 10am–7pm &amp; Sat 10am–5pm. Have questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
+    </p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+            const partDeliveredEmailHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #16a34a;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, great news! The part for your <strong>${escHtml(deviceDisplay)}</strong> (${escHtml(orderId)}) has been delivered to our shop.</p>
+    <div style="background:#f0fdf4;border:1.5px solid #16a34a;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Status Update</div>
+      <div style="font-size:20px;font-weight:800;color:#166534;">🎉 Part Delivered — Repairs Starting</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
+      We're starting work on your device right away. We'll send another update as soon as the repair is complete. Questions? Call us at <strong>(803) 708-0101</strong>.
+    </p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+            const emailHtml = isManualUpdate ? manualUpdateEmailHtml : isWaitingDevice ? waitingDeviceEmailHtml : isPartDelivered ? partDeliveredEmailHtml : isStorageFee ? `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
@@ -5203,6 +5293,10 @@ async function handleQrRequest(req: any, res: any) {
                 ? `Hi ${clientName},\n\nJust a friendly reminder that your ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup!\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205\n(803) 708-0101 · gadgetboysc@gmail.com`
                 : isManualUpdate
                 ? `Hi ${clientName},\n\nA message from your GadgetBoy technician regarding your ${type === 'repair' ? 'repair' : 'order'} (${orderId}):\n\n${techNotes || '(No message provided)'}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
+                : isWaitingDevice
+                ? `Hi ${clientName},\n\nWe're ready to begin work on your ${deviceDisplay} (${orderId}) — we just need you to drop it off!\n\nPlease stop by 2822 Devine Street, Columbia, SC 29205.\nOur hours are Mon–Fri 10am–7pm & Sat 10am–5pm.\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
+                : isPartDelivered
+                ? `Hi ${clientName},\n\nGreat news! The part for your ${deviceDisplay} (${orderId}) has arrived and we're starting repairs right away. We'll send another update as soon as the repair is complete.\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}${extraInfoText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
               attachments: logoAttachment ? [logoAttachment] : [],
