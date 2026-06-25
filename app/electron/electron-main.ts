@@ -4649,17 +4649,19 @@ function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
     { key: 'repair_complete', label: 'Repair Complete',           icon: '✅', color: '#22c55e' },
     { key: 'not_possible',    label: 'Repair Not Possible',       icon: '❌', color: '#ef4444' },
     { key: 'pickup_reminder', label: 'Pickup Reminder',           icon: '🔔', color: '#06b6d4' },
+    { key: 'manual_update',   label: 'Send Update',               icon: '✏️', color: '#8b5cf6' },
   ];
   const saleStatuses = [
     { key: 'product_ordered',  label: 'Product Ordered',   icon: '📦', color: '#f59e0b' },
     { key: 'product_in_shop',  label: 'Product In Shop',   icon: '🏪', color: '#22c55e' },
     { key: 'pickup_reminder',  label: 'Pickup Reminder',   icon: '🔔', color: '#06b6d4' },
+    { key: 'manual_update',    label: 'Send Update',        icon: '✏️', color: '#8b5cf6' },
   ];
 
   // Keys that expand a detail panel; others send immediately
   const detailPanelMap: Record<string, 'date' | 'notes'> = isRepair
-    ? { part_ordered: 'date', waiting_part: 'date', repair_complete: 'notes', not_possible: 'notes' }
-    : { product_ordered: 'date' };
+    ? { part_ordered: 'date', waiting_part: 'date', repair_complete: 'notes', not_possible: 'notes', manual_update: 'notes' }
+    : { product_ordered: 'date', manual_update: 'notes' };
   const allStatuses = isRepair ? repairStatuses : saleStatuses;
   const buttonsHtml = allStatuses.map(s => {
     const panelType = detailPanelMap[s.key];
@@ -4937,6 +4939,7 @@ async function handleQrRequest(req: any, res: any) {
         const notifyVia = String(payload?.notifyVia || 'email').trim().toLowerCase();
         const isStorageFee = statusKey === 'storage_fee';
         const isPickupReminder = statusKey === 'pickup_reminder';
+        const isManualUpdate = statusKey === 'manual_update';
         const estimatedDate = String(payload?.estimatedDate || '').trim();
         const techNotes = String(payload?.notes || '').trim();
         if (!statusKey || !statusLabel) {
@@ -4973,7 +4976,12 @@ async function handleQrRequest(req: any, res: any) {
           };
           if (estimatedDate) updates.estimatedDate = estimatedDate;
           if (techNotes) updates.techNotes = techNotes;
-          if (type === 'repair' && repairStatusMap[statusKey]) {
+          if (isManualUpdate) {
+            // Don't overwrite the order status; just record the note
+            delete updates.statusUpdate;
+            updates.lastUpdateNote = techNotes;
+            updates.lastUpdateAt = new Date().toISOString();
+          } else if (type === 'repair' && repairStatusMap[statusKey]) {
             updates.repairStatus = repairStatusMap[statusKey];
           } else if (type === 'sale' && saleStatusMap[statusKey]) {
             updates.status = saleStatusMap[statusKey];
@@ -5005,6 +5013,8 @@ async function handleQrRequest(req: any, res: any) {
             ? `GadgetBoy: ${orderId} STORAGE FEE NOTICE — Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Items uncollected after 7 days are subject to a $25/day storage fee. Call (803) 708-0101.`
             : isPickupReminder
             ? `GadgetBoy: ${orderId} - Pickup Reminder! Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup. Stop by at 2822 Devine St or call (803) 708-0101.`
+            : isManualUpdate
+            ? `GadgetBoy: ${orderId} - ${techNotes || 'Update from your technician'}. Questions? Call (803) 708-0101.`
             : `GadgetBoy: ${orderId} - ${statusLabel}. Questions? Call (803) 708-0101.`;
             const gateways = [
               `${clientPhone}@vtext.com`,       // Verizon
@@ -5052,11 +5062,15 @@ async function handleQrRequest(req: any, res: any) {
               ? `⚠️ Action Required — Please Arrange Pickup`
               : isPickupReminder
               ? `Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup!`
+              : isManualUpdate
+              ? `A message from your GadgetBoy technician`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
             const emailSubject = isStorageFee
               ? `⚠️ Storage Fee Notice — Please Arrange Pickup`
               : isPickupReminder
               ? `Reminder: Your ${type === 'repair' ? 'device' : 'order'} is ready for pickup – GadgetBoy`
+              : isManualUpdate
+              ? `Update from GadgetBoy — ${orderId}`
               : `Here's an update on your ${type === 'repair' ? 'repair' : 'order'}`;
 
             // Build extra info blocks for delivery date / tech notes
@@ -5074,7 +5088,35 @@ async function handleQrRequest(req: any, res: any) {
               extraInfoText += `\n\nTechnician Notes: ${techNotes}`;
             }
 
-            const emailHtml = isStorageFee ? `<!DOCTYPE html>
+            const manualUpdateEmailHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #8b5cf6;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 16px;">${escHtml(friendlyTitle)}</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, your technician has sent you a message regarding your <strong>${escHtml(deviceDisplay)}</strong> (${escHtml(orderId)}).</p>
+    <div style="background:#f5f3ff;border:1.5px solid #8b5cf6;border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:12px;color:#6d28d9;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Message from your technician</div>
+      <div style="font-size:15px;color:#1e1b4b;line-height:1.7;white-space:pre-wrap;">${escHtml(techNotes || '(No message provided)')}</div>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
+      Questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
+    </p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+            const emailHtml = isManualUpdate ? manualUpdateEmailHtml : isStorageFee ? `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
@@ -5159,6 +5201,8 @@ async function handleQrRequest(req: any, res: any) {
                 ? `Hi ${clientName},\n\nYour ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup.\n\nIMPORTANT: Per our signed policy, items not collected within 7 days of completion are subject to a $25/day storage fee. Devices unclaimed after 45 days become property of GADGETBOY LLC.\n\nPlease arrange pickup as soon as possible.\nCall (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : isPickupReminder
                 ? `Hi ${clientName},\n\nJust a friendly reminder that your ${type === 'repair' ? 'device' : 'order'} (${deviceDisplay}) is ready for pickup!\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205\n(803) 708-0101 · gadgetboysc@gmail.com`
+                : isManualUpdate
+                ? `Hi ${clientName},\n\nA message from your GadgetBoy technician regarding your ${type === 'repair' ? 'repair' : 'order'} (${orderId}):\n\n${techNotes || '(No message provided)'}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}${extraInfoText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
               html: emailHtml,
               attachments: logoAttachment ? [logoAttachment] : [],
