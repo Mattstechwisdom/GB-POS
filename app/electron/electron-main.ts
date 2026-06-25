@@ -5169,7 +5169,7 @@ async function handleQrRequest(req: any, res: any) {
       <div style="font-size:13px;color:#1e40af;margin-top:4px;">2822 Devine Street, Columbia, SC 29205</div>
     </div>
     <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0 0 20px;">
-      Our hours are Mon–Fri 10am–7pm &amp; Sat 10am–5pm. Have questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
+      Our hours are Mon–Sat 10am–7pm. Have questions? Call us at <strong>(803) 708-0101</strong> or reply to this email.
     </p>
     <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
       <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
@@ -5294,7 +5294,7 @@ async function handleQrRequest(req: any, res: any) {
                 : isManualUpdate
                 ? `Hi ${clientName},\n\nA message from your GadgetBoy technician regarding your ${type === 'repair' ? 'repair' : 'order'} (${orderId}):\n\n${techNotes || '(No message provided)'}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : isWaitingDevice
-                ? `Hi ${clientName},\n\nWe're ready to begin work on your ${deviceDisplay} (${orderId}) — we just need you to drop it off!\n\nPlease stop by 2822 Devine Street, Columbia, SC 29205.\nOur hours are Mon–Fri 10am–7pm & Sat 10am–5pm.\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
+                ? `Hi ${clientName},\n\nWe're ready to begin work on your ${deviceDisplay} (${orderId}) — we just need you to drop it off!\n\nPlease stop by 2822 Devine Street, Columbia, SC 29205.\nOur hours are Mon–Sat 10am–7pm.\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : isPartDelivered
                 ? `Hi ${clientName},\n\nGreat news! The part for your ${deviceDisplay} (${orderId}) has arrived and we're starting repairs right away. We'll send another update as soon as the repair is complete.\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`
                 : `Hi ${clientName},\n\nHere's an update on your ${type === 'repair' ? 'repair' : 'order'}: ${statusLabel}\n\n${type === 'repair' ? 'Device' : 'Item'}: ${deviceDisplay}${extraInfoText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`,
