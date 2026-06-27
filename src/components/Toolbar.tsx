@@ -130,9 +130,9 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
                     <button
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800"
-                      onClick={() => { setShowAdmin(false); setShowIntegrations(false); dispatchOpenModal('notificationSettings'); }}
+                      onClick={() => { setShowAdmin(false); setShowIntegrations(false); (window as any).api?.openTwilioSettings?.(); }}
                     >
-                      📱 Notifications / SMS
+                      📱 SMS / Twilio
                     </button>
                   </div>
                 )}

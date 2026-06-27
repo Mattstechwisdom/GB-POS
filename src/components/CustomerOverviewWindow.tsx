@@ -3,6 +3,7 @@ import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import CustomerForm from './CustomerForm';
 import Button from './Button';
+import ClientSmsChat from './ClientSmsChat';
 import { Customer } from '../lib/types';
 
 interface Props {
@@ -17,6 +18,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
   const [local, setLocal] = useState<Partial<Customer>>(customer || {});
+  const [showChat, setShowChat] = useState(false);
   const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
@@ -172,6 +174,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6">
       <div className="bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
         {/* Top toolbar with actions */}
@@ -179,6 +182,19 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
           <div className="text-lg font-semibold text-zinc-200">Customer Overview</div>
           <div className="flex items-center gap-2">
             <Button neon onClick={handleSave}>Save</Button>
+            {(local as any)?.phone && (
+              <button
+                type="button"
+                onClick={() => setShowChat(v => !v)}
+                className={`h-9 px-3 flex items-center gap-1.5 text-sm font-semibold rounded border ${
+                  showChat
+                    ? 'bg-[#39FF14] border-[#39FF14] text-black'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]'
+                }`}
+              >
+                💬 Text Client
+              </button>
+            )}
             {!isModalShell && (
               <button
                 type="button"
@@ -262,6 +278,15 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         </div>
       </div>
     </div>
+    {showChat && (local as any)?.phone && (
+      <ClientSmsChat
+        customerId={Number((local as any).id) || 0}
+        customerName={[(local as any).firstName, (local as any).lastName].filter(Boolean).join(' ').trim() || 'Client'}
+        customerPhone={String((local as any).phone || '')}
+        onClose={() => setShowChat(false)}
+      />
+    )}
+    </>
   );
 };
 

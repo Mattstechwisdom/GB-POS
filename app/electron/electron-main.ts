@@ -2883,6 +2883,73 @@ ipcMain.handle('twilio:sendSms', async (_e: any, payload: any) => {
   }
 });
 
+ipcMain.handle('twilio:getMessages', async (_e: any, customerId: any) => {
+  try {
+    const cid = Number(customerId || 0);
+    if (!cid) return { ok: true, messages: [] };
+    const db = readDb();
+    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
+    const result = msgs
+      .filter((m: any) => Number(m?.customerId || 0) === cid)
+      .sort((a: any, b: any) => new Date(String(a.sentAt || 0)).getTime() - new Date(String(b.sentAt || 0)).getTime());
+    return { ok: true, messages: result };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e), messages: [] };
+  }
+});
+
+ipcMain.handle('twilio:logMessage', async (_e: any, msg: any) => {
+  try {
+    const m = (msg && typeof msg === 'object') ? msg : {};
+    const db = readDb();
+    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
+    const maxId = msgs.reduce((acc: number, x: any) => Math.max(acc, Number(x?.id || 0)), 0);
+    const entry = {
+      id: maxId + 1,
+      customerId: Number(m.customerId || 0),
+      to: String(m.to || '').trim(),
+      body: String(m.body || '').trim(),
+      sentAt: m.sentAt || new Date().toISOString(),
+      direction: m.direction || 'out',
+      twilioSid: m.twilioSid || null,
+    };
+    msgs.push(entry);
+    db['smsMessages'] = msgs;
+    writeDb(db);
+    return { ok: true, message: entry };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('open-twilio-settings', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 580,
+    height: 640,
+    resizable: false,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('SMS / Twilio Settings'),
+  });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?twilioSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?twilioSettings=true`;
+  child.loadURL(url).catch((e: any) => console.error('[TwilioSettings] loadURL failed', e));
+  return { ok: true };
+});
+
 // Open Clock In window
 ipcMain.handle('open-clock-in', async () => {
   console.log('[IPC] open-clock-in invoked');

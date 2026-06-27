@@ -51,6 +51,7 @@ const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
 const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
 const DataPathGate = lazy(() => import('./components/DataPathGate'));
 const CloverSettingsWindow = lazy(() => import('./components/CloverSettingsWindow'));
+const TwilioSettingsWindow = lazy(() => import('./components/TwilioSettingsWindow'));
 
 declare global {
 	interface Window {
@@ -299,6 +300,7 @@ try {
 		const showNotificationSettings = params.get('notificationSettings');
 		const showCustomBuildItem = params.get('customBuildItem');
 		const showCloverSettings = params.get('cloverSettings');
+		const showTwilioSettings = params.get('twilioSettings');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
@@ -340,6 +342,8 @@ try {
 			renderWithSuspense(root, <NotificationSettingsWindow />);
 		} else if (showCloverSettings) {
 			renderWithSuspense(root, <CloverSettingsWindow />);
+		} else if (showTwilioSettings) {
+			renderWithSuspense(root, <TwilioSettingsWindow />);
 		} else if (showCustomBuildItem) {
 			renderWithSuspense(root, <CustomBuildItemWindow />);
 	} else if (showQuote) {
