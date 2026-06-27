@@ -56,6 +56,7 @@ const CheckoutWindow: React.FC = () => {
   const [markClosed, setMarkClosed] = useState(false);
 
   const [cloverEnabled, setCloverEnabled] = useState(false);
+  const [cloverMode, setCloverMode] = useState<'local' | 'cloud'>('local');
   const [cloverLoading, setCloverLoading] = useState(false);
   const [cloverStatus, setCloverStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -210,7 +211,10 @@ const CheckoutWindow: React.FC = () => {
     setAmountToApply(round2(originalAmountDue));
     // Check if Clover is configured
     (window as any).api?.cloverGetConfig?.().then((cfg: any) => {
-      setCloverEnabled(!!(cfg?.hasToken && cfg?.merchantId));
+      const hasLocal = !!(cfg?.deviceIp);
+      const hasCloud = !!(cfg?.hasToken && cfg?.merchantId);
+      if (hasLocal) { setCloverEnabled(true); setCloverMode('local'); }
+      else if (hasCloud) { setCloverEnabled(true); setCloverMode('cloud'); }
     }).catch(() => {});
   }, []);
 
@@ -240,12 +244,16 @@ const CheckoutWindow: React.FC = () => {
     setCloverLoading(true);
     setCloverStatus(null);
     try {
-      const res = await (window as any).api.cloverChargeCard({
-        amountCents: Math.round(selectedDue * 100),
-        label: payload?.title || 'Service',
-      });
+      const amountCents = Math.round(selectedDue * 100);
+      const label = payload?.title || 'Service';
+      let res: any;
+      if (cloverMode === 'local') {
+        res = await (window as any).api.cloverLocalCharge({ amountCents, label });
+      } else {
+        res = await (window as any).api.cloverChargeCard({ amountCents, label });
+      }
       if (res?.ok) {
-        setCloverStatus({ ok: true, message: 'Sent to Clover — awaiting payment on device' });
+        setCloverStatus({ ok: true, message: cloverMode === 'local' ? 'Sent to Flex — customer can now pay on device' : 'Sent to Clover — awaiting payment on device' });
       } else {
         setCloverStatus({ ok: false, message: res?.error || 'Clover error' });
       }

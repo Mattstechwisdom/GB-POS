@@ -1851,6 +1851,9 @@ ipcMain.handle('clover:rest:getConfig', async () => {
     deviceSerial: cfg.deviceSerial || '',
     environment: cfg.environment || 'production',
     hasToken: !!cfg.accessTokenEnc,
+    deviceIp: cfg.deviceIp || '',
+    devicePort: cfg.devicePort || 12345,
+    hasLocalToken: !!cfg.localAuthTokenEnc,
   };
 });
 
@@ -1860,6 +1863,18 @@ ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
     if (data.merchantId !== undefined) cfg.merchantId = String(data.merchantId).trim();
     if (data.deviceSerial !== undefined) cfg.deviceSerial = String(data.deviceSerial).trim();
     if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
+    if (data.deviceIp !== undefined) cfg.deviceIp = String(data.deviceIp).trim();
+    if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12345;
+    if (data.localAuthToken !== undefined) {
+      const tok = String(data.localAuthToken || '').trim();
+      if (!tok) {
+        delete cfg.localAuthTokenEnc;
+      } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
+        cfg.localAuthTokenEnc = safeStorage.encryptString(tok).toString('base64');
+      } else {
+        cfg.localAuthToken = tok;
+      }
+    }
     writeCloverRestConfig(cfg);
     return { ok: true };
   } catch (e: any) {
@@ -1935,6 +1950,102 @@ ipcMain.handle('clover:chargeCard', async (_e: any, payload: any) => {
     await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/devices/${deviceId}/pay_display`, accessToken: token, body: { action: 'SHOW_ORDER', order: { id: orderId } }, baseUrl: base });
 
     return { ok: true, orderId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+// ─── Clover Local Pay Display (LAN direct to Flex on port 12345) ───────────
+
+function decryptLocalCloverToken(cfg: any): string | null {
+  try {
+    const enc = cfg?.localAuthTokenEnc;
+    if (enc && typeof enc === 'string' && safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+    }
+    if (typeof cfg?.localAuthToken === 'string' && cfg.localAuthToken.trim()) return cfg.localAuthToken.trim();
+    return null;
+  } catch { return null; }
+}
+
+function cloverLocalRequest(opts: {
+  deviceIp: string;
+  devicePort: number;
+  path: string;
+  method: string;
+  authToken?: string | null;
+  body?: any;
+  timeoutMs?: number;
+}): Promise<{ ok: boolean; status?: number; data?: any; error?: string }> {
+  return new Promise((resolve) => {
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const reqOpts: any = {
+      method: opts.method,
+      hostname: opts.deviceIp,
+      port: opts.devicePort,
+      path: opts.path,
+      headers: {
+        'Accept': 'application/json',
+        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+        ...(opts.authToken ? { 'Authorization': `Bearer ${opts.authToken}` } : {}),
+      },
+      rejectUnauthorized: false, // Flex uses a self-signed certificate
+      timeout: opts.timeoutMs || 30000,
+    };
+    try {
+      const req = https.request(reqOpts, (res: any) => {
+        let data = '';
+        res.on('data', (c: any) => { data += String(c ?? ''); });
+        res.on('end', () => {
+          const status = Number(res?.statusCode || 0);
+          const ok = status >= 200 && status < 300;
+          try {
+            const json = data.trim() ? JSON.parse(data) : null;
+            resolve({ ok, status, data: json });
+          } catch {
+            resolve({ ok, status, data: data.trim() || null });
+          }
+        });
+      });
+      req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch {} });
+      req.on('error', (err: any) => { resolve({ ok: false, error: String(err?.message || err) }); });
+      if (bodyStr) req.write(bodyStr);
+      req.end();
+    } catch (e: any) {
+      resolve({ ok: false, error: String(e?.message || e) });
+    }
+  });
+}
+
+ipcMain.handle('clover:testLocalConnection', async () => {
+  try {
+    const cfg = readCloverRestConfig();
+    const deviceIp = String(cfg.deviceIp || '').trim();
+    const devicePort = Number(cfg.devicePort || 12345);
+    if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
+    const authToken = decryptLocalCloverToken(cfg);
+    const res = await cloverLocalRequest({ deviceIp, devicePort, path: '/ping', method: 'GET', authToken, timeoutMs: 6000 });
+    if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort}` };
+    return { ok: false, error: res.error || `Device returned HTTP ${res.status}` };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const deviceIp = String(cfg.deviceIp || '').trim();
+    const devicePort = Number(cfg.devicePort || 12345);
+    if (!deviceIp) return { ok: false, error: 'No device IP configured. Go to Admin → Integrations → Clover to set up.' };
+    const authToken = decryptLocalCloverToken(cfg);
+    const amountCents = Math.round(Number(payload?.amountCents) || 0);
+    if (amountCents <= 0) return { ok: false, error: 'Amount must be greater than zero.' };
+    const externalId = `GB-${Date.now()}`;
+    const body: any = { externalId, amount: amountCents, tipMode: 'NO_TIP' };
+    const res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000 });
+    if (res.ok) return { ok: true, result: res.data, externalId };
+    return { ok: false, error: res.error || `Device returned HTTP ${res.status}. Check that Pay Display is open on the Flex.` };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }

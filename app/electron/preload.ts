@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld('api', {
   cloverSaveConfig: (data: any): Promise<any> => ipcRenderer.invoke('clover:saveConfig', data),
   cloverSetAccessToken: (token: string): Promise<any> => ipcRenderer.invoke('clover:setAccessToken', token),
   cloverTestConnection: (): Promise<any> => ipcRenderer.invoke('clover:testConnection'),
+  cloverTestLocalConnection: (): Promise<any> => ipcRenderer.invoke('clover:testLocalConnection'),
+  cloverLocalCharge: (payload: any): Promise<any> => ipcRenderer.invoke('clover:localCharge', payload),
   cloverChargeCard: (payload: any): Promise<any> => ipcRenderer.invoke('clover:chargeCard', payload),
   cloverCashSale: (payload: any): Promise<any> => ipcRenderer.invoke('clover:cashSale', payload),
   openTwilioSettings: (): Promise<any> => ipcRenderer.invoke('open-twilio-settings'),
