@@ -5,7 +5,7 @@ const api = () => (window as any).api;
 export default function CloverSettingsWindow() {
   // ── Local (LAN) mode ─────────────────────────────────────────────────────
   const [deviceIp, setDeviceIp] = useState('');
-  const [devicePort, setDevicePort] = useState('12345');
+  const [devicePort, setDevicePort] = useState('12346');
   const [localToken, setLocalToken] = useState('');
   const [hasLocalToken, setHasLocalToken] = useState(false);
   const [showLocalToken, setShowLocalToken] = useState(false);
@@ -29,7 +29,7 @@ export default function CloverSettingsWindow() {
     api().cloverGetConfig?.().then((cfg: any) => {
       if (!cfg) return;
       setDeviceIp(cfg.deviceIp || '');
-      setDevicePort(String(cfg.devicePort || 12345));
+      setDevicePort(String(cfg.devicePort || 12346));
       setHasLocalToken(!!cfg.hasLocalToken);
       setMerchantId(cfg.merchantId || '');
       setDeviceSerial(cfg.deviceSerial || '');
@@ -45,7 +45,7 @@ export default function CloverSettingsWindow() {
     try {
       const patch: any = {
         deviceIp: deviceIp.trim(),
-        devicePort: Number(devicePort) || 12345,
+        devicePort: Number(devicePort) || 12346,
         merchantId,
         deviceSerial,
         environment,

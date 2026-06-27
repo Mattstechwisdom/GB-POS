@@ -1852,7 +1852,7 @@ ipcMain.handle('clover:rest:getConfig', async () => {
     environment: cfg.environment || 'production',
     hasToken: !!cfg.accessTokenEnc,
     deviceIp: cfg.deviceIp || '',
-    devicePort: cfg.devicePort || 12345,
+    devicePort: cfg.devicePort || 12346,
     hasLocalToken: !!cfg.localAuthTokenEnc,
   };
 });
@@ -1864,7 +1864,7 @@ ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
     if (data.deviceSerial !== undefined) cfg.deviceSerial = String(data.deviceSerial).trim();
     if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
     if (data.deviceIp !== undefined) cfg.deviceIp = String(data.deviceIp).trim();
-    if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12345;
+    if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12346;
     if (data.localAuthToken !== undefined) {
       const tok = String(data.localAuthToken || '').trim();
       if (!tok) {
@@ -1955,7 +1955,7 @@ ipcMain.handle('clover:chargeCard', async (_e: any, payload: any) => {
   }
 });
 
-// ─── Clover Local Pay Display (LAN direct to Flex on port 12345) ───────────
+// ─── Clover Local Pay Display (LAN direct to Flex on port 12346) ───────────
 
 function decryptLocalCloverToken(cfg: any): string | null {
   try {
@@ -2021,7 +2021,7 @@ ipcMain.handle('clover:testLocalConnection', async () => {
   try {
     const cfg = readCloverRestConfig();
     const deviceIp = String(cfg.deviceIp || '').trim();
-    const devicePort = Number(cfg.devicePort || 12345);
+    const devicePort = Number(cfg.devicePort || 12346);
     if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
     const authToken = decryptLocalCloverToken(cfg);
     const res = await cloverLocalRequest({ deviceIp, devicePort, path: '/ping', method: 'GET', authToken, timeoutMs: 6000 });
@@ -2036,7 +2036,7 @@ ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
   try {
     const cfg = readCloverRestConfig();
     const deviceIp = String(cfg.deviceIp || '').trim();
-    const devicePort = Number(cfg.devicePort || 12345);
+    const devicePort = Number(cfg.devicePort || 12346);
     if (!deviceIp) return { ok: false, error: 'No device IP configured. Go to Admin → Integrations → Clover to set up.' };
     const authToken = decryptLocalCloverToken(cfg);
     const amountCents = Math.round(Number(payload?.amountCents) || 0);
@@ -2408,7 +2408,7 @@ function buildCloverEndpoint(ipAddress: string): string {
     if (p && p !== '/') pathPart = p;
   }
   if (!hostPort) return '';
-  const withPort = hostPort.includes(':') ? hostPort : `${hostPort}:12345`;
+  const withPort = hostPort.includes(':') ? hostPort : `${hostPort}:12346`;
   const finalPath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
   return `wss://${withPort}${finalPath}`;
 }
