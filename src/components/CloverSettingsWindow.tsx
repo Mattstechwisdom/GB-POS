@@ -113,8 +113,8 @@ export default function CloverSettingsWindow() {
           <div className="text-sm font-bold text-zinc-200 mb-2">Step 1 — Enable Pay Display on your Clover Flex</div>
           <ol className="text-sm text-zinc-400 space-y-1.5 list-decimal list-inside leading-relaxed">
             <li>On the Flex: open the <span className="text-zinc-200 font-semibold">App Market</span> and install <span className="text-zinc-200 font-semibold">Pay Display</span> if not already there.</li>
-            <li>Open the <span className="text-zinc-200 font-semibold">Pay Display</span> app — the device will show a waiting screen with its <span className="text-zinc-200 font-semibold">IP address</span>.</li>
-            <li>Note that IP address and enter it below. Both devices must be on the <span className="text-zinc-200 font-semibold">same Wi-Fi network</span>.</li>
+            <li>Open the <span className="text-zinc-200 font-semibold">Pay Display</span> app — it shows a settings screen with the <span className="text-zinc-200 font-semibold">HTTP server IP &amp; port</span> (HTTP port, not WebSocket).</li>
+            <li>Enter the IP below. Port is <span className="text-zinc-200 font-semibold">12346</span> (HTTP server). Both devices must be on the <span className="text-zinc-200 font-semibold">same Wi-Fi</span> — not a guest network.</li>
           </ol>
         </div>
 
@@ -132,7 +132,7 @@ export default function CloverSettingsWindow() {
                 onChange={e => setDeviceIp(e.target.value)}
                 spellCheck={false}
               />
-              <div className="text-[11px] text-zinc-500 mt-1">The IP shown on the Pay Display screen</div>
+              <div className="text-[11px] text-zinc-500 mt-1">The IP shown in Pay Display app settings</div>
             </div>
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Port</label>

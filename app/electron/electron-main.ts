@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electr
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const { pathToFileURL } = require('url');
 const os = require('os');
 const { spawn } = require('child_process');
@@ -1989,11 +1990,10 @@ function cloverLocalRequest(opts: {
         ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
         ...(opts.authToken ? { 'Authorization': `Bearer ${opts.authToken}` } : {}),
       },
-      rejectUnauthorized: false, // Flex uses a self-signed certificate
       timeout: opts.timeoutMs || 30000,
     };
     try {
-      const req = https.request(reqOpts, (res: any) => {
+      const req = http.request(reqOpts, (res: any) => {
         let data = '';
         res.on('data', (c: any) => { data += String(c ?? ''); });
         res.on('end', () => {
