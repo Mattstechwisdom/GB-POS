@@ -2024,20 +2024,23 @@ function cloverLocalRequest(opts: {
 async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, timeoutMs = 6000) {
   const probes: Array<{ path: string; forceHttps: boolean; label: string }> = [
     { path: '/status', forceHttps: false, label: 'HTTP /status' },
+    { path: '/ping',   forceHttps: false, label: 'HTTP /ping'   },
     { path: '/',       forceHttps: false, label: 'HTTP /'       },
     { path: '/status', forceHttps: true,  label: 'HTTPS /status' },
-    { path: '/',       forceHttps: true,  label: 'HTTPS /'       },
+    { path: '/ping',   forceHttps: true,  label: 'HTTPS /ping'  },
+    { path: '/',       forceHttps: true,  label: 'HTTPS /'      },
   ];
-  let lastError = 'No response from device';
+  const errors: string[] = [];
   for (const p of probes) {
     const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps });
     if (res.ok || (res.status && res.status < 500)) {
       // Any HTTP response (even 404) proves the device is reachable
       return { ok: true, probe: p.label, status: res.status };
     }
-    lastError = res.error || lastError;
+    errors.push(`${p.label}: ${res.error || `HTTP ${res.status}`}`);
   }
-  return { ok: false, error: lastError };
+  const uniqueErrors = [...new Set(errors.map(e => e.replace(/^(HTTP|HTTPS) \/\w*: /, '')))];
+  return { ok: false, error: `Device not reachable. Errors: ${uniqueErrors.join(', ')}. Check IP (${deviceIp}:${devicePort}), that Pay Display app is open, and that your router doesn't block device-to-device traffic (AP isolation).` };
 }
 
 ipcMain.handle('clover:testLocalConnection', async () => {

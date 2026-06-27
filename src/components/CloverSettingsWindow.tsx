@@ -178,11 +178,13 @@ export default function CloverSettingsWindow() {
             </button>
             <button onClick={testLocal} disabled={testingLocal || !deviceIp.trim()}
               className="px-4 py-2 bg-zinc-700 border border-zinc-600 rounded text-sm text-zinc-100 hover:bg-zinc-600 disabled:opacity-50">
-              {testingLocal ? 'Pinging…' : '📡 Test Connection'}
+              {testingLocal ? 'Probing…' : '📡 Test Connection'}
             </button>
           </div>
-          <div className="text-xs text-zinc-500">
-            Make sure <strong className="text-zinc-400">Pay Display is open on the Flex</strong> and both devices are on the same network before testing.
+          <div className="text-xs text-zinc-500 leading-relaxed">
+            Make sure <strong className="text-zinc-400">Pay Display is open on the Flex</strong> and both devices are on the same Wi-Fi.<br />
+            If you get ECONNRESET, try: open a browser on <em>this PC</em> and navigate to{' '}
+            <span className="font-mono text-zinc-300">http://{deviceIp || '192.168.x.x'}:12346/</span> — if it doesn't load, your router has <strong className="text-zinc-400">AP/client isolation</strong> enabled (blocks device-to-device traffic). Disable it in your router settings.
           </div>
         </div>
 
