@@ -1977,9 +1977,11 @@ function cloverLocalRequest(opts: {
   authToken?: string | null;
   body?: any;
   timeoutMs?: number;
+  forceHttps?: boolean;
 }): Promise<{ ok: boolean; status?: number; data?: any; error?: string }> {
   return new Promise((resolve) => {
     const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const mod = opts.forceHttps ? https : http;
     const reqOpts: any = {
       method: opts.method,
       hostname: opts.deviceIp,
@@ -1990,10 +1992,11 @@ function cloverLocalRequest(opts: {
         ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
         ...(opts.authToken ? { 'Authorization': `Bearer ${opts.authToken}` } : {}),
       },
+      ...(opts.forceHttps ? { rejectUnauthorized: false } : {}),
       timeout: opts.timeoutMs || 30000,
     };
     try {
-      const req = http.request(reqOpts, (res: any) => {
+      const req = mod.request(reqOpts, (res: any) => {
         let data = '';
         res.on('data', (c: any) => { data += String(c ?? ''); });
         res.on('end', () => {
@@ -2017,6 +2020,26 @@ function cloverLocalRequest(opts: {
   });
 }
 
+// Probe several path/protocol combos; return first success or best error
+async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, timeoutMs = 6000) {
+  const probes: Array<{ path: string; forceHttps: boolean; label: string }> = [
+    { path: '/status', forceHttps: false, label: 'HTTP /status' },
+    { path: '/',       forceHttps: false, label: 'HTTP /'       },
+    { path: '/status', forceHttps: true,  label: 'HTTPS /status' },
+    { path: '/',       forceHttps: true,  label: 'HTTPS /'       },
+  ];
+  let lastError = 'No response from device';
+  for (const p of probes) {
+    const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps });
+    if (res.ok || (res.status && res.status < 500)) {
+      // Any HTTP response (even 404) proves the device is reachable
+      return { ok: true, probe: p.label, status: res.status };
+    }
+    lastError = res.error || lastError;
+  }
+  return { ok: false, error: lastError };
+}
+
 ipcMain.handle('clover:testLocalConnection', async () => {
   try {
     const cfg = readCloverRestConfig();
@@ -2024,9 +2047,9 @@ ipcMain.handle('clover:testLocalConnection', async () => {
     const devicePort = Number(cfg.devicePort || 12346);
     if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
     const authToken = decryptLocalCloverToken(cfg);
-    const res = await cloverLocalRequest({ deviceIp, devicePort, path: '/ping', method: 'GET', authToken, timeoutMs: 6000 });
-    if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort}` };
-    return { ok: false, error: res.error || `Device returned HTTP ${res.status}` };
+    const res = await cloverProbeDevice(deviceIp, devicePort, authToken);
+    if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort} (${res.probe})` };
+    return { ok: false, error: res.error || 'Device not reachable. Check IP, port, and that the Pay Display app is open.' };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -2043,7 +2066,11 @@ ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
     if (amountCents <= 0) return { ok: false, error: 'Amount must be greater than zero.' };
     const externalId = `GB-${Date.now()}`;
     const body: any = { externalId, amount: amountCents, tipMode: 'NO_TIP' };
-    const res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000 });
+    // Try HTTP first; fall back to HTTPS if ECONNRESET (some devices use HTTPS)
+    let res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: false });
+    if (!res.ok && (res.error || '').includes('ECONNRESET')) {
+      res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: true });
+    }
     if (res.ok) return { ok: true, result: res.data, externalId };
     return { ok: false, error: res.error || `Device returned HTTP ${res.status}. Check that Pay Display is open on the Flex.` };
   } catch (e: any) {
