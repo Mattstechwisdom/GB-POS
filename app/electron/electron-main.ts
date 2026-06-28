@@ -1978,10 +1978,20 @@ function cloverLocalRequest(opts: {
   body?: any;
   timeoutMs?: number;
   forceHttps?: boolean;
+  bearerPrefix?: 'Bearer' | 'token';
 }): Promise<{ ok: boolean; status?: number; data?: any; error?: string }> {
   return new Promise((resolve) => {
     const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
     const mod = opts.forceHttps ? https : http;
+    const authHeaders: Record<string, string> = {};
+    if (opts.authToken) {
+      // Clover REST Pay API accepts either format depending on firmware version
+      if (opts.bearerPrefix === 'token') {
+        authHeaders['Authorization'] = `token ${opts.authToken}`;
+      } else {
+        authHeaders['Authorization'] = `Bearer ${opts.authToken}`;
+      }
+    }
     const reqOpts: any = {
       method: opts.method,
       hostname: opts.deviceIp,
@@ -1990,7 +2000,7 @@ function cloverLocalRequest(opts: {
       headers: {
         'Accept': 'application/json',
         ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
-        ...(opts.authToken ? { 'Authorization': `Bearer ${opts.authToken}` } : {}),
+        ...authHeaders,
       },
       ...(opts.forceHttps ? { rejectUnauthorized: false } : {}),
       timeout: opts.timeoutMs || 30000,
@@ -2020,27 +2030,30 @@ function cloverLocalRequest(opts: {
   });
 }
 
-// Probe several path/protocol combos; return first success or best error
+// Probe several path/protocol/auth combos; return first success or best error
 async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, timeoutMs = 6000) {
-  const probes: Array<{ path: string; forceHttps: boolean; label: string }> = [
-    { path: '/status', forceHttps: false, label: 'HTTP /status' },
-    { path: '/ping',   forceHttps: false, label: 'HTTP /ping'   },
-    { path: '/',       forceHttps: false, label: 'HTTP /'       },
-    { path: '/status', forceHttps: true,  label: 'HTTPS /status' },
-    { path: '/ping',   forceHttps: true,  label: 'HTTPS /ping'  },
-    { path: '/',       forceHttps: true,  label: 'HTTPS /'      },
+  type Probe = { path: string; forceHttps: boolean; bearerPrefix?: 'Bearer' | 'token'; label: string };
+  const probes: Probe[] = [
+    { path: '/status', forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /status Bearer' },
+    { path: '/status', forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /status token'  },
+    { path: '/status', forceHttps: false,                          label: 'HTTP /status (no auth)' },
+    { path: '/ping',   forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /ping Bearer'   },
+    { path: '/ping',   forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /ping token'    },
+    { path: '/',       forceHttps: false,                          label: 'HTTP / (no auth)'    },
+    { path: '/status', forceHttps: true,  bearerPrefix: 'Bearer', label: 'HTTPS /status Bearer' },
+    { path: '/status', forceHttps: true,  bearerPrefix: 'token',  label: 'HTTPS /status token'  },
+    { path: '/',       forceHttps: true,                           label: 'HTTPS / (no auth)'   },
   ];
   const errors: string[] = [];
   for (const p of probes) {
-    const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps });
+    const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps, bearerPrefix: p.bearerPrefix });
     if (res.ok || (res.status && res.status < 500)) {
-      // Any HTTP response (even 404) proves the device is reachable
       return { ok: true, probe: p.label, status: res.status };
     }
     errors.push(`${p.label}: ${res.error || `HTTP ${res.status}`}`);
   }
-  const uniqueErrors = [...new Set(errors.map(e => e.replace(/^(HTTP|HTTPS) \/\w*: /, '')))];
-  return { ok: false, error: `Device not reachable. Errors: ${uniqueErrors.join(', ')}. Check IP (${deviceIp}:${devicePort}), that Pay Display app is open, and that your router doesn't block device-to-device traffic (AP isolation).` };
+  const uniqueErrors = [...new Set(errors.map(e => e.replace(/^[^:]+: /, '')))];
+  return { ok: false, error: `Device not reachable. Errors: ${uniqueErrors.join(', ')}. Check IP (${deviceIp}:${devicePort}), that Pay Display app is open, and enter the Auth Token shown in the Pay Display app settings on the Flex.` };
 }
 
 ipcMain.handle('clover:testLocalConnection', async () => {
