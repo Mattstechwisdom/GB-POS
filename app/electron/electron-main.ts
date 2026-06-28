@@ -1855,6 +1855,7 @@ ipcMain.handle('clover:rest:getConfig', async () => {
     deviceIp: cfg.deviceIp || '',
     devicePort: cfg.devicePort || 12346,
     hasLocalToken: !!cfg.localAuthTokenEnc,
+    remoteAppId: cfg.remoteAppId || '',
   };
 });
 
@@ -1866,6 +1867,7 @@ ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
     if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
     if (data.deviceIp !== undefined) cfg.deviceIp = String(data.deviceIp).trim();
     if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12346;
+    if (data.remoteAppId !== undefined) cfg.remoteAppId = String(data.remoteAppId).trim();
     if (data.localAuthToken !== undefined) {
       const tok = String(data.localAuthToken || '').trim();
       if (!tok) {
@@ -2031,7 +2033,7 @@ function cloverLocalRequest(opts: {
 }
 
 // Probe several path/protocol/auth combos; return first success or best error
-async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, timeoutMs = 6000) {
+async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, remoteAppId?: string, timeoutMs = 6000) {
   type Probe = { path: string; forceHttps: boolean; bearerPrefix?: 'Bearer' | 'token'; label: string };
   const probes: Probe[] = [
     { path: '/status', forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /status Bearer' },
@@ -2062,8 +2064,9 @@ ipcMain.handle('clover:testLocalConnection', async () => {
     const deviceIp = String(cfg.deviceIp || '').trim();
     const devicePort = Number(cfg.devicePort || 12346);
     if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
+    if (!cfg.remoteAppId) return { ok: false, error: 'Remote App ID is required. Get it from developer.clover.com → your app → App ID.' };
     const authToken = decryptLocalCloverToken(cfg);
-    const res = await cloverProbeDevice(deviceIp, devicePort, authToken);
+    const res = await cloverProbeDevice(deviceIp, devicePort, authToken, cfg.remoteAppId);
     if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort} (${res.probe})` };
     return { ok: false, error: res.error || 'Device not reachable. Check IP, port, and that the Pay Display app is open.' };
   } catch (e: any) {
@@ -2082,6 +2085,7 @@ ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
     if (amountCents <= 0) return { ok: false, error: 'Amount must be greater than zero.' };
     const externalId = `GB-${Date.now()}`;
     const body: any = { externalId, amount: amountCents, tipMode: 'NO_TIP' };
+    if (cfg.remoteAppId) body.appId = cfg.remoteAppId;
     // Try HTTP first; fall back to HTTPS if ECONNRESET (some devices use HTTPS)
     let res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: false });
     if (!res.ok && (res.error || '').includes('ECONNRESET')) {

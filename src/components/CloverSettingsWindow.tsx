@@ -6,6 +6,7 @@ export default function CloverSettingsWindow() {
   // ── Local (LAN) mode ─────────────────────────────────────────────────────
   const [deviceIp, setDeviceIp] = useState('');
   const [devicePort, setDevicePort] = useState('12346');
+  const [remoteAppId, setRemoteAppId] = useState('');
   const [localToken, setLocalToken] = useState('');
   const [hasLocalToken, setHasLocalToken] = useState(false);
   const [showLocalToken, setShowLocalToken] = useState(false);
@@ -30,6 +31,7 @@ export default function CloverSettingsWindow() {
       if (!cfg) return;
       setDeviceIp(cfg.deviceIp || '');
       setDevicePort(String(cfg.devicePort || 12346));
+      setRemoteAppId(cfg.remoteAppId || '');
       setHasLocalToken(!!cfg.hasLocalToken);
       setMerchantId(cfg.merchantId || '');
       setDeviceSerial(cfg.deviceSerial || '');
@@ -46,6 +48,7 @@ export default function CloverSettingsWindow() {
       const patch: any = {
         deviceIp: deviceIp.trim(),
         devicePort: Number(devicePort) || 12346,
+        remoteAppId: remoteAppId.trim(),
         merchantId,
         deviceSerial,
         environment,
@@ -142,6 +145,22 @@ export default function CloverSettingsWindow() {
                 value={devicePort}
                 onChange={e => setDevicePort(e.target.value)}
               />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">
+              Remote App ID <span className="text-red-400 font-semibold">*required</span>
+            </label>
+            <input
+              type="text"
+              className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-2 text-sm font-mono text-zinc-100 focus:outline-none focus:border-[#39FF14]"
+              placeholder="e.g. com.myshop.pos or alphanumeric App ID"
+              value={remoteAppId}
+              onChange={e => setRemoteAppId(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="text-[11px] text-zinc-500 mt-1">
+              Get this at <span className="text-zinc-300 font-semibold">developer.clover.com</span> → log in → Create App → copy the <strong>App ID</strong> shown on the app dashboard.
             </div>
           </div>
           <div>
