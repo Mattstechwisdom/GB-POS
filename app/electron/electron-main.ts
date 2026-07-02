@@ -4832,13 +4832,24 @@ let qrHttpServer: any = null;
 function getLanIp(): string {
   try {
     const ifaces = os.networkInterfaces();
+    const candidates: Array<{ priority: number; address: string }> = [];
     for (const name of Object.keys(ifaces)) {
+      const lname = name.toLowerCase();
+      // Skip virtual/hotspot adapters: "Local Area Connection* N", vEthernet, loopback, Wi-Fi Direct
+      const isVirtual = /local area connection\*|vethernet|wi-fi direct|virtualbox|vmware|hyper-v|tap-/i.test(lname);
       for (const iface of (ifaces[name] || [])) {
-        if (!(iface as any).internal && (iface as any).family === 'IPv4') {
-          return (iface as any).address;
-        }
+        const addr = (iface as any).address as string;
+        if ((iface as any).internal || (iface as any).family !== 'IPv4') continue;
+        if (isVirtual) continue;
+        // Skip Windows hotspot default range (192.168.137.x)
+        if (addr.startsWith('192.168.137.')) continue;
+        // Priority: Ethernet first, then Wi-Fi, then anything else
+        const priority = /^ethernet/i.test(lname) ? 0 : /^wi-fi|^wlan/i.test(lname) ? 1 : 2;
+        candidates.push({ priority, address: addr });
       }
     }
+    candidates.sort((a, b) => a.priority - b.priority);
+    if (candidates.length > 0) return candidates[0].address;
   } catch {}
   return '127.0.0.1';
 }
