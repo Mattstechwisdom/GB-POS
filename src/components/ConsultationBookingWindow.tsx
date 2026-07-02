@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
 
@@ -217,7 +218,26 @@ export default function ConsultationBookingWindow() {
 
   // ── Submission state ────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState<{ saleId: number; customerName: string } | null>(null);
+  const [done, setDone] = useState<{ saleId: number; eventId?: number; customerName: string } | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!done?.eventId) return;
+    let alive = true;
+    (async () => {
+      try {
+        let lanIp = 'localhost';
+        try {
+          const ipRes = await fetch('http://localhost:7777/ip');
+          if (ipRes.ok) { const j = await ipRes.json(); if (j?.ip) lanIp = j.ip; }
+        } catch {}
+        const qrUrl = `http://${lanIp}:7777/status/consult/${done.eventId}`;
+        const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
+        if (alive) setQrDataUrl(dataUrl);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [done?.eventId]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -531,7 +551,7 @@ export default function ConsultationBookingWindow() {
         ? (fullAddress.trim() || 'At Home')
         : 'In-Store';
 
-      await api.dbAdd('calendarEvents', {
+      const createdEvent = await api.dbAdd('calendarEvents', {
         category: 'consultation',
         date,
         time: time || undefined,
@@ -539,16 +559,18 @@ export default function ConsultationBookingWindow() {
         title: title.trim() || 'Consultation',
         customerName,
         customerPhone,
+        customerEmail: customer?.email || '',
         customerId: customer!.id,
         technician: technician || undefined,
         notes: notes.trim() || undefined,
         location,
         consultationType: locationType,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
         saleId: createdSale?.id,
         source: 'consultation',
       });
 
-      setDone({ saleId: createdSale?.id, customerName });
+      setDone({ saleId: createdSale?.id, eventId: createdEvent?.id, customerName });
     } catch (e: any) {
       setError(e?.message || String(e) || 'Failed to book consultation.');
     } finally {
@@ -568,10 +590,22 @@ export default function ConsultationBookingWindow() {
             {date} at {time}{endTime ? ` – ${endTime}` : ''}
           </p>
           {done.saleId && (
-            <p className="text-zinc-400 text-sm mb-4">Sale #{done.saleId} created</p>
+            <p className="text-zinc-400 text-sm mb-2">Sale #{done.saleId} created</p>
           )}
+
+          {/* QR Code */}
+          {qrDataUrl && (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4 mb-4 inline-block">
+              <img src={qrDataUrl} alt="Consultation QR" style={{ width: 160, height: 160, display: 'block', borderRadius: 8 }} />
+              <p className="text-xs text-zinc-400 mt-2">Scan to send reminder &amp; view details</p>
+            </div>
+          )}
+          {!qrDataUrl && done.eventId && (
+            <p className="text-zinc-500 text-xs mb-4">Generating QR code…</p>
+          )}
+
           <p className="text-zinc-400 text-sm mb-6">
-            Added to calendar. Check the Calendar window to view or edit.
+            Added to calendar. Scan the QR code to send a consultation reminder email to the client.
           </p>
           {!isModalShell && (
             <button
@@ -582,7 +616,7 @@ export default function ConsultationBookingWindow() {
             </button>
           )}
           <button
-            onClick={() => { setDone(null); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setError(''); }}
+            onClick={() => { setDone(null); setQrDataUrl(''); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setError(''); }}
             className="px-6 py-2 bg-zinc-700 text-zinc-200 font-semibold rounded hover:bg-zinc-600"
           >
             Book Another

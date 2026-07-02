@@ -4866,6 +4866,132 @@ function escHtml(s: any): string {
     .replace(/"/g, '&quot;');
 }
 
+function buildConsultPageHtml(event: any): string {
+  const clientName = escHtml(String(event?.customerName || 'Client').trim());
+  const clientEmail = String(event?.customerEmail || '').trim();
+  const eventTitle = escHtml(String(event?.title || 'Consultation').trim());
+  const apptDate = String(event?.date || '').trim();
+  const apptTime = String(event?.time || '').trim();
+  const apptEndTime = String(event?.endTime || '').trim();
+  const locationType = String(event?.consultationType || '').trim();
+  const address = String(event?.consultationAddress || event?.location || '').trim();
+  const techName = escHtml(String(event?.technician || '').trim());
+
+  let formattedDate = apptDate;
+  try { formattedDate = new Date(apptDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); } catch {}
+
+  const fmt12 = (t: string) => {
+    try {
+      if (!t) return '';
+      const [hh, mm] = t.split(':').map(Number);
+      const ampm = hh >= 12 ? 'PM' : 'AM';
+      return `${hh % 12 || 12}:${String(mm || 0).padStart(2, '0')} ${ampm}`;
+    } catch { return t; }
+  };
+  const timeDisplay = apptTime ? (apptEndTime ? `${fmt12(apptTime)} – ${fmt12(apptEndTime)}` : fmt12(apptTime)) : '';
+  const locationIsHome = /athome|at.home/i.test(locationType) || (address && address.toLowerCase() !== 'in-store' && address.toLowerCase() !== 'in store');
+  const locationDisplay = escHtml(locationIsHome && address ? address : 'In-Store — 2822 Devine St, Columbia SC');
+  const hasEmail = !!clientEmail;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Consultation — GadgetBoy</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#18181b;color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;padding:16px}
+  .container{max-width:420px;margin:0 auto}
+  .header{background:#27272a;border-radius:14px;padding:18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;border-bottom:3px solid #eab308}
+  .logo{width:48px;height:48px;border-radius:8px;object-fit:contain;background:#18181b}
+  .brand-name{font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px}
+  .brand-sub{font-size:11px;color:#a1a1aa;margin-top:2px}
+  .info-card{background:#27272a;border-radius:12px;padding:16px;margin-bottom:14px;border:1px solid #3f3f46}
+  .info-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#a1a1aa;margin-bottom:6px}
+  .info-row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #3f3f46;font-size:14px}
+  .info-row:last-child{border-bottom:none}
+  .info-row-key{color:#a1a1aa;font-size:12px;font-weight:600;flex-shrink:0;margin-right:12px}
+  .info-row-val{color:#f4f4f5;font-weight:600;text-align:right}
+  .btn{display:block;width:100%;padding:14px;border-radius:10px;font-size:15px;font-weight:700;border:none;cursor:pointer;text-align:center;margin-bottom:10px;transition:opacity .15s}
+  .btn:active{opacity:.8}
+  .btn-yellow{background:#eab308;color:#1c1917}
+  .btn-zinc{background:#3f3f46;color:#f4f4f5;border:1px solid #52525b}
+  .note-card{background:#27272a;border-radius:10px;padding:14px;border:1px solid #3f3f46;font-size:13px;color:#a1a1aa;line-height:1.6;margin-bottom:14px;text-align:center}
+  .status-msg{border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:14px;font-weight:600;text-align:center}
+  .status-ok{background:#14532d;color:#86efac;border:1px solid #16a34a}
+  .status-err{background:#7f1d1d;color:#fca5a5;border:1px solid #ef4444}
+  .no-email{background:#451a03;border:1px solid #92400e;color:#fcd34d;border-radius:10px;padding:12px;font-size:13px;margin-bottom:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <img class="logo" src="/logo" alt="GB">
+    <div>
+      <div class="brand-name">GADGETBOY</div>
+      <div class="brand-sub">Repair &amp; Retail · 2822 Devine St</div>
+    </div>
+  </div>
+
+  <div class="info-card">
+    <div class="info-label">📅 Consultation Appointment</div>
+    <div class="info-row"><span class="info-row-key">Client</span><span class="info-row-val">${clientName}</span></div>
+    <div class="info-row"><span class="info-row-key">Service</span><span class="info-row-val">${eventTitle}</span></div>
+    ${formattedDate ? `<div class="info-row"><span class="info-row-key">Date</span><span class="info-row-val">${escHtml(formattedDate)}</span></div>` : ''}
+    ${timeDisplay ? `<div class="info-row"><span class="info-row-key">Time</span><span class="info-row-val">${escHtml(timeDisplay)}</span></div>` : ''}
+    <div class="info-row"><span class="info-row-key">Location</span><span class="info-row-val" style="font-size:13px">${locationDisplay}</span></div>
+    ${techName ? `<div class="info-row"><span class="info-row-key">Technician</span><span class="info-row-val">${techName}</span></div>` : ''}
+  </div>
+
+  <div id="status-msg"></div>
+
+  ${!hasEmail ? `<div class="no-email">⚠️ No email on file for this client — reminder cannot be sent.</div>` : ''}
+
+  <button class="btn btn-yellow" id="btn-reminder" ${!hasEmail ? 'disabled style="opacity:.4;cursor:not-allowed"' : ''}>
+    📅 Send Consultation Reminder
+  </button>
+  <button class="btn btn-zinc" id="btn-call">
+    📞 Call the Shop — (803) 708-0101
+  </button>
+
+  <div class="note-card">
+    To add details prior to your consultation or to reschedule, please reply to your confirmation email or call us at <strong style="color:#f4f4f5">(803) 708-0101</strong>. We look forward to seeing you!
+  </div>
+</div>
+<script>
+  const statusEl = document.getElementById('status-msg');
+  function showStatus(ok, msg) {
+    statusEl.innerHTML = '<div class="status-msg ' + (ok ? 'status-ok' : 'status-err') + '">' + msg + '</div>';
+  }
+  document.getElementById('btn-reminder')?.addEventListener('click', async function() {
+    this.disabled = true;
+    this.textContent = 'Sending…';
+    try {
+      const res = await fetch(location.pathname, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'send_reminder' }) });
+      const data = await res.json();
+      if (data.ok) {
+        showStatus(true, '✅ Reminder sent! Check your email.');
+        this.textContent = '✅ Reminder Sent';
+      } else {
+        showStatus(false, '❌ ' + (data.error || 'Failed to send.'));
+        this.disabled = false;
+        this.textContent = '📅 Send Consultation Reminder';
+      }
+    } catch(e) {
+      showStatus(false, '❌ Network error — try again.');
+      this.disabled = false;
+      this.textContent = '📅 Send Consultation Reminder';
+    }
+  });
+  document.getElementById('btn-call')?.addEventListener('click', function() {
+    window.location.href = 'tel:+18037080101';
+  });
+</script>
+</body>
+</html>`;
+}
+
 function buildStatusPageHtml(type: 'repair' | 'sale', record: any): string {
   const isRepair = type === 'repair';
   const clientName = escHtml(String(record?.customerName || record?.client || 'Client').trim() || 'Client');
@@ -5135,6 +5261,164 @@ async function handleQrRequest(req: any, res: any) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('logo not found');
     }
+    return;
+  }
+
+  // ── Consultation status page ───────────────────────────────────────────
+  const consultMatch = url.match(/^\/status\/consult\/(\d+)$/);
+  if (consultMatch) {
+    const eventId = parseInt(consultMatch[1], 10);
+    const db = readDb();
+    const events: any[] = Array.isArray(db['calendarEvents']) ? db['calendarEvents'] : [];
+    const event = events.find((e: any) => Number(e?.id || 0) === eventId) || null;
+
+    if (!event) {
+      const notFoundHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found</title><style>body{background:#18181b;color:#f4f4f5;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:24px}.card{background:#27272a;border:1px solid #3f3f46;border-radius:14px;padding:32px;max-width:360px}</style></head><body><div class="card"><div style="font-size:48px;margin-bottom:16px">🔍</div><h2>Consultation Not Found</h2><p style="color:#a1a1aa;font-size:14px">Event #${eventId} could not be located.</p></div></body></html>`;
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(notFoundHtml);
+      return;
+    }
+
+    // Enrich with customer email/phone if not on event directly
+    let customerEmail = String(event.customerEmail || '').trim();
+    let customerPhone = String(event.customerPhone || '').trim();
+    const customerId = Number(event.customerId || 0);
+    if ((!customerEmail || !customerPhone) && customerId > 0) {
+      const customers: any[] = Array.isArray(db['customers']) ? db['customers'] : [];
+      const cust = customers.find((c: any) => Number(c?.id || 0) === customerId);
+      if (cust) {
+        if (!customerEmail) customerEmail = String(cust.email || '').trim();
+        if (!customerPhone) customerPhone = String(cust.phone || '').trim();
+      }
+    }
+    const enrichedEvent = { ...event, customerEmail, customerPhone };
+
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buildConsultPageHtml(enrichedEvent));
+      return;
+    }
+
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const payload = JSON.parse(body || '{}');
+          const action = String(payload?.action || '').trim();
+
+          if (action === 'send_reminder') {
+            if (!enrichedEvent.customerEmail) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: 'No email address on file for this client.' }));
+              return;
+            }
+
+            const clientName = String(enrichedEvent.customerName || 'Client').trim();
+            const eventTitle = String(enrichedEvent.title || 'Consultation').trim();
+            const apptDate = String(enrichedEvent.date || '').trim();
+            const apptTime = String(enrichedEvent.time || '').trim();
+            const apptEndTime = String(enrichedEvent.endTime || '').trim();
+            const locationType = String(enrichedEvent.consultationType || enrichedEvent.location || '').trim();
+            const address = String(enrichedEvent.consultationAddress || enrichedEvent.location || '').trim();
+            const techName = String(enrichedEvent.technician || '').trim();
+
+            let formattedDate = apptDate;
+            try { formattedDate = new Date(apptDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); } catch {}
+
+            let formattedTime = apptTime;
+            try {
+              if (apptTime) {
+                const [hh, mm] = apptTime.split(':').map(Number);
+                const ampm = hh >= 12 ? 'PM' : 'AM';
+                const h12 = hh % 12 || 12;
+                formattedTime = `${h12}:${String(mm || 0).padStart(2, '0')} ${ampm}`;
+              }
+            } catch {}
+            let formattedEndTime = '';
+            try {
+              if (apptEndTime) {
+                const [hh2, mm2] = apptEndTime.split(':').map(Number);
+                const ampm2 = hh2 >= 12 ? 'PM' : 'AM';
+                const h122 = hh2 % 12 || 12;
+                formattedEndTime = `${h122}:${String(mm2 || 0).padStart(2, '0')} ${ampm2}`;
+              }
+            } catch {}
+
+            const locationIsHome = /athome|at.home|at home/i.test(locationType) || (address && address.toLowerCase() !== 'in-store' && address.toLowerCase() !== 'in store');
+            const locationDisplay = locationIsHome && address ? address : 'In-Store — 2822 Devine St, Columbia SC';
+
+            let logoImgHtml2 = '';
+            try {
+              const logoPath2 = isDev ? path.join(app.getAppPath(), 'public', 'logo.png') : path.join(app.getAppPath(), 'dist', 'logo.png');
+              const logoData2 = fs.readFileSync(logoPath2);
+              logoImgHtml2 = `<img src="data:image/png;base64,${logoData2.toString('base64')}" alt="GadgetBoy" style="height:40px;width:auto;border-radius:6px;">`;
+            } catch {}
+
+            const subject = `Consultation Reminder — ${formattedDate}${formattedTime ? ` at ${formattedTime}` : ''} | GadgetBoy`;
+            const timeRange = formattedTime ? (formattedEndTime ? `${formattedTime} – ${formattedEndTime}` : formattedTime) : 'TBD';
+
+            const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:520px;margin:30px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#18181b;padding:20px 24px;border-bottom:3px solid #eab308;display:flex;align-items:center;gap:14px;">
+    ${logoImgHtml2}
+    <div>
+      <div style="font-size:15px;font-weight:900;color:#f4f4f5;letter-spacing:-.3px;line-height:1.2;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#a1a1aa;margin-top:3px;line-height:1.7;">2822 Devine Street, Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <h2 style="font-size:18px;font-weight:700;color:#18181b;margin:0 0 8px;">📅 Consultation Reminder</h2>
+    <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${escHtml(clientName)}</strong>, this is a friendly reminder about your upcoming consultation with GadgetBoy.</p>
+    <div style="background:#fefce8;border:1.5px solid #eab308;border-radius:10px;padding:18px 20px;margin-bottom:20px;">
+      <div style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Appointment Details</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="font-size:12px;color:#78350f;font-weight:600;padding:4px 0;width:80px;">Service</td><td style="font-size:14px;color:#1c1917;font-weight:700;">${escHtml(eventTitle)}</td></tr>
+        <tr><td style="font-size:12px;color:#78350f;font-weight:600;padding:4px 0;">Date</td><td style="font-size:14px;color:#1c1917;font-weight:700;">${escHtml(formattedDate)}</td></tr>
+        <tr><td style="font-size:12px;color:#78350f;font-weight:600;padding:4px 0;">Time</td><td style="font-size:14px;color:#1c1917;font-weight:700;">${escHtml(timeRange)}</td></tr>
+        <tr><td style="font-size:12px;color:#78350f;font-weight:600;padding:4px 0;">Location</td><td style="font-size:14px;color:#1c1917;">${escHtml(locationDisplay)}</td></tr>
+        ${techName ? `<tr><td style="font-size:12px;color:#78350f;font-weight:600;padding:4px 0;">Technician</td><td style="font-size:14px;color:#1c1917;">${escHtml(techName)}</td></tr>` : ''}
+      </table>
+    </div>
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">
+      If you have any additional details you'd like to share prior to the consultation, or if you need to reschedule, simply <strong>reply to this email</strong> or give us a call at <strong>(803) 708-0101</strong>. We're happy to help!
+    </p>
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 20px;">We look forward to seeing you! 😊</p>
+    <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:3px;">GADGETBOY Repair &amp; Retail</div>
+      <div style="font-size:11px;color:#9ca3af;line-height:1.8;">2822 Devine Street &nbsp;&middot;&nbsp; Columbia, SC 29205<br>(803) 708-0101 &nbsp;&middot;&nbsp; gadgetboysc@gmail.com</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+            const text = `Consultation Reminder\n\nHi ${clientName},\n\nThis is a reminder about your upcoming consultation with GadgetBoy.\n\nService: ${eventTitle}\nDate: ${formattedDate}\nTime: ${timeRange}\nLocation: ${locationDisplay}${techName ? `\nTechnician: ${techName}` : ''}\n\nIf you have any additional details or need to reschedule, reply to this email or call (803) 708-0101.\n\nWe look forward to seeing you!\n\n— GadgetBoy Repair & Retail`;
+
+            try {
+              const result = await sendConfiguredEmail({ to: enrichedEvent.customerEmail, subject, html, text });
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(result?.ok ? { ok: true } : { ok: false, error: result?.error || 'Failed to send email.' }));
+            } catch (emailErr: any) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: emailErr?.message || 'Email error' }));
+            }
+            return;
+          }
+
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Unknown action' }));
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: e?.message || 'Server error' }));
+        }
+      });
+      return;
+    }
+
+    res.writeHead(405, { 'Content-Type': 'text/plain' });
+    res.end('Method Not Allowed');
     return;
   }
 
