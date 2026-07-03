@@ -4166,12 +4166,34 @@ ipcMain.handle('backup:import', async () => {
     if (open.canceled || !open.filePaths.length) return { ok: false, canceled: true };
     const filePath = open.filePaths[0];
     const raw = fs.readFileSync(filePath, 'utf-8');
-  const data = JSON.parse(raw);
-  if (!data || typeof data !== 'object') return { ok: false, error: 'Invalid backup file format' };
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return { ok: false, error: 'Invalid backup file format' };
 
-  // Support both plain-DB exports and BackupData { collections: {...} } shape
-  const collectionsShape = (data as any)?.collections;
-  const dbPayload = (collectionsShape && typeof collectionsShape === 'object') ? collectionsShape : data;
+    // Support both plain-DB exports and BackupData { collections: {...} } shape
+    const collectionsShape = (data as any)?.collections;
+    const dbPayload: any = (collectionsShape && typeof collectionsShape === 'object') ? { ...collectionsShape } : { ...data };
+
+    // Strip any BackupData envelope keys that are not DB collections
+    for (const k of ['version', 'timestamp', 'source', 'dataComplete', 'scanTimestamp', 'metadata']) {
+      if (typeof dbPayload[k] === 'string' || (k === 'metadata' && dbPayload[k] && typeof dbPayload[k] === 'object' && !Array.isArray(dbPayload[k]))) {
+        delete dbPayload[k];
+      }
+    }
+
+    // Ensure core collections are at least empty arrays
+    if (!Array.isArray(dbPayload.customers)) dbPayload.customers = [];
+    if (!Array.isArray(dbPayload.workOrders)) dbPayload.workOrders = [];
+
+    // Recompute invoiceSeq from imported records so the first new WO/sale gets the
+    // correct next ID, preventing duplicate IDs or starting over from 1.
+    const importedWo: any[] = Array.isArray(dbPayload.workOrders) ? dbPayload.workOrders : [];
+    const importedSa: any[] = Array.isArray(dbPayload.sales) ? dbPayload.sales : [];
+    let maxId = 0;
+    for (const it of importedWo) maxId = Math.max(maxId, Number(it?.id || 0));
+    for (const it of importedSa) maxId = Math.max(maxId, Number(it?.id || 0));
+    if (!dbPayload.invoiceSeq || Number(dbPayload.invoiceSeq) < maxId) {
+      dbPayload.invoiceSeq = maxId;
+    }
 
     // Auto-backup current DB before overwriting
     try {
@@ -4185,28 +4207,20 @@ ipcMain.handle('backup:import', async () => {
       fs.writeFileSync(backupPath, JSON.stringify(readDb(), null, 2), 'utf-8');
     } catch (_e) { /* best effort */ }
 
-  // Replace database
-  fs.writeFileSync(dbFilePath(), JSON.stringify(dbPayload, null, 2), 'utf-8');
+    // Replace the in-memory cache and persist via the normal write path so
+    // dbCache stays consistent. drainDbWrites() flushes immediately.
+    writeDb(dbPayload);
+    await drainDbWrites();
 
-    // Notify renderers that data might have changed
-    const channels = [
-      'workorders:changed',
-      'customers:changed',
-      'sales:changed',
-      'technicians:changed',
-      'deviceCategories:changed',
-      'productCategories:changed',
-      'products:changed',
-      'partSources:changed',
-      'calendarEvents:changed',
-      'timeEntries:changed',
-    ];
-    BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => {
-      channels.forEach(ch => {
-        try { w.webContents.send(ch); } catch {}
-      });
-    });
-    return { ok: true, filePath };
+    // Notify all windows that all collections have changed
+    emitAllDataChanged();
+
+    const collectionCounts: Record<string, number> = {};
+    for (const k of Object.keys(dbPayload)) {
+      if (Array.isArray(dbPayload[k])) collectionCounts[k] = dbPayload[k].length;
+    }
+
+    return { ok: true, filePath, collectionCounts };
   } catch (e: any) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -7244,11 +7258,14 @@ ipcMain.handle('restore-encrypted-backup', async (_event: any, password: string)
     const backupData = JSON.parse(decompressed.toString('utf8'));
 
     // Restore all collections (immutable update)
-    const prevDb: any = readDb();
-    const nextDb: any = { ...prevDb };
+    const collectionsSource = (backupData && typeof backupData === 'object' && backupData.collections && typeof backupData.collections === 'object')
+      ? backupData.collections
+      : backupData;
+
+    const nextDb: any = {};
     let totalRecords = 0;
 
-    for (const [collectionName, items] of Object.entries(backupData.collections)) {
+    for (const [collectionName, items] of Object.entries(collectionsSource as Record<string, any>)) {
       if (Array.isArray(items)) {
         nextDb[collectionName] = items;
         totalRecords += items.length;
@@ -7256,28 +7273,36 @@ ipcMain.handle('restore-encrypted-backup', async (_event: any, password: string)
       }
     }
 
-    // Write restored data back to database
-    const writeSuccess = writeDb(nextDb);
-    if (!writeSuccess) {
-      throw new Error('Failed to write restored data to database');
+    // Ensure core collections exist
+    if (!Array.isArray(nextDb.customers)) nextDb.customers = [];
+    if (!Array.isArray(nextDb.workOrders)) nextDb.workOrders = [];
+
+    // Recompute invoiceSeq so the first new WO/sale gets the correct next ID
+    const rWo: any[] = Array.isArray(nextDb.workOrders) ? nextDb.workOrders : [];
+    const rSa: any[] = Array.isArray(nextDb.sales) ? nextDb.sales : [];
+    let rMaxId = 0;
+    for (const it of rWo) rMaxId = Math.max(rMaxId, Number(it?.id || 0));
+    for (const it of rSa) rMaxId = Math.max(rMaxId, Number(it?.id || 0));
+    if (!nextDb.invoiceSeq || Number(nextDb.invoiceSeq) < rMaxId) {
+      nextDb.invoiceSeq = rMaxId;
     }
 
-    // Notify all windows about data changes
-    const changedCollections = Object.keys(backupData.collections);
-    BrowserWindow.getAllWindows().forEach((w: typeof BrowserWindow.prototype) => {
-      changedCollections.forEach(collection => {
-        w.webContents.send(`${collection}:changed`);
-      });
-    });
+    // Write restored data back to database and flush immediately so dbCache is consistent
+    writeDb(nextDb);
+    await drainDbWrites();
+
+    // Notify all windows that all collections have changed
+    emitAllDataChanged();
 
     console.log('[RESTORE] Restore completed successfully, total records:', totalRecords);
-    return { success: true, recordsCount: totalRecords };
+    return { ok: true, success: true, recordsCount: totalRecords };
   } catch (error: any) {
     console.error('[RESTORE] Failed to restore backup:', error);
-    if (error.message.includes('bad decrypt') || error.message.includes('authentication')) {
-      return { success: false, error: 'Invalid password or corrupted backup file' };
+    const errMsg = (error as any)?.message || String(error);
+    if (errMsg.includes('bad decrypt') || errMsg.includes('authentication')) {
+      return { ok: false, success: false, error: 'Invalid password or corrupted backup file' };
     }
-    return { success: false, error: error.message || 'Unknown error' };
+    return { ok: false, success: false, error: errMsg || 'Unknown error' };
   }
 });
 

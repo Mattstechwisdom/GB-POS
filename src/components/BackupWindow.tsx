@@ -1105,12 +1105,17 @@ const BackupWindow: React.FC = () => {
   const result = await (window as any).api.backupImport();
       
       if (result?.ok) {
-  setMessage(`✅ Backup imported successfully!`);
-  // nothing to clear
-        // Refresh stats after restore
-        setTimeout(() => {
-          loadDataStats();
-        }, 1000);
+        const counts = result.collectionCounts || {};
+        const summary = [
+          counts.customers   != null ? `${counts.customers} customers`   : '',
+          counts.workOrders  != null ? `${counts.workOrders} work orders` : '',
+          counts.sales       != null ? `${counts.sales} sales`            : '',
+          counts.technicians != null ? `${counts.technicians} techs`      : '',
+          counts.products    != null ? `${counts.products} products`      : '',
+        ].filter(Boolean).join(', ');
+        setMessage(`✅ Backup restored successfully!${summary ? ` — ${summary}` : ''} Refreshing...`);
+        // Refresh stats immediately after restore
+        setTimeout(() => { loadDataStats(); }, 600);
       } else {
         setMessage(`❌ Restore failed: ${result.error}`);
       }
