@@ -3279,7 +3279,24 @@ function readDb() {
   try {
     if (dbCache) return dbCache;
     const p = dbFilePath();
-    if (!fs.existsSync(p)) return { customers: [], workOrders: [] };
+    if (!fs.existsSync(p)) {
+      // Main file missing — try .bak before returning empty
+      try {
+        const bak = p + '.bak';
+        if (fs.existsSync(bak)) {
+          const bakRaw = fs.readFileSync(bak, 'utf-8');
+          const bakParsed = JSON.parse(bakRaw || '{}');
+          if (bakParsed && typeof bakParsed === 'object') {
+            console.warn('[DB] Main DB missing — loaded from .bak');
+            dbCache = bakParsed;
+            if (!Array.isArray((dbCache as any).customers)) (dbCache as any).customers = [];
+            if (!Array.isArray((dbCache as any).workOrders)) (dbCache as any).workOrders = [];
+            return dbCache;
+          }
+        }
+      } catch {}
+      return defaultDb();
+    }
     const raw = fs.readFileSync(p, 'utf-8');
     const parsed = JSON.parse(raw || '{}');
     dbCache = (parsed && typeof parsed === 'object') ? parsed : defaultDb();
@@ -3287,8 +3304,26 @@ function readDb() {
     if (!Array.isArray((dbCache as any).workOrders)) (dbCache as any).workOrders = [];
     return dbCache;
   } catch (e) {
-    dbCache = defaultDb();
-    return dbCache;
+    // Parse/read error: do NOT cache the empty default — a subsequent write would
+    // overwrite all data with an empty DB. Leave dbCache null so the next call
+    // retries from disk. Try .bak as a fallback first.
+    try {
+      const bak = dbFilePath() + '.bak';
+      if (fs.existsSync(bak)) {
+        const bakRaw = fs.readFileSync(bak, 'utf-8');
+        const bakParsed = JSON.parse(bakRaw || '{}');
+        if (bakParsed && typeof bakParsed === 'object') {
+          console.warn('[DB] Main DB corrupted — loaded from .bak:', String(e));
+          dbCache = bakParsed;
+          if (!Array.isArray((dbCache as any).customers)) (dbCache as any).customers = [];
+          if (!Array.isArray((dbCache as any).workOrders)) (dbCache as any).workOrders = [];
+          return dbCache;
+        }
+      }
+    } catch {}
+    console.error('[DB] readDb failed, returning empty (not caching):', e);
+    // Return empty WITHOUT setting dbCache — safe fallback that does not persist.
+    return defaultDb();
   }
 }
 
@@ -3413,11 +3448,15 @@ async function writeCompactJsonStreamAtomic(tmpPath: string, snapshot: any): Pro
 function flushWriteDb() {
   if (!writePending) return;
   writePending = false;
-  const snapshot = dbCache || defaultDb();
+  // Guard: if dbCache is null (e.g. nulled by server sync between writeDb() and flush),
+  // skip this flush rather than writing an empty defaultDb() to disk.
+  const snapshot = dbCache;
+  if (!snapshot) return;
   writeQueue = writeQueue
     .then(async () => {
       const p = dbFilePath();
       const tmp = p + '.tmp';
+      const bak = p + '.bak';
       const t0 = Date.now();
       let stringifyMs = 0;
       let bytes = 0;
@@ -3426,10 +3465,21 @@ function flushWriteDb() {
         const res = await writeCompactJsonStreamAtomic(tmp, snapshot);
         bytes = res.bytes;
         stringifyMs = res.stringifyMs;
+      } catch (writeErr) {
+        // Stream write failed — clean up the partial tmp file and preserve the
+        // real DB file intact. Do NOT write defaultDb() here as that would wipe all data.
+        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch {}
+        throw writeErr; // outer .catch() swallows it to keep queue moving
+      }
+      // Keep a rolling backup (.bak) of the previous DB before committing the new one.
+      // This provides a recovery path if the rename succeeds but the new file is later
+      // found to be unreadable.
+      try {
+        if (fs.existsSync(p)) {
+          fs.copyFileSync(p, bak);
+        }
       } catch {
-        const res = await writeCompactJsonStreamAtomic(tmp, defaultDb());
-        bytes = res.bytes;
-        stringifyMs = res.stringifyMs;
+        // Non-fatal: .bak failure must never block the main write.
       }
       await (fs.promises as any).rename(tmp, p);
       const totalMs = Date.now() - t0;
