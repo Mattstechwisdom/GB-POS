@@ -7,8 +7,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
 
   const [isFull, setIsFull] = useState<boolean>(false);
   const [appVersion, setAppVersion] = useState<string>('');
-  const [qrServerInfo, setQrServerInfo] = useState<{ hostname?: string; ip?: string; hostUrl?: string; ipUrl?: string } | null>(null);
-  const [qrCopied, setQrCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -28,21 +26,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
       }
     })();
     return () => { alive = false; };
-  }, []);
-
-  // Fetch QR server info and refresh every 30s so the display stays current
-  useEffect(() => {
-    let alive = true;
-    const refresh = async () => {
-      try {
-        const info = await (window as any).api?.qrGetServerInfo?.();
-        if (alive && info?.ok) setQrServerInfo({ hostname: info.hostname, ip: info.ip, hostUrl: info.hostUrl, ipUrl: info.ipUrl });
-      } catch { /* ignore */ }
-    };
-    refresh();
-    const interval = setInterval(refresh, 30_000);
-    return () => { alive = false; clearInterval(interval); };
-  }, []);
+  }, [])
   const [showTechs, setShowTechs] = useState(false);
   const [unread, setUnread] = useState<number>(0);
 
@@ -177,23 +161,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
           Consultation
         </button>
       </div>
-      {/* Centre: keyword search */}
-      <div className="flex-1 flex items-center justify-center px-4">
-        <input
-          type="text"
-          className="w-full max-w-md bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#39FF14]"
-          placeholder="Search by name, device, phone, WO#…"
-          value={keyword}
-          onChange={e => onKeywordChange && onKeywordChange(e.target.value)}
-        />
-        {keyword && (
-          <button
-            type="button"
-            className="ml-2 text-zinc-400 hover:text-zinc-100 text-xs"
-            onClick={() => onKeywordChange && onKeywordChange('')}
-          >✕</button>
-        )}
-      </div>
       <div className="flex items-center gap-3">
         <button
           className="relative px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
@@ -226,28 +193,25 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
         </button>
-        {/* QR Server address — shows hostname (stable) + current IP for reference */}
-        {qrServerInfo?.ip && (
-          <button
-            type="button"
-            title={`QR Server\nHostname: ${qrServerInfo.hostname}\nIP: ${qrServerInfo.ip}\nClick to copy IP URL`}
-            className="flex flex-col items-end leading-none px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] transition cursor-pointer select-none"
-            onClick={() => {
-              const url = qrServerInfo.ipUrl || '';
-              if (url) {
-                navigator.clipboard.writeText(url).then(() => {
-                  setQrCopied(true);
-                  setTimeout(() => setQrCopied(false), 1500);
-                }).catch(() => {});
-              }
-            }}
-          >
-            <span className="text-[9px] text-zinc-500 uppercase tracking-widest leading-none mb-0.5">QR Server</span>
-            <span className="text-[10px] font-mono text-[#39FF14] leading-none">{qrCopied ? 'copied!' : qrServerInfo.ip}</span>
-          </button>
-        )}
-      {/* Reset DB button removed per request */}
+      {/* Reset DB button removed per request */
      </div>
+   </div>
+   {/* Keyword search — full-width row below toolbar buttons */}
+   <div className="px-4 py-1.5 border-b border-zinc-700 bg-zinc-900 flex items-center gap-2">
+     <input
+       type="text"
+       className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[#39FF14]"
+       placeholder="Search by name, device, phone, WO#…"
+       value={keyword}
+       onChange={e => onKeywordChange && onKeywordChange(e.target.value)}
+     />
+     {keyword && (
+       <button
+         type="button"
+         className="px-2 py-1 text-xs text-zinc-400 hover:text-zinc-100 bg-zinc-800 border border-zinc-700 rounded"
+         onClick={() => onKeywordChange && onKeywordChange('')}
+       >✕ Clear</button>
+     )}
    </div>
    {showTechs && <TechniciansWindow onClose={() => setShowTechs(false)} />}
     </>
