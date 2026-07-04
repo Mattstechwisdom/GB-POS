@@ -4918,8 +4918,39 @@ function getLanIp(): string {
   return '127.0.0.1';
 }
 
+// Returns the stable hostname used in QR code URLs.
+// Using the machine hostname means QR codes remain valid even after DHCP
+// assigns a new IP — most modern routers resolve the hostname on the LAN.
+// The IP is kept as a fallback reference for display in the UI.
+function getQrHost(): string {
+  try {
+    const hostname = os.hostname();
+    if (hostname && hostname.trim() && hostname !== 'localhost') {
+      return hostname.trim();
+    }
+  } catch {}
+  return getLanIp(); // fallback to IP if hostname unavailable
+}
+
 function qrStatusUrl(type: 'repair' | 'sale', id: number | string): string {
-  return `http://${getLanIp()}:${QR_PORT}/status/${type}/${id}`;
+  return `http://${getQrHost()}:${QR_PORT}/status/${type}/${id}`;
+}
+
+function qrConsultUrl(id: number | string): string {
+  return `http://${getQrHost()}:${QR_PORT}/status/consult/${id}`;
+}
+
+function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUrl: string; ipUrl: string } {
+  const hostname = getQrHost();
+  const ip = getLanIp();
+  const port = QR_PORT;
+  return {
+    hostname,
+    ip,
+    port,
+    hostUrl: `http://${hostname}:${port}`,
+    ipUrl:   `http://${ip}:${port}`,
+  };
 }
 
 function escHtml(s: any): string {
@@ -5954,6 +5985,14 @@ ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => 
     const t = String(type || '') === 'sale' ? 'sale' : 'repair';
     const safeId = Number(id) || 0;
     return { ok: true, url: qrStatusUrl(t as 'repair' | 'sale', safeId) };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('qr:getServerInfo', async () => {
+  try {
+    return { ok: true, ...getQrServerInfo() };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }

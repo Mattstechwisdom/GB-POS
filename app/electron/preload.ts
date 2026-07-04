@@ -231,4 +231,5 @@ contextBridge.exposeInMainWorld('api', {
   // QR Code status server
   qrGetStatusUrl: (type: 'repair' | 'sale', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
   qrGetDataUrl: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getDataUrl', url),
+  qrGetServerInfo: (): Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getServerInfo'),
 });
