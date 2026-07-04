@@ -5914,6 +5914,15 @@ function startQrStatusServer() {
       } else {
         console.error('[QR Server] Error:', e);
       }
+      // Clear the reference so startQrStatusServer() can retry on next call
+      qrHttpServer = null;
+    });
+    qrHttpServer.on('close', () => {
+      // Server closed unexpectedly — clear reference and schedule a restart
+      if (qrHttpServer) {
+        qrHttpServer = null;
+        setTimeout(() => { startQrStatusServer(); }, 3000);
+      }
     });
     qrHttpServer.listen(QR_PORT, '0.0.0.0', () => {
       console.log(`[QR Server] Running on port ${QR_PORT} — accessible at http://${getLanIp()}:${QR_PORT}`);
