@@ -240,6 +240,7 @@ const AppInner: React.FC<{
 }) => {
   const { setPage } = usePagination();
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
+  const [keyword, setKeyword] = useState<string>('');
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -359,6 +360,7 @@ const AppInner: React.FC<{
     setDateTo('');
     setWoQuery('');
     setInvoiceQuery('');
+    setKeyword('');
   };
 
   return (
@@ -390,16 +392,16 @@ const AppInner: React.FC<{
           </div>
         </aside>
         <main className="flex-1 min-w-0 flex flex-col">
-          <Toolbar mode={mode} onModeChange={setMode} />
+          <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} />
           <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
-              <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} refreshKey={refreshKey} />
+              <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
             )}
             {mode === 'sales' && (
-              <SalesTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} />
+              <SalesTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} keyword={keyword} />
             )}
             {mode === 'all' && (
-              <UnifiedList statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} />
+              <UnifiedList statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} keyword={keyword} />
             )}
           </div>
           <div className="border-t border-zinc-700 p-2 flex items-center justify-end bg-zinc-900">
@@ -425,7 +427,7 @@ const AppInner: React.FC<{
 };
 
 // Unified list of Work Orders and Sales in one table, ordered by id desc
-const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technicianFilter?: string; dateFrom?: string; dateTo?: string }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '' }) => {
+const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technicianFilter?: string; dateFrom?: string; dateTo?: string; keyword?: string }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', keyword = '' }) => {
   const [wo, setWo] = React.useState<any[]>([]);
   const [sa, setSa] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
@@ -489,10 +491,13 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     return () => { try { offCustomers && offCustomers(); } catch {} try { offTechs && offTechs(); } catch {} };
   }, []);
 
-  const rows = React.useMemo(() => {
-    const from = dateFrom ? new Date(dateFrom) : null;
-    const to = dateTo ? new Date(dateTo) : null;
+  // Defer the keyword so fast typing doesn't trigger heavy recomputation on
+  // every keystroke — the visible input always stays responsive.
+  const deferredKeyword = React.useDeferredValue(keyword);
 
+  // Expensive per-row mapping (customer/tech lookups, formatting) — independent
+  // of filters/keyword so it only recomputes when the underlying data changes.
+  const mappedRows = React.useMemo(() => {
     const normalizeWoStatus = (w: any, remaining: number): 'open' | 'in progress' | 'closed' => {
       const raw = String(w?.status || '').toLowerCase().trim();
       if (raw === 'closed') return 'closed';
@@ -501,7 +506,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
       return remaining <= 0 ? 'closed' : 'open';
     };
 
-    const mapped = [
+    return [
       ...wo.map(w => ({
         type: 'workorder' as const,
         id: w.id,
@@ -585,7 +590,13 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         remaining: (Number(s.totals?.total || s.total || 0) || 0) - (Number(s.amountPaid || 0) || 0),
       })),
     ];
-    return mapped
+  }, [wo, sa, customerIndex, techIndex]);
+
+  const rows = React.useMemo(() => {
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+
+    return mappedRows
       .filter(r => {
         if (statusFilter !== 'all') {
           const st = String((r as any).status || '').toLowerCase().trim();
@@ -604,6 +615,20 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         }
         if (from && r.date < from) return false;
         if (to && r.date > to) return false;
+        if (deferredKeyword) {
+          const kw = deferredKeyword.trim().toLowerCase();
+          if (kw) {
+            const haystack = [
+              String(r.id),
+              r.customer || '',
+              r.phone || '',
+              r.desc || '',
+              r.items || '',
+              r.problem || '',
+            ].join(' ').toLowerCase();
+            if (!haystack.includes(kw)) return false;
+          }
+        }
         return true;
       })
       .sort((a, b) => {
@@ -611,7 +636,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         const ad = a.date?.getTime?.() || 0;
         return (bd - ad) || (b.id - a.id);
       });
-  }, [wo, sa, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, customerIndex]);
+  }, [mappedRows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, deferredKeyword]);
 
   React.useEffect(() => {
     // Cap pagination to MAX_PAGES (older records stay stored, but not always loaded here)
