@@ -10,9 +10,10 @@ type Props = {
   dateFrom?: string;
   dateTo?: string;
   invoiceQuery?: string;
+  keyword?: string;
 };
 
-const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', invoiceQuery = '' }) => {
+const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', invoiceQuery = '', keyword = '' }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [techIndex, setTechIndex] = useState<Record<string, string>>({});
@@ -20,6 +21,7 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
   const { page, setPage, pageSize, setTotalItems } = usePagination();
 
   const deferredInvoiceQuery = useDeferredValue(invoiceQuery);
+  const deferredKeyword = useDeferredValue(keyword);
 
   const techLookup = useMemo(() => {
     const map = new Map<string, string>();
@@ -120,9 +122,23 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
       const t = getTs(s);
       if (fromTime && t < fromTime) return false;
       if (toTime && t > toTime) return false;
+      const kw = (deferredKeyword || '').trim().toLowerCase();
+      if (kw) {
+        const customer = customerIndex[s.customerId as number];
+        const haystack = [
+          String(s.id),
+          customer?.name || (s as any).customerName || '',
+          customer?.phone || '',
+          customer?.phoneAlt || '',
+          customer?.email || '',
+          (Array.isArray(s.items) ? s.items.map((it: any) => it.description || it.name || it.title || '').join(' ') : ''),
+          s.notes || '',
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(kw)) return false;
+      }
       return true;
     }).sort((a: any, b: any) => getTs(b) - getTs(a));
-  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, deferredInvoiceQuery]);
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, techIndex, deferredInvoiceQuery, deferredKeyword, customerIndex]);
 
   useEffect(() => {
     const MAX_PAGES = 10;

@@ -43,7 +43,7 @@ function getActivityDate(r: Partial<WorkOrderRow> & Record<string, any>): Date |
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?: string; dateFrom?: string; dateTo?: string; woQuery?: string; refreshKey?: number }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', woQuery = '', refreshKey = 0 }) => {
+const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?: string; dateFrom?: string; dateTo?: string; woQuery?: string; keyword?: string; refreshKey?: number }> = ({ statusFilter = 'all', technicianFilter = '', dateFrom = '', dateTo = '', woQuery = '', keyword = '', refreshKey = 0 }) => {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [techIndex, setTechIndex] = useState<Record<string,string>>({});
@@ -56,6 +56,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
 
   // Defer expensive filtering while typing.
   const deferredWoQuery = useDeferredValue(woQuery);
+  const deferredKeyword = useDeferredValue(keyword);
 
 	const ctx = useContextMenu<WorkOrderRow>();
 	const ctxRow = ctx.state.data;
@@ -159,8 +160,27 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
       .filter(r => {
         if (!q) return true;
         return String(r.id).includes(q);
+      })
+      .filter(r => {
+        const kw = (deferredKeyword || '').trim().toLowerCase();
+        if (!kw) return true;
+        const customer = customerIndex[r.customerId as number];
+        const haystack = [
+          String(r.id),
+          customer?.name || (r as any).customerName || '',
+          customer?.phone || '',
+          customer?.phoneAlt || '',
+          customer?.email || '',
+          (r as any).productDescription || '',
+          (r as any).summary || '',
+          (r as any).problemInfo || '',
+          (r as any).problem || '',
+          (Array.isArray((r as any).items) ? (r as any).items.map((it: any) => it.repair || it.description || it.title || it.name || '').join(' ') : ''),
+          (r as any).notes || '',
+        ].join(' ').toLowerCase();
+        return haystack.includes(kw);
       });
-  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, deferredWoQuery, techIndex]);
+  }, [rows, statusFilter, technicianFilter, dateFrom, dateTo, deferredWoQuery, deferredKeyword, techIndex, customerIndex]);
 
   const techLookup = useMemo(() => {
     const map = new Map<string, string>();
