@@ -193,7 +193,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
         </button>
-      {/* Reset DB button removed per request */
+      {/* Reset DB button removed per request */}
      </div>
    </div>
    {/* Keyword search — full-width row below toolbar buttons */}
