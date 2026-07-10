@@ -21,9 +21,10 @@ interface Props {
   onWoQueryChange?: (v: string) => void;
   onClear?: () => void;
   onRefresh?: () => void;
+  onSignOut?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -48,7 +49,18 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
     >
       {/* App title above logo */}
       <div className="w-full flex flex-col items-center justify-center pt-1 pb-0">
-        <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
+        <div className="flex w-full items-center justify-center gap-2">
+          <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white"
+            >
+              Sign out
+            </button>
+          )}
+        </div>
         {appVersion && (
           <div className="text-xs text-zinc-500 mt-0.5">v{appVersion}</div>
         )}

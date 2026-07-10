@@ -1,56 +1,63 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pkg = require('./package.json');
 
-export default defineConfig({
-  // Electron production loads the app via file://, so built asset paths must be relative.
-  // Without this, Vite defaults to absolute /assets/* URLs which resolve to file:///assets/* and render a blank window.
-  base: './',
-  root: './src',
-  publicDir: '../public',
-  build: {
-    outDir: path.resolve(__dirname, 'dist'),
-    emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) return 'vendor';
-          if (id.includes('QuoteGeneratorWindow')) return 'quote-generator';
-          if (
-            id.includes('ReportingWindow') ||
-            id.includes('EODWindow') ||
-            id.includes('ChartsWindow') ||
-            id.includes('ReportEmailWindow')
-          ) {
-            return 'reporting';
-          }
-          if (
-            id.includes('BackupWindow') ||
-            id.includes('DataToolsWindow') ||
-            id.includes('ClearDatabaseWindow') ||
-            id.includes('DevMenuWindow')
-          ) {
-            return 'admin-tools';
-          }
-          return undefined;
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+
+  return {
+    // Electron production loads the app via file://, so built asset paths must be relative.
+    // Without this, Vite defaults to absolute /assets/* URLs which resolve to file:///assets/* and render a blank window.
+    base: './',
+    root: './src',
+    envDir: '.',
+    publicDir: '../public',
+    build: {
+      outDir: path.resolve(__dirname, 'dist'),
+      emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) return 'vendor';
+            if (id.includes('QuoteGeneratorWindow')) return 'quote-generator';
+            if (
+              id.includes('ReportingWindow') ||
+              id.includes('EODWindow') ||
+              id.includes('ChartsWindow') ||
+              id.includes('ReportEmailWindow')
+            ) {
+              return 'reporting';
+            }
+            if (
+              id.includes('BackupWindow') ||
+              id.includes('DataToolsWindow') ||
+              id.includes('ClearDatabaseWindow') ||
+              id.includes('DevMenuWindow')
+            ) {
+              return 'admin-tools';
+            }
+            return undefined;
+          },
         },
       },
     },
-  },
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-  },
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ''),
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY || ''),
     },
-  },
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
+    },
+    server: {
+      port: 5173,
+      strictPort: true,
+    },
+  };
 });

@@ -39,6 +39,11 @@ node-list.txt
 node_modules-list.txt
 tsc-log.txt
 
+# Local environment
+.env
+.env.*
+!.env.example
+
 # .NET (desktop/RepairCategoriesApp etc.)
 **/bin/
 **/obj/

@@ -2,6 +2,16 @@ export {};
 
 declare global {
   const __APP_VERSION__: string;
+
+  interface ImportMetaEnv {
+    readonly VITE_SUPABASE_URL?: string;
+    readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
+  }
+
   // Temporary: QuoteGeneratorWindow has a legacy reference to itemsPage()
   // in the print pipeline; at runtime it is guarded by try/catch.
   // This keeps TypeScript from failing if the helper is out of scope.

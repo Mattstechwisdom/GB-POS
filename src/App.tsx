@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import SidebarFilters from './components/SidebarFilters';
 import Toolbar from './components/Toolbar';
 import WorkOrdersTable from './components/WorkOrdersTable';
@@ -14,6 +15,8 @@ import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
 import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib/modalBus';
 import { storeWindowPayload } from './lib/windowPayload';
+import { LoginScreen } from './auth/LoginScreen';
+import { supabase } from './lib/supabase';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
@@ -167,6 +170,16 @@ function getActivityDate(record: any): Date {
   return new Date(raw);
 }
 
+type StaffProfile = {
+  id: string;
+  shop_id: string;
+  role: 'admin' | 'manager' | 'technician';
+  status: 'invited' | 'active' | 'disabled';
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+};
+
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
@@ -176,6 +189,90 @@ const App: React.FC = () => {
   const [woQuery, setWoQuery] = useState<string>('');
   const [mode, setMode] = useState<'workorders'|'sales'|'all'>('all');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const [authLoading, setAuthLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
+  const [accessError, setAccessError] = useState('');
+
+  const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
+    setSession(nextSession);
+    setStaffProfile(null);
+    setAccessError('');
+
+    if (!nextSession?.user) {
+      setAuthLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('staff_profiles')
+      .select('id, shop_id, role, status, first_name, last_name, email')
+      .eq('user_id', nextSession.user.id)
+      .maybeSingle();
+
+    if (error) {
+      setAccessError(error.message);
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!data || data.status !== 'active') {
+      setAccessError('Your login is valid, but no active POS staff profile is connected to this account.');
+      await supabase.auth.signOut();
+      setSession(null);
+      setAuthLoading(false);
+      return;
+    }
+
+    setStaffProfile(data as StaffProfile);
+    setAuthLoading(false);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      void loadStaffProfile(data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void loadStaffProfile(nextSession);
+    });
+
+    return () => {
+      alive = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [loadStaffProfile]);
+
+  if (authLoading) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-sm text-slate-400">Checking login...</div>
+      </main>
+    );
+  }
+
+  if (!session || !staffProfile) {
+    return (
+      <>
+        <LoginScreen onSignedIn={() => {
+          setAuthLoading(true);
+          supabase.auth.getSession().then(({ data }) => {
+            void loadStaffProfile(data.session);
+          });
+        }} />
+
+        {accessError ? (
+          <div className="fixed bottom-4 left-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 rounded-md border border-red-500/40 bg-red-950 px-4 py-3 text-sm text-red-100 shadow-xl">
+            {accessError}
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <PaginationProvider pageSize={30}>
@@ -196,6 +293,7 @@ const App: React.FC = () => {
         setMode={setMode}
         refreshKey={refreshKey}
         setRefreshKey={setRefreshKey}
+        onSignOut={() => void supabase.auth.signOut()}
       />
     </PaginationProvider>
   );
@@ -220,6 +318,7 @@ const AppInner: React.FC<{
   setMode: (v: 'workorders' | 'sales' | 'all') => void;
   refreshKey: number;
   setRefreshKey: (v: number) => void;
+  onSignOut: () => void;
 }> = ({
   showCustomerSearch,
   setShowCustomerSearch,
@@ -237,6 +336,7 @@ const AppInner: React.FC<{
   setMode,
   refreshKey,
   setRefreshKey,
+  onSignOut,
 }) => {
   const { setPage } = usePagination();
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
@@ -386,6 +486,7 @@ const AppInner: React.FC<{
             onWoQueryChange={setWoQuery}
             onClear={handleClear}
             onRefresh={() => setRefreshKey(refreshKey + 1)}
+            onSignOut={onSignOut}
           />
           <div>
             <RecentCustomers />

@@ -22,12 +22,14 @@
     "dev:split": "cross-env ELECTRON_DISABLE_SECURITY_WARNINGS=true concurrently -n VITE,ELECTRON -c green,magenta \"npm run vite\" \"npm run electron:buildmain && npm run electron\"",
     "dev:nodemon": "wait-on tcp:5173 dist-main/app/electron/electron-main.js && nodemon --watch dist-main/app/electron --ext js --exec \"electron ./dist-main/app/electron/electron-main.js\"",
     "build": "vite build --config vite.config.ts",
+    "start:web": "serve -s dist -l tcp://0.0.0.0:$PORT",
     "predist": "npm run generate:icon && npm run typecheck && npm run electron:buildmain && npm run build",
     "dist": "electron-builder --win nsis",
     "postdist": "node -e \"const fs=require('fs'),p=require('path'),pkg=require('./package.json'),v=pkg.version,src=p.join('release','GadgetBoy-POS-Setup-'+v+'.exe'),dst=p.join('release','GadgetBoy-POS-Update-'+v+'.exe');if(fs.existsSync(src)){fs.copyFileSync(src,dst);console.log('Created '+dst);}else{console.warn('Setup exe not found:',src);}\"",
     "changelog": "node tools/generate-patch-notes.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.1",
     "asar": "^3.2.0",
     "electron-updater": "^6.6.2",
     "html2pdf.js": "^0.12.1",
@@ -36,7 +38,8 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-select": "^5.10.2"
+    "react-select": "^5.10.2",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",
