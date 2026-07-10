@@ -12,6 +12,13 @@ declare global {
     readonly env: ImportMetaEnv;
   }
 
+  interface Window {
+    __GB_POS_CONFIG__?: {
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+    };
+  }
+
   // Temporary: QuoteGeneratorWindow has a legacy reference to itemsPage()
   // in the print pipeline; at runtime it is guarded by try/catch.
   // This keeps TypeScript from failing if the helper is out of scope.
