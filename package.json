@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.4.78",
+  "version": "0.4.79",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -26,7 +26,8 @@
     "predist": "npm run generate:icon && npm run typecheck && npm run electron:buildmain && npm run build",
     "dist": "electron-builder --win nsis",
     "postdist": "node -e \"const fs=require('fs'),p=require('path'),pkg=require('./package.json'),v=pkg.version,src=p.join('release','GadgetBoy-POS-Setup-'+v+'.exe'),dst=p.join('release','GadgetBoy-POS-Update-'+v+'.exe');if(fs.existsSync(src)){fs.copyFileSync(src,dst);console.log('Created '+dst);}else{console.warn('Setup exe not found:',src);}\"",
-    "changelog": "node tools/generate-patch-notes.js"
+    "changelog": "node tools/generate-patch-notes.js",
+    "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.1",

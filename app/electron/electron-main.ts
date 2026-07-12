@@ -16,6 +16,13 @@ try {
   autoUpdater = null;
 }
 
+let createSupabaseClient: any = null;
+try {
+  createSupabaseClient = require('@supabase/supabase-js').createClient;
+} catch {
+  createSupabaseClient = null;
+}
+
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
@@ -3657,6 +3664,356 @@ function writeDb(db: any) {
   return true;
 }
 
+type CloudSessionState = {
+  supabaseUrl: string;
+  supabasePublishableKey: string;
+  accessToken: string;
+  shopId: string;
+};
+
+let cloudSession: CloudSessionState | null = null;
+let cloudClient: any | null = null;
+
+const CLOUD_TABLE_BY_KEY: Record<string, string> = {
+  customers: 'customers',
+  workOrders: 'work_orders',
+  sales: 'sales',
+  calendarEvents: 'calendar_events',
+  deviceCategories: 'device_categories',
+  productCategories: 'product_categories',
+  products: 'products',
+  repairCategories: 'repair_categories',
+  repairItems: 'repair_items',
+  partSources: 'part_sources',
+  intakeSources: 'intake_sources',
+  suppliers: 'suppliers',
+  vendors: 'vendors',
+  invoices: 'invoices',
+  payments: 'payments',
+  timeEntries: 'time_entries',
+  settings: 'shop_settings',
+  preferences: 'preferences',
+  systemLogs: 'system_logs',
+};
+
+function shouldUseCloudDb(key: string): boolean {
+  if ((process.env.GBPOS_DISABLE_CLOUD_DB || '').toString().trim() === '1') return false;
+  return !!(cloudSession?.accessToken && cloudSession?.shopId && CLOUD_TABLE_BY_KEY[String(key || '')]);
+}
+
+function getCloudClient() {
+  if (!cloudSession || !createSupabaseClient) return null;
+  if (cloudClient) return cloudClient;
+  cloudClient = createSupabaseClient(cloudSession.supabaseUrl, cloudSession.supabasePublishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: {
+        Authorization: `Bearer ${cloudSession.accessToken}`,
+      },
+    },
+  });
+  return cloudClient;
+}
+
+ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
+  const supabaseUrl = String(payload?.supabaseUrl || '').trim();
+  const supabasePublishableKey = String(payload?.supabasePublishableKey || '').trim();
+  const accessToken = String(payload?.accessToken || '').trim();
+  const shopId = String(payload?.shopId || '').trim();
+  if (!supabaseUrl || !supabasePublishableKey || !accessToken || !shopId) {
+    cloudSession = null;
+    cloudClient = null;
+    return { ok: false, error: 'Missing cloud session values.' };
+  }
+  cloudSession = { supabaseUrl, supabasePublishableKey, accessToken, shopId };
+  cloudClient = null;
+  return { ok: true };
+});
+
+ipcMain.handle('cloud:clearSession', async () => {
+  cloudSession = null;
+  cloudClient = null;
+  return { ok: true };
+});
+
+function normalizeCloudId(row: any): number | string | null {
+  const legacy = Number(row?.legacy_id);
+  if (Number.isFinite(legacy)) return legacy;
+  return row?.id || null;
+}
+
+function cloudDate(v: any): string | undefined {
+  return v ? String(v) : undefined;
+}
+
+function cloudNumber(v: any, fallback = 0): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function cloudNullableNumber(v: any): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function cloudArray(v: any): any[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function cloudObject(v: any): any {
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+function fromCloudRow(key: string, row: any): any {
+  const id = normalizeCloudId(row);
+  if (key === 'customers') {
+    return {
+      id,
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      email: row.email || '',
+      phone: row.phone || '',
+      phoneAlt: row.phone_alt || '',
+      zip: row.zip || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'workOrders') {
+    return {
+      id,
+      customerId: cloudNullableNumber(row.legacy_customer_id),
+      status: row.status || '',
+      assignedTo: row.assigned_to || '',
+      checkInAt: cloudDate(row.check_in_at),
+      repairCompletionDate: cloudDate(row.repair_completion_date),
+      checkoutDate: cloudDate(row.checkout_date),
+      productCategory: row.product_category || '',
+      productDescription: row.product_description || '',
+      model: row.model || '',
+      serial: row.serial || '',
+      intakeSource: row.intake_source || '',
+      problemInfo: row.problem_info || '',
+      workOrderType: row.work_order_type || '',
+      partsOrdered: !!row.parts_ordered,
+      partsDates: row.parts_dates || '',
+      partsOrderUrl: row.parts_order_url || '',
+      partsTrackingUrl: row.parts_tracking_url || '',
+      partsOrderDate: cloudDate(row.parts_order_date),
+      partsEstimatedDelivery: cloudDate(row.parts_estimated_delivery),
+      partsEstDelivery: cloudDate(row.parts_est_delivery),
+      discount: cloudNumber(row.discount),
+      discountType: row.discount_type || '',
+      discountPctValue: cloudNullableNumber(row.discount_pct_value),
+      amountPaid: cloudNumber(row.amount_paid),
+      taxRate: cloudNumber(row.tax_rate),
+      laborCost: cloudNumber(row.labor_cost),
+      partCosts: cloudNumber(row.part_costs),
+      paymentType: row.payment_type || '',
+      totals: cloudObject(row.totals),
+      items: cloudArray(row.items),
+      payments: cloudArray(row.payments),
+      internalNotes: row.internal_notes || '',
+      internalNotesLog: cloudArray(row.internal_notes_log),
+      patternSequence: cloudArray(row.pattern_sequence),
+      droneChecklist: cloudObject(row.drone_checklist),
+      dropoffAccessories: cloudArray(row.dropoff_accessories),
+      activityAt: cloudDate(row.activity_at),
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'sales') {
+    return {
+      id,
+      customerId: cloudNullableNumber(row.legacy_customer_id),
+      customerName: row.customer_name || '',
+      customerPhone: row.customer_phone || '',
+      customerEmail: row.customer_email || '',
+      status: row.status || '',
+      assignedTo: row.assigned_to || '',
+      category: row.category || '',
+      itemDescription: row.item_description || '',
+      condition: row.condition || '',
+      intakeSource: row.intake_source || '',
+      notes: row.notes || '',
+      inStock: row.in_stock,
+      quantity: cloudNullableNumber(row.quantity),
+      price: cloudNullableNumber(row.price),
+      total: cloudNullableNumber(row.total),
+      discount: cloudNumber(row.discount),
+      discountType: row.discount_type || '',
+      discountPctValue: cloudNullableNumber(row.discount_pct_value),
+      amountPaid: cloudNumber(row.amount_paid),
+      taxRate: cloudNumber(row.tax_rate),
+      laborCost: cloudNumber(row.labor_cost),
+      partCosts: cloudNumber(row.part_costs),
+      paymentType: row.payment_type || '',
+      orderedDate: cloudDate(row.ordered_date),
+      estimatedDeliveryDate: cloudDate(row.estimated_delivery_date),
+      checkInAt: cloudDate(row.check_in_at),
+      repairCompletionDate: cloudDate(row.repair_completion_date),
+      checkoutDate: cloudDate(row.checkout_date),
+      clientPickupDate: cloudDate(row.client_pickup_date),
+      partsOrderUrl: row.parts_order_url || '',
+      partsTrackingUrl: row.parts_tracking_url || '',
+      consultationHours: cloudNullableNumber(row.consultation_hours),
+      consultationType: row.consultation_type || '',
+      consultationAddress: row.consultation_address || '',
+      driverFee: cloudNullableNumber(row.driver_fee),
+      appointmentDate: row.appointment_date || '',
+      appointmentTime: row.appointment_time || '',
+      appointmentEndTime: row.appointment_end_time || '',
+      items: cloudArray(row.items),
+      payments: cloudArray(row.payments),
+      totals: cloudObject(row.totals),
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'calendarEvents') {
+    return {
+      id,
+      customerId: cloudNullableNumber(row.legacy_customer_id),
+      workOrderId: cloudNullableNumber(row.legacy_work_order_id),
+      saleId: cloudNullableNumber(row.legacy_sale_id),
+      date: row.event_date || '',
+      title: row.title || '',
+      time: row.event_time || '',
+      endTime: row.end_time || '',
+      category: row.category || '',
+      location: row.location || '',
+      customerName: row.customer_name || '',
+      customerPhone: row.customer_phone || '',
+      technician: row.technician || '',
+      notes: row.notes || '',
+      partName: row.part_name || '',
+      source: row.source || '',
+      orderUrl: row.order_url || '',
+      partsStatus: row.parts_status || '',
+      consultationType: row.consultation_type || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'deviceCategories' || key === 'productCategories') {
+    return {
+      id,
+      name: row.name || '',
+      title: row.title || row.name || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'products') {
+    return {
+      id,
+      itemDescription: row.item_description || '',
+      price: cloudNumber(row.price),
+      internalCost: cloudNumber(row.internal_cost),
+      notes: row.notes || '',
+      condition: row.condition || '',
+      category: row.category || '',
+      trackStock: !!row.track_stock,
+      stockCount: cloudNumber(row.stock_count),
+      lowStockThreshold: cloudNumber(row.low_stock_threshold),
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'repairCategories') {
+    return {
+      id,
+      category: row.category || '',
+      repairCategory: row.repair_category || '',
+      title: row.title || '',
+      altDescription: row.alt_description || '',
+      partCost: cloudNumber(row.part_cost),
+      laborCost: cloudNumber(row.labor_cost),
+      internalCost: cloudNumber(row.internal_cost),
+      orderDate: row.order_date || '',
+      estDelivery: row.est_delivery || '',
+      partSource: row.part_source || '',
+      orderSourceUrl: row.order_source_url || '',
+      type: row.type || '',
+      model: row.model || '',
+      trackStock: !!row.track_stock,
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'timeEntries') {
+    return {
+      ...(cloudObject(row.payload)),
+      id,
+      technicianId: row.legacy_technician_id || cloudObject(row.payload).technicianId,
+      clockIn: cloudDate(row.clock_in_at),
+      clockOut: cloudDate(row.clock_out_at),
+      createdAt: cloudDate(row.created_at),
+      updatedAt: cloudDate(row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'settings') {
+    return {
+      ...(cloudObject(row.payload)),
+      id,
+      shopAddress: row.shop_address || cloudObject(row.payload).shopAddress || '',
+      shopLat: cloudNullableNumber(row.shop_lat),
+      shopLng: cloudNullableNumber(row.shop_lng),
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  return {
+    ...(cloudObject(row.payload)),
+    id,
+    name: row.name || cloudObject(row.payload).name,
+    createdAt: cloudDate(row.created_at),
+    updatedAt: cloudDate(row.updated_at),
+    cloudId: row.id,
+  };
+}
+
+function cloudSortColumn(key: string, sortBy?: string): string {
+  const s = String(sortBy || '').trim();
+  const map: Record<string, Record<string, string>> = {
+    workOrders: { id: 'legacy_id', activityAt: 'activity_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
+    sales: { id: 'legacy_id', activityAt: 'check_in_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
+    customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
+  };
+  if (map[key]?.[s]) return map[key][s];
+  if (!s) {
+    if (key === 'workOrders') return 'activity_at';
+    if (key === 'sales') return 'check_in_at';
+    return 'legacy_id';
+  }
+  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
+}
+
+async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) {
+  const client = getCloudClient();
+  const table = CLOUD_TABLE_BY_KEY[String(key || '')];
+  if (!client || !cloudSession || !table) return null;
+  let q = client.from(table).select('*').eq('shop_id', cloudSession.shopId);
+  const sortColumn = cloudSortColumn(key, opts?.sortBy);
+  q = q.order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
+  if (typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0) {
+    q = q.limit(Math.floor(opts.limit));
+  }
+  const res = await q;
+  if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
+  return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+}
+
 ipcMain.handle('db-reset-all', async () => {
   const removed: string[] = [];
   const errors: string[] = [];
@@ -3736,6 +4093,14 @@ ipcMain.handle('db-reset-all', async () => {
 });
 
 ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => {
+  if (shouldUseCloudDb(key)) {
+    try {
+      const cloudRows = await cloudDbGet(key, opts);
+      if (Array.isArray(cloudRows)) return cloudRows;
+    } catch (e: any) {
+      try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
+    }
+  }
   const db = readDb();
   const raw = db[key] || [];
   const list = Array.isArray(raw) ? raw : [];
@@ -3838,6 +4203,14 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
 });
 
 ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
+  if (shouldUseCloudDb(key)) {
+    try {
+      const cloudRows = await cloudDbGet(key);
+      if (Array.isArray(cloudRows)) return cloudRows.filter((it: any) => matchesDbQuery(it, q));
+    } catch (e: any) {
+      try { console.warn('[CloudDB] db-find fallback:', key, e?.message || e); } catch {}
+    }
+  }
   const db = readDb();
   const list = db[key] || [];
   return list.filter((it: any) => matchesDbQuery(it, q));
@@ -4063,6 +4436,14 @@ ipcMain.handle('tickets:search', async (_e: any, query: any, opts?: { limit?: nu
 });
 
 ipcMain.handle('db-count', async (_e: any, key: string, q: any) => {
+  if (shouldUseCloudDb(key)) {
+    try {
+      const cloudRows = await cloudDbGet(key);
+      if (Array.isArray(cloudRows)) return cloudRows.filter((it: any) => matchesDbQuery(it, q)).length;
+    } catch (e: any) {
+      try { console.warn('[CloudDB] db-count fallback:', key, e?.message || e); } catch {}
+    }
+  }
   const db = readDb();
   const list = db[key] || [];
   if (!Array.isArray(list) || list.length === 0) return 0;
@@ -6741,39 +7122,109 @@ let batchOutTimer: NodeJS.Timeout | null = null;
 let batchOutRunning = false;
 let lastBatchOutDate: string | null = null;
 
+const BACKUP_COLLECTION_KEYS = [
+  'technicians',
+  'timeEntries',
+  'customers',
+  'workOrders',
+  'sales',
+  'calendarEvents',
+  'deviceCategories',
+  'productCategories',
+  'products',
+  'partSources',
+  'repairCategories',
+  'repairItems',
+  'intakeSources',
+  'suppliers',
+  'vendors',
+  'invoices',
+  'payments',
+  'settings',
+  'preferences',
+  'userProfiles',
+  'systemLogs',
+];
+
+async function readCollectionForBackup(key: string, db: any): Promise<any[]> {
+  if (shouldUseCloudDb(key)) {
+    try {
+      const rows = await cloudDbGet(key);
+      if (Array.isArray(rows)) return rows;
+    } catch (e: any) {
+      try { console.warn('[BACKUP] Cloud collection fallback:', key, e?.message || e); } catch {}
+    }
+  }
+  const localRows = db?.[key];
+  return Array.isArray(localRows) ? localRows : [];
+}
+
+function isLegacyScheduleBackupEvent(e: any) {
+  try {
+    const t = (e?.type || e?.kind || e?.category || '').toString().toLowerCase();
+    if (t === 'schedule') return true;
+    if (e?.legacy === true) return true;
+    if (e?.derived === true) return true;
+    if (typeof e?.technicianId !== 'undefined' || typeof e?.techId !== 'undefined') return true;
+    if (Array.isArray(e?.tags) && e.tags.map((x: any) => String(x).toLowerCase()).includes('schedule')) return true;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+async function buildComprehensiveBackupPayload() {
+  const db = readDb();
+  const collections: Record<string, any[]> = {};
+  let totalRecords = 0;
+  for (const key of BACKUP_COLLECTION_KEYS) {
+    let rows = await readCollectionForBackup(key, db);
+    if (key === 'calendarEvents') {
+      rows = rows.filter((event: any) => !isLegacyScheduleBackupEvent(event));
+    }
+    collections[key] = rows;
+    totalRecords += rows.length;
+  }
+  return {
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    source: shouldUseCloudDb('customers') ? 'Supabase Cloud' : 'Local Database',
+    dataComplete: true,
+    scanTimestamp: new Date().toLocaleString(),
+    collections,
+    metadata: {
+      totalRecords,
+      collectionCount: Object.keys(collections).length,
+      backupType: 'comprehensive',
+      note: 'Contains all data currently accessible by the application',
+    },
+  };
+}
+
+async function writeComprehensiveBackupToRoot(targetRoot: string, label: string): Promise<string> {
+  const payload = await buildComprehensiveBackupPayload();
+  const backupsDir = path.join(targetRoot, 'backups');
+  ensureDir(backupsDir);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeLabel = String(label || 'local-backup').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'local-backup';
+  const backupPath = path.join(backupsDir, `gbpos-${safeLabel}-${stamp}.json`);
+  await writeJsonAtomic(backupPath, payload);
+  return backupPath;
+}
+
 async function runBatchOutBackup(label: string = 'batchout') {
   if (batchOutRunning) return { ok: false, error: 'Batch out already running' };
   batchOutRunning = true;
   try {
-    const cfg = readServerSyncConfig();
-    let localBackupPath: string | undefined;
-    let serverBackupPath: string | undefined;
-
-    if (cfg.backupToLocal !== false) {
-      localBackupPath = await snapshotDbToRoot(resolveDataRoot(), label);
-    }
-
-    if (cfg.enabled === true && cfg.backupToServer !== false) {
-      try {
-        const test = await serverTestConnection();
-        if (test.ok && test.serverRoot) {
-          const serverBackupsDir = serverBackupsDirFromConfig(cfg, test.serverRoot);
-          serverBackupPath = await snapshotDbToBackupsDir(serverBackupsDir, label);
-        }
-      } catch {
-        // ignore server backup failures
-      }
-    }
-
-    const backupPath = localBackupPath || serverBackupPath;
-    if (!backupPath) return { ok: false, error: 'No backup target selected.' };
+    const localBackupPath = await writeComprehensiveBackupToRoot(resolveDataRoot(), label);
+    const backupPath = localBackupPath;
     const iso = new Date().toISOString();
     writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso });
     lastBatchOutDate = iso.slice(0, 10);
-    console.log('[BATCH-OUT] Backup written to', backupPath);
-    return { ok: true, backupPath, localBackupPath, serverBackupPath };
+    console.log('[LOCAL-BACKUP] Backup written to', backupPath);
+    return { ok: true, backupPath, localBackupPath };
   } catch (e: any) {
-    console.error('[BATCH-OUT] Failed to write backup', e);
+    console.error('[LOCAL-BACKUP] Failed to write backup', e);
     return { ok: false, error: e?.message || String(e) };
   } finally {
     batchOutRunning = false;

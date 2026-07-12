@@ -14,3 +14,10 @@ if (!supabaseUrl || !supabasePublishableKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabasePublishableKey);
+
+export function getSupabaseRuntimeConfig() {
+  return {
+    supabaseUrl,
+    supabasePublishableKey,
+  };
+}

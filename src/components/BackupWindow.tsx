@@ -129,12 +129,10 @@ const BackupWindow: React.FC = () => {
   })();
 
   const instructionSections: Array<{ key: string; title: string }> = [
-    { key: 'server', title: 'Server Connection (NAS)' },
-    { key: 'sync', title: 'Sync & Offline-First' },
-    { key: 'backups', title: 'Backups (Create/Preview)' },
+    { key: 'backups', title: 'Local Backups' },
     { key: 'restore', title: 'Restore' },
     { key: 'encrypted', title: 'Encrypted Backups (.gbpos)' },
-    { key: 'auto', title: 'Auto Backup (Batch Out)' },
+    { key: 'auto', title: 'Daily Backup Schedule' },
   ];
 
   useEffect(() => {
@@ -243,7 +241,7 @@ const BackupWindow: React.FC = () => {
       return (
         <div className="space-y-2 text-xs text-gray-300">
           <div>
-            <div className="font-medium text-gray-100">Full Backup</div>
+            <div className="font-medium text-gray-100">Local Backup</div>
             <div>Creates a complete JSON backup of all available collections.</div>
           </div>
           <div>
@@ -268,7 +266,7 @@ const BackupWindow: React.FC = () => {
           <div>
             <div className="font-medium text-gray-100">Safe workflow</div>
             <ol className="list-decimal pl-4 space-y-1">
-              <li>Create a fresh <span className="text-gray-100">Full Backup</span> first (so you can roll back).</li>
+              <li>Create a fresh <span className="text-gray-100">Local Backup</span> first (so you can roll back).</li>
               <li>Use <span className="text-gray-100">Preview Backup</span> to confirm what you’re importing.</li>
               <li>Run the restore, then verify totals and recent work orders.</li>
             </ol>
@@ -300,12 +298,12 @@ const BackupWindow: React.FC = () => {
       return (
         <div className="space-y-2 text-xs text-gray-300">
           <div>
-            <div className="font-medium text-gray-100">Auto backup at Batch Out</div>
-            <div>When enabled, the app will automatically create a snapshot backup at the configured time.</div>
+            <div className="font-medium text-gray-100">Daily local backup</div>
+            <div>When enabled, the app creates one comprehensive local backup at the configured time each day.</div>
           </div>
           <div>
-            <div className="font-medium text-gray-100">Local vs Server targets</div>
-            <div>In the Server section, choose whether automatic snapshots go to <span className="text-gray-100">Local</span>, <span className="text-gray-100">Server</span>, or both.</div>
+            <div className="font-medium text-gray-100">Why scheduled instead of every save</div>
+            <div>End-of-day backups avoid extra work during autosaves while still giving you a daily recovery point.</div>
           </div>
         </div>
       );
@@ -406,7 +404,6 @@ const BackupWindow: React.FC = () => {
     loadDataStats();
     loadLastBackupPath();
     loadAutoBackup();
-    loadServerSync();
     setupDataChangeListeners();
     
     // Show initial message that data is being loaded
@@ -1182,6 +1179,7 @@ const BackupWindow: React.FC = () => {
           </div>
         )}
 
+        {false && (
         <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
           <button
             type="button"
@@ -1424,18 +1422,19 @@ const BackupWindow: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="lg:col-span-2">
-              <h3 className="text-base font-semibold mb-1 text-gray-100">Backups</h3>
+              <h3 className="text-base font-semibold mb-1 text-gray-100">Local Backup Schedule</h3>
               <div className="text-xs text-gray-400">
                 Use <span className="text-gray-200 font-medium">Instructions ▾</span> for step-by-step help.
               </div>
               <div className="mt-3 bg-zinc-900 border border-zinc-700 rounded p-2 flex flex-col gap-1 text-sm">
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={autoBackupEnabled} onChange={e => handleToggleAutoBackup(e.target.checked)} disabled={autoBackupSaving} />
-                  <span className="font-medium">Auto backup at Batch Out</span>
+                  <span className="font-medium">Daily local backup</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <label className="text-[11px] text-gray-400">Backup time</label>
@@ -1447,7 +1446,7 @@ const BackupWindow: React.FC = () => {
                     disabled={autoBackupSaving}
                   />
                 </div>
-                <div className="text-[11px] text-gray-400">Runs at the configured time to create an automatic backup. Adjust here; Reports handles email schedules separately.</div>
+                <div className="text-[11px] text-gray-400">Runs once per day at the configured time and saves a comprehensive local backup. This avoids backup work during autosaves.</div>
               </div>
             </div>
           </div>
@@ -1455,14 +1454,14 @@ const BackupWindow: React.FC = () => {
 
         <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
-            <h2 className="text-lg font-semibold text-gray-100">Backup Actions</h2>
+            <h2 className="text-lg font-semibold text-gray-100">Local Backup Actions</h2>
             {lastBackupPath && (
               <div className="truncate text-xs text-gray-400">Last backup: <span className="text-[#39FF14]" title={lastBackupPath}>{lastBackupPath}</span></div>
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <Button onClick={handleCreateBackup} disabled={isProcessing} className="w-full text-sm py-2.5 bg-indigo-700 hover:bg-indigo-800">
-              {isProcessing ? '⏳ Creating...' : '📦 Full Backup'}
+              {isProcessing ? '⏳ Creating...' : '📦 Local Backup'}
             </Button>
             <Button onClick={handleRestoreBackup} disabled={isProcessing} className="w-full text-sm py-2.5 bg-indigo-700 hover:bg-indigo-800">
               {isProcessing ? '⏳ Restoring...' : '📂 Select & Restore Backup'}

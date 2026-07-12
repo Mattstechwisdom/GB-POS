@@ -16,7 +16,7 @@ import { PaginationProvider, usePagination } from './lib/pagination';
 import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib/modalBus';
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
-import { supabase } from './lib/supabase';
+import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
@@ -254,6 +254,22 @@ const App: React.FC = () => {
       listener.subscription.unsubscribe();
     };
   }, [loadStaffProfile]);
+
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api?.cloudSetSession) return;
+    if (!session?.access_token || !staffProfile?.shop_id) {
+      void api.cloudClearSession?.();
+      return;
+    }
+    const cfg = getSupabaseRuntimeConfig();
+    void api.cloudSetSession({
+      supabaseUrl: cfg.supabaseUrl,
+      supabasePublishableKey: cfg.supabasePublishableKey,
+      accessToken: session.access_token,
+      shopId: staffProfile.shop_id,
+    });
+  }, [session?.access_token, staffProfile?.shop_id]);
 
   if (authLoading) {
     return null;
