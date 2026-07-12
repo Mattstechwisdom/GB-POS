@@ -19,6 +19,9 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
     steps:
       - name: Checkout
@@ -46,6 +49,16 @@ jobs:
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json
+
+      - name: Validate Supabase build config
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:VITE_SUPABASE_URL)) {
+            throw "Missing VITE_SUPABASE_URL. Add it in GitHub repo Settings > Secrets and variables > Actions."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:VITE_SUPABASE_PUBLISHABLE_KEY)) {
+            throw "Missing VITE_SUPABASE_PUBLISHABLE_KEY. Add it in GitHub repo Settings > Secrets and variables > Actions."
+          }
 
       - name: Build renderer (Vite)
         run: npx vite build --config vite.config.ts
