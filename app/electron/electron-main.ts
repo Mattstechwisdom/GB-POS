@@ -1065,6 +1065,9 @@ let autoUpdateInitialized = false;
 let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
+let updateUiWindow: any | null = null;
+let updateUiInfo: any | null = null;
+let updateUiIpcRegistered = false;
 
 function updaterWindow(): any {
   try {
@@ -1075,69 +1078,457 @@ function updaterWindow(): any {
   }
 }
 
-async function promptToDownloadUpdate(info: any) {
-  if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
-  autoUpdatePromptOpen = true;
+function getUpdateLogoDataUrl(): string {
   try {
-    const version = String(info?.version || '').trim();
-    const releaseName = String(info?.releaseName || '').trim();
-    const label = releaseName || (version ? `v${version}` : 'a newer version');
-    const res = await dialog.showMessageBox(updaterWindow(), {
-      type: 'info',
-      buttons: ['Update Now', 'Skip for Now'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'GadgetBoy POS Update Available',
-      message: `GadgetBoy POS ${label} is available.`,
-      detail: 'Choose Update Now to download and install the latest release. Choose Skip for Now to be reminded again the next time you open the app.',
-      noLink: true,
-    });
-    if (res.response !== 0) return;
-    autoUpdateDownloading = true;
-    await autoUpdater.downloadUpdate();
-  } catch (e: any) {
-    autoUpdateDownloading = false;
-    try {
-      await dialog.showMessageBox(updaterWindow(), {
-        type: 'warning',
-        buttons: ['OK'],
-        title: 'Update Download Failed',
-        message: 'GadgetBoy POS could not download the update.',
-        detail: String(e?.message || e || 'Unknown update error.'),
-      });
-    } catch {}
-  } finally {
-    autoUpdatePromptOpen = false;
+    const candidates = [
+      path.join(app.getAppPath(), 'dist', 'logo.png'),
+      path.join(app.getAppPath(), 'logo.png'),
+      path.join(process.cwd(), 'public', 'logo.png'),
+      path.join(process.cwd(), 'dist', 'logo.png'),
+    ];
+    const logoPath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!logoPath) return '';
+    return `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`;
+  } catch {
+    return '';
   }
 }
 
-async function promptToInstallDownloadedUpdate(info: any) {
-  if (autoUpdatePromptOpen || !autoUpdater) return;
-  autoUpdatePromptOpen = true;
-  autoUpdateDownloading = false;
-  try {
-    const version = String(info?.version || '').trim();
-    const res = await dialog.showMessageBox(updaterWindow(), {
-      type: 'question',
-      buttons: ['Install and Relaunch', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Update Ready',
-      message: version ? `GadgetBoy POS v${version} is ready to install.` : 'A GadgetBoy POS update is ready to install.',
-      detail: 'The app will close, install the update, and relaunch automatically.',
-      noLink: true,
-    });
-    if (res.response !== 0) return;
-    setImmediate(() => {
-      try {
-        autoUpdater.quitAndInstall(false, true);
-      } catch (e: any) {
-        try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
+function getUpdateLabel(info: any): string {
+  const version = String(info?.version || '').trim();
+  const releaseName = String(info?.releaseName || '').trim();
+  return releaseName || (version ? `v${version}` : 'a newer version');
+}
+
+function updateUiHtml(initialState: any): string {
+  const logoDataUrl = getUpdateLogoDataUrl();
+  const stateJson = JSON.stringify(initialState || {});
+  const logoMarkup = logoDataUrl
+    ? `<img class="logo-img" src="${logoDataUrl}" alt="GadgetBoy POS" />`
+    : `<div class="logo-fallback" aria-label="GadgetBoy POS">GB</div>`;
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: 'self';" />
+  <title>GadgetBoy POS Update</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18181b;
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --line: rgba(255,255,255,.12);
+      --green: #39ff14;
+      --danger: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      border: 1px solid rgba(57,255,20,.28);
+    }
+    .wrap {
+      width: 100%;
+      padding: 28px 30px 24px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(57,255,20,.12), transparent 34%),
+        linear-gradient(180deg, rgba(255,255,255,.03), transparent 44%);
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+    .logo-slot {
+      width: 74px;
+      height: 74px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+    .logo-img {
+      max-width: 74px;
+      max-height: 74px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 18px rgba(57,255,20,.25));
+      animation: pulse 1.35s ease-in-out infinite;
+    }
+    .logo-fallback {
+      width: 70px;
+      height: 70px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      border: 1px solid rgba(57,255,20,.58);
+      color: var(--green);
+      font-weight: 800;
+      font-size: 28px;
+      box-shadow: 0 0 26px rgba(57,255,20,.16);
+      animation: pulse 1.35s ease-in-out infinite;
+    }
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--green);
+      font-size: 12px;
+      line-height: 1.2;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-weight: 750;
+    }
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.18;
+      letter-spacing: 0;
+      font-weight: 760;
+    }
+    .body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 15px;
+      min-height: 116px;
+    }
+    .message {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 520px;
+    }
+    .bar-wrap {
+      display: none;
+      gap: 10px;
+      align-items: center;
+    }
+    .progress-track {
+      position: relative;
+      height: 12px;
+      flex: 1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.11);
+    }
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #24d40d, var(--green), #a3ff93);
+      box-shadow: 0 0 16px rgba(57,255,20,.36);
+      transition: width .18s ease;
+    }
+    .percent {
+      width: 48px;
+      text-align: right;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+    }
+    button {
+      min-width: 116px;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.07);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.1); }
+    button.primary {
+      color: #071007;
+      background: var(--green);
+      border-color: var(--green);
+      box-shadow: 0 0 18px rgba(57,255,20,.2);
+    }
+    button.primary:hover { background: #6bff52; }
+    button:disabled {
+      cursor: default;
+      opacity: .62;
+      box-shadow: none;
+    }
+    .error { color: var(--danger); }
+    .dots { display: inline-flex; gap: 4px; transform: translateY(-1px); }
+    .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--green);
+      opacity: .45;
+      animation: bounce 1s ease-in-out infinite;
+    }
+    .dot:nth-child(2) { animation-delay: .18s; }
+    .dot:nth-child(3) { animation-delay: .36s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: .45; }
+      40% { transform: translateY(-5px); opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: .94; }
+      50% { transform: scale(1.035); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="logo-slot">${logoMarkup}</div>
+      <div>
+        <p class="eyebrow">GadgetBoy POS</p>
+        <h1 id="title">Update Available</h1>
+      </div>
+    </div>
+    <div class="body">
+      <p id="message" class="message"></p>
+      <div id="barWrap" class="bar-wrap" aria-label="Download progress">
+        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+        <div id="percent" class="percent">0%</div>
+      </div>
+    </div>
+    <div class="footer">
+      <button id="secondaryBtn">Skip for Now</button>
+      <button id="primaryBtn" class="primary">Update Now</button>
+    </div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    const titleEl = document.getElementById('title');
+    const messageEl = document.getElementById('message');
+    const barWrap = document.getElementById('barWrap');
+    const progressFill = document.getElementById('progressFill');
+    const percentEl = document.getElementById('percent');
+    const primaryBtn = document.getElementById('primaryBtn');
+    const secondaryBtn = document.getElementById('secondaryBtn');
+    const busyDots = '<span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+
+    function pct(value) {
+      const n = Number(value || 0);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.min(100, n));
+    }
+
+    window.__setUpdateState = function(state) {
+      const phase = state && state.phase ? state.phase : 'available';
+      const label = state && state.label ? state.label : 'a newer version';
+      const percent = pct(state && state.percent);
+      messageEl.classList.remove('error');
+      barWrap.style.display = 'none';
+      primaryBtn.disabled = false;
+      secondaryBtn.disabled = false;
+
+      if (phase === 'available') {
+        titleEl.textContent = 'Update Available';
+        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready to download. Choose Update Now to download the latest release; Skip for Now will remind you again next launch.';
+        primaryBtn.textContent = 'Update Now';
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
+        secondaryBtn.textContent = 'Skip for Now';
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
+      } else if (phase === 'downloading') {
+        titleEl.textContent = 'Downloading Update';
+        messageEl.innerHTML = 'Downloading GadgetBoy POS ' + label + ' ' + busyDots;
+        barWrap.style.display = 'flex';
+        progressFill.style.width = percent.toFixed(0) + '%';
+        percentEl.textContent = percent.toFixed(0) + '%';
+        primaryBtn.textContent = 'Downloading';
+        primaryBtn.disabled = true;
+        primaryBtn.onclick = null;
+        secondaryBtn.textContent = 'Keep Open';
+        secondaryBtn.disabled = true;
+        secondaryBtn.onclick = null;
+      } else if (phase === 'downloaded') {
+        titleEl.textContent = 'Update Ready';
+        messageEl.textContent = 'GadgetBoy POS ' + label + ' has downloaded. The app will close, install the update, and relaunch when you choose Install and Relaunch.';
+        barWrap.style.display = 'flex';
+        progressFill.style.width = '100%';
+        percentEl.textContent = '100%';
+        primaryBtn.textContent = 'Install and Relaunch';
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'install');
+        secondaryBtn.textContent = 'Later';
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'later');
+      } else if (phase === 'applying') {
+        titleEl.textContent = 'Applying Update';
+        messageEl.innerHTML = 'Closing GadgetBoy POS and applying the update ' + busyDots;
+        barWrap.style.display = 'flex';
+        progressFill.style.width = '100%';
+        percentEl.textContent = '100%';
+        primaryBtn.textContent = 'Applying';
+        primaryBtn.disabled = true;
+        primaryBtn.onclick = null;
+        secondaryBtn.textContent = 'Please Wait';
+        secondaryBtn.disabled = true;
+        secondaryBtn.onclick = null;
+      } else if (phase === 'error') {
+        titleEl.textContent = 'Update Failed';
+        messageEl.classList.add('error');
+        messageEl.textContent = state && state.detail ? state.detail : 'The update could not be completed. You can try again the next time you open the app.';
+        primaryBtn.textContent = 'Close';
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
+        secondaryBtn.textContent = 'Releases';
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
       }
-    });
-  } finally {
-    autoUpdatePromptOpen = false;
+    };
+
+    window.__setUpdateState(${stateJson});
+  </script>
+</body>
+</html>`;
+}
+
+function ensureUpdateUiIpc() {
+  if (updateUiIpcRegistered) return;
+  updateUiIpcRegistered = true;
+  ipcMain.on('updater-window-action', (_event: any, action: string) => {
+    try {
+      if (action === 'download') {
+        void startUpdateDownload();
+      } else if (action === 'install') {
+        void installDownloadedUpdate();
+      } else if (action === 'releases') {
+        void shell.openExternal(getReleasesUrl());
+      } else if (action === 'skip' || action === 'later') {
+        closeUpdateUi();
+      }
+    } catch (e: any) {
+      try { console.error('[AutoUpdate] action failed:', e?.message || e); } catch {}
+    }
+  });
+}
+
+function sendUpdateUiState(state: any) {
+  try {
+    if (!updateUiWindow || updateUiWindow.isDestroyed()) return;
+    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify(state || {})});`).catch(() => {});
+  } catch {
+    // ignore
   }
+}
+
+function closeUpdateUi() {
+  autoUpdatePromptOpen = false;
+  try {
+    if (updateUiWindow && !updateUiWindow.isDestroyed()) updateUiWindow.close();
+  } catch {
+    // ignore
+  }
+  updateUiWindow = null;
+}
+
+function showUpdateUi(state: any) {
+  ensureUpdateUiIpc();
+  autoUpdatePromptOpen = true;
+  const parent = updaterWindow();
+  try {
+    if (updateUiWindow && !updateUiWindow.isDestroyed()) {
+      sendUpdateUiState(state);
+      updateUiWindow.show();
+      updateUiWindow.focus();
+      return;
+    }
+
+    updateUiWindow = new BrowserWindow({
+      width: 560,
+      height: 330,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: 'GadgetBoy POS Update',
+      parent,
+      modal: false,
+      show: false,
+      backgroundColor: '#18181b',
+      icon: WINDOW_ICON,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
+    });
+
+    updateUiWindow.removeMenu();
+    updateUiWindow.on('closed', () => {
+      updateUiWindow = null;
+      if (!autoUpdateDownloading) autoUpdatePromptOpen = false;
+    });
+    updateUiWindow.once('ready-to-show', () => {
+      try { updateUiWindow.show(); } catch {}
+    });
+    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml(state))}`);
+  } catch (e: any) {
+    autoUpdatePromptOpen = false;
+    try { console.error('[AutoUpdate] update window failed:', e?.message || e); } catch {}
+  }
+}
+
+async function startUpdateDownload() {
+  if (autoUpdateDownloading || !autoUpdater) return;
+  autoUpdateDownloading = true;
+  showUpdateUi({ phase: 'downloading', label: getUpdateLabel(updateUiInfo), percent: 0 });
+  try {
+    await autoUpdater.downloadUpdate();
+  } catch (e: any) {
+    autoUpdateDownloading = false;
+    showUpdateUi({
+      phase: 'error',
+      detail: `GadgetBoy POS could not download the update. ${String(e?.message || e || 'Unknown update error.')}`,
+    });
+  }
+}
+
+async function installDownloadedUpdate() {
+  if (!autoUpdater) return;
+  showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
+  setTimeout(() => {
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (e: any) {
+      try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
+      showUpdateUi({
+        phase: 'error',
+        detail: `GadgetBoy POS could not apply the update. ${String(e?.message || e || 'Unknown update error.')}`,
+      });
+    }
+  }, 450);
+}
+
+async function promptToDownloadUpdate(info: any) {
+  if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
+  updateUiInfo = info;
+  showUpdateUi({ phase: 'available', label: getUpdateLabel(info), percent: 0 });
+}
+
+async function promptToInstallDownloadedUpdate(info: any) {
+  if (!autoUpdater) return;
+  updateUiInfo = info;
+  autoUpdateDownloading = false;
+  showUpdateUi({ phase: 'downloaded', label: getUpdateLabel(info), percent: 100 });
 }
 
 function setupAutoUpdater() {
@@ -1162,6 +1553,11 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('download-progress', (progress: any) => {
     try { console.log('[AutoUpdate] download progress:', Math.round(Number(progress?.percent || 0)) + '%'); } catch {}
+    showUpdateUi({
+      phase: 'downloading',
+      label: getUpdateLabel(updateUiInfo),
+      percent: Number(progress?.percent || 0),
+    });
   });
   autoUpdater.on('update-downloaded', (info: any) => {
     try { console.log('[AutoUpdate] update downloaded:', info?.version || info); } catch {}
@@ -1170,6 +1566,10 @@ function setupAutoUpdater() {
   autoUpdater.on('error', (err: any) => {
     autoUpdateDownloading = false;
     try { console.error('[AutoUpdate] error:', err?.message || err); } catch {}
+    showUpdateUi({
+      phase: 'error',
+      detail: `GadgetBoy POS could not complete the update. ${String(err?.message || err || 'Unknown update error.')}`,
+    });
   });
 }
 

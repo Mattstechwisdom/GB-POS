@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.80 (2026-07-12)
+- Auto Update: replaced the silent update download flow with a GadgetBoy-styled progress window.
+- Auto Update: shows download progress, install-ready state, applying-update state, and visible failure details.
+- Auto Update: keeps Skip for Now behavior so skipped updates are offered again on the next launch.
+
 ## v0.4.35 (2026-06-06)
 - Calendar: Daily Look consultations now include direct actions to open the linked consultation sale and customer info.
 - Calendar: consultation event edit popup now also includes "View Consultation Sale" and "View Client Info" actions.
