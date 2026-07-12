@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.82 (2026-07-12)
+- Auto Update: installs downloaded updates silently instead of showing the setup wizard.
+- Auto Update: increased the update progress window height so the action buttons are not clipped.
+
 ## v0.4.81 (2026-07-12)
 - Clients: added a duplicate-client failsafe before creating a new client from Customer Overview or Consultation Booking.
 - Clients: warns when first/last name, matching phone field, matching alt phone field, or email already exists.

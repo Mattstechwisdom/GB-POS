@@ -1456,7 +1456,7 @@ function showUpdateUi(state: any) {
 
     updateUiWindow = new BrowserWindow({
       width: 560,
-      height: 330,
+      height: 390,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -1507,7 +1507,7 @@ async function installDownloadedUpdate() {
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({
