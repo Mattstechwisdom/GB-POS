@@ -4,7 +4,9 @@ import { consumeWindowPayload } from '../lib/windowPayload';
 import CustomerForm from './CustomerForm';
 import Button from './Button';
 import ClientSmsChat from './ClientSmsChat';
+import DuplicateCustomerDialog from './DuplicateCustomerDialog';
 import { Customer } from '../lib/types';
+import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
 
 interface Props {
   customer?: Customer | null;
@@ -21,11 +23,13 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const [showChat, setShowChat] = useState(false);
   const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
+  const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
   const editSeqRef = useRef(0);
+  const duplicatePromptSignatureRef = useRef('');
 
   // If customer not passed, attempt to load by payload store or query param customerOverview
   useEffect(() => {
@@ -92,6 +96,56 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     return errs.length === 0;
   }, [local]);
 
+  const duplicateSignature = useCallback((matches: CustomerDuplicateMatch[]) => {
+    return matches
+      .map((m) => `${m.customer.id}:${m.reasons.slice().sort().join(',')}`)
+      .sort()
+      .join('|');
+  }, []);
+
+  const checkForDuplicateCustomer = useCallback(async (
+    candidate: Partial<Customer>,
+    opts: { silentRepeat?: boolean } = {},
+  ): Promise<CustomerDuplicateMatch[]> => {
+    if ((candidate as any)?.id) return [];
+    try {
+      const list = await ((window as any).api.getCustomers?.() ?? (window as any).api.dbGet?.('customers') ?? []);
+      const matches = findDuplicateCustomers(candidate, Array.isArray(list) ? list : []);
+      if (!matches.length) {
+        duplicatePromptSignatureRef.current = '';
+        return [];
+      }
+
+      const sig = duplicateSignature(matches);
+      if (!opts.silentRepeat || duplicatePromptSignatureRef.current !== sig) {
+        duplicatePromptSignatureRef.current = sig;
+        setDuplicateMatches(matches);
+      }
+      return matches;
+    } catch (e) {
+      console.warn('Duplicate customer check failed', e);
+      return [];
+    }
+  }, [duplicateSignature]);
+
+  const openDuplicateCustomer = useCallback(async (customerId: number) => {
+    setDuplicateMatches([]);
+    try {
+      await (window as any).api?.openCustomerOverview?.(customerId);
+      onClose();
+    } catch (e) {
+      console.error('open duplicate customer failed', e);
+    }
+  }, [onClose]);
+
+  async function handleClose() {
+    if (!(local as any)?.id) {
+      const matches = await checkForDuplicateCustomer(local);
+      if (matches.length) return;
+    }
+    onClose();
+  }
+
   async function handleSave() {
     const saved = await ensureCustomerSaved();
     if (saved && closeAfterSave) onClose();
@@ -107,6 +161,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       if ((payload as any).id) {
         saved = await window.api.update('customers', payload);
       } else {
+        const matches = await checkForDuplicateCustomer(payload);
+        if (matches.length) return null;
         saved = await window.api.addCustomer(payload);
       }
       if (saved) {
@@ -133,6 +189,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       if ((payload as any).id) {
         saved = await window.api.update('customers', payload);
       } else {
+        const matches = await checkForDuplicateCustomer(payload, { silentRepeat: true });
+        if (matches.length) return null;
         saved = await window.api.addCustomer(payload);
       }
       if (saved) {
@@ -199,7 +257,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
               <button
                 type="button"
                 aria-label="Close"
-                onClick={onClose}
+                onClick={handleClose}
                 className="h-9 w-9 mr-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
               >
                 ✕
@@ -284,6 +342,13 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         customerName={[(local as any).firstName, (local as any).lastName].filter(Boolean).join(' ').trim() || 'Client'}
         customerPhone={String((local as any).phone || '')}
         onClose={() => setShowChat(false)}
+      />
+    )}
+    {duplicateMatches.length > 0 && (
+      <DuplicateCustomerDialog
+        matches={duplicateMatches}
+        onOpenCustomer={openDuplicateCustomer}
+        onClose={() => setDuplicateMatches([])}
       />
     )}
     </>

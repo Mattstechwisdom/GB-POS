@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.81 (2026-07-12)
+- Clients: added a duplicate-client failsafe before creating a new client from Customer Overview or Consultation Booking.
+- Clients: warns when first/last name, matching phone field, matching alt phone field, or email already exists.
+- Clients: duplicate warning can open the existing client info window without creating another record.
+
 ## v0.4.80 (2026-07-12)
 - Auto Update: replaced the silent update download flow with a GadgetBoy-styled progress window.
 - Auto Update: shows download progress, install-ready state, applying-update state, and visible failure details.

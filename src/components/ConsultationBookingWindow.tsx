@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
+import DuplicateCustomerDialog from './DuplicateCustomerDialog';
+import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
 
 const CONSULTATION_BASE_RATE = 75;
 const CONSULTATION_EXTRA_RATE = 50;
@@ -126,6 +128,7 @@ export default function ConsultationBookingWindow() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCust, setNewCust] = useState({ firstName: '', lastName: '', phone: '', email: '' });
+  const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customerIndexRef = useRef<Array<{ c: Customer; fullLower: string; phoneDigits: string }>>([]);
@@ -462,14 +465,20 @@ export default function ConsultationBookingWindow() {
       let customer = selectedCustomer;
       if (!customer) {
         const now = new Date().toISOString();
-        customer = await api.dbAdd('customers', {
+        const customerPayload = {
           firstName: newCust.firstName.trim(),
           lastName: newCust.lastName.trim(),
           phone: newCust.phone.replace(/\D/g, '').slice(-10),
           email: newCust.email.trim(),
           createdAt: now,
           updatedAt: now,
-        });
+        };
+        const duplicateList = findDuplicateCustomers(customerPayload, allCustomers);
+        if (duplicateList.length) {
+          setDuplicateMatches(duplicateList);
+          return;
+        }
+        customer = await api.dbAdd('customers', customerPayload);
         if (customer?.id != null) {
           const created = customer as Customer;
           setAllCustomers((prev) => {
@@ -628,6 +637,7 @@ export default function ConsultationBookingWindow() {
 
   // ── Main form ───────────────────────────────────────────────────
   return (
+    <>
     <div className="h-screen bg-zinc-900 text-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-700 shrink-0">
@@ -1026,5 +1036,21 @@ export default function ConsultationBookingWindow() {
         </button>
       </div>
     </div>
+    {duplicateMatches.length > 0 && (
+      <DuplicateCustomerDialog
+        matches={duplicateMatches}
+        onClose={() => setDuplicateMatches([])}
+        onOpenCustomer={async (customerId) => {
+          setDuplicateMatches([]);
+          const match = duplicateMatches.find((m) => Number(m.customer.id) === Number(customerId));
+          if (match?.customer) {
+            selectCustomer(match.customer as Customer);
+            setShowNewCustomer(false);
+          }
+          await api?.openCustomerOverview?.(customerId);
+        }}
+      />
+    )}
+    </>
   );
 }
