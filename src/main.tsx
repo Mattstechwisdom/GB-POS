@@ -195,17 +195,10 @@ function removeInitialHtmlLoader() {
 	}
 }
 
-function AppBoot({ children }: { children: React.ReactNode }) {
-	useEffect(() => {
-		removeInitialHtmlLoader();
-	}, []);
-	return <>{children}</>;
-}
-
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
 	root.render(
 		<Suspense fallback={<LoadingScreen />}>
-			<AppBoot>{node}</AppBoot>
+			{node}
 		</Suspense>
 	);
 }

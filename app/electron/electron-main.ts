@@ -9,6 +9,13 @@ const os = require('os');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 
+let autoUpdater: any = null;
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+} catch {
+  autoUpdater = null;
+}
+
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
@@ -1045,6 +1052,138 @@ function getReleasesUrl(): string {
     // ignore
   }
   return 'https://github.com/Mattstechwisdom/GB-POS/releases';
+}
+
+let autoUpdateInitialized = false;
+let autoUpdateCheckStarted = false;
+let autoUpdatePromptOpen = false;
+let autoUpdateDownloading = false;
+
+function updaterWindow(): any {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+    return BrowserWindow.getAllWindows().find((w: any) => !w.isDestroyed()) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function promptToDownloadUpdate(info: any) {
+  if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
+  autoUpdatePromptOpen = true;
+  try {
+    const version = String(info?.version || '').trim();
+    const releaseName = String(info?.releaseName || '').trim();
+    const label = releaseName || (version ? `v${version}` : 'a newer version');
+    const res = await dialog.showMessageBox(updaterWindow(), {
+      type: 'info',
+      buttons: ['Update Now', 'Skip for Now'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'GadgetBoy POS Update Available',
+      message: `GadgetBoy POS ${label} is available.`,
+      detail: 'Choose Update Now to download and install the latest release. Choose Skip for Now to be reminded again the next time you open the app.',
+      noLink: true,
+    });
+    if (res.response !== 0) return;
+    autoUpdateDownloading = true;
+    await autoUpdater.downloadUpdate();
+  } catch (e: any) {
+    autoUpdateDownloading = false;
+    try {
+      await dialog.showMessageBox(updaterWindow(), {
+        type: 'warning',
+        buttons: ['OK'],
+        title: 'Update Download Failed',
+        message: 'GadgetBoy POS could not download the update.',
+        detail: String(e?.message || e || 'Unknown update error.'),
+      });
+    } catch {}
+  } finally {
+    autoUpdatePromptOpen = false;
+  }
+}
+
+async function promptToInstallDownloadedUpdate(info: any) {
+  if (autoUpdatePromptOpen || !autoUpdater) return;
+  autoUpdatePromptOpen = true;
+  autoUpdateDownloading = false;
+  try {
+    const version = String(info?.version || '').trim();
+    const res = await dialog.showMessageBox(updaterWindow(), {
+      type: 'question',
+      buttons: ['Install and Relaunch', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Update Ready',
+      message: version ? `GadgetBoy POS v${version} is ready to install.` : 'A GadgetBoy POS update is ready to install.',
+      detail: 'The app will close, install the update, and relaunch automatically.',
+      noLink: true,
+    });
+    if (res.response !== 0) return;
+    setImmediate(() => {
+      try {
+        autoUpdater.quitAndInstall(false, true);
+      } catch (e: any) {
+        try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
+      }
+    });
+  } finally {
+    autoUpdatePromptOpen = false;
+  }
+}
+
+function setupAutoUpdater() {
+  if (autoUpdateInitialized) return;
+  autoUpdateInitialized = true;
+  if (!autoUpdater) {
+    try { console.warn('[AutoUpdate] electron-updater is unavailable.'); } catch {}
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.on('checking-for-update', () => {
+    try { console.log('[AutoUpdate] checking for update'); } catch {}
+  });
+  autoUpdater.on('update-available', (info: any) => {
+    try { console.log('[AutoUpdate] update available:', info?.version || info); } catch {}
+    void promptToDownloadUpdate(info);
+  });
+  autoUpdater.on('update-not-available', (info: any) => {
+    try { console.log('[AutoUpdate] no update available:', info?.version || info); } catch {}
+  });
+  autoUpdater.on('download-progress', (progress: any) => {
+    try { console.log('[AutoUpdate] download progress:', Math.round(Number(progress?.percent || 0)) + '%'); } catch {}
+  });
+  autoUpdater.on('update-downloaded', (info: any) => {
+    try { console.log('[AutoUpdate] update downloaded:', info?.version || info); } catch {}
+    void promptToInstallDownloadedUpdate(info);
+  });
+  autoUpdater.on('error', (err: any) => {
+    autoUpdateDownloading = false;
+    try { console.error('[AutoUpdate] error:', err?.message || err); } catch {}
+  });
+}
+
+function checkForAppUpdatesSoon() {
+  try {
+    if (autoUpdateCheckStarted) return;
+    autoUpdateCheckStarted = true;
+    if (isDev || !app.isPackaged) return;
+    if ((process.env.GBPOS_DISABLE_AUTO_UPDATE || '').toString().trim() === '1') return;
+    setupAutoUpdater();
+    if (!autoUpdater) return;
+    setTimeout(() => {
+      try {
+        void autoUpdater.checkForUpdates();
+      } catch (e: any) {
+        try { console.error('[AutoUpdate] check failed:', e?.message || e); } catch {}
+      }
+    }, 2500);
+  } catch (e: any) {
+    try { console.error('[AutoUpdate] setup failed:', e?.message || e); } catch {}
+  }
 }
 
 function runInstallerExe(installerPathRaw: string, opts?: { silent?: boolean; forceRunAfter?: boolean }) {
@@ -6062,6 +6201,7 @@ ipcMain.handle('qr:getServerInfo', async () => {
       // ignore
     }
     createWindow();
+    checkForAppUpdatesSoon();
     startQrStatusServer();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

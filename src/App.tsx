@@ -180,6 +180,14 @@ type StaffProfile = {
   email: string;
 };
 
+function removeInitialHtmlLoader() {
+  try {
+    document.getElementById('gbpos-initial-loader')?.remove();
+  } catch {
+    // ignore
+  }
+}
+
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
@@ -248,14 +256,11 @@ const App: React.FC = () => {
   }, [loadStaffProfile]);
 
   if (authLoading) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="text-sm text-slate-400">Checking login...</div>
-      </main>
-    );
+    return null;
   }
 
   if (!session || !staffProfile) {
+    removeInitialHtmlLoader();
     return (
       <>
         <LoginScreen onSignedIn={() => {
@@ -274,6 +279,7 @@ const App: React.FC = () => {
     );
   }
 
+  removeInitialHtmlLoader();
   return (
     <PaginationProvider pageSize={30}>
       <AppInner
