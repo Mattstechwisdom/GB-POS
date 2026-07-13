@@ -148,8 +148,7 @@ const CheckoutWindow: React.FC = () => {
     }
   };
 
-  function save() {
-    if (!canSave) return;
+  function buildCheckoutResult(): CheckoutResult {
     const payments: Array<{ paymentType: PaymentType; applied: number; amount: number; tendered?: number; change?: number }> = [];
     if (isSplit) {
       payments.push({
@@ -193,6 +192,12 @@ const CheckoutWindow: React.FC = () => {
       printReceipt,
       markClosed,
     };
+    return result;
+  }
+
+  function save() {
+    if (!canSave) return;
+    const result = buildCheckoutResult();
     // Fire Clover cash sale in background (opens drawer, records in Clover)
     if (isCashOnly && cloverEnabled) {
       const amountCents = Math.round(appliedPaid * 100);
@@ -241,10 +246,11 @@ const CheckoutWindow: React.FC = () => {
   }, [paymentType, selectedDue, cashEdited, applyEdited, appliedPaid]);
 
   async function handleCloverCharge() {
+    if (!canSave) return;
     setCloverLoading(true);
     setCloverStatus(null);
     try {
-      const amountCents = Math.round(selectedDue * 100);
+      const amountCents = Math.round(appliedPaid * 100);
       const label = payload?.title || 'Service';
       let res: any;
       if (cloverMode === 'local') {
@@ -253,6 +259,7 @@ const CheckoutWindow: React.FC = () => {
         res = await (window as any).api.cloverChargeCard({ amountCents, label });
       }
       if (res?.ok) {
+        (window as any).api._emitCheckoutSave(buildCheckoutResult());
         setCloverStatus({ ok: true, message: cloverMode === 'local' ? 'Sent to Flex — customer can now pay on device' : 'Sent to Clover — awaiting payment on device' });
       } else {
         setCloverStatus({ ok: false, message: res?.error || 'Clover error' });

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.83 (2026-07-13)
+- Clover: checkout now sends the applied payment amount to Clover instead of the original selected due amount.
+- Clover: successful Clover card handoff now saves the POS checkout result automatically.
+
 ## v0.4.82 (2026-07-12)
 - Auto Update: installs downloaded updates silently instead of showing the setup wizard.
 - Auto Update: increased the update progress window height so the action buttons are not clipped.
