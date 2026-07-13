@@ -201,11 +201,13 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
+  const [cloudReady, setCloudReady] = useState(false);
   const [accessError, setAccessError] = useState('');
 
   const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
     setSession(nextSession);
     setStaffProfile(null);
+    setCloudReady(false);
     setAccessError('');
 
     if (!nextSession?.user) {
@@ -257,18 +259,36 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const api = (window as any).api;
-    if (!api?.cloudSetSession) return;
+    let cancelled = false;
+    if (!api?.cloudSetSession) {
+      setCloudReady(true);
+      return () => { cancelled = true; };
+    }
     if (!session?.access_token || !staffProfile?.shop_id) {
+      setCloudReady(false);
       void api.cloudClearSession?.();
-      return;
+      return () => { cancelled = true; };
     }
     const cfg = getSupabaseRuntimeConfig();
+    setCloudReady(false);
     void api.cloudSetSession({
       supabaseUrl: cfg.supabaseUrl,
       supabasePublishableKey: cfg.supabasePublishableKey,
       accessToken: session.access_token,
       shopId: staffProfile.shop_id,
+    }).then((res: any) => {
+      if (cancelled) return;
+      if (res?.ok) {
+        setCloudReady(true);
+        setRefreshKey((v) => v + 1);
+      } else {
+        setAccessError(res?.error || 'Cloud session could not be started.');
+      }
+    }).catch((e: any) => {
+      if (cancelled) return;
+      setAccessError(e?.message || 'Cloud session could not be started.');
     });
+    return () => { cancelled = true; };
   }, [session?.access_token, staffProfile?.shop_id]);
 
   if (authLoading) {
@@ -293,6 +313,10 @@ const App: React.FC = () => {
         ) : null}
       </>
     );
+  }
+
+  if (!cloudReady) {
+    return null;
   }
 
   removeInitialHtmlLoader();

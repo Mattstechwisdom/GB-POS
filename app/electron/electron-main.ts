@@ -4074,6 +4074,17 @@ type CloudSessionState = {
 let cloudSession: CloudSessionState | null = null;
 let cloudClient: any | null = null;
 
+type CloudSyncOperation = {
+  id: string;
+  op: 'upsert' | 'delete';
+  key: string;
+  item?: any;
+  legacyId?: number | string | null;
+  createdAt: string;
+  attempts?: number;
+  lastError?: string;
+};
+
 const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   customers: 'customers',
   workOrders: 'work_orders',
@@ -4127,7 +4138,27 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
   }
   cloudSession = { supabaseUrl, supabasePublishableKey, accessToken, shopId };
   cloudClient = null;
-  return { ok: true };
+  try {
+    const [customersCount, workOrdersCount, salesCount] = await Promise.all([
+      getCloudCount('customers'),
+      getCloudCount('workOrders'),
+      getCloudCount('sales'),
+    ]);
+    scheduleCloudSyncQueueDrain(100);
+    return {
+      ok: true,
+      counts: {
+        customers: customersCount,
+        workOrders: workOrdersCount,
+        sales: salesCount,
+      },
+      pendingSync: readCloudSyncQueue().length,
+    };
+  } catch (e: any) {
+    cloudSession = null;
+    cloudClient = null;
+    return { ok: false, error: e?.message || 'Cloud database check failed.' };
+  }
 });
 
 ipcMain.handle('cloud:clearSession', async () => {
@@ -4162,6 +4193,96 @@ function cloudArray(v: any): any[] {
 
 function cloudObject(v: any): any {
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+function cloudSyncQueuePath(): string {
+  return path.join(resolveDataRoot(), 'cloud-sync-queue.json');
+}
+
+function readCloudSyncQueue(): CloudSyncOperation[] {
+  try {
+    const p = cloudSyncQueuePath();
+    if (!fs.existsSync(p)) return [];
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw || '[]');
+    return Array.isArray(json) ? json.filter((x) => x && typeof x === 'object') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCloudSyncQueue(queue: CloudSyncOperation[]) {
+  try {
+    ensureDir(path.dirname(cloudSyncQueuePath()));
+    fs.writeFileSync(cloudSyncQueuePath(), JSON.stringify(Array.isArray(queue) ? queue : [], null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function cloudSyncOperationId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function toCloudIntId(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function toCloudTextId(v: any): string | null {
+  if (v === null || typeof v === 'undefined') return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+function toCloudString(v: any): string {
+  if (v === null || typeof v === 'undefined') return '';
+  return String(v);
+}
+
+function toCloudIso(v: any): string | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function toCloudDateOnly(v: any): string | null {
+  const iso = toCloudIso(v);
+  if (iso) return iso.slice(0, 10);
+  const s = String(v || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+function toCloudNumber(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toCloudMoney(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function toCloudBool(v: any): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+function toCloudNullableBool(v: any): boolean | null {
+  if (v === null || typeof v === 'undefined' || v === '') return null;
+  return toCloudBool(v);
+}
+
+function toCloudArray(v: any): any[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function toCloudObject(v: any): any {
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
+function toCloudPayload(v: any): any {
+  if (v && typeof v === 'object') return v;
+  return { value: v };
 }
 
 function fromCloudRow(key: string, row: any): any {
@@ -4383,6 +4504,283 @@ function fromCloudRow(key: string, row: any): any {
   };
 }
 
+function cloudConflictForKey(key: string): string {
+  if (key === 'preferences') return 'shop_id,key';
+  return 'shop_id,legacy_id';
+}
+
+function toCloudRow(key: string, item: any): any | null {
+  if (!cloudSession || !item || typeof item !== 'object') return null;
+  const shop_id = cloudSession.shopId;
+  if (key === 'customers') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      first_name: toCloudString(item.firstName),
+      last_name: toCloudString(item.lastName),
+      email: toCloudString(item.email),
+      phone: toCloudString(item.phone),
+      phone_alt: toCloudString(item.phoneAlt || item.altPhone),
+      zip: toCloudString(item.zip),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'workOrders') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_customer_id: toCloudIntId(item.customerId),
+      legacy_addon_sale_id: toCloudIntId(item.addonSaleId),
+      status: toCloudString(item.status),
+      assigned_to: toCloudString(item.assignedTo),
+      check_in_at: toCloudIso(item.checkInAt),
+      repair_completion_date: toCloudIso(item.repairCompletionDate),
+      checkout_date: toCloudIso(item.checkoutDate),
+      product_category: toCloudString(item.productCategory),
+      product_description: toCloudString(item.productDescription),
+      model: toCloudString(item.model),
+      serial: toCloudString(item.serial),
+      intake_source: toCloudString(item.intakeSource),
+      problem_info: toCloudString(item.problemInfo),
+      work_order_type: toCloudString(item.workOrderType),
+      parts_ordered: toCloudBool(item.partsOrdered),
+      parts_dates: toCloudString(item.partsDates),
+      parts_order_url: toCloudString(item.partsOrderUrl),
+      parts_tracking_url: toCloudString(item.partsTrackingUrl),
+      parts_order_date: toCloudIso(item.partsOrderDate),
+      parts_estimated_delivery: toCloudIso(item.partsEstimatedDelivery),
+      parts_est_delivery: toCloudIso(item.partsEstDelivery),
+      discount: toCloudMoney(item.discount),
+      discount_type: toCloudString(item.discountType),
+      discount_pct_value: toCloudNumber(item.discountPctValue),
+      amount_paid: toCloudMoney(item.amountPaid),
+      tax_rate: toCloudNumber(item.taxRate) || 0,
+      labor_cost: toCloudMoney(item.laborCost),
+      part_costs: toCloudMoney(item.partCosts),
+      payment_type: toCloudString(item.paymentType),
+      totals: toCloudObject(item.totals),
+      items: toCloudArray(item.items),
+      payments: toCloudArray(item.payments),
+      internal_notes: toCloudString(item.internalNotes),
+      internal_notes_log: toCloudArray(item.internalNotesLog),
+      pattern_sequence: toCloudArray(item.patternSequence),
+      drone_checklist: toCloudObject(item.droneChecklist),
+      dropoff_accessories: toCloudArray(item.dropoffAccessories),
+      activity_at: toCloudIso(item.activityAt),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'sales') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_customer_id: toCloudIntId(item.customerId),
+      customer_name: toCloudString(item.customerName),
+      customer_phone: toCloudString(item.customerPhone),
+      customer_email: toCloudString(item.customerEmail),
+      status: toCloudString(item.status),
+      assigned_to: toCloudString(item.assignedTo),
+      category: toCloudString(item.category),
+      item_description: toCloudString(item.itemDescription),
+      condition: toCloudString(item.condition),
+      intake_source: toCloudString(item.intakeSource),
+      notes: toCloudString(item.notes),
+      in_stock: toCloudNullableBool(item.inStock),
+      quantity: toCloudNumber(item.quantity),
+      price: toCloudNumber(item.price),
+      total: toCloudNumber(item.total),
+      discount: toCloudMoney(item.discount),
+      discount_type: toCloudString(item.discountType),
+      discount_pct_value: toCloudNumber(item.discountPctValue),
+      amount_paid: toCloudMoney(item.amountPaid),
+      tax_rate: toCloudNumber(item.taxRate) || 0,
+      labor_cost: toCloudMoney(item.laborCost),
+      part_costs: toCloudMoney(item.partCosts),
+      payment_type: toCloudString(item.paymentType),
+      ordered_date: toCloudIso(item.orderedDate),
+      estimated_delivery_date: toCloudIso(item.estimatedDeliveryDate),
+      check_in_at: toCloudIso(item.checkInAt),
+      repair_completion_date: toCloudIso(item.repairCompletionDate),
+      checkout_date: toCloudIso(item.checkoutDate),
+      client_pickup_date: toCloudIso(item.clientPickupDate),
+      parts_order_url: toCloudString(item.partsOrderUrl),
+      parts_tracking_url: toCloudString(item.partsTrackingUrl),
+      consultation_hours: toCloudNumber(item.consultationHours),
+      consultation_type: toCloudString(item.consultationType),
+      consultation_address: toCloudString(item.consultationAddress),
+      driver_fee: toCloudNumber(item.driverFee),
+      appointment_date: toCloudDateOnly(item.appointmentDate),
+      appointment_time: toCloudString(item.appointmentTime),
+      appointment_end_time: toCloudString(item.appointmentEndTime),
+      items: toCloudArray(item.items),
+      payments: toCloudArray(item.payments),
+      totals: toCloudObject(item.totals),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'calendarEvents') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_customer_id: toCloudIntId(item.customerId),
+      legacy_work_order_id: toCloudIntId(item.workOrderId),
+      legacy_sale_id: toCloudIntId(item.saleId),
+      event_date: toCloudDateOnly(item.date),
+      title: toCloudString(item.title),
+      event_time: toCloudString(item.time),
+      end_time: toCloudString(item.endTime),
+      category: toCloudString(item.category),
+      location: toCloudString(item.location),
+      customer_name: toCloudString(item.customerName),
+      customer_phone: toCloudString(item.customerPhone),
+      technician: toCloudString(item.technician),
+      notes: toCloudString(item.notes),
+      part_name: toCloudString(item.partName),
+      source: toCloudString(item.source),
+      order_url: toCloudString(item.orderUrl),
+      parts_status: toCloudString(item.partsStatus),
+      consultation_type: toCloudString(item.consultationType),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'deviceCategories' || key === 'productCategories') {
+    const legacy_id = toCloudIntId(item.id);
+    const name = toCloudString(item.name || item.title).trim();
+    if (legacy_id === null || !name) return null;
+    return {
+      shop_id,
+      legacy_id,
+      name,
+      title: toCloudString(item.title),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'products') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      item_description: toCloudString(item.itemDescription),
+      price: toCloudMoney(item.price),
+      internal_cost: toCloudMoney(item.internalCost),
+      notes: toCloudString(item.notes),
+      condition: toCloudString(item.condition),
+      category: toCloudString(item.category),
+      track_stock: toCloudBool(item.trackStock),
+      stock_count: toCloudIntId(item.stockCount) || 0,
+      low_stock_threshold: toCloudIntId(item.lowStockThreshold) || 0,
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'repairCategories') {
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
+    return {
+      shop_id,
+      legacy_id,
+      category: toCloudString(item.category),
+      repair_category: toCloudString(item.repairCategory),
+      title: toCloudString(item.title),
+      alt_description: toCloudString(item.altDescription),
+      part_cost: toCloudMoney(item.partCost),
+      labor_cost: toCloudMoney(item.laborCost),
+      internal_cost: toCloudMoney(item.internalCost),
+      order_date: toCloudString(item.orderDate),
+      est_delivery: toCloudString(item.estDelivery),
+      part_source: toCloudString(item.partSource),
+      order_source_url: toCloudString(item.orderSourceUrl),
+      type: toCloudString(item.type),
+      model: toCloudString(item.model),
+      track_stock: toCloudBool(item.trackStock),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'settings') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      shop_address: toCloudString(item.shopAddress),
+      shop_lat: toCloudNumber(item.shopLat),
+      shop_lng: toCloudNumber(item.shopLng),
+      payload: toCloudPayload(item),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'preferences') {
+    const keyName = toCloudString(item.key || item.name || item.id).trim();
+    if (!keyName) return null;
+    return {
+      shop_id,
+      legacy_id: toCloudIntId(item.id),
+      key: keyName,
+      value: toCloudPayload(item.value !== undefined ? item.value : item),
+    };
+  }
+  if (key === 'partSources' || key === 'intakeSources' || key === 'suppliers' || key === 'vendors') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      name: toCloudString(item.name || item.title || item.label),
+      payload: toCloudPayload(item),
+    };
+  }
+  if (key === 'timeEntries') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_technician_id: toCloudTextId(item.technicianId),
+      clock_in_at: toCloudIso(item.clockIn),
+      clock_out_at: toCloudIso(item.clockOut),
+      payload: toCloudPayload(item),
+    };
+  }
+  if (key === 'systemLogs') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      level: toCloudString(item.level),
+      message: toCloudString(item.message),
+      payload: toCloudPayload(item),
+      logged_at: toCloudIso(item.loggedAt || item.createdAt) || new Date().toISOString(),
+    };
+  }
+  if (key === 'invoices' || key === 'payments' || key === 'repairItems') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      payload: toCloudPayload(item),
+    };
+  }
+  return null;
+}
+
 function cloudSortColumn(key: string, sortBy?: string): string {
   const s = String(sortBy || '').trim();
   const map: Record<string, Record<string, string>> = {
@@ -4412,6 +4810,157 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
   return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+}
+
+function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
+  try {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const db: any = readDb();
+    const existing = Array.isArray(db[key]) ? db[key] : [];
+    const byId = new Map<string, any>();
+    for (const item of existing) {
+      const id = item?.id;
+      if (id === null || typeof id === 'undefined') continue;
+      byId.set(String(id), item);
+    }
+    for (const row of rows) {
+      const id = row?.id;
+      if (id === null || typeof id === 'undefined') continue;
+      byId.set(String(id), row);
+    }
+    const nextList = Array.from(byId.values());
+    const nextDb: any = { ...db, [key]: nextList };
+    if (key === 'workOrders' || key === 'sales') {
+      let maxId = Number(nextDb.invoiceSeq || 0);
+      for (const w of Array.isArray(nextDb.workOrders) ? nextDb.workOrders : []) maxId = Math.max(maxId, Number(w?.id || 0));
+      for (const s of Array.isArray(nextDb.sales) ? nextDb.sales : []) maxId = Math.max(maxId, Number(s?.id || 0));
+      if (Number.isFinite(maxId)) nextDb.invoiceSeq = maxId;
+    }
+    writeDb(nextDb);
+  } catch {
+    // Local cloud-read cache is best effort.
+  }
+}
+
+async function getCloudCount(key: string): Promise<number | null> {
+  const client = getCloudClient();
+  const table = CLOUD_TABLE_BY_KEY[String(key || '')];
+  if (!client || !cloudSession || !table) return null;
+  const res = await client.from(table).select('id', { count: 'exact', head: true }).eq('shop_id', cloudSession.shopId);
+  if (res.error) throw new Error(`Cloud ${key} count failed: ${res.error.message}`);
+  return typeof res.count === 'number' ? res.count : null;
+}
+
+async function cloudDbUpsert(key: string, item: any) {
+  const client = getCloudClient();
+  const table = CLOUD_TABLE_BY_KEY[String(key || '')];
+  if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
+  const row = toCloudRow(key, item);
+  if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
+  const res = await client.from(table).upsert(row, {
+    onConflict: cloudConflictForKey(key),
+    ignoreDuplicates: false,
+  });
+  if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
+  return { ok: true };
+}
+
+async function cloudDbDelete(key: string, legacyId: any) {
+  const client = getCloudClient();
+  const table = CLOUD_TABLE_BY_KEY[String(key || '')];
+  if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
+  const id = key === 'repairCategories' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
+  let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
+  if (key === 'preferences') q = q.eq('key', String(legacyId));
+  else q = q.eq('legacy_id', id);
+  const res = await q;
+  if (res.error) throw new Error(`Cloud ${key} delete failed: ${res.error.message}`);
+  return { ok: true };
+}
+
+function legacyIdForCloudItem(key: string, item: any): number | string | null {
+  if (!item || typeof item !== 'object') return null;
+  if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
+  if (key === 'repairCategories') return toCloudTextId(item.id);
+  return toCloudIntId(item.id);
+}
+
+function queueCloudSyncOperation(op: CloudSyncOperation) {
+  try {
+    const queue = readCloudSyncQueue();
+    const opKey = `${op.key}:${String(op.legacyId ?? '')}`;
+    const filtered = queue.filter((q) => `${q.key}:${String(q.legacyId ?? '')}` !== opKey);
+    filtered.push({ ...op, attempts: op.attempts || 0 });
+    writeCloudSyncQueue(filtered);
+  } catch {
+    // ignore
+  }
+}
+
+let cloudSyncTimer: NodeJS.Timeout | null = null;
+let cloudSyncRunning = false;
+
+async function drainCloudSyncQueue() {
+  if (!cloudSession || !getCloudClient()) return { ok: false, pending: readCloudSyncQueue().length };
+  if (cloudSyncRunning) return { ok: true, pending: readCloudSyncQueue().length };
+  cloudSyncRunning = true;
+  try {
+    const queue = readCloudSyncQueue();
+    if (queue.length === 0) return { ok: true, pending: 0 };
+    const remaining: CloudSyncOperation[] = [];
+    for (const op of queue) {
+      try {
+        if (op.op === 'delete') await cloudDbDelete(op.key, op.legacyId);
+        else await cloudDbUpsert(op.key, op.item);
+      } catch (e: any) {
+        remaining.push({
+          ...op,
+          attempts: (op.attempts || 0) + 1,
+          lastError: e?.message || String(e),
+        });
+      }
+    }
+    writeCloudSyncQueue(remaining);
+    return { ok: remaining.length === 0, pending: remaining.length };
+  } finally {
+    cloudSyncRunning = false;
+  }
+}
+
+function scheduleCloudSyncQueueDrain(delayMs = 1500) {
+  try {
+    if (cloudSyncTimer) return;
+    cloudSyncTimer = setTimeout(() => {
+      cloudSyncTimer = null;
+      void drainCloudSyncQueue().catch(() => {});
+    }, delayMs);
+  } catch {
+    // ignore
+  }
+}
+
+async function syncCloudWriteOrQueue(op: 'upsert' | 'delete', key: string, itemOrId: any) {
+  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return;
+  const legacyId = op === 'delete' ? itemOrId : legacyIdForCloudItem(key, itemOrId);
+  if (legacyId === null || typeof legacyId === 'undefined') return;
+  try {
+    if (!shouldUseCloudDb(key)) throw new Error('Cloud session is not ready.');
+    if (op === 'delete') await cloudDbDelete(key, legacyId);
+    else await cloudDbUpsert(key, itemOrId);
+    scheduleCloudSyncQueueDrain(100);
+  } catch (e: any) {
+    queueCloudSyncOperation({
+      id: cloudSyncOperationId(),
+      op,
+      key,
+      item: op === 'upsert' ? itemOrId : undefined,
+      legacyId,
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      lastError: e?.message || String(e),
+    });
+  }
 }
 
 ipcMain.handle('db-reset-all', async () => {
@@ -4496,7 +5045,10 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
   if (shouldUseCloudDb(key)) {
     try {
       const cloudRows = await cloudDbGet(key, opts);
-      if (Array.isArray(cloudRows)) return cloudRows;
+      if (Array.isArray(cloudRows)) {
+        mergeCloudRowsIntoLocalCache(key, cloudRows);
+        return cloudRows;
+      }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
     }
@@ -4597,6 +5149,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   const ok = writeDb(nextDb);
   if (ok) {
     scheduleCollectionChanged(key);
+    void syncCloudWriteOrQueue('upsert', key, nextItem);
     return nextItem;
   }
   return null;
@@ -4892,6 +5445,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
+    void syncCloudWriteOrQueue('upsert', key, updatedItem);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
@@ -4922,6 +5476,7 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
+    void syncCloudWriteOrQueue('delete', key, id);
   }
   return ok;
 });

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.84 (2026-07-13)
+- Supabase: waits for the cloud session and verifies cloud database access before showing the main POS tables.
+- Supabase: successful cloud reads now seed the local cache so recently loaded records remain visible offline.
+- Offline Sync: local add/update/delete actions now queue Supabase writes when offline and replay them after login/network returns.
+
 ## v0.4.83 (2026-07-13)
 - Clover: checkout now sends the applied payment amount to Clover instead of the original selected due amount.
 - Clover: successful Clover card handoff now saves the POS checkout result automatically.
