@@ -4086,7 +4086,6 @@ type CloudSyncOperation = {
 };
 
 const CLOUD_TABLE_BY_KEY: Record<string, string> = {
-  technicians: 'staff_profiles',
   customers: 'customers',
   workOrders: 'work_orders',
   sales: 'sales',
@@ -4319,23 +4318,6 @@ function toCloudPayload(v: any): any {
 
 function fromCloudRow(key: string, row: any): any {
   const id = normalizeCloudId(row);
-  if (key === 'technicians') {
-    return {
-      id,
-      firstName: row.first_name || '',
-      lastName: row.last_name || '',
-      nickname: row.nickname || '',
-      phone: row.phone || '',
-      email: row.email || '',
-      schedule: cloudObject(row.schedule),
-      passcode: row.legacy_passcode || '',
-      active: row.status ? row.status === 'active' : true,
-      role: row.role || 'technician',
-      createdAt: cloudDate(row.created_at),
-      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
-      cloudId: row.id,
-    };
-  }
   if (key === 'customers') {
     return {
       id,
@@ -4554,7 +4536,6 @@ function fromCloudRow(key: string, row: any): any {
 }
 
 function cloudConflictForKey(key: string): string {
-  if (key === 'technicians') return 'shop_id,email';
   if (key === 'preferences') return 'shop_id,key';
   return 'shop_id,legacy_id';
 }
@@ -4562,23 +4543,6 @@ function cloudConflictForKey(key: string): string {
 function toCloudRow(key: string, item: any): any | null {
   if (!cloudSession || !item || typeof item !== 'object') return null;
   const shop_id = cloudSession.shopId;
-  if (key === 'technicians') {
-    const legacy_id = toCloudTextId(item.id);
-    const email = toCloudString(item.email).trim() || `legacy-technician-${legacy_id || cloudSyncOperationId()}@local.gbpos.invalid`;
-    return {
-      shop_id,
-      legacy_id,
-      first_name: toCloudString(item.firstName),
-      last_name: toCloudString(item.lastName),
-      nickname: toCloudString(item.nickname),
-      phone: toCloudString(item.phone),
-      email,
-      schedule: toCloudObject(item.schedule),
-      status: item.active === false ? 'inactive' : 'active',
-      role: 'technician',
-      legacy_updated_at: toCloudIso(item.updatedAt),
-    };
-  }
   if (key === 'customers') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
@@ -4869,7 +4833,6 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) return null;
   let q = client.from(table).select('*').eq('shop_id', cloudSession.shopId);
-  if (key === 'technicians') q = q.eq('role', 'technician');
   const sortColumn = cloudSortColumn(key, opts?.sortBy);
   q = q.order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
   if (typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0) {
@@ -4877,22 +4840,7 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   }
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  let rows = Array.isArray(res.data) ? res.data : [];
-  if (key === 'technicians' && rows.length > 0) {
-    const legacyIds = rows.map((row: any) => row?.legacy_id).filter(Boolean);
-    if (legacyIds.length > 0) {
-      const creds = await client
-        .from('technician_private_credentials')
-        .select('legacy_technician_id,legacy_passcode')
-        .eq('shop_id', cloudSession.shopId)
-        .in('legacy_technician_id', legacyIds);
-      if (!creds.error && Array.isArray(creds.data)) {
-        const passcodeByLegacyId = new Map(creds.data.map((row: any) => [String(row.legacy_technician_id), row.legacy_passcode || '']));
-        rows = rows.map((row: any) => ({ ...row, legacy_passcode: passcodeByLegacyId.get(String(row.legacy_id)) || '' }));
-      }
-    }
-  }
-  return rows.map((row: any) => fromCloudRow(key, row));
+  return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
 }
 
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
@@ -4929,55 +4877,9 @@ async function getCloudCount(key: string): Promise<number | null> {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) return null;
-  let q = client.from(table).select('id', { count: 'exact', head: true }).eq('shop_id', cloudSession.shopId);
-  if (key === 'technicians') q = q.eq('role', 'technician');
-  const res = await q;
+  const res = await client.from(table).select('id', { count: 'exact', head: true }).eq('shop_id', cloudSession.shopId);
   if (res.error) throw new Error(`Cloud ${key} count failed: ${res.error.message}`);
   return typeof res.count === 'number' ? res.count : null;
-}
-
-async function lookupCloudUuid(table: string, legacyId: any): Promise<string | null> {
-  const client = getCloudClient();
-  if (!client || !cloudSession) return null;
-  const id = table === 'staff_profiles' || table === 'repair_categories'
-    ? toCloudTextId(legacyId)
-    : toCloudIntId(legacyId);
-  if (id === null || id === '') return null;
-  const res = await client
-    .from(table)
-    .select('id')
-    .eq('shop_id', cloudSession.shopId)
-    .eq('legacy_id', id)
-    .maybeSingle();
-  if (res.error) return null;
-  return res.data?.id || null;
-}
-
-async function hydrateCloudForeignKeys(key: string, row: any) {
-  if (!row || typeof row !== 'object') return;
-  if (key === 'workOrders' || key === 'sales') {
-    if (!row.customer_id && row.legacy_customer_id !== null && typeof row.legacy_customer_id !== 'undefined') {
-      row.customer_id = await lookupCloudUuid('customers', row.legacy_customer_id);
-    }
-    return;
-  }
-  if (key === 'calendarEvents') {
-    if (!row.customer_id && row.legacy_customer_id !== null && typeof row.legacy_customer_id !== 'undefined') {
-      row.customer_id = await lookupCloudUuid('customers', row.legacy_customer_id);
-    }
-    if (!row.work_order_id && row.legacy_work_order_id !== null && typeof row.legacy_work_order_id !== 'undefined') {
-      row.work_order_id = await lookupCloudUuid('work_orders', row.legacy_work_order_id);
-    }
-    if (!row.sale_id && row.legacy_sale_id !== null && typeof row.legacy_sale_id !== 'undefined') {
-      row.sale_id = await lookupCloudUuid('sales', row.legacy_sale_id);
-    }
-    return;
-  }
-  if (key === 'timeEntries') {
-    if (!row.staff_profile_id && row.legacy_technician_id) {
-      row.staff_profile_id = await lookupCloudUuid('staff_profiles', row.legacy_technician_id);
-    }
-  }
 }
 
 async function cloudDbUpsert(key: string, item: any) {
@@ -4986,30 +4888,11 @@ async function cloudDbUpsert(key: string, item: any) {
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
   const row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
-  await hydrateCloudForeignKeys(key, row);
   const res = await client.from(table).upsert(row, {
     onConflict: cloudConflictForKey(key),
     ignoreDuplicates: false,
-  }).select(key === 'technicians' ? 'id,legacy_id,email' : 'id').maybeSingle();
+  });
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
-  if (key === 'technicians') {
-    const legacyId = toCloudTextId(item.id);
-    if (legacyId && typeof item.passcode !== 'undefined') {
-      const credRow = {
-        shop_id: cloudSession.shopId,
-        staff_profile_id: res.data?.id || null,
-        legacy_technician_id: legacyId,
-        legacy_passcode: String(item.passcode || '').slice(0, 4),
-      };
-      const credRes = await client.from('technician_private_credentials').upsert(credRow, {
-        onConflict: 'shop_id,legacy_technician_id',
-        ignoreDuplicates: false,
-      });
-      if (credRes.error) {
-        try { console.warn('[CloudDB] technician credential sync skipped:', credRes.error.message); } catch {}
-      }
-    }
-  }
   return { ok: true };
 }
 
@@ -5017,7 +4900,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
-  const id = (key === 'repairCategories' || key === 'technicians') ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
@@ -5030,7 +4913,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories' || key === 'technicians') return toCloudTextId(item.id);
+  if (key === 'repairCategories') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 
@@ -5194,16 +5077,8 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
     try {
       const cloudRows = await cloudDbGet(key, opts);
       if (Array.isArray(cloudRows)) {
-        const localDb: any = readDb();
-        const localRows = Array.isArray(localDb?.[key]) ? localDb[key] : [];
-        const hasLimit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0;
-        if (hasLimit || localRows.length <= cloudRows.length) {
-          mergeCloudRowsIntoLocalCache(key, cloudRows);
-          return cloudRows;
-        }
-        try {
-          console.warn(`[CloudDB] db-get local fallback: ${key} local=${localRows.length} cloud=${cloudRows.length}`);
-        } catch {}
+        mergeCloudRowsIntoLocalCache(key, cloudRows);
+        return cloudRows;
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
