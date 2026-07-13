@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.94 (2026-07-13)
+- Mobile: uses the same GadgetBoy logo as the desktop app for Android launcher icons.
+- Tooling: Android launcher icons are regenerated from `public/logo.png` during the existing icon generation step.
+
 ## v0.4.93 (2026-07-13)
 - Mobile: replaces the Android APK desktop-shrunk view with a touch-first mobile home screen.
 - Mobile: adds drawer navigation, bottom quick actions, card-based work order/sale lists, and long-press action sheets.
