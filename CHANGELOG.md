@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.87 (2026-07-13)
+- Supabase: suppresses the unused Realtime WebSocket transport warning in Electron main-process cloud database checks.
+
 ## v0.4.86 (2026-07-13)
 - Startup: replaces blank auth/cloud wait states with visible status screens.
 - Supabase: falls back to cached local data with a warning instead of blocking the app on cloud session errors.

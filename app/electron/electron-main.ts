@@ -4112,11 +4112,42 @@ function shouldUseCloudDb(key: string): boolean {
   return !!(cloudSession?.accessToken && cloudSession?.shopId && CLOUD_TABLE_BY_KEY[String(key || '')]);
 }
 
+class NoopRealtimeWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  readyState = NoopRealtimeWebSocket.CLOSED;
+  binaryType = 'arraybuffer';
+  bufferedAmount = 0;
+  onopen: any = null;
+  onerror: any = null;
+  onmessage: any = null;
+  onclose: any = null;
+
+  constructor() {
+    setTimeout(() => {
+      try { this.onerror?.(new Error('Realtime is disabled in GB POS main process.')); } catch {}
+      this.close();
+    }, 0);
+  }
+
+  send() {
+    // Realtime channels are intentionally unused by the Electron main process.
+  }
+
+  close() {
+    this.readyState = NoopRealtimeWebSocket.CLOSED;
+    try { this.onclose?.({ code: 1000, reason: 'Realtime disabled', wasClean: true }); } catch {}
+  }
+}
+
 function getCloudClient() {
   if (!cloudSession || !createSupabaseClient) return null;
   if (cloudClient) return cloudClient;
   cloudClient = createSupabaseClient(cloudSession.supabaseUrl, cloudSession.supabasePublishableKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: NoopRealtimeWebSocket as any },
     global: {
       headers: {
         Authorization: `Bearer ${cloudSession.accessToken}`,
