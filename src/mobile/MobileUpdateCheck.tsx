@@ -22,6 +22,12 @@ type MobileUpdate = {
 
 const repoLatestUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases/latest';
 const skippedKey = 'gbpos-mobile-skipped-update';
+const skippedSessionKey = 'gbpos-mobile-skipped-update-session';
+
+type MobileUpdateCheckProps = {
+  checkKey?: string;
+  delayMs?: number;
+};
 
 function normalizeVersion(raw: string): string {
   return String(raw || '').trim().replace(/^v/i, '');
@@ -65,31 +71,57 @@ async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
   };
 }
 
-export default function MobileUpdateCheck() {
+export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500 }: MobileUpdateCheckProps) {
   const [update, setUpdate] = useState<MobileUpdate | null>(null);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    const timer = window.setTimeout(async () => {
+    let timer: number | null = null;
+
+    const runCheck = async () => {
       try {
         setChecking(true);
         const next = await getLatestMobileUpdate();
         if (!alive || !next) return;
-        const skipped = window.localStorage.getItem(skippedKey);
-        if (skipped === next.version) return;
+        try {
+          window.localStorage.removeItem(skippedKey);
+        } catch {
+          // ignore legacy skip cleanup
+        }
+        const skipped = window.sessionStorage.getItem(skippedSessionKey);
+        if (skipped === `${checkKey}:${next.version}`) return;
         setUpdate(next);
       } catch {
         // Update checks should never block POS startup.
       } finally {
         if (alive) setChecking(false);
       }
-    }, 2500);
+    };
+
+    const scheduleCheck = (delay = delayMs) => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void runCheck();
+      }, Math.max(0, delay));
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleCheck(600);
+    };
+    const onOnline = () => scheduleCheck(600);
+
+    scheduleCheck();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+
     return () => {
       alive = false;
-      window.clearTimeout(timer);
+      if (timer) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
     };
-  }, []);
+  }, [checkKey, delayMs]);
 
   if (!update) return null;
 
@@ -99,7 +131,7 @@ export default function MobileUpdateCheck() {
 
   const skip = () => {
     try {
-      window.localStorage.setItem(skippedKey, update.version);
+      window.sessionStorage.setItem(skippedSessionKey, `${checkKey}:${update.version}`);
     } catch {
       // ignore
     }
@@ -135,7 +167,7 @@ export default function MobileUpdateCheck() {
             onClick={skip}
             className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
           >
-            Skip
+            Skip for now
           </button>
         </div>
         {checking && <div className="sr-only">Checking for Android update</div>}

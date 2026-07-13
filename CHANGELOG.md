@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.95 (2026-07-13)
+- Mobile Updates: checks for a newer Android APK after mobile login and cloud session readiness.
+- Mobile Updates: rechecks when the Android app comes back to the foreground or reconnects online.
+- Mobile Updates: Skip is now skip-for-now for the current app session instead of hiding that APK version forever.
+
 ## v0.4.94 (2026-07-13)
 - Mobile: uses the same GadgetBoy logo as the desktop app for Android launcher icons.
 - Tooling: Android launcher icons are regenerated from `public/logo.png` during the existing icon generation step.

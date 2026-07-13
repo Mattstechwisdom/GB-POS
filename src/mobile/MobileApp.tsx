@@ -518,10 +518,11 @@ const MobileApp: React.FC = () => {
   }
 
   removeInitialHtmlLoader();
+  const updateCheckKey = `${staffProfile.shop_id}:${staffProfile.id}:${session.user.id}`;
   return (
     <PaginationProvider pageSize={30}>
       <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
-      <MobileUpdateCheck />
+      <MobileUpdateCheck checkKey={updateCheckKey} delayMs={900} />
     </PaginationProvider>
   );
 };
