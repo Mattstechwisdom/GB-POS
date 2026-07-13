@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.93 (2026-07-13)
+- Mobile: replaces the Android APK desktop-shrunk view with a touch-first mobile home screen.
+- Mobile: adds drawer navigation, bottom quick actions, card-based work order/sale lists, and long-press action sheets.
+- Mobile: opens POS windows inside a full-screen mobile shell while keeping the desktop app layout unchanged.
+- Release: GitHub release titles now use the version tag number.
+
 ## v0.4.92 (2026-07-13)
 - Mobile: adds a Capacitor Android APK build target with a mobile-only entrypoint and Android project.
 - Mobile: adds a Supabase-backed mobile data bridge so Android uses the same shop cloud data as desktop/web after login.
