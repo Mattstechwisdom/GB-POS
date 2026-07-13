@@ -5,6 +5,7 @@ import { formatPhone } from '../lib/format';
 import { PaginationProvider } from '../lib/pagination';
 import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from '../lib/modalBus';
 import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
+import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
 import MobileUpdateCheck from './MobileUpdateCheck';
 
@@ -216,6 +217,86 @@ function useLongPress(onLongPress: () => void, ms = 520) {
   };
 }
 
+function useSheetDrag(onClose: () => void) {
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef({
+    active: false,
+    pointerId: -1,
+    startY: 0,
+    lastY: 0,
+    lastAt: 0,
+    velocity: 0,
+    offset: 0,
+  });
+
+  const endDrag = useCallback((event: React.PointerEvent<HTMLElement>, canceled = false) => {
+    const state = dragRef.current;
+    if (!state.active || state.pointerId !== event.pointerId) return;
+    state.active = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+    const shouldClose = !canceled && (state.offset > 104 || (state.offset > 34 && state.velocity > 0.65));
+    setDragging(false);
+    if (shouldClose) {
+      onClose();
+      return;
+    }
+    setOffset(0);
+  }, [offset, onClose]);
+
+  const handleProps = {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      dragRef.current = {
+        active: true,
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        lastY: event.clientY,
+        lastAt: performance.now(),
+        velocity: 0,
+        offset: 0,
+      };
+      setDragging(true);
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // ignore
+      }
+      event.preventDefault();
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      const state = dragRef.current;
+      if (!state.active || state.pointerId !== event.pointerId) return;
+      const now = performance.now();
+      const elapsed = Math.max(1, now - state.lastAt);
+      const rawDelta = event.clientY - state.startY;
+      const nextOffset = rawDelta < 0 ? Math.max(rawDelta * 0.18, -24) : rawDelta;
+      state.velocity = (event.clientY - state.lastY) / elapsed;
+      state.offset = nextOffset;
+      state.lastY = event.clientY;
+      state.lastAt = now;
+      setOffset(nextOffset);
+      event.preventDefault();
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => endDrag(event),
+    onPointerCancel: (event: React.PointerEvent<HTMLElement>) => endDrag(event, true),
+    onLostPointerCapture: (event: React.PointerEvent<HTMLElement>) => endDrag(event, true),
+  };
+
+  return {
+    dragging,
+    handleProps,
+    sheetStyle: {
+      transform: offset ? `translateY(${Math.max(-24, offset)}px)` : undefined,
+      transition: dragging ? 'none' : undefined,
+    } as React.CSSProperties,
+  };
+}
+
 function MobileModalContent({ type, onClose }: { type: string; onClose: () => void }) {
   switch (type) {
     case 'newWorkOrder': return <NewWorkOrderWindow />;
@@ -229,6 +310,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow />;
     case 'customerOverview': return <CustomerOverviewWindow onClose={onClose} />;
     case 'customerSearch': return <CustomerSearchWindow onClose={onClose} />;
+    case 'diagnosticTools': return <DiagnosticToolsWindow />;
     case 'quickSale': return <QuickSaleWindow />;
     case 'consultation': return <ConsultationBookingWindow />;
     case 'checkout': return <CheckoutWindow />;
@@ -306,6 +388,7 @@ function titleForModal(type: string) {
     workOrderRepairPicker: 'Repair Picker',
     customerOverview: 'Client',
     customerSearch: 'Clients',
+    diagnosticTools: 'Diagnostic Tools',
     quickSale: 'Quick Sale',
     consultation: 'Consultation',
     checkout: 'Checkout',
@@ -386,7 +469,21 @@ function useMobileRecords(refreshKey: number) {
   return { workOrders, sales, customers, technicians, loading, error, reload: loadCore };
 }
 
+function isMobileDrawerPreview() {
+  const env = import.meta.env as ImportMetaEnv & { DEV?: boolean };
+  return !!env.DEV && new URLSearchParams(window.location.search).get('drawerPreview') === '1';
+}
+
 const MobileApp: React.FC = () => {
+  if (isMobileDrawerPreview()) {
+    removeInitialHtmlLoader();
+    return <MobileDrawerPreview />;
+  }
+
+  return <MobileAppRuntime />;
+};
+
+const MobileAppRuntime: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
@@ -527,6 +624,62 @@ const MobileApp: React.FC = () => {
   );
 };
 
+function MobileDrawerPreview() {
+  const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
+  const modalCounterRef = useRef(0);
+  const noop = () => undefined;
+  const openModal = (type: string) => {
+    const id = `${type}-${++modalCounterRef.current}`;
+    setModalStack((stack) => [...stack, { id, type }]);
+  };
+  const closeModal = (id: string) => {
+    setModalStack((stack) => stack.filter((entry) => entry.id !== id));
+  };
+
+  return (
+    <main className="mobile-shell">
+      <header className="mobile-topbar">
+        <button type="button" className="mobile-icon-button" aria-label="Open menu">
+          <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
+        </button>
+        <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
+        <div className="mobile-brand-block">
+          <div className="mobile-brand-row">
+            <div className="mobile-brand">GADGETBOY POS</div>
+            <span className="mobile-version">v{__APP_VERSION__}</span>
+          </div>
+        </div>
+        <button type="button" className="mobile-icon-button" aria-label="Open notifications">
+          <span aria-hidden="true">!</span>
+        </button>
+      </header>
+      <section className="mobile-search-panel">
+        <input value="" readOnly placeholder="Search invoice, client, phone, device..." aria-label="Search POS records" />
+        <button type="button" className="mobile-filter-button" aria-label="Open filters">
+          <span aria-hidden="true"><i /><i /><i /></span>
+        </button>
+      </section>
+      <MobileDrawer
+        open
+        profileName="GadgetBoy Preview"
+        role="mobile layout"
+        onClose={noop}
+        onOpenModal={openModal}
+        onRefresh={noop}
+        onSignOut={noop}
+      />
+      {modalStack.map((entry, index) => (
+        <MobileModalShell
+          key={entry.id}
+          entry={entry}
+          zIndex={300 + index * 10}
+          onClose={() => closeModal(entry.id)}
+        />
+      ))}
+    </main>
+  );
+}
+
 function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<MobileMode>('all');
@@ -535,6 +688,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [query, setQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [visibleCount, setVisibleCount] = useState(35);
   const [sheetRow, setSheetRow] = useState<MobileRow | null>(null);
@@ -731,15 +885,9 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
     setVisibleCount(35);
   }, [dateFrom, dateTo, deferredQuery, mode, statusFilter, technicianFilter]);
 
-  const stats = useMemo(() => {
-    const workOrderCount = rows.filter((row) => row.type === 'workorder').length;
-    const saleCount = rows.filter((row) => row.type === 'sale').length;
-    const openCount = rows.filter((row) => row.status !== 'closed').length;
-    return { workOrderCount, saleCount, openCount, clients: customers.length };
-  }, [customers.length, rows]);
-
   const visibleRows = filteredRows.slice(0, visibleCount);
   const profileName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || profile.email;
+  const filtersActive = statusFilter !== 'all' || !!technicianFilter || !!dateFrom || !!dateTo;
 
   const actionSheetActions = useMemo(() => sheetRow ? makeSheetActions(sheetRow, () => {
     setSheetRow(null);
@@ -752,9 +900,12 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         <button type="button" className="mobile-icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
           <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
         </button>
+        <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
         <div className="mobile-brand-block">
-          <div className="mobile-brand">GadgetBoy POS</div>
-          <div className="mobile-subtitle">{stats.openCount} open, {stats.clients} clients</div>
+          <div className="mobile-brand-row">
+            <div className="mobile-brand">GADGETBOY POS</div>
+            <span className="mobile-version">v{__APP_VERSION__}</span>
+          </div>
         </div>
         <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
           <span aria-hidden="true">!</span>
@@ -768,19 +919,73 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
           placeholder="Search invoice, client, phone, device..."
           aria-label="Search POS records"
         />
+        <button
+          type="button"
+          className={`mobile-filter-button${filtersActive ? ' active' : ''}`}
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-label="Open filters"
+          aria-expanded={filtersOpen}
+        >
+          <span aria-hidden="true"><i /><i /><i /></span>
+        </button>
         {query ? <button type="button" onClick={() => setQuery('')}>Clear</button> : null}
       </section>
+
+      {filtersOpen ? (
+        <section className="mobile-filter-popover" aria-label="Filters">
+          <div className="mobile-filter-header">
+            <strong>Filters</strong>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('all');
+                setTechnicianFilter('');
+                setDateFrom('');
+                setDateTo('');
+              }}
+              disabled={!filtersActive}
+            >
+              Clear
+            </button>
+          </div>
+          <label>
+            Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+              <option value="all">All records</option>
+              <option value="open">Open only</option>
+              <option value="closed">Closed only</option>
+            </select>
+          </label>
+          <label>
+            Technician
+            <select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)}>
+              <option value="">Any technician</option>
+              <option value="__unassigned">Unassigned</option>
+              {technicians.map((tech) => {
+                const id = String(tech?.id || '').trim();
+                if (!id) return null;
+                const label = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
+                return <option key={id} value={id}>{label}</option>;
+              })}
+            </select>
+          </label>
+          <div className="mobile-date-grid">
+            <label>
+              From
+              <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            </label>
+            <label>
+              To
+              <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </label>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mobile-tabbar" aria-label="Record type">
         <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All</button>
         <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
         <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales</button>
-      </section>
-
-      <section className="mobile-stat-strip" aria-label="Quick stats">
-        <div><strong>{stats.workOrderCount}</strong><span>Work Orders</span></div>
-        <div><strong>{stats.saleCount}</strong><span>Sales</span></div>
-        <div><strong>{stats.openCount}</strong><span>Open</span></div>
       </section>
 
       {cloudWarning ? <div className="mobile-cloud-warning">{cloudWarning}</div> : null}
@@ -820,16 +1025,6 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         open={drawerOpen}
         profileName={profileName}
         role={profile.role}
-        stats={stats}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        technicianFilter={technicianFilter}
-        setTechnicianFilter={setTechnicianFilter}
-        technicians={technicians}
-        dateFrom={dateFrom}
-        setDateFrom={setDateFrom}
-        dateTo={dateTo}
-        setDateTo={setDateTo}
         onClose={() => setDrawerOpen(false)}
         onOpenModal={openModal}
         onRefresh={() => {
@@ -909,52 +1104,42 @@ function MobileDrawer(props: {
   open: boolean;
   profileName: string;
   role: string;
-  stats: { workOrderCount: number; saleCount: number; openCount: number; clients: number };
-  statusFilter: StatusFilter;
-  setStatusFilter: (v: StatusFilter) => void;
-  technicianFilter: string;
-  setTechnicianFilter: (v: string) => void;
-  technicians: any[];
-  dateFrom: string;
-  setDateFrom: (v: string) => void;
-  dateTo: string;
-  setDateTo: (v: string) => void;
   onClose: () => void;
   onOpenModal: (type: string, payload?: any) => void;
   onRefresh: () => void;
   onSignOut: () => void;
 }) {
-  const { open, profileName, role, stats, statusFilter, setStatusFilter, technicianFilter, setTechnicianFilter, technicians, dateFrom, setDateFrom, dateTo, setDateTo, onClose, onOpenModal, onRefresh, onSignOut } = props;
-  const primaryActions = [
-    ['newWorkOrder', 'New Work Order'],
-    ['newSale', 'New Sale'],
-    ['customerSearch', 'Search / Add Client'],
-    ['quickSale', 'Quick Sale'],
-    ['consultation', 'Consultation'],
-    ['quoteGenerator', 'Quote Generator'],
+  const { open, profileName, role, onClose, onOpenModal, onRefresh, onSignOut } = props;
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    client: true,
+    technician: true,
+    admin: false,
+  });
+  const clientDatabase = [
+    ['customerSearch', 'Search Client'],
+    ['customerSearch', 'Add Client'],
   ] as const;
-  const operations = [
+  const technicianTools = [
+    ['technicians', 'Technicians'],
     ['calendar', 'Calendar'],
-    ['clockIn', 'Clock In'],
-    ['notifications', 'Notifications'],
-    ['notificationSettings', 'Notification Settings'],
+    ['diagnosticTools', 'Diagnostic Tools'],
   ] as const;
-  const admin = [
+  const adminTools = [
     ['repairCategories', 'Devices / Repairs'],
     ['deviceCategories', 'Device Categories'],
     ['products', 'Products'],
     ['inventory', 'Inventory'],
-    ['technicians', 'Technicians'],
     ['eod', 'End of Day Reports'],
     ['reporting', 'Reporting'],
     ['charts', 'Charts'],
     ['backup', 'Local Backup'],
     ['dataTools', 'Data Tools'],
-  ] as const;
-  const integrations = [
     ['cloverSettings', 'Clover'],
     ['twilioSettings', 'SMS / Twilio'],
+    ['notifications', 'Notifications'],
+    ['notificationSettings', 'Notification Settings'],
   ] as const;
+  const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
 
   if (!open) return null;
 
@@ -970,61 +1155,22 @@ function MobileDrawer(props: {
           <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
         </header>
 
-        <section className="mobile-drawer-stats">
-          <div><strong>{stats.openCount}</strong><span>Open</span></div>
-          <div><strong>{stats.workOrderCount}</strong><span>WO</span></div>
-          <div><strong>{stats.saleCount}</strong><span>Sales</span></div>
-          <div><strong>{stats.clients}</strong><span>Clients</span></div>
-        </section>
+        <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
+          <DrawerButton label="Generate Quote" tone="green" featured onClick={() => onOpenModal('quoteGenerator')} />
+          <DrawerButton label="Consultation" tone="blue" featured onClick={() => onOpenModal('consultation')} />
+          <DrawerButton label="Quick Sale" tone="purple" featured onClick={() => onOpenModal('quickSale')} />
+        </div>
 
-        <DrawerSection title="Create">
-          {primaryActions.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        <DrawerSection title="Client Database" open={openSections.client} tone="default" onToggle={() => toggleSection('client')}>
+          {clientDatabase.map(([type, label]) => <DrawerButton key={label} label={label} onClick={() => onOpenModal(type)} />)}
         </DrawerSection>
 
-        <DrawerSection title="Operations">
-          {operations.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
+          {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
         </DrawerSection>
 
-        <DrawerSection title="Filters">
-          <label>
-            Status
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-              <option value="all">All records</option>
-              <option value="open">Open only</option>
-              <option value="closed">Closed only</option>
-            </select>
-          </label>
-          <label>
-            Technician
-            <select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)}>
-              <option value="">All technicians</option>
-              <option value="__unassigned">Unassigned</option>
-              {technicians.map((tech) => {
-                const id = String(tech?.id || '').trim();
-                if (!id) return null;
-                const label = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
-                return <option key={id} value={id}>{label}</option>;
-              })}
-            </select>
-          </label>
-          <div className="mobile-date-grid">
-            <label>
-              From
-              <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            </label>
-            <label>
-              To
-              <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            </label>
-          </div>
-        </DrawerSection>
-
-        <DrawerSection title="Admin">
-          {admin.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
-        </DrawerSection>
-
-        <DrawerSection title="Integrations">
-          {integrations.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        <DrawerSection title="Admin" open={openSections.admin} tone="red" onToggle={() => toggleSection('admin')}>
+          {adminTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
         </DrawerSection>
 
         <div className="mobile-drawer-footer">
@@ -1036,18 +1182,30 @@ function MobileDrawer(props: {
   );
 }
 
-function DrawerSection({ title, children }: { title: string; children: React.ReactNode }) {
+function DiagnosticToolsWindow() {
   return (
-    <section className="mobile-drawer-section">
-      <h2>{title}</h2>
-      {children}
+    <div className="mobile-empty-state">
+      <strong>Diagnostic Tools</strong>
+      <span>Mobile tech utilities can live here next: symptom checklists, quick tests, intake helpers, and field notes.</span>
+    </div>
+  );
+}
+
+function DrawerSection({ title, open, tone = 'default', onToggle, children }: { title: string; open: boolean; tone?: 'default' | 'blue' | 'red'; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <section className={`mobile-drawer-section mobile-drawer-section-${tone}`}>
+      <button type="button" className="mobile-drawer-section-toggle" onClick={onToggle} aria-expanded={open}>
+        <span>{title}</span>
+        <span aria-hidden="true">{open ? 'v' : '>'}</span>
+      </button>
+      {open ? <div className="mobile-drawer-section-body">{children}</div> : null}
     </section>
   );
 }
 
-function DrawerButton({ label, onClick }: { label: string; onClick: () => void }) {
+function DrawerButton({ label, onClick, tone = 'default', featured = false }: { label: string; onClick: () => void; tone?: 'default' | 'green' | 'blue' | 'purple'; featured?: boolean }) {
   return (
-    <button type="button" className="mobile-drawer-button" onClick={onClick}>
+    <button type="button" className={`mobile-drawer-button mobile-drawer-button-${tone}${featured ? ' featured' : ''}`} onClick={onClick}>
       <span>{label}</span>
       <span aria-hidden="true">&gt;</span>
     </button>
@@ -1055,11 +1213,23 @@ function DrawerButton({ label, onClick }: { label: string; onClick: () => void }
 }
 
 function ActionSheet({ row, actions, onClose }: { row: MobileRow; actions: SheetAction[]; onClose: () => void }) {
+  const drag = useSheetDrag(onClose);
   return (
     <div className="mobile-action-layer">
       <button type="button" className="mobile-action-scrim" onClick={onClose} aria-label="Close actions" />
-      <section className="mobile-action-sheet" role="dialog" aria-modal="true" aria-label={`Actions for ${invoiceNumber(row.id)}`}>
-        <div className="mobile-sheet-grabber" />
+      <section
+        className={`mobile-action-sheet${drag.dragging ? ' is-dragging' : ''}`}
+        style={drag.sheetStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Actions for ${invoiceNumber(row.id)}`}
+      >
+        <button
+          type="button"
+          className="mobile-sheet-grabber"
+          aria-label="Drag down to close actions"
+          {...drag.handleProps}
+        />
         <header>
           <span>{row.type === 'workorder' ? 'Work Order' : 'Sale'}</span>
           <strong>{invoiceNumber(row.id)}</strong>

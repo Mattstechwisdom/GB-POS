@@ -53,6 +53,7 @@ const TABLES = [
   'customers',
   'workOrders',
   'sales',
+  'quotes',
   'calendarEvents',
   'deviceCategories',
   'productCategories',
@@ -125,6 +126,7 @@ async function main() {
   await importRepairCategories(shopId);
   await importPayloadTable(shopId, 'repair_items', collections.repairItems, mapPayloadOnly);
   await importSales(shopId, customerMap, saleMap);
+  await importQuotes(shopId);
   await importWorkOrders(shopId, customerMap, workOrderMap);
   await linkWorkOrderAddOnSales(shopId, workOrderMap, saleMap);
   await importCalendarEvents(shopId, customerMap, workOrderMap, saleMap);
@@ -330,6 +332,26 @@ async function importSales(shopId, customerMap, saleMap) {
   })).filter((r) => r.legacy_id !== null);
   const saved = await upsert('sales', rows, 'shop_id,legacy_id', 'id,legacy_id');
   for (const row of saved || []) saleMap.set(Number(row.legacy_id), row.id);
+}
+
+async function importQuotes(shopId) {
+  const rows = arr(collections.quotes).map((q) => {
+    const legacyCustomerId = intId(q.customerId);
+    return {
+      shop_id: shopId,
+      legacy_id: intId(q.id),
+      legacy_customer_id: legacyCustomerId,
+      quote_type: str(q.type || 'sales'),
+      customer_name: str(q.customerName),
+      customer_phone: str(q.customerPhone),
+      customer_email: str(q.customerEmail),
+      payload: objectOrEmpty(q),
+      legacy_created_at: toIso(q.createdAt),
+      legacy_updated_at: toIso(q.updatedAt),
+      content_updated_at: toIso(q.contentUpdatedAt || q.updatedAt || q.createdAt),
+    };
+  }).filter((r) => r.legacy_id !== null);
+  await upsert('quotes', rows, 'shop_id,legacy_id');
 }
 
 async function importWorkOrders(shopId, customerMap, workOrderMap) {
@@ -606,6 +628,7 @@ async function verifyCounts(shopId) {
     ['customers', counts.customers],
     ['work_orders', counts.workOrders],
     ['sales', counts.sales],
+    ['quotes', counts.quotes],
     ['calendar_events', counts.calendarEvents],
     ['device_categories', counts.deviceCategories],
     ['products', counts.products],

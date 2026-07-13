@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.96 (2026-07-13)
+- Mobile: reorganizes the side menu into priority actions, Client Database, Technician Tools, and Admin sections.
+- Mobile: refreshes the main toolbar with the GadgetBoy logo, larger purple brand text, version label, slimmer header, and search-bar filter menu.
+- Mobile: improves touch behavior with draggable action sheets, full-screen modal close buttons, and responsive quote layouts for portrait and landscape.
+- Quotes: adds Sales/Repairs switching, Search Client/Add Client actions, selected-client summaries, and saved quote refresh events on desktop and mobile.
+- Supabase: adds saved quote cloud sync support so quote records are included with synced/backed-up shop data.
+- Backup: includes Saved Quotes in the local backup selection list.
+
 ## v0.4.95 (2026-07-13)
 - Mobile Updates: checks for a newer Android APK after mobile login and cloud session readiness.
 - Mobile Updates: rechecks when the Android app comes back to the foreground or reconnects online.

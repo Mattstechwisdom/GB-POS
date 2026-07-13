@@ -53,6 +53,12 @@ Current collections in JSON DB:
 
 ### Development Rules
 
+
+#### Protected User Data
+- Do **not** modify, normalize, regenerate, redact, seed, clear, or otherwise adjust any user-inputted or production data unless the user explicitly requests that exact data operation.
+- Protected data includes client information, sales history, work order history, reporting intake, device intake records, transaction records, and any local JSON/database datasets that store those records.
+- When making code changes, preserve existing datasets and fixtures as-is; prefer changing application logic, schemas, or UI code without rewriting stored user data.
+
 #### File Organization
 - Place child window content in `src/components/*Window.tsx`
 - Feature modules go in `src/feature-name/` directories

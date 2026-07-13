@@ -118,6 +118,7 @@ declare global {
   openProductForm: (payload: any) => Promise<any>;
   pickSaleProduct: () => Promise<any>;
   onSalesChanged: (cb: () => void) => () => void;
+  onQuotesChanged: (cb: () => void) => () => void;
       onCustomersChanged: (cb: () => void) => () => void;
       onDeviceCategoriesChanged: (cb: () => void) => () => void;
       onPartSourcesChanged: (cb: () => void) => () => void;

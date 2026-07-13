@@ -347,6 +347,7 @@ const BackupWindow: React.FC = () => {
     tiles.push({ key: 'Customers', label: 'Customers', collections: ['customers'], count: stats?.customers ?? ((allData.customers || []).length) });
     tiles.push({ key: 'WorkOrders', label: 'Work Orders', collections: ['workOrders'], count: stats?.workOrders ?? ((allData.workOrders || []).length) });
     tiles.push({ key: 'Sales', label: 'Sales', collections: ['sales'], count: stats?.sales ?? ((allData.sales || []).length) });
+    tiles.push({ key: 'Quotes', label: 'Saved Quotes', collections: ['quotes'], count: (allData.quotes || []).length });
     // Calendar sub-tiles
     // Helper guards
     const isParts = (e: any) => (e?.category || e?.type || e?.kind)?.toString().toLowerCase() === 'parts';
@@ -378,7 +379,7 @@ const BackupWindow: React.FC = () => {
     tiles.push({ key: 'IntakeSources', label: 'Intake Sources', collections: ['intakeSources'], count: (allData.intakeSources || []).length });
     // Extras from allData keys (skip core and grouped children)
     const skip = new Set([
-      'technicians','customers','workOrders','sales','calendarEvents','deviceCategories',
+      'technicians','customers','workOrders','sales','quotes','calendarEvents','deviceCategories',
       'timeEntries','repairCategories','repairItems','partSources','intakeSources','products','productCategories'
     ]);
     const keys = Object.keys(allData || {});
@@ -811,7 +812,7 @@ const BackupWindow: React.FC = () => {
       
       // Comprehensive data scan - get everything the application can currently access
       const dataCollections = Array.from(new Set([
-        'technicians','timeEntries','customers','workOrders','sales','calendarEvents','deviceCategories','productCategories','products','partSources','repairCategories','repairItems','intakeSources',
+        'technicians','timeEntries','customers','workOrders','sales','quotes','calendarEvents','deviceCategories','productCategories','products','partSources','repairCategories','repairItems','intakeSources',
         // additional potential collections often used
         'suppliers','vendors','invoices','payments','settings','preferences','userProfiles','systemLogs'
       ]));

@@ -27,6 +27,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   invoices: 'invoices',
   payments: 'payments',
   timeEntries: 'time_entries',
+  quotes: 'quotes',
   settings: 'shop_settings',
   preferences: 'preferences',
   systemLogs: 'system_logs',
@@ -37,6 +38,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   workOrders: 'workorders:changed',
   customers: 'customers:changed',
   sales: 'sales:changed',
+  quotes: 'quotes:changed',
   technicians: 'technicians:changed',
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
@@ -313,6 +315,22 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       cloudId: row.id,
     };
   }
+  if (key === 'quotes') {
+    const payload = cloudObject(row.payload);
+    return {
+      ...payload,
+      id,
+      customerId: cloudNullableNumber(row.legacy_customer_id) ?? payload.customerId,
+      customerName: row.customer_name || payload.customerName || '',
+      customerPhone: row.customer_phone || payload.customerPhone || '',
+      customerEmail: row.customer_email || payload.customerEmail || '',
+      type: row.quote_type || payload.type || 'sales',
+      createdAt: cloudDate(row.legacy_created_at || payload.createdAt || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || payload.updatedAt || row.updated_at),
+      contentUpdatedAt: cloudDate(row.content_updated_at || payload.contentUpdatedAt || row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
   if (key === 'calendarEvents') {
     return {
       id,
@@ -564,6 +582,23 @@ function toCloudRow(key: string, item: any): any | null {
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
   }
+  if (key === 'quotes') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_customer_id: toCloudIntId(item.customerId),
+      quote_type: toCloudString(item.type || 'sales'),
+      customer_name: toCloudString(item.customerName),
+      customer_phone: toCloudString(item.customerPhone),
+      customer_email: toCloudString(item.customerEmail),
+      payload: toCloudPayload(item),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+      content_updated_at: toCloudIso(item.contentUpdatedAt || item.updatedAt || item.createdAt),
+    };
+  }
   if (key === 'calendarEvents') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
@@ -740,6 +775,7 @@ function cloudSortColumn(key: string, sortBy?: string): string {
   const map: Record<string, Record<string, string>> = {
     workOrders: { id: 'legacy_id', activityAt: 'activity_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
     sales: { id: 'legacy_id', activityAt: 'check_in_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
+    quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
     technicians: { id: 'legacy_id', updatedAt: 'updated_at', firstName: 'first_name', lastName: 'last_name' },
   };
@@ -747,6 +783,7 @@ function cloudSortColumn(key: string, sortBy?: string): string {
   if (!s) {
     if (key === 'workOrders') return 'activity_at';
     if (key === 'sales') return 'check_in_at';
+    if (key === 'quotes') return 'content_updated_at';
     if (key === 'technicians') return 'first_name';
     return 'legacy_id';
   }
@@ -1350,6 +1387,7 @@ function makeApi() {
     onProductCategoriesChanged: 'productCategories:changed',
     onProductsChanged: 'products:changed',
     onSalesChanged: 'sales:changed',
+    onQuotesChanged: 'quotes:changed',
     onPartSourcesChanged: 'partSources:changed',
     onCalendarEventsChanged: 'calendarEvents:changed',
     onNotificationsChanged: 'notifications:changed',

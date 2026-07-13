@@ -31,10 +31,118 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   --neon-purple: #BC13FE;
 }
 
+.gb-standalone-window-close,
+.gb-panel-x-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3f3f46;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.94);
+  color: #e4e4e7;
+  font-size: 1.15rem;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.gb-standalone-window-close {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 0.75rem);
+  right: calc(env(safe-area-inset-right) + 0.75rem);
+  z-index: 100000;
+}
+
+.gb-standalone-window-close:hover,
+.gb-panel-x-button:hover {
+  border-color: #ef4444;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.gb-standalone-window-close:active,
+.gb-panel-x-button:active {
+  transform: scale(0.96);
+}
+
 .gbpos-title {
   font-family: 'Bungee', 'Impact', sans-serif;
   font-weight: 400;
   color: var(--neon-purple);
   text-shadow: 0 0 8px rgba(188, 19, 254, 0.6), 0 0 20px rgba(188, 19, 254, 0.3);
   letter-spacing: 0.08em;
+}
+
+.gb-quote-client-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gb-quote-client-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.gb-quote-client-actions button,
+.gb-quote-client-summary button {
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #27272a;
+  color: #f4f4f5;
+  font-weight: 800;
+  min-height: 2.5rem;
+  padding: 0 0.85rem;
+}
+
+.gb-quote-client-actions button.active,
+.gb-quote-client-actions button:hover,
+.gb-quote-client-summary button:hover {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.gb-quote-client-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem 0.75rem;
+  align-items: center;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+  padding: 0.75rem;
+}
+
+.gb-quote-client-summary strong {
+  display: block;
+  color: #f4f4f5;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-quote-client-summary span {
+  grid-column: 1 / 2;
+  color: #a1a1aa;
+  font-size: 0.82rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-quote-client-summary button {
+  grid-row: 1 / span 2;
+  grid-column: 2 / 3;
+  min-height: 2.25rem;
+  font-size: 0.8rem;
+}
+
+.gb-quote-client-search {
+  position: relative;
+  z-index: 30;
 }

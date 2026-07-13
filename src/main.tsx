@@ -195,11 +195,102 @@ function removeInitialHtmlLoader() {
 	}
 }
 
+const STANDALONE_WINDOW_QUERY_KEYS = [
+	'newWorkOrder',
+	'newSale',
+	'deviceCategories',
+	'customerOverview',
+	'repairCategories',
+	'workOrderRepairPicker',
+	'checkout',
+	'devMenu',
+	'dataTools',
+	'calendar',
+	'products',
+	'inventory',
+	'charts',
+	'reporting',
+	'reportEmail',
+	'quote',
+	'quickSale',
+	'eod',
+	'releaseForm',
+	'customerReceipt',
+	'consultSheet',
+	'productForm',
+	'backup',
+	'clearDb',
+	'clockIn',
+	'notifications',
+	'notificationSettings',
+	'customBuildItem',
+	'cloverSettings',
+	'twilioSettings',
+	'consultation',
+];
+
+function isStandaloneWindowRoute() {
+	try {
+		const params = new URLSearchParams(window.location.search);
+		return STANDALONE_WINDOW_QUERY_KEYS.some((key) => params.has(key));
+	} catch {
+		return false;
+	}
+}
+
+async function closeCurrentDaughterWindow() {
+	try {
+		const api: any = (window as any).api;
+		if (api?.closeSelfWindow) {
+			const res = await api.closeSelfWindow({ focusMain: true });
+			if (res?.ok) return;
+		}
+	} catch {
+		// fall back below
+	}
+	try {
+		window.close();
+	} catch {
+		// ignore
+	}
+}
+
+function StandaloneWindowCloseButton() {
+	useEffect(() => {
+		const handler = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return;
+			void closeCurrentDaughterWindow();
+		};
+		window.addEventListener('keydown', handler, { capture: true });
+		return () => window.removeEventListener('keydown', handler, { capture: true });
+	}, []);
+
+	return (
+		<button
+			type="button"
+			className="gb-standalone-window-close"
+			title="Close window (Esc)"
+			aria-label="Close window"
+			onClick={() => void closeCurrentDaughterWindow()}
+		>
+			<span aria-hidden="true">x</span>
+		</button>
+	);
+}
+
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
 	removeInitialHtmlLoader();
+	const content = isStandaloneWindowRoute()
+		? (
+			<>
+				<StandaloneWindowCloseButton />
+				{node}
+			</>
+		)
+		: node;
 	root.render(
 		<Suspense fallback={<LoadingScreen />}>
-			{node}
+			{content}
 		</Suspense>
 	);
 }

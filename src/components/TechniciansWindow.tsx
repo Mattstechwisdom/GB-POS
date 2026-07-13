@@ -51,7 +51,7 @@ const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void 
   );
 };
 
-const TechniciansWindow: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [list, setList] = useState<any[]>([]);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
@@ -59,6 +59,23 @@ const TechniciansWindow: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [verifyTech, setVerifyTech] = useState<any | null>(null);
   const [passcodeTech, setPasscodeTech] = useState<any | null>(null);
   const [clockAction, setClockAction] = useState<{ mode: 'in' | 'out' } | null>(null);
+
+  async function closeWindow() {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    try {
+      const api: any = (window as any).api;
+      if (api?.closeSelfWindow) {
+        const res = await api.closeSelfWindow({ focusMain: true });
+        if (res?.ok) return;
+      }
+    } catch {
+      // fall back below
+    }
+    try { window.close(); } catch {}
+  }
 
   // Auto-clear save messages after 3 seconds
   useEffect(() => {
@@ -111,7 +128,7 @@ const TechniciansWindow: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <button className="px-3 py-1 bg-green-600 border border-green-500 text-white rounded hover:bg-green-700 transition-colors" onClick={() => setClockAction({ mode: 'in' })}>Clock In</button>
             <button className="px-3 py-1 bg-red-600 border border-red-500 text-white rounded hover:bg-red-700 transition-colors" onClick={() => setClockAction({ mode: 'out' })}>Clock Out</button>
             <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setShowNew(true)}>Add New Technician</button>
-            <button className="px-3 py-1 bg-zinc-800 rounded" onClick={onClose}>Close</button>
+            <button type="button" className="gb-panel-x-button" onClick={() => void closeWindow()} aria-label="Close Technicians" title="Close Technicians">x</button>
           </div>
         </div>
 

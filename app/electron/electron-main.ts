@@ -272,6 +272,7 @@ function emitAllDataChanged() {
       'workorders:changed',
       'customers:changed',
       'sales:changed',
+      'quotes:changed',
       'technicians:changed',
       'deviceCategories:changed',
       'productCategories:changed',
@@ -3779,6 +3780,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   workOrders: 'workorders:changed',
   customers: 'customers:changed',
   sales: 'sales:changed',
+  quotes: 'quotes:changed',
   technicians: 'technicians:changed',
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
@@ -4102,6 +4104,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   invoices: 'invoices',
   payments: 'payments',
   timeEntries: 'time_entries',
+  quotes: 'quotes',
   settings: 'shop_settings',
   preferences: 'preferences',
   systemLogs: 'system_logs',
@@ -4426,6 +4429,22 @@ function fromCloudRow(key: string, row: any): any {
       cloudId: row.id,
     };
   }
+  if (key === 'quotes') {
+    const payload = cloudObject(row.payload);
+    return {
+      ...payload,
+      id,
+      customerId: cloudNullableNumber(row.legacy_customer_id) ?? payload.customerId,
+      customerName: row.customer_name || payload.customerName || '',
+      customerPhone: row.customer_phone || payload.customerPhone || '',
+      customerEmail: row.customer_email || payload.customerEmail || '',
+      type: row.quote_type || payload.type || 'sales',
+      createdAt: cloudDate(row.legacy_created_at || payload.createdAt || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || payload.updatedAt || row.updated_at),
+      contentUpdatedAt: cloudDate(row.content_updated_at || payload.contentUpdatedAt || row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
   if (key === 'calendarEvents') {
     return {
       id,
@@ -4686,6 +4705,23 @@ function toCloudRow(key: string, item: any): any | null {
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
   }
+  if (key === 'quotes') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      legacy_customer_id: toCloudIntId(item.customerId),
+      quote_type: toCloudString(item.type || 'sales'),
+      customer_name: toCloudString(item.customerName),
+      customer_phone: toCloudString(item.customerPhone),
+      customer_email: toCloudString(item.customerEmail),
+      payload: toCloudPayload(item),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+      content_updated_at: toCloudIso(item.contentUpdatedAt || item.updatedAt || item.createdAt),
+    };
+  }
   if (key === 'deviceCategories' || key === 'productCategories') {
     const legacy_id = toCloudIntId(item.id);
     const name = toCloudString(item.name || item.title).trim();
@@ -4817,12 +4853,14 @@ function cloudSortColumn(key: string, sortBy?: string): string {
   const map: Record<string, Record<string, string>> = {
     workOrders: { id: 'legacy_id', activityAt: 'activity_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
     sales: { id: 'legacy_id', activityAt: 'check_in_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
+    quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
   };
   if (map[key]?.[s]) return map[key][s];
   if (!s) {
     if (key === 'workOrders') return 'activity_at';
     if (key === 'sales') return 'check_in_at';
+    if (key === 'quotes') return 'content_updated_at';
     return 'legacy_id';
   }
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
@@ -5057,6 +5095,7 @@ ipcMain.handle('db-reset-all', async () => {
       try { w.webContents.send('customers:changed'); } catch {}
       try { w.webContents.send('workorders:changed'); } catch {}
       try { w.webContents.send('sales:changed'); } catch {}
+      try { w.webContents.send('quotes:changed'); } catch {}
       try { w.webContents.send('technicians:changed'); } catch {}
       try { w.webContents.send('deviceCategories:changed'); } catch {}
       try { w.webContents.send('productCategories:changed'); } catch {}
@@ -8126,6 +8165,7 @@ const BACKUP_COLLECTION_KEYS = [
   'vendors',
   'invoices',
   'payments',
+  'quotes',
   'settings',
   'preferences',
   'userProfiles',

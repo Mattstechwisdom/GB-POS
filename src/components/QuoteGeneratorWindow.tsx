@@ -7,6 +7,7 @@ import { useAutosave } from '../lib/useAutosave';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
+import CustomerOverviewWindow from './CustomerOverviewWindow';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
@@ -360,6 +361,57 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
   );
 };
 
+type QuoteClientPanelProps = {
+  client: {
+    customerId?: number;
+    customerName?: string;
+    customerPhone?: string;
+    customerEmail?: string;
+  };
+  searchOpen: boolean;
+  onToggleSearch: () => void;
+  onAddClient: () => void;
+  onSelect: (c: { id?: number; firstName?: string; lastName?: string; phone?: string; email?: string }) => void;
+  onClear: () => void;
+};
+
+const QuoteClientPanel: React.FC<QuoteClientPanelProps> = ({ client, searchOpen, onToggleSearch, onAddClient, onSelect, onClear }) => {
+  const hasClient = !!(client.customerId || client.customerName || client.customerPhone || client.customerEmail);
+  const phone = formatPhone(client.customerPhone || '') || client.customerPhone || '';
+
+  return (
+    <section className="gb-quote-client-panel">
+      <div className="gb-quote-client-actions">
+        <button type="button" className={searchOpen ? 'active' : ''} onClick={onToggleSearch}>
+          Search Client
+        </button>
+        <button type="button" onClick={onAddClient}>
+          Add Client
+        </button>
+      </div>
+      <div className="gb-quote-client-summary">
+        {hasClient ? (
+          <>
+            <strong>{client.customerName || 'Selected client'}</strong>
+            <span>{[phone, client.customerEmail].filter(Boolean).join(' | ') || 'No contact info saved'}</span>
+            <button type="button" onClick={onClear}>Clear</button>
+          </>
+        ) : (
+          <>
+            <strong>No client selected</strong>
+            <span>Search existing clients or add a new client before sending the quote.</span>
+          </>
+        )}
+      </div>
+      {searchOpen ? (
+        <div className="gb-quote-client-search">
+          <ClientSearchBar onSelect={onSelect} onClear={onClear} />
+        </div>
+      ) : null}
+    </section>
+  );
+};
+
 function sanitizeForSnapshot(value: any, keyHint?: string): any {
   try {
     if (value == null) return value;
@@ -450,7 +502,7 @@ function formatQuoteMonthLabel(key: string) {
 }
 
 function QuoteGeneratorWindow(): JSX.Element {
-  // Mode: sales-only UI, but keep repairs code path intact
+  // Mode: sales or repairs quote workflow
   const [mode, setMode] = useState<'sales' | 'repairs'>('sales');
   const [sales, setSales] = useState<SalesState>({ items: [] });
   const [repairs, setRepairs] = useState<RepairsState>({ lines: [] });
@@ -479,6 +531,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [expandedQuoteMonths, setExpandedQuoteMonths] = useState<Record<string, boolean>>({});
   const quoteMetaRef = useRef<{ createdAt?: string; contentUpdatedAt?: string }>({});
   const quoteSnapshotRef = useRef('');
+  const [clientSearchOpen, setClientSearchOpen] = useState<Record<'sales' | 'repairs', boolean>>({ sales: false, repairs: false });
+  const [addingClientFor, setAddingClientFor] = useState<'sales' | 'repairs' | null>(null);
   // Track expanded categories per item for Custom PC (keyed by item index string)
   const [openCats, setOpenCats] = useState<Record<string, Record<string, boolean>>>({});
 
@@ -657,6 +711,49 @@ function QuoteGeneratorWindow(): JSX.Element {
       return { parts, labor, total } as any;
     } catch { return { parts: 0, labor: 0, total: 0 } as any; }
   }, [repairs]);
+
+  function applyQuoteClient(target: 'sales' | 'repairs', c: { id?: number; firstName?: string; lastName?: string; phone?: string; email?: string }) {
+    const next = {
+      customerId: c?.id ? Number(c.id) : undefined,
+      customerName: `${c?.firstName || ''} ${c?.lastName || ''}`.trim(),
+      customerPhone: c?.phone || '',
+      customerEmail: c?.email || '',
+    };
+    if (target === 'sales') {
+      setSales((s) => ({ ...s, ...next }));
+    } else {
+      setRepairs((s) => ({ ...s, ...next }));
+    }
+    setClientSearchOpen((current) => ({ ...current, [target]: false }));
+  }
+
+  function clearQuoteClient(target: 'sales' | 'repairs') {
+    const next = { customerId: undefined, customerName: '', customerPhone: '', customerEmail: '' };
+    if (target === 'sales') {
+      setSales((s) => ({ ...s, ...next }));
+    } else {
+      setRepairs((s) => ({ ...s, ...next }));
+    }
+  }
+
+  function renderQuoteClientPanel(target: 'sales' | 'repairs') {
+    const source = target === 'sales' ? sales : repairs;
+    return (
+      <QuoteClientPanel
+        client={{
+          customerId: source.customerId,
+          customerName: source.customerName,
+          customerPhone: source.customerPhone,
+          customerEmail: source.customerEmail,
+        }}
+        searchOpen={clientSearchOpen[target]}
+        onToggleSearch={() => setClientSearchOpen((current) => ({ ...current, [target]: !current[target] }))}
+        onAddClient={() => setAddingClientFor(target)}
+        onSelect={(c) => applyQuoteClient(target, c)}
+        onClear={() => clearQuoteClient(target)}
+      />
+    );
+  }
 
   const currentQuoteRecord = useMemo(() => {
     if (mode === 'sales') {
@@ -3827,6 +3924,14 @@ function QuoteGeneratorWindow(): JSX.Element {
     openSavedQuotes();
   }, []);
 
+  useEffect(() => {
+    const api = (window as any).api;
+    if (typeof api?.onQuotesChanged !== 'function') return;
+    return api.onQuotesChanged(() => {
+      openSavedQuotes();
+    });
+  }, []);
+
   const groupedQuotes = useMemo(() => {
     const groups = new Map<string, any[]>();
     for (const quote of quotes || []) {
@@ -5863,44 +5968,47 @@ function QuoteGeneratorWindow(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-gray-100 p-4">
-      <div className="max-w-7xl mx-auto grid grid-cols-12 gap-4">
+    <div className="gb-quote-window min-h-screen bg-zinc-900 text-gray-100 p-4">
+      <div className="gb-quote-layout max-w-7xl mx-auto grid grid-cols-12 gap-4">
         {/* Main content */}
-  <div className="col-span-9 space-y-4">
-          <div className="flex items-center justify-between">
+  <div className="gb-quote-main col-span-9 space-y-4">
+          <div className="gb-quote-header flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src={publicAsset('logo.png')} alt="Logo" className="w-10 h-10 object-contain" />
               <h1 className="text-2xl font-bold text-[#39FF14]">Generate Quote</h1>
             </div>
-            <div className="flex items-center gap-2" />
+            <div className="gb-quote-mode-switch" role="tablist" aria-label="Quote type">
+              <button
+                type="button"
+                className={mode === 'sales' ? 'active' : ''}
+                aria-selected={mode === 'sales'}
+                onClick={() => setMode('sales')}
+              >
+                Sales
+              </button>
+              <button
+                type="button"
+                className={mode === 'repairs' ? 'active' : ''}
+                aria-selected={mode === 'repairs'}
+                onClick={() => setMode('repairs')}
+              >
+                Repairs
+              </button>
+            </div>
           </div>
 
         {mode === 'sales' && (
-          <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
-            <ClientSearchBar
-              onSelect={(c) => setSales((s) => ({
-                ...s,
-                customerId: c?.id ? Number(c.id) : undefined,
-                customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
-                customerPhone: c.phone || '',
-                customerEmail: c.email || '',
-              }))}
-              onClear={() => setSales((s) => ({ ...s, customerId: undefined }))}
-            />
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Customer Name" value={sales.customerName} onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerName: v }))} />
-              <Field label="Customer Phone" value={sales.customerPhone} onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerPhone: v }))} />
-              <Field label="Customer Email" value={sales.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setSales((s) => ({ ...s, customerId: undefined, customerEmail: v }))} />
-            </div>
+          <div className="gb-quote-card bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
+            {renderQuoteClientPanel('sales')}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-zinc-200">Items</h3>
                 <button className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={addSaleItem}>+ Add Item</button>
               </div>
-              <div className="space-y-2">
+              <div className="gb-quote-item-list space-y-2">
                 {sales.items.map((it, idx) => (
-                  <div key={idx} className="border border-zinc-700 rounded p-2">
-                    <div className="flex items-center justify-between">
+                  <div key={idx} className="gb-quote-item-card border border-zinc-700 rounded p-2">
+                    <div className="gb-quote-item-header flex items-center justify-between">
                       <label className="flex items-center gap-2 min-w-0">
                         {createSaleSelecting && (
                           <input
@@ -5918,7 +6026,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                       </div>
                     </div>
                     {it.expanded && (
-                      <div className="mt-2 grid grid-cols-16 gap-2">
+                      <div className="gb-quote-item-fields mt-2 grid grid-cols-16 gap-2">
                         {/* Images at the top */}
                         {it.deviceType !== 'Custom PC' && (
                         <div className="col-span-16">
@@ -6163,23 +6271,9 @@ function QuoteGeneratorWindow(): JSX.Element {
         )}
 
         {mode === 'repairs' && (
-          <div className="bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
-            <ClientSearchBar
-              onSelect={(c) => setRepairs((s) => ({
-                ...s,
-                customerId: c?.id ? Number(c.id) : undefined,
-                customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
-                customerPhone: c.phone || '',
-                customerEmail: c.email || '',
-              }))}
-              onClear={() => setRepairs((s) => ({ ...s, customerId: undefined }))}
-            />
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Customer Name" value={repairs.customerName} onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerName: v }))} />
-              <Field label="Customer Phone" value={repairs.customerPhone} onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerPhone: v }))} />
-              <Field label="Customer Email" value={repairs.customerEmail} type="email" placeholder="customer@email.com" onChange={(v) => setRepairs((s) => ({ ...s, customerId: undefined, customerEmail: v }))} />
-            </div>
-            <div className="grid grid-cols-12 gap-3">
+          <div className="gb-quote-card bg-zinc-800 border border-zinc-700 rounded p-3 space-y-3">
+            {renderQuoteClientPanel('repairs')}
+            <div className="gb-quote-repair-picker grid grid-cols-12 gap-3">
               <div className="col-span-4">
                 <label className="block text-xs text-zinc-400 mb-1">Device Category</label>
                 <select className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={repairs.selectedCategoryId} onChange={(e) => setRepairs((s) => ({ ...s, selectedCategoryId: e.target.value, selectedRepairId: '' }))} onFocus={(e) => (e.target as HTMLSelectElement).showPicker?.()}>
@@ -6201,7 +6295,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <div className="space-y-2">
               {repairs.lines.map((ln, idx) => (
                 <div key={idx} className="space-y-1">
-                  <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="gb-quote-repair-line grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-7"><Field label="Description" value={ln.description} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, description: v } : x)) }))} /></div>
                     <div className="col-span-2"><Field label="Part Price" value={ln.partPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, partPrice: v } : x)) }))} /></div>
                     <div className="col-span-2"><Field label="Labor Price" value={ln.laborPrice} onChange={(v) => setRepairs((r) => ({ ...r, lines: r.lines.map((x, i) => (i === idx ? { ...x, laborPrice: v } : x)) }))} /></div>
@@ -6262,7 +6356,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-3 mt-2">
+            <div className="gb-quote-repair-total-grid grid grid-cols-3 gap-3 mt-2">
               <Field label="Notes" value={repairs.notes} onChange={(v) => setRepairs((s) => ({ ...s, notes: v }))} />
               <div className="col-span-2 bg-zinc-900 border border-zinc-700 rounded p-2">
                 <div className="text-sm flex items-center justify-between"><span className="text-zinc-400">Parts</span><span className="font-semibold">${repairTotals.parts.toFixed(2)}</span></div>
@@ -6273,7 +6367,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           </div>
         )}
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="gb-quote-action-bar flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-zinc-400 h-6 flex items-center">{saveMsg}</div>
           <div className="flex flex-wrap items-center gap-1">
             <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'Saving...' : 'Save Quote'}</button>
@@ -6535,7 +6629,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           )}
 
           {showPreview && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
             {/* Floating toolbar outside the scrollable preview so Print is always accessible */}
             <div className="absolute top-3 right-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button
@@ -7286,13 +7380,30 @@ function QuoteGeneratorWindow(): JSX.Element {
                   </div>
                 )}
               </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {addingClientFor && (
+            <CustomerOverviewWindow
+              customer={null}
+              closeAfterSave
+              onClose={() => setAddingClientFor(null)}
+              onSaved={(c) => {
+                applyQuoteClient(addingClientFor, {
+                  id: c.id,
+                  firstName: c.firstName,
+                  lastName: c.lastName,
+                  phone: c.phone || '',
+                  email: c.email || '',
+                });
+              }}
+            />
           )}
         </div>
 
         {/* Sidebar: Saved Quotes */}
-  <aside className="col-span-3 bg-zinc-800 border border-zinc-700 rounded p-3 flex flex-col min-h-[calc(100vh-2rem)]">
+  <aside className="gb-quote-saved col-span-3 bg-zinc-800 border border-zinc-700 rounded p-3 flex flex-col min-h-[calc(100vh-2rem)]">
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-semibold text-zinc-200">Saved Quotes</div>
             <button className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded" onClick={openSavedQuotes}>Refresh</button>

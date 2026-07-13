@@ -182,6 +182,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('sales:changed', handler);
     return () => ipcRenderer.removeListener('sales:changed', handler);
   },
+  onQuotesChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('quotes:changed', handler);
+    return () => ipcRenderer.removeListener('quotes:changed', handler);
+  },
   onPartSourcesChanged: (cb: () => void) => {
     const handler = () => cb();
     ipcRenderer.on('partSources:changed', handler);
