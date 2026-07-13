@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.86 (2026-07-13)
+- Startup: replaces blank auth/cloud wait states with visible status screens.
+- Supabase: falls back to cached local data with a warning instead of blocking the app on cloud session errors.
+
 ## v0.4.85 (2026-07-13)
 - Windows: removes the startup loading overlay for every child-window route so New Work Order and related windows render normally.
 

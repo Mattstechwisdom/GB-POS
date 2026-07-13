@@ -188,6 +188,19 @@ function removeInitialHtmlLoader() {
   }
 }
 
+const StartupStatusScreen: React.FC<{ title: string; message?: string; error?: string }> = ({ title, message, error }) => {
+  removeInitialHtmlLoader();
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center px-6">
+      <div className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+        <div className="text-lg font-semibold text-[#39FF14]">{title}</div>
+        {message ? <div className="mt-2 text-sm text-zinc-300">{message}</div> : null}
+        {error ? <div className="mt-4 rounded border border-red-500/40 bg-red-950/50 px-3 py-2 text-sm text-red-100">{error}</div> : null}
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
@@ -202,12 +215,14 @@ const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
   const [cloudReady, setCloudReady] = useState(false);
+  const [cloudWarning, setCloudWarning] = useState('');
   const [accessError, setAccessError] = useState('');
 
   const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
     setSession(nextSession);
     setStaffProfile(null);
     setCloudReady(false);
+    setCloudWarning('');
     setAccessError('');
 
     if (!nextSession?.user) {
@@ -271,6 +286,7 @@ const App: React.FC = () => {
     }
     const cfg = getSupabaseRuntimeConfig();
     setCloudReady(false);
+    setCloudWarning('');
     void api.cloudSetSession({
       supabaseUrl: cfg.supabaseUrl,
       supabasePublishableKey: cfg.supabasePublishableKey,
@@ -282,17 +298,19 @@ const App: React.FC = () => {
         setCloudReady(true);
         setRefreshKey((v) => v + 1);
       } else {
-        setAccessError(res?.error || 'Cloud session could not be started.');
+        setCloudWarning(res?.error || 'Cloud session could not be started. Showing local cached data.');
+        setCloudReady(true);
       }
     }).catch((e: any) => {
       if (cancelled) return;
-      setAccessError(e?.message || 'Cloud session could not be started.');
+      setCloudWarning(e?.message || 'Cloud session could not be started. Showing local cached data.');
+      setCloudReady(true);
     });
     return () => { cancelled = true; };
   }, [session?.access_token, staffProfile?.shop_id]);
 
   if (authLoading) {
-    return null;
+    return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;
   }
 
   if (!session || !staffProfile) {
@@ -316,7 +334,7 @@ const App: React.FC = () => {
   }
 
   if (!cloudReady) {
-    return null;
+    return <StartupStatusScreen title="Connecting to Supabase" message="Checking shop database access..." error={cloudWarning || undefined} />;
   }
 
   removeInitialHtmlLoader();
@@ -341,6 +359,11 @@ const App: React.FC = () => {
         setRefreshKey={setRefreshKey}
         onSignOut={() => void supabase.auth.signOut()}
       />
+      {cloudWarning ? (
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(92vw,620px)] -translate-x-1/2 rounded-md border border-amber-500/40 bg-amber-950 px-4 py-3 text-sm text-amber-100 shadow-xl">
+          {cloudWarning}
+        </div>
+      ) : null}
     </PaginationProvider>
   );
 };
