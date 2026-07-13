@@ -217,23 +217,36 @@ const App: React.FC = () => {
   const [cloudReady, setCloudReady] = useState(false);
   const [cloudWarning, setCloudWarning] = useState('');
   const [accessError, setAccessError] = useState('');
+  const currentAuthUserIdRef = useRef<string | null>(null);
 
   const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
-    setSession(nextSession);
-    setStaffProfile(null);
-    setCloudReady(false);
-    setCloudWarning('');
-    setAccessError('');
+    const nextUserId = nextSession?.user?.id || null;
+    const isSameUser = !!nextUserId && currentAuthUserIdRef.current === nextUserId;
 
-    if (!nextSession?.user) {
+    setSession(nextSession);
+
+    if (!nextUserId) {
+      currentAuthUserIdRef.current = null;
+      setStaffProfile(null);
+      setCloudReady(false);
+      setCloudWarning('');
+      setAccessError('');
       setAuthLoading(false);
       return;
     }
 
+    if (!isSameUser) {
+      setStaffProfile(null);
+      setCloudReady(false);
+      setCloudWarning('');
+    }
+    setAccessError('');
+    currentAuthUserIdRef.current = nextUserId;
+
     const { data, error } = await supabase
       .from('staff_profiles')
       .select('id, shop_id, role, status, first_name, last_name, email')
-      .eq('user_id', nextSession.user.id)
+      .eq('user_id', nextUserId)
       .maybeSingle();
 
     if (error) {

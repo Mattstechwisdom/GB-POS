@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.88 (2026-07-13)
+- Auth: prevents same-user session refreshes from briefly clearing the staff profile and showing the login screen again.
+
 ## v0.4.87 (2026-07-13)
 - Supabase: suppresses the unused Realtime WebSocket transport warning in Electron main-process cloud database checks.
 
