@@ -38,6 +38,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
   const [paneMode, setPaneMode] = useState<'repair' | 'device' | 'repairType'>('repair');
   const [deviceCategories, setDeviceCategories] = useState<Array<{ id: number; name: string; title?: string }>>([]);
+  const [deviceFormResetKey, setDeviceFormResetKey] = useState(0);
 
   const isModalShell = useMemo(() => {
     try { return typeof document !== 'undefined' && !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
@@ -230,6 +231,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                   const initialTitleFromDevice = initialDeviceName ? (deviceCategories.find(d => d.name === initialDeviceName)?.title) : undefined;
                   return (
                 <DeviceForm
+                  key={deviceFormResetKey}
                   titles={deviceTitles}
                   devices={deviceCategories}
                   initialDeviceName={initialDeviceName}
@@ -241,6 +243,10 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                       const devs = await window.api.dbGet('deviceCategories');
                       setDeviceCategories(Array.isArray(devs) ? devs : []);
                     } catch (e) {}
+                  }}
+                  onDeleted={() => {
+                    setSelectedItem(null);
+                    setDeviceFormResetKey(v => v + 1);
                   }}
                 />);
               })()

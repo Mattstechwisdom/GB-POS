@@ -71,6 +71,7 @@ const DeviceAccordion = React.memo(function DeviceAccordion({
 interface DeviceFormProps {
   onCancel: () => void;
   onSaved: () => void;
+  onDeleted?: () => void;
   titles: string[]; // existing main Titles to pick from
   devices?: Array<{ id?: number; name: string; title?: string }>; // existing device names (sub-categories)
   initialTitle?: string;
@@ -78,7 +79,7 @@ interface DeviceFormProps {
 }
 
 // Device Categories live in the 'deviceCategories' collection.
-export default function DeviceForm({ onCancel, onSaved, titles, devices = [], initialTitle, initialDeviceName }: DeviceFormProps) {
+export default function DeviceForm({ onCancel, onSaved, onDeleted, titles, devices = [], initialTitle, initialDeviceName }: DeviceFormProps) {
   const [titleText, setTitleText] = useState('');
   const [deviceNameText, setDeviceNameText] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
@@ -238,10 +239,22 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       const api: any = (window as any).api || {};
       if (typeof api.dbDelete === 'function') {
         const res = await api.dbDelete('deviceCategories', deviceId);
-        if (res) { resetForNextDeviceEntry({ clearTitle: false }); await Promise.resolve(onSaved()); focusDeviceSoon(); return; }
+        if (res) {
+          resetForNextDeviceEntry({ clearTitle: false });
+          await Promise.resolve(onSaved());
+          try { onDeleted?.(); } catch {}
+          focusDeviceSoon();
+          return;
+        }
       } else if (typeof api.deleteFromCollection === 'function') {
         const res = await api.deleteFromCollection('deviceCategories', deviceId);
-        if (res) { resetForNextDeviceEntry({ clearTitle: false }); await Promise.resolve(onSaved()); focusDeviceSoon(); return; }
+        if (res) {
+          resetForNextDeviceEntry({ clearTitle: false });
+          await Promise.resolve(onSaved());
+          try { onDeleted?.(); } catch {}
+          focusDeviceSoon();
+          return;
+        }
       }
       alert('Failed to delete device');
     } catch (e) {
@@ -275,6 +288,7 @@ export default function DeviceForm({ onCancel, onSaved, titles, devices = [], in
       }
       resetForNextDeviceEntry({ clearTitle: true });
       await Promise.resolve(onSaved());
+      try { onDeleted?.(); } catch {}
     } catch (e) {
       console.error('delete category failed', e);
       alert('Failed to delete category');
