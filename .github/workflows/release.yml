@@ -1,4 +1,4 @@
-name: Build & Release (Windows)
+name: Build & Release
 
 on:
   workflow_dispatch:
@@ -35,6 +35,17 @@ jobs:
           node-version: '20'
           cache: npm
 
+      - name: Setup Java for Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Ensure Android SDK packages
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" "platforms;android-36" "build-tools;36.0.0"
+
       - name: Install deps
         run: npm ci
 
@@ -66,15 +77,26 @@ jobs:
       - name: Package installer (electron-builder)
         run: npx electron-builder --win nsis --publish never
 
-      - name: Create "Update" installer alias
+      - name: Record release version
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          $setup = Join-Path 'release' "GadgetBoy-POS-Setup-$version.exe"
+          $setup = Join-Path 'release' "Windows-Installer-x64-$version.exe"
           if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
-          $update = Join-Path 'release' "GadgetBoy-POS-Update-$version.exe"
-          Copy-Item -Force $setup $update
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Android APK
+        shell: pwsh
+        run: |
+          npm run android:sync
+          Push-Location android
+          .\gradlew.bat assembleDebug
+          Pop-Location
+          $version = $env:RELEASE_VERSION
+          $apkSource = 'android/app/build/outputs/apk/debug/app-debug.apk'
+          if (-not (Test-Path $apkSource)) { throw "Android APK not found: $apkSource" }
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item -Force $apkSource "release/Android-APK-universal-$version.apk"
 
       - name: Generate release notes from CHANGELOG
         shell: pwsh
@@ -93,12 +115,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: mobile release
           make_latest: 'true'
           body_path: ${{ env.RELEASE_NOTES_PATH }}
           files: |
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe.blockmap
-            release/GadgetBoy-POS-Update-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
+            release/Android-APK-universal-${{ env.RELEASE_VERSION }}.apk
             release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

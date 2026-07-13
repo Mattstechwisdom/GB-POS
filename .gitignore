@@ -10,6 +10,7 @@ pnpm-debug.log*
 # Vite / build outputs
 dist/
 dist-main/
+dist-mobile/
 
 # Electron builder outputs
 release/

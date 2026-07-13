@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.92 (2026-07-13)
+- Mobile: adds a Capacitor Android APK build target with a mobile-only entrypoint and Android project.
+- Mobile: adds a Supabase-backed mobile data bridge so Android uses the same shop cloud data as desktop/web after login.
+- Mobile Updates: Android checks the latest GitHub release for the Android APK asset, while Windows keeps using the Windows auto-update feed.
+- Release: prepares the mobile release assets so GitHub releases can include the Windows setup installer and Android APK.
+
 ## v0.4.88 (2026-07-13)
 - Auth: prevents same-user session refreshes from briefly clearing the staff profile and showing the login screen again.
 

@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.4.91",
+  "version": "0.4.92",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -22,6 +22,11 @@
     "dev:split": "cross-env ELECTRON_DISABLE_SECURITY_WARNINGS=true concurrently -n VITE,ELECTRON -c green,magenta \"npm run vite\" \"npm run electron:buildmain && npm run electron\"",
     "dev:nodemon": "wait-on tcp:5173 dist-main/app/electron/electron-main.js && nodemon --watch dist-main/app/electron --ext js --exec \"electron ./dist-main/app/electron/electron-main.js\"",
     "build": "vite build --config vite.config.ts",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
+    "android:sync": "npm run build:mobile && cap sync android",
+    "android:add": "cap add android",
+    "android:open": "cap open android",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "start:web": "node tools/write-runtime-config.cjs && serve -s dist -l tcp://0.0.0.0:3000",
     "predist": "npm run generate:icon && npm run typecheck && npm run electron:buildmain && npm run build",
     "dist": "electron-builder --win nsis",
@@ -30,6 +35,8 @@
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
     "@supabase/supabase-js": "^2.110.1",
     "asar": "^3.2.0",
     "electron-updater": "^6.6.2",
@@ -43,6 +50,7 @@
     "serve": "^14.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
     "@types/node": "^24.4.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.27",

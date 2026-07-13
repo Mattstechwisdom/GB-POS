@@ -18,13 +18,16 @@ on:
       - main
     paths:
       - '.github/workflows/**'
+      - 'android/**'
       - 'app/**'
       - 'src/**'
+      - 'capacitor.config.ts'
       - 'electron-builder.yml'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig*.json'
       - 'vite.config.ts'
+      - 'vite.mobile.config.ts'
 
 permissions:
   contents: write
@@ -92,14 +95,12 @@ jobs:
           DEBUG: electron-builder,electron-updater
         run: npx electron-builder --win nsis --publish never
 
-      - name: Create "Update" installer alias
+      - name: Record release version
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          $setup = Join-Path 'release' "GadgetBoy-POS-Setup-$version.exe"
+          $setup = Join-Path 'release' "Windows-Installer-x64-$version.exe"
           if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
-          $update = Join-Path 'release' "GadgetBoy-POS-Update-$version.exe"
-          Copy-Item -Force $setup $update
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload installer as workflow artifact
@@ -108,9 +109,8 @@ jobs:
         with:
           name: GadgetBoy-POS-installer
           path: |
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe.blockmap
-            release/GadgetBoy-POS-Update-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/latest.yml
             release/builder-effective-config.yaml
             release/*.yaml
@@ -121,9 +121,8 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}
           files: |
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe
-            release/GadgetBoy-POS-Setup-${{ env.RELEASE_VERSION }}.exe.blockmap
-            release/GadgetBoy-POS-Update-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
+            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,121 @@
+.gbpos-mobile {
+  min-width: 0;
+  width: 100%;
+  min-height: 100dvh;
+  background: #09090b;
+  color: #f4f4f5;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+.gbpos-mobile * {
+  min-width: 0;
+  letter-spacing: 0;
+  -webkit-tap-highlight-color: rgba(57, 255, 20, 0.18);
+}
+
+.gbpos-mobile input,
+.gbpos-mobile select,
+.gbpos-mobile textarea,
+.gbpos-mobile button {
+  font-size: 16px;
+}
+
+.gbpos-mobile #root {
+  min-height: 100dvh;
+}
+
+.gbpos-mobile [data-modal-shell="1"] {
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) !important;
+  background: #09090b !important;
+}
+
+.gbpos-mobile [data-modal-shell="1"] > .fixed.top-2 {
+  top: calc(env(safe-area-inset-top) + 0.5rem) !important;
+  right: calc(env(safe-area-inset-right) + 0.5rem) !important;
+}
+
+@media (max-width: 820px) {
+  .gbpos-mobile .min-w-\[1100px\],
+  .gbpos-mobile .min-w-\[1000px\],
+  .gbpos-mobile .min-w-\[900px\],
+  .gbpos-mobile .min-w-\[800px\],
+  .gbpos-mobile .min-w-\[700px\] {
+    min-width: 100% !important;
+  }
+
+  .gbpos-mobile .w-\[1100px\],
+  .gbpos-mobile .w-\[1000px\],
+  .gbpos-mobile .w-\[900px\],
+  .gbpos-mobile .w-\[800px\],
+  .gbpos-mobile .w-\[700px\] {
+    width: 100% !important;
+  }
+
+  .gbpos-mobile .max-w-\[1400px\],
+  .gbpos-mobile .max-w-\[1200px\],
+  .gbpos-mobile .max-w-\[1100px\],
+  .gbpos-mobile .max-w-\[1000px\],
+  .gbpos-mobile .max-w-\[900px\] {
+    max-width: 100% !important;
+  }
+
+  .gbpos-mobile .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .gbpos-mobile .flex {
+    flex-wrap: wrap;
+  }
+
+  .gbpos-mobile table {
+    min-width: 720px;
+  }
+
+  .gbpos-mobile .overflow-x-auto,
+  .gbpos-mobile .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .gbpos-mobile .fixed.inset-0:not([data-modal-shell="1"]) {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .gbpos-mobile .px-8 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .gbpos-mobile .py-8 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  .gbpos-mobile .text-4xl {
+    font-size: 1.875rem !important;
+    line-height: 2.25rem !important;
+  }
+
+  .gbpos-mobile .text-3xl {
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .gbpos-mobile .absolute.left-full {
+    left: 0 !important;
+    top: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .gbpos-mobile .w-52 {
+    width: min(92vw, 20rem) !important;
+  }
+
+  .gbpos-mobile .rounded,
+  .gbpos-mobile .rounded-lg,
+  .gbpos-mobile .rounded-xl {
+    border-radius: 8px !important;
+  }
+}

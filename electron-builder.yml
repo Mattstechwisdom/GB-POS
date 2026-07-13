@@ -1,7 +1,7 @@
 appId: com.gadgetboy.pos
 productName: GadgetBoy POS
 # Keep the installer name predictable on GitHub Releases (no folder digging).
-artifactName: 'GadgetBoy-POS-Setup-${version}.${ext}'
+artifactName: 'Windows-Installer-x64-${version}.${ext}'
 directories:
   output: release
 extraMetadata:
