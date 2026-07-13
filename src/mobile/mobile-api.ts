@@ -79,6 +79,8 @@ const API_TO_MODAL: Record<string, string> = {
   openDeviceCategories: 'deviceCategories',
   openClearDatabase: 'clearDb',
   openCustomBuildItem: 'customBuildItem',
+  openCloverSettings: 'cloverSettings',
+  openTwilioSettings: 'twilioSettings',
 };
 
 let cloudSession: CloudSession | null = null;

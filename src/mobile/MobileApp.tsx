@@ -1,0 +1,1180 @@
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { LoginScreen } from '../auth/LoginScreen';
+import { formatPhone } from '../lib/format';
+import { PaginationProvider } from '../lib/pagination';
+import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from '../lib/modalBus';
+import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
+import { storeWindowPayload } from '../lib/windowPayload';
+import MobileUpdateCheck from './MobileUpdateCheck';
+
+const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
+const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
+const CalendarWindow = React.lazy(() => import('../components/CalendarWindow'));
+const ClockInWindow = React.lazy(() => import('../components/ClockInWindow'));
+const QuoteGeneratorWindow = React.lazy(() => import('../components/QuoteGeneratorWindow'));
+const EODWindow = React.lazy(() => import('../components/EODWindow'));
+const ProductsWindow = React.lazy(() => import('../components/ProductsWindow'));
+const InventoryWindow = React.lazy(() => import('../components/InventoryWindow'));
+const WorkOrderRepairPickerWindow = React.lazy(() => import('../workorders/WorkOrderRepairPickerWindow'));
+const CustomerOverviewWindow = React.lazy(() => import('../components/CustomerOverviewWindow'));
+const CustomerSearchWindow = React.lazy(() => import('../components/CustomerSearchWindow'));
+const QuickSaleWindow = React.lazy(() => import('../components/QuickSaleWindow'));
+const ConsultationBookingWindow = React.lazy(() => import('../components/ConsultationBookingWindow'));
+const CheckoutWindow = React.lazy(() => import('../workorders/CheckoutWindow'));
+const DevMenuWindow = React.lazy(() => import('../components/DevMenuWindow'));
+const DataToolsWindow = React.lazy(() => import('../components/DataToolsWindow'));
+const ReportingWindow = React.lazy(() => import('../components/ReportingWindow'));
+const ReportEmailWindow = React.lazy(() => import('../components/ReportEmailWindow'));
+const ChartsWindow = React.lazy(() => import('../components/ChartsWindow'));
+const NotificationsWindow = React.lazy(() => import('../components/NotificationsWindow'));
+const NotificationSettingsWindow = React.lazy(() => import('../components/NotificationSettingsWindow'));
+const ReleaseFormWindow = React.lazy(() => import('../workorders/ReleaseFormWindow'));
+const CustomerReceiptWindow = React.lazy(() => import('../workorders/CustomerReceiptWindow'));
+const ConsultSheetWindow = React.lazy(() => import('../sales/ConsultSheetWindow'));
+const ProductFormWindow = React.lazy(() => import('../sales/ProductFormWindow'));
+const BackupWindow = React.lazy(() => import('../components/BackupWindow'));
+const ClearDatabaseWindow = React.lazy(() => import('../components/ClearDatabaseWindow'));
+const RepairCategoriesWindow = React.lazy(() => import('../repairs/RepairCategoriesWindow'));
+const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCategoriesWindow'));
+const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
+const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
+const CloverSettingsWindow = React.lazy(() => import('../components/CloverSettingsWindow'));
+const TwilioSettingsWindow = React.lazy(() => import('../components/TwilioSettingsWindow'));
+
+type StaffProfile = {
+  id: string;
+  shop_id: string;
+  role: 'admin' | 'manager' | 'technician';
+  status: 'invited' | 'active' | 'disabled';
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+};
+
+type MobileMode = 'all' | 'workorders' | 'sales';
+type StatusFilter = 'all' | 'open' | 'closed';
+type ModalEntry = { id: string; type: string };
+type MobileRow = {
+  type: 'workorder' | 'sale';
+  id: number;
+  customerId?: number;
+  customerName: string;
+  phone: string;
+  email: string;
+  date: Date;
+  originalDate: Date | null;
+  status: 'open' | 'in progress' | 'closed';
+  technicianId: string;
+  technicianLabel: string;
+  title: string;
+  subtitle: string;
+  notes: string;
+  total: number;
+  remaining: number;
+  source: any;
+};
+type SheetAction = {
+  label: string;
+  detail?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onPress: () => void | Promise<void>;
+};
+
+function removeInitialHtmlLoader() {
+  try {
+    document.getElementById('gbpos-initial-loader')?.remove();
+  } catch {
+    // ignore
+  }
+}
+
+function invoiceNumber(id: number | string) {
+  return `GB${String(id).padStart(7, '0')}`;
+}
+
+function money(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? `$${n.toFixed(2)}` : '$0.00';
+}
+
+function safeDate(value: any) {
+  const d = new Date(value || 0);
+  return Number.isNaN(d.getTime()) ? new Date(0) : d;
+}
+
+function dateLabel(d: Date | null) {
+  if (!d || Number.isNaN(d.getTime()) || d.getTime() <= 0) return 'No date';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function getActivityDate(record: any) {
+  return safeDate(record?.activityAt || record?.checkoutDate || record?.repairCompletionDate || record?.clientPickupDate || record?.checkInAt || record?.createdAt || record?.updatedAt);
+}
+
+function getItemSummary(record: any) {
+  const list = Array.isArray(record?.items) ? record.items : [];
+  const fromItems = list
+    .map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim())
+    .filter(Boolean)
+    .join(', ');
+  return fromItems || record?.itemDescription || record?.productDescription || record?.productCategory || record?.category || '';
+}
+
+function computeTotals(record: any) {
+  const labor = Number(record?.laborCost || 0);
+  const parts = Number(record?.partCosts || 0);
+  const discount = Number(record?.discount || 0);
+  const taxRate = Number(record?.taxRate || 0);
+  const subTotal = Math.max(0, labor + parts - discount);
+  const tax = Math.round(subTotal * (taxRate / 100) * 100) / 100;
+  const total = Math.round((record?.totals?.total ?? record?.total ?? subTotal + tax) * 100) / 100;
+  const amountPaid = Number(record?.amountPaid || 0);
+  const remaining = Math.max(0, Math.round((record?.totals?.remaining ?? total - amountPaid) * 100) / 100);
+  return { subTotal, tax, total, remaining };
+}
+
+function normalizeStatus(record: any, fallback: 'workorder' | 'sale'): 'open' | 'in progress' | 'closed' {
+  const raw = String(record?.status || '').toLowerCase().trim();
+  if (raw === 'closed') return 'closed';
+  if (raw === 'in progress' || raw === 'inprogress') return 'in progress';
+  if (raw === 'open') return 'open';
+  const totals = computeTotals(record);
+  if (fallback === 'sale') return totals.remaining <= 0 ? 'closed' : 'open';
+  return totals.remaining <= 0 ? 'closed' : 'open';
+}
+
+function techLabelFor(value: any, techIndex: Record<string, string>) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (techIndex[raw]) return techIndex[raw];
+  for (const label of Object.values(techIndex)) {
+    if (!label) continue;
+    if (label === raw || label.split(' ')[0] === raw) return label;
+  }
+  return raw;
+}
+
+const StartupStatusScreen: React.FC<{ title: string; message?: string; error?: string }> = ({ title, message, error }) => {
+  removeInitialHtmlLoader();
+  return (
+    <main className="mobile-startup">
+      <div className="mobile-startup-card">
+        <div className="mobile-pulse-logo">GB</div>
+        <h1>{title}</h1>
+        {message ? <p>{message}</p> : null}
+        {error ? <div className="mobile-error-banner">{error}</div> : null}
+      </div>
+    </main>
+  );
+};
+
+function useLongPress(onLongPress: () => void, ms = 520) {
+  const timerRef = useRef<number | null>(null);
+  const firedRef = useRef(false);
+
+  const clear = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const start = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest('button, a, input, textarea, select')) return;
+    firedRef.current = false;
+    clear();
+    timerRef.current = window.setTimeout(() => {
+      firedRef.current = true;
+      try {
+        if (navigator.vibrate) navigator.vibrate(18);
+      } catch {
+        // ignore
+      }
+      onLongPress();
+    }, ms);
+  }, [clear, ms, onLongPress]);
+
+  const end = useCallback(() => {
+    clear();
+    window.setTimeout(() => {
+      firedRef.current = false;
+    }, 0);
+  }, [clear]);
+
+  useEffect(() => clear, [clear]);
+
+  return {
+    onPointerDown: start,
+    onPointerUp: end,
+    onPointerLeave: end,
+    onPointerCancel: end,
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      onLongPress();
+    },
+    wasLongPress: () => firedRef.current,
+  };
+}
+
+function MobileModalContent({ type, onClose }: { type: string; onClose: () => void }) {
+  switch (type) {
+    case 'newWorkOrder': return <NewWorkOrderWindow />;
+    case 'newSale': return <SaleWindow />;
+    case 'calendar': return <CalendarWindow />;
+    case 'clockIn': return <ClockInWindow />;
+    case 'quoteGenerator': return <QuoteGeneratorWindow />;
+    case 'eod': return <EODWindow />;
+    case 'products': return <ProductsWindow />;
+    case 'inventory': return <InventoryWindow />;
+    case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow />;
+    case 'customerOverview': return <CustomerOverviewWindow onClose={onClose} />;
+    case 'customerSearch': return <CustomerSearchWindow onClose={onClose} />;
+    case 'quickSale': return <QuickSaleWindow />;
+    case 'consultation': return <ConsultationBookingWindow />;
+    case 'checkout': return <CheckoutWindow />;
+    case 'devMenu': return <DevMenuWindow />;
+    case 'dataTools': return <DataToolsWindow />;
+    case 'reporting': return <ReportingWindow />;
+    case 'reportEmail': return <ReportEmailWindow />;
+    case 'charts': return <ChartsWindow />;
+    case 'notifications': return <NotificationsWindow />;
+    case 'notificationSettings': return <NotificationSettingsWindow />;
+    case 'releaseForm': return <ReleaseFormWindow />;
+    case 'customerReceipt': return <CustomerReceiptWindow />;
+    case 'consultSheet': return <ConsultSheetWindow />;
+    case 'productForm': return <ProductFormWindow />;
+    case 'backup': return <BackupWindow />;
+    case 'clearDb': return <ClearDatabaseWindow />;
+    case 'repairCategories': return <RepairCategoriesWindow mode="admin" />;
+    case 'deviceCategories': return <DeviceCategoriesWindow />;
+    case 'customBuildItem': return <CustomBuildItemWindow />;
+    case 'technicians': return <TechniciansWindow onClose={onClose} />;
+    case 'cloverSettings': return <CloverSettingsWindow />;
+    case 'twilioSettings': return <TwilioSettingsWindow />;
+    default: return <div className="mobile-empty-state">Unknown window: {type}</div>;
+  }
+}
+
+function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler, { capture: true });
+    return () => window.removeEventListener('keydown', handler, { capture: true });
+  }, [onClose]);
+
+  const title = titleForModal(entry.type);
+
+  return (
+    <section className="mobile-modal-shell" style={{ zIndex }} data-modal-shell="1">
+      <header className="mobile-modal-bar">
+        <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close window">
+          <span aria-hidden="true">x</span>
+        </button>
+        <div>
+          <div className="mobile-modal-eyebrow">GadgetBoy POS</div>
+          <h2>{title}</h2>
+        </div>
+        {entry.type === 'products' ? (
+          <button type="button" className="mobile-mini-button" onClick={() => dispatchOpenModal('inventory')}>
+            Inventory
+          </button>
+        ) : (
+          <span className="mobile-bar-spacer" />
+        )}
+      </header>
+      <div className="mobile-modal-content">
+        <React.Suspense fallback={<div className="mobile-loading-inline">Loading {title}...</div>}>
+          <MobileModalContent type={entry.type} onClose={onClose} />
+        </React.Suspense>
+      </div>
+    </section>
+  );
+}
+
+function titleForModal(type: string) {
+  const titles: Record<string, string> = {
+    newWorkOrder: 'Work Order',
+    newSale: 'Sale',
+    calendar: 'Calendar',
+    clockIn: 'Clock In',
+    quoteGenerator: 'Quote Generator',
+    eod: 'Reports',
+    products: 'Products',
+    inventory: 'Inventory',
+    workOrderRepairPicker: 'Repair Picker',
+    customerOverview: 'Client',
+    customerSearch: 'Clients',
+    quickSale: 'Quick Sale',
+    consultation: 'Consultation',
+    checkout: 'Checkout',
+    devMenu: 'Developer Tools',
+    dataTools: 'Data Tools',
+    reporting: 'Reporting',
+    reportEmail: 'Report Email',
+    charts: 'Charts',
+    notifications: 'Notifications',
+    notificationSettings: 'Notification Settings',
+    releaseForm: 'Release Form',
+    customerReceipt: 'Receipt',
+    consultSheet: 'Consult Sheet',
+    productForm: 'Product',
+    backup: 'Local Backup',
+    clearDb: 'Clear Database',
+    repairCategories: 'Devices / Repairs',
+    deviceCategories: 'Device Categories',
+    customBuildItem: 'Custom Build',
+    technicians: 'Technicians',
+    cloverSettings: 'Clover',
+    twilioSettings: 'SMS / Twilio',
+  };
+  return titles[type] || 'Window';
+}
+
+function useMobileRecords(refreshKey: number) {
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadCore = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const api = window.api as any;
+      const [wos, saleRows, customerRows, techRows] = await Promise.all([
+        api.getWorkOrders?.({ limit: 2500, sortBy: 'activityAt', sortDir: 'desc' }) ?? api.dbGet('workOrders', { limit: 2500, sortBy: 'activityAt', sortDir: 'desc' }),
+        api.dbGet('sales', { limit: 2500, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
+        api.getCustomers?.().catch(() => api.dbGet('customers')) ?? api.dbGet('customers'),
+        api.dbGet('technicians').catch(() => []),
+      ]);
+      setWorkOrders(Array.isArray(wos) ? wos : []);
+      setSales(Array.isArray(saleRows) ? saleRows : []);
+      setCustomers(Array.isArray(customerRows) ? customerRows : []);
+      setTechnicians(Array.isArray(techRows) ? techRows : []);
+    } catch (e: any) {
+      setError(e?.message || 'Mobile data load failed.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCore();
+  }, [loadCore, refreshKey]);
+
+  useEffect(() => {
+    const api = window.api as any;
+    const refresh = () => void loadCore();
+    const offWO = api.onWorkOrdersChanged?.(refresh);
+    const offSales = api.onSalesChanged?.(refresh);
+    const offCustomers = api.onCustomersChanged?.(refresh);
+    const offTechs = api.onTechniciansChanged?.(refresh);
+    const offProducts = api.onProductsChanged?.(refresh);
+    return () => {
+      try { offWO && offWO(); } catch {}
+      try { offSales && offSales(); } catch {}
+      try { offCustomers && offCustomers(); } catch {}
+      try { offTechs && offTechs(); } catch {}
+      try { offProducts && offProducts(); } catch {}
+    };
+  }, [loadCore]);
+
+  return { workOrders, sales, customers, technicians, loading, error, reload: loadCore };
+}
+
+const MobileApp: React.FC = () => {
+  const [authLoading, setAuthLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudWarning, setCloudWarning] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const currentAuthUserIdRef = useRef<string | null>(null);
+
+  const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
+    const nextUserId = nextSession?.user?.id || null;
+    const isSameUser = !!nextUserId && currentAuthUserIdRef.current === nextUserId;
+    setSession(nextSession);
+
+    if (!nextUserId) {
+      currentAuthUserIdRef.current = null;
+      setStaffProfile(null);
+      setCloudReady(false);
+      setCloudWarning('');
+      setAccessError('');
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!isSameUser) {
+      setStaffProfile(null);
+      setCloudReady(false);
+      setCloudWarning('');
+    }
+
+    setAccessError('');
+    currentAuthUserIdRef.current = nextUserId;
+
+    const { data, error } = await supabase
+      .from('staff_profiles')
+      .select('id, shop_id, role, status, first_name, last_name, email')
+      .eq('user_id', nextUserId)
+      .maybeSingle();
+
+    if (error) {
+      setAccessError(error.message);
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!data || data.status !== 'active') {
+      setAccessError('Your login is valid, but no active POS staff profile is connected to this account.');
+      await supabase.auth.signOut();
+      setSession(null);
+      setAuthLoading(false);
+      return;
+    }
+
+    setStaffProfile(data as StaffProfile);
+    setAuthLoading(false);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      void loadStaffProfile(data.session);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void loadStaffProfile(nextSession);
+    });
+    return () => {
+      alive = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [loadStaffProfile]);
+
+  useEffect(() => {
+    const api = window.api as any;
+    let cancelled = false;
+    if (!api?.cloudSetSession) {
+      setCloudReady(true);
+      return () => { cancelled = true; };
+    }
+    if (!session?.access_token || !staffProfile?.shop_id) {
+      setCloudReady(false);
+      void api.cloudClearSession?.();
+      return () => { cancelled = true; };
+    }
+    const cfg = getSupabaseRuntimeConfig();
+    setCloudReady(false);
+    setCloudWarning('');
+    void api.cloudSetSession({
+      supabaseUrl: cfg.supabaseUrl,
+      supabasePublishableKey: cfg.supabasePublishableKey,
+      accessToken: session.access_token,
+      shopId: staffProfile.shop_id,
+    }).then((res: any) => {
+      if (cancelled) return;
+      if (res?.ok) {
+        setCloudReady(true);
+      } else {
+        setCloudWarning(res?.error || 'Cloud session could not be started. Showing local cached data.');
+        setCloudReady(true);
+      }
+    }).catch((e: any) => {
+      if (cancelled) return;
+      setCloudWarning(e?.message || 'Cloud session could not be started. Showing local cached data.');
+      setCloudReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [session?.access_token, staffProfile?.shop_id]);
+
+  if (authLoading) {
+    return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;
+  }
+
+  if (!session || !staffProfile) {
+    removeInitialHtmlLoader();
+    return (
+      <>
+        <LoginScreen onSignedIn={() => {
+          setAuthLoading(true);
+          supabase.auth.getSession().then(({ data }) => {
+            void loadStaffProfile(data.session);
+          });
+        }} />
+        {accessError ? <div className="mobile-toast mobile-toast-danger">{accessError}</div> : null}
+      </>
+    );
+  }
+
+  if (!cloudReady) {
+    return <StartupStatusScreen title="Connecting to Supabase" message="Checking shop database access..." error={cloudWarning || undefined} />;
+  }
+
+  removeInitialHtmlLoader();
+  return (
+    <PaginationProvider pageSize={30}>
+      <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
+      <MobileUpdateCheck />
+    </PaginationProvider>
+  );
+};
+
+function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<MobileMode>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [technicianFilter, setTechnicianFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [query, setQuery] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(35);
+  const [sheetRow, setSheetRow] = useState<MobileRow | null>(null);
+  const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
+  const modalCounterRef = useRef(0);
+  const deferredQuery = useDeferredValue(query);
+  const { workOrders, sales, customers, technicians, loading, error, reload } = useMobileRecords(refreshKey);
+
+  const openModal = useCallback((type: string, payload?: any) => {
+    if (payload !== undefined && payload !== null) {
+      storeWindowPayload(type, payload);
+    }
+    setDrawerOpen(false);
+    const id = `${type}-${++modalCounterRef.current}`;
+    setModalStack((stack) => [...stack, { id, type }]);
+  }, []);
+
+  const closeModal = useCallback((id: string) => {
+    setModalStack((stack) => stack.filter((entry) => entry.id !== id));
+    setRefreshKey((v) => v + 1);
+  }, []);
+
+  useEffect(() => {
+    registerOpenModal(openModal);
+    const api = window.api as any;
+    const methods = {
+      openNewWorkOrder: 'newWorkOrder',
+      openWorkOrder: 'newWorkOrder',
+      openNewSale: 'newSale',
+      openCalendar: 'calendar',
+      openClockIn: 'clockIn',
+      openQuoteGenerator: 'quoteGenerator',
+      openEod: 'eod',
+      openProducts: 'products',
+      openInventory: 'inventory',
+      openWorkOrderRepairPicker: 'workOrderRepairPicker',
+      openCustomerOverview: 'customerOverview',
+      openQuickSale: 'quickSale',
+      openConsultation: 'consultation',
+      openCheckout: 'checkout',
+      openDevMenu: 'devMenu',
+      openDataTools: 'dataTools',
+      openReporting: 'reporting',
+      openReportEmail: 'reportEmail',
+      openCharts: 'charts',
+      openNotifications: 'notifications',
+      openNotificationSettings: 'notificationSettings',
+      openReleaseForm: 'releaseForm',
+      openCustomerReceipt: 'customerReceipt',
+      openConsultSheet: 'consultSheet',
+      openProductForm: 'productForm',
+      openBackup: 'backup',
+      openRepairCategories: 'repairCategories',
+      openDeviceCategories: 'deviceCategories',
+      openClearDatabase: 'clearDb',
+      openCustomBuildItem: 'customBuildItem',
+      openCloverSettings: 'cloverSettings',
+      openTwilioSettings: 'twilioSettings',
+    } as Record<string, string>;
+    const originals = new Map<string, any>();
+    Object.entries(methods).forEach(([method, type]) => {
+      if (typeof api?.[method] !== 'function') return;
+      originals.set(method, api[method]);
+      api[method] = async (payload?: any) => {
+        openModal(type, payload);
+        return { ok: true };
+      };
+    });
+    return () => {
+      unregisterOpenModal();
+      originals.forEach((fn, method) => {
+        try { api[method] = fn; } catch {}
+      });
+    };
+  }, [openModal]);
+
+  const customerIndex = useMemo(() => {
+    const map: Record<number, any> = {};
+    customers.forEach((customer) => {
+      const id = Number(customer?.id);
+      if (!Number.isFinite(id)) return;
+      const composed = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
+      map[id] = {
+        ...customer,
+        name: composed || customer.name || customer.email || `Client #${id}`,
+        phone: customer.phone || '',
+        phoneAlt: customer.phoneAlt || '',
+        email: customer.email || '',
+      };
+    });
+    return map;
+  }, [customers]);
+
+  const techIndex = useMemo(() => {
+    const map: Record<string, string> = {};
+    technicians.forEach((tech) => {
+      const id = String(tech?.id || '').trim();
+      if (!id) return;
+      map[id] = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
+    });
+    return map;
+  }, [technicians]);
+
+  const rows = useMemo(() => {
+    const workOrderRows: MobileRow[] = workOrders.map((wo) => {
+      const customerId = Number(wo?.customerId);
+      const customer = Number.isFinite(customerId) ? customerIndex[customerId] : null;
+      const totals = computeTotals(wo);
+      const technicianId = String(wo?.assignedTo || '').trim();
+      const title = getItemSummary(wo) || wo?.productDescription || wo?.productCategory || 'Work order';
+      return {
+        type: 'workorder',
+        id: Number(wo?.id || 0),
+        customerId: Number.isFinite(customerId) ? customerId : undefined,
+        customerName: customer?.name || wo?.customerName || [wo?.firstName, wo?.lastName].filter(Boolean).join(' ').trim() || 'No client attached',
+        phone: customer?.phone || customer?.phoneAlt || wo?.customerPhone || wo?.phone || '',
+        email: customer?.email || wo?.customerEmail || '',
+        date: getActivityDate(wo),
+        originalDate: wo?.checkInAt ? safeDate(wo.checkInAt) : null,
+        status: normalizeStatus(wo, 'workorder'),
+        technicianId,
+        technicianLabel: techLabelFor(technicianId, techIndex),
+        title,
+        subtitle: wo?.productDescription || wo?.model || wo?.serial || '',
+        notes: wo?.problemInfo || wo?.problem || wo?.internalNotes || '',
+        total: totals.total,
+        remaining: totals.remaining,
+        source: wo,
+      };
+    });
+
+    const saleRows: MobileRow[] = sales.map((sale) => {
+      const customerId = Number(sale?.customerId);
+      const customer = Number.isFinite(customerId) ? customerIndex[customerId] : null;
+      const totals = computeTotals(sale);
+      const technicianId = String(sale?.assignedTo || '').trim();
+      return {
+        type: 'sale',
+        id: Number(sale?.id || 0),
+        customerId: Number.isFinite(customerId) ? customerId : undefined,
+        customerName: customer?.name || sale?.customerName || 'Walk-in sale',
+        phone: customer?.phone || customer?.phoneAlt || sale?.customerPhone || '',
+        email: customer?.email || sale?.customerEmail || '',
+        date: getActivityDate(sale),
+        originalDate: sale?.checkInAt ? safeDate(sale.checkInAt) : null,
+        status: normalizeStatus(sale, 'sale'),
+        technicianId,
+        technicianLabel: techLabelFor(technicianId, techIndex),
+        title: getItemSummary(sale) || 'Sale',
+        subtitle: sale?.category || sale?.condition || '',
+        notes: sale?.notes || '',
+        total: totals.total,
+        remaining: totals.remaining,
+        source: sale,
+      };
+    });
+
+    return [...workOrderRows, ...saleRows]
+      .filter((row) => row.id > 0)
+      .sort((a, b) => (b.date.getTime() - a.date.getTime()) || (b.id - a.id));
+  }, [customerIndex, sales, techIndex, workOrders]);
+
+  const filteredRows = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    const from = dateFrom ? safeDate(`${dateFrom}T00:00:00`) : null;
+    const to = dateTo ? safeDate(`${dateTo}T23:59:59`) : null;
+    return rows.filter((row) => {
+      if (mode === 'workorders' && row.type !== 'workorder') return false;
+      if (mode === 'sales' && row.type !== 'sale') return false;
+      if (statusFilter === 'closed' && row.status !== 'closed') return false;
+      if (statusFilter === 'open' && row.status === 'closed') return false;
+      if (technicianFilter === '__unassigned' && row.technicianId) return false;
+      if (technicianFilter && technicianFilter !== '__unassigned' && row.technicianId !== technicianFilter) return false;
+      if (from && row.date < from) return false;
+      if (to && row.date > to) return false;
+      if (!q) return true;
+      const haystack = [
+        invoiceNumber(row.id),
+        String(row.id),
+        row.customerName,
+        row.phone,
+        row.email,
+        row.title,
+        row.subtitle,
+        row.notes,
+        row.technicianLabel,
+        row.status,
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [dateFrom, dateTo, deferredQuery, mode, rows, statusFilter, technicianFilter]);
+
+  useEffect(() => {
+    setVisibleCount(35);
+  }, [dateFrom, dateTo, deferredQuery, mode, statusFilter, technicianFilter]);
+
+  const stats = useMemo(() => {
+    const workOrderCount = rows.filter((row) => row.type === 'workorder').length;
+    const saleCount = rows.filter((row) => row.type === 'sale').length;
+    const openCount = rows.filter((row) => row.status !== 'closed').length;
+    return { workOrderCount, saleCount, openCount, clients: customers.length };
+  }, [customers.length, rows]);
+
+  const visibleRows = filteredRows.slice(0, visibleCount);
+  const profileName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || profile.email;
+
+  const actionSheetActions = useMemo(() => sheetRow ? makeSheetActions(sheetRow, () => {
+    setSheetRow(null);
+    setRefreshKey((v) => v + 1);
+  }) : [], [sheetRow]);
+
+  return (
+    <main className="mobile-shell">
+      <header className="mobile-topbar">
+        <button type="button" className="mobile-icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
+          <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
+        </button>
+        <div className="mobile-brand-block">
+          <div className="mobile-brand">GadgetBoy POS</div>
+          <div className="mobile-subtitle">{stats.openCount} open, {stats.clients} clients</div>
+        </div>
+        <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
+          <span aria-hidden="true">!</span>
+        </button>
+      </header>
+
+      <section className="mobile-search-panel">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search invoice, client, phone, device..."
+          aria-label="Search POS records"
+        />
+        {query ? <button type="button" onClick={() => setQuery('')}>Clear</button> : null}
+      </section>
+
+      <section className="mobile-tabbar" aria-label="Record type">
+        <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All</button>
+        <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+        <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales</button>
+      </section>
+
+      <section className="mobile-stat-strip" aria-label="Quick stats">
+        <div><strong>{stats.workOrderCount}</strong><span>Work Orders</span></div>
+        <div><strong>{stats.saleCount}</strong><span>Sales</span></div>
+        <div><strong>{stats.openCount}</strong><span>Open</span></div>
+      </section>
+
+      {cloudWarning ? <div className="mobile-cloud-warning">{cloudWarning}</div> : null}
+      {error ? <div className="mobile-cloud-warning danger">{error}</div> : null}
+
+      <section className="mobile-record-list" aria-live="polite">
+        {loading ? <div className="mobile-loading-inline">Loading shop data...</div> : null}
+        {!loading && visibleRows.length === 0 ? (
+          <div className="mobile-empty-state">
+            <strong>No matching records</strong>
+            <span>Try clearing filters or opening the menu to start a new ticket.</span>
+          </div>
+        ) : null}
+        {visibleRows.map((row) => (
+          <MobileRecordCard
+            key={`${row.type}-${row.id}`}
+            row={row}
+            onOpen={() => openRecord(row)}
+            onActions={() => setSheetRow(row)}
+          />
+        ))}
+        {!loading && filteredRows.length > visibleRows.length ? (
+          <button type="button" className="mobile-load-more" onClick={() => setVisibleCount((count) => count + 35)}>
+            Load {Math.min(35, filteredRows.length - visibleRows.length)} more
+          </button>
+        ) : null}
+      </section>
+
+      <nav className="mobile-quickbar" aria-label="Quick actions">
+        <button type="button" onClick={() => openModal('newWorkOrder')}>New WO</button>
+        <button type="button" onClick={() => openModal('newSale')}>New Sale</button>
+        <button type="button" onClick={() => openModal('customerSearch')}>Clients</button>
+        <button type="button" onClick={() => void reload()}>Sync</button>
+      </nav>
+
+      <MobileDrawer
+        open={drawerOpen}
+        profileName={profileName}
+        role={profile.role}
+        stats={stats}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        technicianFilter={technicianFilter}
+        setTechnicianFilter={setTechnicianFilter}
+        technicians={technicians}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+        onClose={() => setDrawerOpen(false)}
+        onOpenModal={openModal}
+        onRefresh={() => {
+          setRefreshKey((v) => v + 1);
+          void reload();
+        }}
+        onSignOut={onSignOut}
+      />
+
+      {sheetRow ? (
+        <ActionSheet
+          row={sheetRow}
+          actions={actionSheetActions}
+          onClose={() => setSheetRow(null)}
+        />
+      ) : null}
+
+      {modalStack.map((entry, index) => (
+        <MobileModalShell
+          key={entry.id}
+          entry={entry}
+          zIndex={300 + index * 10}
+          onClose={() => closeModal(entry.id)}
+        />
+      ))}
+    </main>
+  );
+}
+
+function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: () => void; onActions: () => void }) {
+  const longPress = useLongPress(onActions);
+  return (
+    <article
+      className={`mobile-record-card ${row.type} ${row.status === 'closed' ? 'closed' : 'open'}`}
+      {...longPress}
+      onClick={() => {
+        if (longPress.wasLongPress()) return;
+        onOpen();
+      }}
+    >
+      <div className="mobile-card-top">
+        <div>
+          <div className="mobile-invoice">{invoiceNumber(row.id)}</div>
+          <div className="mobile-card-date">{dateLabel(row.date)}</div>
+        </div>
+        <button
+          type="button"
+          className="mobile-card-menu"
+          onClick={(event) => {
+            event.stopPropagation();
+            onActions();
+          }}
+          aria-label={`More actions for ${invoiceNumber(row.id)}`}
+        >
+          ...
+        </button>
+      </div>
+      <div className="mobile-card-main">
+        <h2>{row.title || (row.type === 'workorder' ? 'Work order' : 'Sale')}</h2>
+        <p>{row.customerName}</p>
+        {row.subtitle ? <span>{row.subtitle}</span> : null}
+      </div>
+      <div className="mobile-card-meta">
+        <span className={`mobile-status-pill ${row.status.replace(' ', '-')}`}>{row.status}</span>
+        <span>{row.type === 'workorder' ? 'WO' : 'Sale'}</span>
+        {row.technicianLabel ? <span>{row.technicianLabel}</span> : <span>Unassigned</span>}
+      </div>
+      <div className="mobile-card-money">
+        <span>Total <strong>{money(row.total)}</strong></span>
+        <span>Due <strong>{money(row.remaining)}</strong></span>
+      </div>
+    </article>
+  );
+}
+
+function MobileDrawer(props: {
+  open: boolean;
+  profileName: string;
+  role: string;
+  stats: { workOrderCount: number; saleCount: number; openCount: number; clients: number };
+  statusFilter: StatusFilter;
+  setStatusFilter: (v: StatusFilter) => void;
+  technicianFilter: string;
+  setTechnicianFilter: (v: string) => void;
+  technicians: any[];
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
+  onClose: () => void;
+  onOpenModal: (type: string, payload?: any) => void;
+  onRefresh: () => void;
+  onSignOut: () => void;
+}) {
+  const { open, profileName, role, stats, statusFilter, setStatusFilter, technicianFilter, setTechnicianFilter, technicians, dateFrom, setDateFrom, dateTo, setDateTo, onClose, onOpenModal, onRefresh, onSignOut } = props;
+  const primaryActions = [
+    ['newWorkOrder', 'New Work Order'],
+    ['newSale', 'New Sale'],
+    ['customerSearch', 'Search / Add Client'],
+    ['quickSale', 'Quick Sale'],
+    ['consultation', 'Consultation'],
+    ['quoteGenerator', 'Quote Generator'],
+  ] as const;
+  const operations = [
+    ['calendar', 'Calendar'],
+    ['clockIn', 'Clock In'],
+    ['notifications', 'Notifications'],
+    ['notificationSettings', 'Notification Settings'],
+  ] as const;
+  const admin = [
+    ['repairCategories', 'Devices / Repairs'],
+    ['deviceCategories', 'Device Categories'],
+    ['products', 'Products'],
+    ['inventory', 'Inventory'],
+    ['technicians', 'Technicians'],
+    ['eod', 'End of Day Reports'],
+    ['reporting', 'Reporting'],
+    ['charts', 'Charts'],
+    ['backup', 'Local Backup'],
+    ['dataTools', 'Data Tools'],
+  ] as const;
+  const integrations = [
+    ['cloverSettings', 'Clover'],
+    ['twilioSettings', 'SMS / Twilio'],
+  ] as const;
+
+  if (!open) return null;
+
+  return (
+    <div className="mobile-drawer-layer">
+      <button type="button" className="mobile-drawer-scrim" onClick={onClose} aria-label="Close menu" />
+      <aside className="mobile-drawer">
+        <header className="mobile-drawer-header">
+          <div>
+            <strong>{profileName}</strong>
+            <span>{role} session</span>
+          </div>
+          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
+        </header>
+
+        <section className="mobile-drawer-stats">
+          <div><strong>{stats.openCount}</strong><span>Open</span></div>
+          <div><strong>{stats.workOrderCount}</strong><span>WO</span></div>
+          <div><strong>{stats.saleCount}</strong><span>Sales</span></div>
+          <div><strong>{stats.clients}</strong><span>Clients</span></div>
+        </section>
+
+        <DrawerSection title="Create">
+          {primaryActions.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        </DrawerSection>
+
+        <DrawerSection title="Operations">
+          {operations.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        </DrawerSection>
+
+        <DrawerSection title="Filters">
+          <label>
+            Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+              <option value="all">All records</option>
+              <option value="open">Open only</option>
+              <option value="closed">Closed only</option>
+            </select>
+          </label>
+          <label>
+            Technician
+            <select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)}>
+              <option value="">All technicians</option>
+              <option value="__unassigned">Unassigned</option>
+              {technicians.map((tech) => {
+                const id = String(tech?.id || '').trim();
+                if (!id) return null;
+                const label = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
+                return <option key={id} value={id}>{label}</option>;
+              })}
+            </select>
+          </label>
+          <div className="mobile-date-grid">
+            <label>
+              From
+              <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            </label>
+            <label>
+              To
+              <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </label>
+          </div>
+        </DrawerSection>
+
+        <DrawerSection title="Admin">
+          {admin.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        </DrawerSection>
+
+        <DrawerSection title="Integrations">
+          {integrations.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+        </DrawerSection>
+
+        <div className="mobile-drawer-footer">
+          <button type="button" onClick={onRefresh}>Sync now</button>
+          <button type="button" className="danger" onClick={onSignOut}>Sign out</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function DrawerSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mobile-drawer-section">
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function DrawerButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="mobile-drawer-button" onClick={onClick}>
+      <span>{label}</span>
+      <span aria-hidden="true">&gt;</span>
+    </button>
+  );
+}
+
+function ActionSheet({ row, actions, onClose }: { row: MobileRow; actions: SheetAction[]; onClose: () => void }) {
+  return (
+    <div className="mobile-action-layer">
+      <button type="button" className="mobile-action-scrim" onClick={onClose} aria-label="Close actions" />
+      <section className="mobile-action-sheet" role="dialog" aria-modal="true" aria-label={`Actions for ${invoiceNumber(row.id)}`}>
+        <div className="mobile-sheet-grabber" />
+        <header>
+          <span>{row.type === 'workorder' ? 'Work Order' : 'Sale'}</span>
+          <strong>{invoiceNumber(row.id)}</strong>
+          <p>{row.customerName}</p>
+        </header>
+        <div className="mobile-action-list">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              disabled={action.disabled}
+              className={action.danger ? 'danger' : ''}
+              onClick={async () => {
+                if (action.disabled) return;
+                await action.onPress();
+                onClose();
+              }}
+            >
+              <span>{action.label}</span>
+              {action.detail ? <small>{action.detail}</small> : null}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="mobile-sheet-cancel" onClick={onClose}>Cancel</button>
+      </section>
+    </div>
+  );
+}
+
+function openRecord(row: MobileRow) {
+  if (row.type === 'workorder') {
+    void window.api.openNewWorkOrder?.({ workOrderId: row.id });
+    return;
+  }
+  void window.api.openNewSale?.({ id: row.id });
+}
+
+function makeSheetActions(row: MobileRow, afterWrite: () => void): SheetAction[] {
+  const hasCustomer = !!row.customerId;
+  const formattedPhone = (formatPhone(String(row.phone || '')) || String(row.phone || '')).trim();
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore
+    }
+  };
+
+  if (row.type === 'workorder') {
+    return [
+      { label: 'Edit / Open', onPress: () => window.api.openNewWorkOrder?.({ workOrderId: row.id }) },
+      { label: 'Checkout', onPress: () => window.api.openCheckout?.({ workOrderId: row.id }) },
+      { label: 'View Client', disabled: !hasCustomer, onPress: () => window.api.openCustomerOverview?.(row.customerId as number) },
+      { label: 'Copy Invoice #', detail: invoiceNumber(row.id), onPress: () => copy(invoiceNumber(row.id)) },
+      { label: 'Copy Phone', detail: formattedPhone || undefined, disabled: !formattedPhone, onPress: () => copy(formattedPhone) },
+      { label: 'Customer Receipt', onPress: () => window.api.openCustomerReceipt?.({ workOrderId: row.id }) },
+      { label: 'Release Form', onPress: () => window.api.openReleaseForm?.({ workOrderId: row.id }) },
+      {
+        label: 'Duplicate',
+        onPress: async () => {
+          const nowIso = new Date().toISOString();
+          const draft = { ...row.source };
+          delete draft.id;
+          draft.status = 'open';
+          draft.amountPaid = 0;
+          draft.checkInAt = nowIso;
+          draft.activityAt = nowIso;
+          draft.totals = computeTotals(draft);
+          await window.api.dbAdd?.('workOrders', draft);
+          afterWrite();
+        },
+      },
+      row.remaining > 0 ? {
+        label: 'Mark Paid in Full',
+        onPress: async () => {
+          const totals = computeTotals(row.source);
+          await window.api.dbUpdate?.('workOrders', row.id, { ...row.source, amountPaid: totals.total, totals: { ...totals, remaining: 0 }, status: 'closed' });
+          afterWrite();
+        },
+      } : {
+        label: 'Reopen',
+        onPress: async () => {
+          const totals = computeTotals(row.source);
+          await window.api.dbUpdate?.('workOrders', row.id, { ...row.source, totals, status: 'open' });
+          afterWrite();
+        },
+      },
+      {
+        label: 'Delete',
+        danger: true,
+        onPress: async () => {
+          const ok = window.confirm(`Delete work order ${invoiceNumber(row.id)}? This cannot be undone.`);
+          if (!ok) return;
+          await window.api.dbDelete?.('workOrders', row.id);
+          afterWrite();
+        },
+      },
+    ];
+  }
+
+  return [
+    { label: 'Edit / Open', onPress: () => window.api.openNewSale?.({ id: row.id }) },
+    { label: 'View Client', disabled: !hasCustomer, onPress: () => window.api.openCustomerOverview?.(row.customerId as number) },
+    { label: 'Copy Invoice #', detail: invoiceNumber(row.id), onPress: () => copy(invoiceNumber(row.id)) },
+    { label: 'Copy Phone', detail: formattedPhone || undefined, disabled: !formattedPhone, onPress: () => copy(formattedPhone) },
+    {
+      label: 'Delete',
+      danger: true,
+      onPress: async () => {
+        const ok = window.confirm(`Delete sale ${invoiceNumber(row.id)}? This cannot be undone.`);
+        if (!ok) return;
+        await window.api.dbDelete?.('sales', row.id);
+        afterWrite();
+      },
+    },
+  ];
+}
+
+export default MobileApp;
