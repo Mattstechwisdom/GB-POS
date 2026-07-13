@@ -196,6 +196,7 @@ function removeInitialHtmlLoader() {
 }
 
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
+	removeInitialHtmlLoader();
 	root.render(
 		<Suspense fallback={<LoadingScreen />}>
 			{node}

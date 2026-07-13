@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.85 (2026-07-13)
+- Windows: removes the startup loading overlay for every child-window route so New Work Order and related windows render normally.
+
 ## v0.4.84 (2026-07-13)
 - Supabase: waits for the cloud session and verifies cloud database access before showing the main POS tables.
 - Supabase: successful cloud reads now seed the local cache so recently loaded records remain visible offline.
