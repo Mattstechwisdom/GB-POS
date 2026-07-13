@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - name: Setup Java for Android
@@ -88,9 +88,11 @@ jobs:
       - name: Build Android APK
         shell: pwsh
         run: |
-          npm run android:sync
+          npm.cmd run android:sync
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location android
           .\gradlew.bat assembleDebug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
           $version = $env:RELEASE_VERSION
           $apkSource = 'android/app/build/outputs/apk/debug/app-debug.apk'
