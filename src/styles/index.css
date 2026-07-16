@@ -154,6 +154,132 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   z-index: 30;
 }
 
+.gb-wo-parts-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.gb-wo-parts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.gb-wo-parts-source-pill {
+  max-width: 14rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(57, 255, 20, 0.35);
+  border-radius: 999px;
+  background: rgba(57, 255, 20, 0.08);
+  color: #bbf7d0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-wo-parts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(8.5rem, 0.7fr)) repeat(2, minmax(14rem, 1.3fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.gb-wo-parts-date-field,
+.gb-wo-parts-url-field,
+.gb-wo-parts-notes-field,
+.gb-wo-parts-actions {
+  min-width: 0;
+}
+
+.gb-wo-parts-notes-field,
+.gb-wo-parts-actions {
+  grid-column: span 2;
+}
+
+.gb-wo-parts-control,
+.gb-wo-parts-link-button,
+.gb-wo-parts-secondary-button,
+.gb-wo-parts-save-button {
+  width: 100%;
+  min-height: 2.45rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.gb-wo-parts-control {
+  margin-top: 0.25rem;
+  border: 1px solid #3f3f46;
+  background: #18181b;
+  color: #f4f4f5;
+  padding: 0.45rem 0.65rem;
+  outline: none;
+}
+
+.gb-wo-parts-control:focus {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.12);
+}
+
+.gb-wo-parts-button-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  min-width: 0;
+}
+
+.gb-wo-parts-link-button {
+  border: 1px solid var(--neon-green);
+  background: var(--neon-green);
+  color: #09090b;
+  font-weight: 900;
+  padding: 0.45rem 0.7rem;
+  text-align: center;
+}
+
+.gb-wo-parts-tracking-button {
+  border-color: #38bdf8;
+  background: #38bdf8;
+}
+
+.gb-wo-parts-secondary-button,
+.gb-wo-parts-save-button {
+  border: 1px solid #3f3f46;
+  padding: 0.45rem 0.7rem;
+  font-weight: 800;
+}
+
+.gb-wo-parts-secondary-button {
+  background: #18181b;
+  color: #e4e4e7;
+}
+
+.gb-wo-parts-secondary-button:hover {
+  border-color: #71717a;
+}
+
+.gb-wo-parts-clear-button:hover {
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+.gb-wo-parts-save-button {
+  background: var(--neon-green);
+  border-color: var(--neon-green);
+  color: #09090b;
+}
+
+.gb-wo-parts-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
 .gb-wo-top-row {
   position: relative;
   display: grid;

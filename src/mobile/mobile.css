@@ -1877,22 +1877,26 @@
   max-width: 100%;
   border-radius: 8px !important;
   background: #111114 !important;
+  padding: 0.8rem !important;
 }
 
-.gbpos-mobile .gb-wo-parts-card > .flex {
-  align-items: flex-start;
-  gap: 0.7rem;
+.gbpos-mobile .gb-wo-parts-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
 }
 
-.gbpos-mobile .gb-wo-parts-card > .flex > div {
-  max-width: 8.5rem;
-  text-align: right;
+.gbpos-mobile .gb-wo-parts-source-pill {
+  max-width: 100%;
+  justify-self: start;
+  text-align: left;
   line-height: 1.15;
 }
 
 .gbpos-mobile .gb-wo-parts-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 0.75rem !important;
+  gap: 0.7rem !important;
+  align-items: end;
 }
 
 .gbpos-mobile .gb-wo-parts-grid > * {
@@ -1914,21 +1918,22 @@
   font-weight: 800;
 }
 
-.gbpos-mobile .gb-wo-parts-grid input {
+.gbpos-mobile .gb-wo-parts-control {
   min-height: 2.75rem;
+  font-size: 0.95rem;
 }
 
 .gbpos-mobile .gb-wo-parts-grid button {
   min-height: 2.75rem;
 }
 
+.gbpos-mobile .gb-wo-parts-button-row {
+  grid-template-columns: minmax(0, 1fr) 4.25rem;
+}
+
 .gbpos-mobile .gb-wo-parts-actions {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.gbpos-mobile .gb-wo-parts-actions button:last-child {
-  grid-column: 1 / -1;
 }
 
 .gbpos-mobile .gb-wo-notes-card {

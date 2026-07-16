@@ -625,10 +625,12 @@ const MobileAppRuntime: React.FC = () => {
 };
 
 function MobileDrawerPreview() {
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
   const modalCounterRef = useRef(0);
   const noop = () => undefined;
   const openModal = (type: string) => {
+    setDrawerOpen(false);
     const id = `${type}-${++modalCounterRef.current}`;
     setModalStack((stack) => [...stack, { id, type }]);
   };
@@ -639,7 +641,7 @@ function MobileDrawerPreview() {
   return (
     <main className="mobile-shell">
       <header className="mobile-topbar">
-        <button type="button" className="mobile-icon-button" aria-label="Open menu">
+        <button type="button" className="mobile-icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
           <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
         </button>
         <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
@@ -660,10 +662,10 @@ function MobileDrawerPreview() {
         </button>
       </section>
       <MobileDrawer
-        open
+        open={drawerOpen}
         profileName="GadgetBoy Preview"
         role="mobile layout"
-        onClose={noop}
+        onClose={() => setDrawerOpen(false)}
         onOpenModal={openModal}
         onRefresh={noop}
         onSignOut={noop}
@@ -1132,6 +1134,10 @@ function MobileDrawer(props: {
     ['dataTools', 'Data Tools'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  const handleOpenModal = (type: string) => {
+    onClose();
+    onOpenModal(type);
+  };
 
   if (!open) return null;
 
@@ -1148,21 +1154,21 @@ function MobileDrawer(props: {
         </header>
 
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
-          <DrawerButton label="Generate Quote" tone="green" featured onClick={() => onOpenModal('quoteGenerator')} />
-          <DrawerButton label="Consultation" tone="blue" featured onClick={() => onOpenModal('consultation')} />
-          <DrawerButton label="Quick Sale" tone="purple" featured onClick={() => onOpenModal('quickSale')} />
+          <DrawerButton label="Generate Quote" tone="green" featured onClick={() => handleOpenModal('quoteGenerator')} />
+          <DrawerButton label="Consultation" tone="blue" featured onClick={() => handleOpenModal('consultation')} />
+          <DrawerButton label="Quick Sale" tone="purple" featured onClick={() => handleOpenModal('quickSale')} />
         </div>
 
         <DrawerSection title="Client Database" open={openSections.client} tone="default" onToggle={() => toggleSection('client')}>
-          {clientDatabase.map(([type, label]) => <DrawerButton key={label} label={label} onClick={() => onOpenModal(type)} />)}
+          {clientDatabase.map(([type, label]) => <DrawerButton key={label} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
-          {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+          {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
         <DrawerSection title="Admin" open={openSections.admin} tone="red" onToggle={() => toggleSection('admin')}>
-          {adminTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => onOpenModal(type)} />)}
+          {adminTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
         <div className="mobile-drawer-footer">
