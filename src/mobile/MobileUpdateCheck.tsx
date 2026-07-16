@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 declare global {
   interface Window {
@@ -29,8 +29,8 @@ type MobileUpdate = {
 };
 
 const repoLatestUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases/latest';
+const repoReleasesUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases?per_page=10';
 const skippedKey = 'gbpos-mobile-skipped-update';
-const skippedSessionKey = 'gbpos-mobile-skipped-update-session';
 
 type MobileUpdateCheckProps = {
   checkKey?: string;
@@ -53,13 +53,16 @@ function compareVersions(aRaw: string, bRaw: string): number {
   return 0;
 }
 
-async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
-  const res = await fetch(repoLatestUrl, {
+async function fetchGithubJson<T>(url: string): Promise<T | null> {
+  const res = await fetch(url, {
     headers: { Accept: 'application/vnd.github+json' },
     cache: 'no-store',
   });
   if (!res.ok) return null;
-  const release = (await res.json()) as GitHubRelease;
+  return (await res.json()) as T;
+}
+
+function releaseToMobileUpdate(release: GitHubRelease): MobileUpdate | null {
   const version = normalizeVersion(release.tag_name || '');
   if (!version || compareVersions(version, __APP_VERSION__) <= 0) return null;
 
@@ -79,10 +82,25 @@ async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
   };
 }
 
+async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
+  const latest = await fetchGithubJson<GitHubRelease>(repoLatestUrl);
+  const latestUpdate = latest ? releaseToMobileUpdate(latest) : null;
+  if (latestUpdate) return latestUpdate;
+
+  const releases = await fetchGithubJson<GitHubRelease[]>(repoReleasesUrl);
+  if (!Array.isArray(releases)) return null;
+
+  return releases
+    .map(releaseToMobileUpdate)
+    .filter((item): item is MobileUpdate => Boolean(item))
+    .sort((a, b) => compareVersions(b.version, a.version))[0] || null;
+}
+
 export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500 }: MobileUpdateCheckProps) {
   const [update, setUpdate] = useState<MobileUpdate | null>(null);
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
+  const skippedVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -98,8 +116,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
         } catch {
           // ignore legacy skip cleanup
         }
-        const skipped = window.sessionStorage.getItem(skippedSessionKey);
-        if (skipped === `${checkKey}:${next.version}`) return;
+        if (skippedVersionRef.current === `${checkKey}:${next.version}`) return;
         setUpdate(next);
       } catch {
         // Update checks should never block POS startup.
@@ -155,28 +172,31 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   };
 
   const skip = () => {
-    try {
-      window.sessionStorage.setItem(skippedSessionKey, `${checkKey}:${update.version}`);
-    } catch {
-      // ignore
-    }
+    skippedVersionRef.current = `${checkKey}:${update.version}`;
     setUpdate(null);
   };
 
   return (
-    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/70 px-4 py-6">
-      <div className="w-full max-w-sm rounded-lg border border-[#39FF14]/40 bg-zinc-950 text-zinc-100 shadow-2xl">
+    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-update-title"
+        className="w-full max-w-sm rounded-lg border border-[#39FF14]/40 bg-zinc-950 text-zinc-100 shadow-2xl"
+      >
         <div className="border-b border-zinc-800 px-4 py-3">
-          <div className="text-xs uppercase tracking-[0.18em] text-[#39FF14]">Android Update</div>
-          <div className="mt-1 text-lg font-semibold">GadgetBoy POS {update.version}</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-[#39FF14]">Update Available</div>
+          <div id="mobile-update-title" className="mt-1 text-lg font-semibold">
+            GadgetBoy POS {update.version}
+          </div>
         </div>
         <div className="space-y-3 px-4 py-4 text-sm text-zinc-300">
-          <p>A newer Android APK is available for this device.</p>
+          <p>A newer Android APK is ready for this device.</p>
           <div className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
             {update.apkName}
           </div>
           <p className="text-xs text-zinc-500">
-            Windows devices use the Windows installer update feed separately.
+            Android will open the APK download. Confirm the installer prompt to finish the update.
           </p>
         </div>
         <div className="flex gap-2 border-t border-zinc-800 px-4 py-3">
@@ -186,7 +206,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
             disabled={opening}
             className="flex-1 rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black"
           >
-            {opening ? 'Opening...' : 'Download APK'}
+            {opening ? 'Opening...' : 'Update now'}
           </button>
           <button
             type="button"

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.99 (2026-07-16)
+- Mobile Updates: finds the newest GitHub release that includes an Android APK instead of ignoring updates when the latest release asset set is incomplete.
+- Mobile Updates: shows a dimmed in-app update prompt after login with Update now and Skip for now actions.
+- Mobile Updates: makes Skip for now apply only to the current open app session so the reminder returns on relaunch.
+
 ## v0.4.98 (2026-07-16)
 - Inventory: refreshes the Parts/Products window with compact catalog-style rows, search-bar filters, low-stock filtering, and add/edit controls in the detail pane.
 - Inventory: adds multi-device associations for shared repair parts like universal power cables.
