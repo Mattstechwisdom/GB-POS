@@ -1089,14 +1089,16 @@
   order: 2;
 }
 
-.gbpos-mobile .gb-repair-picker-window {
+.gbpos-mobile .gb-repair-picker-window,
+.gbpos-mobile .gb-repair-catalog-window {
   height: auto !important;
   min-height: 100%;
   overflow: visible !important;
   background: #09090b !important;
 }
 
-.gbpos-mobile .gb-repair-picker-layout {
+.gbpos-mobile .gb-repair-picker-layout,
+.gbpos-mobile .gb-repair-catalog-layout {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) !important;
   gap: 0.85rem !important;
@@ -1110,6 +1112,8 @@
 
 .gbpos-mobile .gb-repair-picker-list-pane,
 .gbpos-mobile .gb-repair-picker-form-pane,
+.gbpos-mobile .gb-repair-catalog-list-pane,
+.gbpos-mobile .gb-repair-catalog-form-pane,
 .gbpos-mobile .gb-repair-list,
 .gbpos-mobile .gb-repair-item-form {
   width: 100%;
@@ -1118,6 +1122,31 @@
   height: auto !important;
   min-height: auto !important;
   overflow: visible !important;
+}
+
+.gbpos-mobile .gb-repair-catalog-form-pane > .flex.gap-2,
+.gbpos-mobile .gb-repair-catalog-form-pane > .flex-1 {
+  width: 100%;
+  max-width: 100%;
+}
+
+.gbpos-mobile .gb-repair-catalog-form-pane > .flex.gap-2 {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.45rem !important;
+  margin-bottom: 0.65rem !important;
+  padding: 0.45rem 0;
+  background: #09090b;
+}
+
+.gbpos-mobile .gb-repair-catalog-form-pane > .flex.gap-2 button {
+  width: 100%;
+  padding: 0.65rem 0.35rem !important;
+  font-size: 0.82rem !important;
+  white-space: nowrap;
 }
 
 .gbpos-mobile .gb-repair-form-body {
@@ -1157,8 +1186,40 @@
   width: 100%;
 }
 
+.gbpos-mobile .gb-repair-clear-button {
+  grid-column: 1 / -1;
+}
+
 .gbpos-mobile .gb-repair-device-picker {
   width: 100%;
+}
+
+.gbpos-mobile .gb-repair-list-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111114;
+  color: #f4f4f5;
+  font-weight: 800;
+}
+
+.gbpos-mobile .gb-repair-list-toggle strong {
+  color: #39ff14;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.gbpos-mobile .gb-repair-list-section {
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  overflow: visible;
 }
 
 .gbpos-mobile .gb-repair-table-shell {
@@ -1173,6 +1234,10 @@
   height: auto !important;
   max-height: 24rem;
   max-width: 100%;
+}
+
+.gbpos-mobile .gb-repair-catalog-window .gb-repair-table-scroll {
+  max-height: 23rem;
 }
 
 .gbpos-mobile .gb-repair-table {
@@ -1343,6 +1408,38 @@
 
 .gbpos-mobile .gb-repair-table td[colspan] {
   grid-column: 1 / -1;
+}
+
+.gbpos-mobile .gb-repair-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0 0;
+}
+
+.gbpos-mobile .gb-repair-pagination button,
+.gbpos-mobile .gb-repair-pagination select {
+  min-height: 2.35rem;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+  color: #f4f4f5;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.gbpos-mobile .gb-repair-pagination button:disabled {
+  opacity: 0.42;
+}
+
+.gbpos-mobile .gb-repair-pagination label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 @media (max-width: 380px) {

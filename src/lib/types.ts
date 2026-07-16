@@ -23,6 +23,16 @@ export interface WorkOrderItem {
   description: string;
   qty?: number;
   unitPrice?: number;
+  repairTemplateId?: string | number;
+  repairCategory?: string;
+  repair?: string;
+  parts?: number;
+  labor?: number;
+  internalCost?: number;
+  markupPct?: number | string;
+  stockSource?: "repairCategories" | "products" | string;
+  stockConsumed?: boolean;
+  trackStock?: boolean;
   partSource?: string;
   orderSourceUrl?: string;
 }
@@ -142,6 +152,7 @@ export interface RepairItem {
   laborCost: number;
   // Internal cost for reporting/analytics only; not shown in work order UI
   internalCost?: number;
+  markupPct?: number | string;
   orderDate?: string;      // ISO
   estDelivery?: string;    // ISO
   partSource?: string;

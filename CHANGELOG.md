@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0 (2026-07-16)
+- Inventory: adds markup-aware part pricing with a default 5% markup and quick presets for 5%, 10%, 15%, 20%, and 25%.
+- Inventory: turns saved vendor/order URLs into an Order URL button after paste, Enter, blur, or save, with Edit and Clear actions.
+- Supabase: adds markup sync fields for inventory products and repair templates so part pricing settings persist across devices.
+- Backup Import: preserves inventory and repair-template markup percentages during Supabase backup imports.
+- Repairs: applies the same order URL button behavior to repair templates and selected work-order repair parts.
+- Mobile: fixes the Devices/Repairs window so the catalog list, form, and Repair Selection table fit and scroll correctly on phone screens.
+
 ## v0.4.99 (2026-07-16)
 - Mobile Updates: finds the newest GitHub release that includes an Android APK instead of ignoring updates when the latest release asset set is incomplete.
 - Mobile Updates: shows a dimmed in-app update prompt after login with Update now and Skip for now actions.

@@ -41,6 +41,22 @@ const DUMMY_DEVICE_CATEGORIES = [
   'Other'
 ];
 
+const MARKUP_PRESETS = [5, 10, 15, 20, 25];
+const DEFAULT_MARKUP_PCT = '5';
+
+function markedUpPrice(cost: unknown, pct: unknown): number | undefined {
+  const c = Number(cost);
+  const p = Number(pct);
+  if (!Number.isFinite(c) || c < 0 || !Number.isFinite(p) || p < 0) return undefined;
+  return Math.round(c * (1 + p / 100) * 100) / 100;
+}
+
+function normalizeOrderUrl(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return /^(https?:)?\/\//i.test(raw) ? raw.replace(/^\/\//, 'https://') : `https://${raw}`;
+}
+
 export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelete, mode = 'admin', showCreateAction = true }: RepairItemFormProps) {
   // treat 'workorderpicker' as 'workorder' for UI logic
   const effectiveMode = mode === 'workorderpicker' ? 'workorder' : mode;
@@ -54,7 +70,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const repairCategoryRef = useRef<HTMLInputElement>(null);
   // Whether to show the device category field
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
-  const [markupPct, setMarkupPct] = useState<string>('');
+  const [markupPct, setMarkupPct] = useState<string>(DEFAULT_MARKUP_PCT);
+  const [orderUrlEditing, setOrderUrlEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
     repairCategory: '',
@@ -63,6 +80,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     partCost: 0,
     laborCost: 0,
     internalCost: undefined,
+    markupPct: DEFAULT_MARKUP_PCT,
     orderDate: '',
     estDelivery: '',
     partSource: '',
@@ -145,8 +163,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setFormData({
         ...selectedItem,
         orderDate: selectedItem.orderDate || '',
-        estDelivery: selectedItem.estDelivery || ''
+        estDelivery: selectedItem.estDelivery || '',
+        markupPct: (selectedItem as any).markupPct ?? DEFAULT_MARKUP_PCT,
       });
+      setMarkupPct(String((selectedItem as any).markupPct ?? DEFAULT_MARKUP_PCT));
+      setOrderUrlEditing(!selectedItem.orderSourceUrl);
       setDeviceCategoryInput(selectedItem.category || '');
       setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
@@ -159,6 +180,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         partCost: 0,
         laborCost: 0,
         internalCost: undefined,
+        markupPct: DEFAULT_MARKUP_PCT,
         orderDate: '',
         estDelivery: '',
         partSource: '',
@@ -169,6 +191,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         stockCount: undefined,
         lowStockThreshold: undefined,
       });
+      setMarkupPct(DEFAULT_MARKUP_PCT);
+      setOrderUrlEditing(false);
       setDeviceCategoryInput('');
       setRepairCategoryInput('');
       setHasDeviceCategory(false);
@@ -186,6 +210,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       partCost: 0,
       laborCost: 0,
       internalCost: undefined,
+      markupPct: DEFAULT_MARKUP_PCT,
       orderDate: '',
       estDelivery: '',
       partSource: '',
@@ -201,7 +226,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setHasDeviceCategory(false);
     setShowCategoryDropdown(false);
     setShowRepairCategoryDropdown(false);
-    setMarkupPct('');
+    setMarkupPct(DEFAULT_MARKUP_PCT);
+    setOrderUrlEditing(false);
   };
 
   const submitDisabled =
@@ -229,6 +255,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       partCost,
       laborCost,
       internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
+      markupPct: markupPct || DEFAULT_MARKUP_PCT,
+      orderSourceUrl: normalizeOrderUrl(formData.orderSourceUrl),
       id: mode === 'admin'
         ? (formData.id || undefined)
         : (formData.id || Math.random().toString(36).slice(2, 10)),
@@ -369,7 +397,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </div>
           <div className="gb-repair-cost-row md:col-span-2">
             <div className="gb-repair-cost-field">
-              <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Part sold</label>
               <MoneyInput
                 className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
                 value={Number(formData.partCost || 0)}
@@ -395,7 +423,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               <MoneyInput
                 className="w-full bg-zinc-800 text-gray-100 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
                 value={typeof formData.internalCost === 'number' ? formData.internalCost : undefined}
-                onValueChange={(v) => setFormData(prev => ({ ...prev, internalCost: v == null ? undefined : Number(v || 0) }))}
+                onValueChange={(v) => {
+                  const internalCost = v == null ? undefined : Number(v || 0);
+                  const partCost = internalCost == null ? formData.partCost : markedUpPrice(internalCost, markupPct || DEFAULT_MARKUP_PCT);
+                  setFormData(prev => ({ ...prev, internalCost, ...(partCost == null ? {} : { partCost }) }));
+                }}
                 onKeyDown={handleEnterToSubmit}
                 allowEmpty
                 placeholder="0.00"
@@ -407,8 +439,14 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 <PercentInput
                   className="w-20"
                   value={markupPct}
-                  onChange={v => setMarkupPct(v)}
-                  presets={[5, 10, 15, 20, 25, 30, 40, 50, 100]}
+                  onChange={v => {
+                    const next = v || DEFAULT_MARKUP_PCT;
+                    setMarkupPct(next);
+                    const partCost = markedUpPrice(formData.internalCost, next);
+                    if (partCost != null) setFormData(prev => ({ ...prev, markupPct: next, partCost }));
+                    else setFormData(prev => ({ ...prev, markupPct: next }));
+                  }}
+                  presets={MARKUP_PRESETS}
                 />
                 <button
                   type="button"
@@ -495,7 +533,36 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Order source url</label>
-            <div className="flex gap-1">
+            {formData.orderSourceUrl && !orderUrlEditing ? (
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  title={formData.orderSourceUrl}
+                  onClick={() => {
+                    const url = normalizeOrderUrl(formData.orderSourceUrl);
+                    if (url) {
+                      if ((window as any).api?.openExternal) (window as any).api.openExternal(url);
+                      else if ((window as any).api?.openUrl) (window as any).api.openUrl(url);
+                      else window.open(url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 rounded text-sm border border-[#39FF14] bg-[#39FF14] text-black font-semibold hover:brightness-110"
+                >
+                  Order URL
+                </button>
+                <button type="button" onClick={() => setOrderUrlEditing(true)} className="px-3 py-2 rounded text-sm border border-zinc-600 bg-zinc-800 text-zinc-300 hover:bg-zinc-700">Edit</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, orderSourceUrl: '' }));
+                    setOrderUrlEditing(true);
+                  }}
+                  className="px-3 py-2 rounded text-sm border border-red-700 bg-red-950 text-red-100"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : (
               <input
                 type="url"
                 value={formData.orderSourceUrl || ''}
@@ -508,23 +575,29 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     if (v) setFormData(prev => ({ ...prev, partSource: v }));
                   }
                 }}
-                onKeyDown={handleEnterToSubmit}
-                placeholder="https://"
-                className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
-              />
-              <button
-                type="button"
-                title="Open URL"
-                disabled={!formData.orderSourceUrl}
-                onClick={() => {
-                  const url = formData.orderSourceUrl;
-                  if (url) (window as any).api?.openExternal?.(url);
+                onBlur={() => {
+                  const url = normalizeOrderUrl(formData.orderSourceUrl);
+                  if (url) {
+                    setFormData(prev => ({ ...prev, orderSourceUrl: url }));
+                    setOrderUrlEditing(false);
+                  }
                 }}
-                className="px-3 py-2 rounded text-sm border border-zinc-600 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Open
-              </button>
-            </div>
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    const url = normalizeOrderUrl(formData.orderSourceUrl);
+                    if (url) {
+                      event.preventDefault();
+                      setFormData(prev => ({ ...prev, orderSourceUrl: url }));
+                      setOrderUrlEditing(false);
+                      return;
+                    }
+                  }
+                  handleEnterToSubmit(event);
+                }}
+                placeholder="https://"
+                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
+              />
+            )}
           </div>
         </div>
       </div>

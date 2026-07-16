@@ -374,6 +374,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       itemType: row.item_type || 'Product',
       price: cloudNumber(row.price),
       internalCost: cloudNumber(row.internal_cost),
+      markupPct: cloudNumber(row.markup_pct),
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
@@ -401,6 +402,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       partCost: cloudNumber(row.part_cost),
       laborCost: cloudNumber(row.labor_cost),
       internalCost: cloudNumber(row.internal_cost),
+      markupPct: cloudNumber(row.markup_pct),
       orderDate: row.order_date || '',
       estDelivery: row.est_delivery || '',
       partSource: row.part_source || '',
@@ -657,6 +659,7 @@ function toCloudRow(key: string, item: any): any | null {
       item_type: toCloudString(item.itemType || 'Product'),
       price: toCloudMoney(item.price),
       internal_cost: toCloudMoney(item.internalCost),
+      markup_pct: toCloudNumber(item.markupPct),
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
@@ -686,6 +689,7 @@ function toCloudRow(key: string, item: any): any | null {
       part_cost: toCloudMoney(item.partCost),
       labor_cost: toCloudMoney(item.laborCost),
       internal_cost: toCloudMoney(item.internalCost),
+      markup_pct: toCloudNumber(item.markupPct),
       order_date: toCloudString(item.orderDate),
       est_delivery: toCloudString(item.estDelivery),
       part_source: toCloudString(item.partSource),
@@ -1082,7 +1086,7 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
       onConflict: cloudConflictForKey(key),
       ignoreDuplicates: false,
     }).select('*').maybeSingle();
-    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.part_category;
@@ -1091,6 +1095,15 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
       delete fallbackRow.reorder_qty;
       delete fallbackRow.reorder_url_template;
       delete fallbackRow.associated_devices;
+      delete fallbackRow.markup_pct;
+      res = await supabase.from(table).upsert(fallbackRow, {
+        onConflict: cloudConflictForKey(key),
+        ignoreDuplicates: false,
+      }).select('*').maybeSingle();
+    }
+    if (res.error && key === 'repairCategories' && /markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.markup_pct;
       res = await supabase.from(table).upsert(fallbackRow, {
         onConflict: cloudConflictForKey(key),
         ignoreDuplicates: false,
@@ -1120,7 +1133,7 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     const row = toCloudRow(key, candidate);
     if (!row) throw new Error(`Cloud ${key} insert skipped: unsupported row.`);
     let res = await supabase.from(table).insert(row).select('*').single();
-    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.part_category;
@@ -1129,6 +1142,12 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
       delete fallbackRow.reorder_qty;
       delete fallbackRow.reorder_url_template;
       delete fallbackRow.associated_devices;
+      delete fallbackRow.markup_pct;
+      res = await supabase.from(table).insert(fallbackRow).select('*').single();
+    }
+    if (res.error && key === 'repairCategories' && /markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.markup_pct;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }
     if (!res.error) {

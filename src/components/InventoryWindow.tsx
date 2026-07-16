@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import MoneyInput from './MoneyInput';
+import PercentInput from './PercentInput';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -13,6 +14,7 @@ type InventoryItem = {
   condition?: string;
   price?: number;
   internalCost?: number;
+  markupPct?: number | string;
   notes?: string;
   distributor?: string;
   distributorSku?: string;
@@ -29,6 +31,8 @@ const DEVICE_CATEGORY_OPTIONS = ['Phone', 'Tablet', 'Laptop', 'Desktop', 'Game C
 const PART_CATEGORY_OPTIONS = ['Screen', 'Battery', 'Charging Port', 'Camera', 'Speaker', 'Microphone', 'Buttons', 'Housing', 'Motherboard', 'Power Supply', 'Cable', 'Adhesive', 'Other'];
 const PART_CONDITIONS = ['New', 'Used'];
 const PRODUCT_CONDITIONS = ['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor'];
+const MARKUP_PRESETS = [5, 10, 15, 20, 25];
+const DEFAULT_MARKUP_PCT = '5';
 
 function blankItem(mode: InventoryMode): InventoryItem {
   return {
@@ -40,6 +44,7 @@ function blankItem(mode: InventoryMode): InventoryItem {
     condition: 'New',
     price: undefined,
     internalCost: undefined,
+    markupPct: DEFAULT_MARKUP_PCT,
     notes: '',
     distributor: '',
     distributorSku: '',
@@ -68,6 +73,19 @@ function money(v: any) {
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : '-';
 }
 
+function markedUpPrice(cost: unknown, pct: unknown): number | undefined {
+  const c = Number(cost);
+  const p = Number(pct);
+  if (!Number.isFinite(c) || c < 0 || !Number.isFinite(p) || p < 0) return undefined;
+  return Math.round(c * (1 + p / 100) * 100) / 100;
+}
+
+function normalizeOrderUrl(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 export default function InventoryWindow() {
   const api = (window as any).api;
   const [mode, setMode] = useState<InventoryMode>('parts');
@@ -79,6 +97,7 @@ export default function InventoryWindow() {
   const [deviceFilter, setDeviceFilter] = useState('');
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
+  const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -142,12 +161,14 @@ export default function InventoryWindow() {
 
   const selectItem = (item: InventoryItem) => {
     setSelectedId(item.id);
-    setEditing({ ...blankItem(mode), ...item });
+    setEditing({ ...blankItem(mode), ...item, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
+    setEditingOrderUrl(!item.reorderUrlTemplate);
   };
 
   const startNew = () => {
     setSelectedId(undefined);
     setEditing(blankItem(mode));
+    setEditingOrderUrl(false);
   };
 
   const save = async () => {
@@ -169,9 +190,10 @@ export default function InventoryWindow() {
           .filter(Boolean))),
         partCategory: mode === 'parts' ? (String(editing.partCategory || 'Other').trim() || 'Other') : '',
         condition: String(editing.condition || 'New').trim() || 'New',
+        markupPct: editing.markupPct ?? DEFAULT_MARKUP_PCT,
         distributor: String(editing.distributor || '').trim(),
         distributorSku: String(editing.distributorSku || '').trim(),
-        reorderUrlTemplate: String(editing.reorderUrlTemplate || '').trim(),
+        reorderUrlTemplate: normalizeOrderUrl(editing.reorderUrlTemplate),
         reorderQty: Math.max(1, Math.round(Number(editing.reorderQty || 1))),
         trackStock: !!editing.trackStock,
         stockCount: editing.trackStock ? Math.max(0, Math.round(Number(editing.stockCount || 0))) : undefined,
@@ -197,6 +219,7 @@ export default function InventoryWindow() {
       });
       setSelectedId(merged.id);
       setEditing(merged);
+      setEditingOrderUrl(!merged.reorderUrlTemplate);
     } catch (err) {
       console.error('Inventory save failed', err);
       alert('Inventory item could not be saved.');
@@ -482,14 +505,32 @@ export default function InventoryWindow() {
                 <span className="mb-1 block text-xs text-zinc-400">Cost</span>
                 <MoneyInput
                   value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
-                  onValueChange={(value) => setEditing((current) => ({ ...current, internalCost: value == null ? undefined : Number(value || 0) }))}
+                  onValueChange={(value) => setEditing((current) => {
+                    const internalCost = value == null ? undefined : Number(value || 0);
+                    const price = internalCost == null ? current.price : markedUpPrice(internalCost, current.markupPct ?? DEFAULT_MARKUP_PCT);
+                    return { ...current, internalCost, ...(price == null ? {} : { price }) };
+                  })}
                   allowEmpty
                   className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">Sale Price</span>
+                <span className="mb-1 block text-xs text-zinc-400">Markup %</span>
+                <PercentInput
+                  value={editing.markupPct ?? DEFAULT_MARKUP_PCT}
+                  onChange={(value) => setEditing((current) => {
+                    const markupPct = value || DEFAULT_MARKUP_PCT;
+                    const price = markedUpPrice(current.internalCost, markupPct);
+                    return { ...current, markupPct, ...(price == null ? {} : { price }) };
+                  })}
+                  presets={MARKUP_PRESETS}
+                  className="w-full rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="block md:col-span-2">
+                <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Part Sold Price' : 'Sale Price'}</span>
                 <MoneyInput
                   value={typeof editing.price === 'number' ? editing.price : undefined}
                   onValueChange={(value) => setEditing((current) => ({ ...current, price: value == null ? undefined : Number(value || 0) }))}
@@ -570,16 +611,57 @@ export default function InventoryWindow() {
                 />
               </label>
 
-              <label className="block md:col-span-2">
+              <div className="block md:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">Reorder URL Template</span>
-                <input
-                  value={editing.reorderUrlTemplate || ''}
-                  onChange={(event) => setEditing((current) => ({ ...current, reorderUrlTemplate: event.target.value }))}
-                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
-                  placeholder="https://vendor.example/cart/add?sku={{sku}}&qty={{qty}}"
-                />
-                <div className="mt-1 text-[11px] text-zinc-500">Tokens supported: {'{{sku}}'} and {'{{qty}}'}.</div>
-              </label>
+                {editing.reorderUrlTemplate && !editingOrderUrl ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-700 bg-zinc-900 p-2">
+                    <button
+                      type="button"
+                      onClick={() => openReorder(editing)}
+                      className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black"
+                    >
+                      Order URL
+                    </button>
+                    <button type="button" onClick={() => setEditingOrderUrl(true)} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">Edit</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing((current) => ({ ...current, reorderUrlTemplate: '' }));
+                        setEditingOrderUrl(true);
+                      }}
+                      className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100"
+                    >
+                      Clear
+                    </button>
+                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-400" title={editing.reorderUrlTemplate}>{editing.reorderUrlTemplate}</span>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      value={editing.reorderUrlTemplate || ''}
+                      onChange={(event) => setEditing((current) => ({ ...current, reorderUrlTemplate: event.target.value }))}
+                      onBlur={() => {
+                        const normalized = normalizeOrderUrl(editing.reorderUrlTemplate);
+                        if (normalized) {
+                          setEditing((current) => ({ ...current, reorderUrlTemplate: normalized }));
+                          setEditingOrderUrl(false);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') return;
+                        const normalized = normalizeOrderUrl(editing.reorderUrlTemplate);
+                        if (!normalized) return;
+                        event.preventDefault();
+                        setEditing((current) => ({ ...current, reorderUrlTemplate: normalized }));
+                        setEditingOrderUrl(false);
+                      }}
+                      className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
+                      placeholder="https://vendor.example/cart/add?sku={{sku}}&qty={{qty}}"
+                    />
+                    <div className="mt-1 text-[11px] text-zinc-500">Paste the vendor link once. After it is saved here, this becomes an Order URL button. Tokens supported: {'{{sku}}'} and {'{{qty}}'}.</div>
+                  </>
+                )}
+              </div>
 
               <label className="block md:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">Notes</span>
