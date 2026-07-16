@@ -518,6 +518,9 @@ const NewWorkOrderWindow: React.FC = () => {
 
   const isCustomBuild = wo.workOrderType === 'customBuild';
   const isDrone = wo.workOrderType === 'drone';
+  const isMobileRuntime = useMemo(() => {
+    try { return document.body.classList.contains('gbpos-mobile'); } catch { return false; }
+  }, []);
 
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
@@ -1865,12 +1868,12 @@ const NewWorkOrderWindow: React.FC = () => {
         <WorkOrderSidebar
           workOrder={workOrderFull}
           onChange={handleSidebarChange}
-          hideStatus
-          hideDates
-          hideAssigned
+          hideStatus={isMobileRuntime}
+          hideDates={isMobileRuntime}
+          hideAssigned={isMobileRuntime}
           validationFlags={sidebarValidationFlags}
           onRequestForceSave={handleSidebarForceSave}
-          footerActions={(
+          footerActions={isMobileRuntime ? (
             <button
               type="button"
               className="gb-wo-mobile-checkout-button w-full px-3 py-2 bg-neon-green text-zinc-900 font-semibold rounded"
@@ -1878,48 +1881,52 @@ const NewWorkOrderWindow: React.FC = () => {
             >
               Checkout
             </button>
-          )}
+          ) : undefined}
         />
         <div className="gb-wo-main-scroll flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <div className="gb-wo-top-card bg-zinc-900 border border-zinc-700 rounded p-2">
-            <WorkOrderMobileTitleCard
-              workOrder={workOrderFull}
-              customerSummary={customerSummary}
-              onChange={handleIntakeChange}
-              detailsMenu={(
-                <WorkOrderDetailsMenu
-                  open={detailsMenuOpen}
+            {isMobileRuntime ? (
+              <>
+                <WorkOrderMobileTitleCard
                   workOrder={workOrderFull}
-                  onToggle={() => setDetailsMenuOpen(open => !open)}
-                  onClose={() => setDetailsMenuOpen(false)}
-                  onChange={handleSidebarChange}
+                  customerSummary={customerSummary}
+                  onChange={handleIntakeChange}
+                  detailsMenu={(
+                    <WorkOrderDetailsMenu
+                      open={detailsMenuOpen}
+                      workOrder={workOrderFull}
+                      onToggle={() => setDetailsMenuOpen(open => !open)}
+                      onClose={() => setDetailsMenuOpen(false)}
+                      onChange={handleSidebarChange}
+                    />
+                  )}
                 />
-              )}
-            />
-            <div className="gb-wo-top-row">
-              <AssignedTechnicianField
-                value={workOrderFull.assignedTo}
-                invalid={!!sidebarValidationFlags?.assignedTo}
-                onChange={assignedTo => handleSidebarChange({ assignedTo })}
-              />
-              <div className="gb-wo-desktop-details-menu">
-                <WorkOrderDetailsMenu
-                  open={detailsMenuOpen}
-                  workOrder={workOrderFull}
-                  onToggle={() => setDetailsMenuOpen(open => !open)}
-                  onClose={() => setDetailsMenuOpen(false)}
-                  onChange={handleSidebarChange}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between mt-3">
+                <div className="gb-wo-top-row">
+                  <AssignedTechnicianField
+                    value={workOrderFull.assignedTo}
+                    invalid={!!sidebarValidationFlags?.assignedTo}
+                    onChange={assignedTo => handleSidebarChange({ assignedTo })}
+                  />
+                  <div className="gb-wo-desktop-details-menu">
+                    <WorkOrderDetailsMenu
+                      open={detailsMenuOpen}
+                      workOrder={workOrderFull}
+                      onToggle={() => setDetailsMenuOpen(open => !open)}
+                      onClose={() => setDetailsMenuOpen(false)}
+                      onChange={handleSidebarChange}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
+            <div className={`flex items-center justify-between ${isMobileRuntime ? 'mt-3' : ''}`}>
               <div className="text-sm font-semibold text-zinc-200">Work Order Type</div>
               <div className="text-xs text-zinc-500">Switching types can clear fields</div>
             </div>
-            <div className="gb-wo-type-grid mt-2">
+            <div className={isMobileRuntime ? 'gb-wo-type-grid mt-2' : 'flex gap-2 mt-2'}>
               <button
                 type="button"
-                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                className={`${isMobileRuntime ? 'gb-wo-type-button ' : ''}px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (!isCustomBuild && !isDrone) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial));
@@ -1935,7 +1942,7 @@ const NewWorkOrderWindow: React.FC = () => {
               </button>
               <button
                 type="button"
-                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                className={`${isMobileRuntime ? 'gb-wo-type-button ' : ''}px-3 py-1.5 rounded border text-sm ${isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (isCustomBuild) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));
@@ -1955,7 +1962,7 @@ const NewWorkOrderWindow: React.FC = () => {
               </button>
               <button
                 type="button"
-                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                className={`${isMobileRuntime ? 'gb-wo-type-button ' : ''}px-3 py-1.5 rounded border text-sm ${isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (isDrone) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));

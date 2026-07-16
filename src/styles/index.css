@@ -380,19 +380,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   display: none;
 }
 
-.gb-repair-toolbar {
+.gbpos-mobile .gb-repair-toolbar {
   display: grid;
   gap: 0.65rem;
 }
 
-.gb-repair-search-row {
+.gbpos-mobile .gb-repair-search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.6rem;
   align-items: center;
 }
 
-.gb-repair-search-shell {
+.gbpos-mobile .gb-repair-search-shell {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -403,7 +403,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   overflow: hidden;
 }
 
-.gb-repair-filter-toggle {
+.gbpos-mobile .gb-repair-filter-toggle {
   width: 2.6rem;
   height: 2.45rem;
   display: inline-flex;
@@ -413,25 +413,25 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: #d4d4d8;
 }
 
-.gb-repair-filter-toggle.active {
+.gbpos-mobile .gb-repair-filter-toggle.active {
   color: var(--neon-green);
   background: rgba(57, 255, 20, 0.08);
 }
 
-.gb-repair-filter-toggle span {
+.gbpos-mobile .gb-repair-filter-toggle span {
   display: grid;
   gap: 0.2rem;
   width: 1.1rem;
 }
 
-.gb-repair-filter-toggle i {
+.gbpos-mobile .gb-repair-filter-toggle i {
   display: block;
   height: 2px;
   border-radius: 999px;
   background: currentColor;
 }
 
-.gb-repair-search-input {
+.gbpos-mobile .gb-repair-search-input {
   min-width: 0;
   width: 100%;
   height: 2.45rem;
@@ -443,46 +443,46 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   outline: none;
 }
 
-.gb-repair-search-shell:focus-within {
+.gbpos-mobile .gb-repair-search-shell:focus-within {
   border-color: var(--neon-green);
   box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.12);
 }
 
-.gb-repair-filter-row {
+.gbpos-mobile .gb-repair-filter-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
   align-items: end;
 }
 
-.gb-repair-filter-group {
+.gbpos-mobile .gb-repair-filter-group {
   display: grid;
   gap: 0.28rem;
   min-width: min(100%, 14rem);
 }
 
-.gb-repair-filter-label {
+.gbpos-mobile .gb-repair-filter-label {
   color: #a1a1aa;
   font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.gb-repair-device-picker,
-.gb-repair-device-picker > button,
-.gb-repair-type-filter {
+.gbpos-mobile .gb-repair-device-picker,
+.gbpos-mobile .gb-repair-device-picker > button,
+.gbpos-mobile .gb-repair-type-filter {
   width: 100%;
   min-height: 2.45rem;
   border-radius: 8px;
 }
 
-.gb-repair-clear-button {
+.gbpos-mobile .gb-repair-clear-button {
   min-height: 2.45rem;
   border-radius: 8px;
   font-weight: 700;
 }
 
-.gb-repair-list-toggle {
+.gbpos-mobile .gb-repair-list-toggle {
   width: 100%;
   min-height: 2.6rem;
   display: flex;
@@ -498,19 +498,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   font-weight: 800;
 }
 
-.gb-repair-list-toggle strong {
+.gbpos-mobile .gb-repair-list-toggle strong {
   color: #a1a1aa;
   font-size: 0.78rem;
   font-weight: 700;
 }
 
-.gb-repair-list-section {
+.gbpos-mobile .gb-repair-list-section {
   display: grid;
   gap: 0.55rem;
   min-height: 0;
 }
 
-.gb-repair-pagination {
+.gbpos-mobile .gb-repair-pagination {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -521,8 +521,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   padding: 0.45rem;
 }
 
-.gb-repair-pagination button,
-.gb-repair-pagination select {
+.gbpos-mobile .gb-repair-pagination button,
+.gbpos-mobile .gb-repair-pagination select {
   min-height: 2.2rem;
   border: 1px solid #3f3f46;
   border-radius: 8px;
@@ -531,11 +531,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   padding: 0 0.65rem;
 }
 
-.gb-repair-pagination button:disabled {
+.gbpos-mobile .gb-repair-pagination button:disabled {
   opacity: 0.4;
 }
 
-.gb-repair-pagination label {
+.gbpos-mobile .gb-repair-pagination label {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -543,21 +543,21 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   font-size: 0.82rem;
 }
 
-.gb-repair-form-grid > div:nth-child(2) {
+.gbpos-mobile .gb-repair-form-grid > div:nth-child(2) {
   order: -2;
 }
 
-.gb-repair-form-grid > div:nth-child(1) {
+.gbpos-mobile .gb-repair-form-grid > div:nth-child(1) {
   order: -1;
 }
 
-.gb-repair-cost-row {
+.gbpos-mobile .gb-repair-cost-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.gb-repair-source-section {
+.gbpos-mobile .gb-repair-source-section {
   border: 1px solid #3f3f46;
   border-radius: 8px;
   background: #111114;

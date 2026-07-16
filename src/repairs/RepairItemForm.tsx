@@ -44,6 +44,25 @@ const DUMMY_DEVICE_CATEGORIES = [
 const MARKUP_PRESETS = [5, 10, 15, 20, 25];
 const DEFAULT_MARKUP_PCT = '5';
 
+function repairCategoryRank(value: unknown): number {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  if (normalized === 'diagnostic' || normalized.startsWith('diagnostic ')) return 0;
+  if (
+    normalized === 'additional fees' ||
+    normalized === 'additional fee' ||
+    normalized.startsWith('additional fee ')
+  ) return 1;
+  return 2;
+}
+
+function sortRepairCategoryNames(names: string[]): string[] {
+  return Array.from(new Set(names.map(name => String(name || '').trim()).filter(Boolean))).sort((a, b) => {
+    const rankDiff = repairCategoryRank(a) - repairCategoryRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+  });
+}
+
 function markedUpPrice(cost: unknown, pct: unknown): number | undefined {
   const c = Number(cost);
   const p = Number(pct);
@@ -125,7 +144,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         const fromItems = Array.isArray(repairItems)
           ? repairItems.map((r: any) => String(r?.repairCategory || '').trim()).filter(Boolean)
           : [];
-        const merged = Array.from(new Set([...fromTypes, ...fromItems])).sort((a, b) => a.localeCompare(b));
+        const merged = sortRepairCategoryNames([...fromTypes, ...fromItems]);
         setRepairTypes(merged);
       }
     })();
