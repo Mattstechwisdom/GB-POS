@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.2 (2026-07-16)
+- Repairs: restores the desktop New Item / Repair Selection layout while keeping the compact mobile repair table only on mobile.
+- Repairs: makes Diagnostic show first, Additional Fees second, and all other repair categories alphabetically in lists and filters.
+- Repairs: fills missing category filters from the saved repair items when the category/type list is incomplete.
+- Mobile: lets the top GADGETBOY POS title wrap onto two lines instead of cutting off on narrow screens.
+- Work Orders: restores the desktop work order creation sidebar layout while keeping the mobile title card and status/date menu on mobile.
+
 ## v0.5.1 (2026-07-16)
 - Work Orders: reworks Parts tracking with side-by-side order and estimated-delivery dates, a cleaner mobile/desktop layout, and internal-only order notes.
 - Work Orders: turns saved Order URL and Tracking URL values into openable buttons after paste, Enter, blur, or Save.
