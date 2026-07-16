@@ -24,12 +24,18 @@ import NotesPanel from './NotesPanel';
 import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPanel';
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import { computeTotals, round2 } from '../lib/calc';
-import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory } from '../lib/types';
+import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus } from '../lib/types';
+import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
+import { listTechnicians } from '../lib/admin';
+import { formatPhone } from '../lib/format';
+import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
 type ValidationActionKey = 'save' | 'checkout' | 'close';
+
+type TechnicianOption = { id: string | number; nickname?: string; firstName?: string };
 
 const REQUIRED_LABELS: Record<RequiredKey, string> = {
   assignedTo: 'Assigned technician',
@@ -105,6 +111,229 @@ function buildNormalizedCheckoutPayments(record: any) {
 
 const ADDON_SALE_MAX_ITEMS = 20;
 
+function normalizeMaybeUrl(value: any): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+}
+
+function urlHostLabel(value: any): string {
+  const raw = normalizeMaybeUrl(value);
+  if (!raw) return 'Open Order URL';
+  try {
+    return new URL(raw).hostname.replace(/^www\./i, '') || 'Open Order URL';
+  } catch {
+    return 'Open Order URL';
+  }
+}
+
+const AssignedTechnicianField: React.FC<{
+  value: WorkOrderFull['assignedTo'];
+  invalid?: boolean;
+  onChange: (assignedTo: string | null) => void;
+}> = ({ value, invalid = false, onChange }) => {
+  const [techs, setTechs] = useState<TechnicianOption[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const list = await listTechnicians();
+        if (mounted) setTechs(Array.isArray(list) ? list : []);
+      } catch {
+        if (mounted) setTechs([]);
+      }
+    };
+    void refresh();
+    const off = (window as any).api?.onTechniciansChanged?.(() => void refresh());
+    return () => { mounted = false; try { off && off(); } catch {} };
+  }, []);
+
+  const selectedTechId = useMemo(() => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (techs.some((t: any) => String(t.id) === raw)) return raw;
+    const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
+    return matchByLabel ? String(matchByLabel.id) : '';
+  }, [techs, value]);
+
+  return (
+    <div className="gb-wo-assigned-field">
+      <label className="block text-xs text-zinc-400">
+        Assigned to
+        {invalid && <span className="ml-1 text-red-500">*</span>}
+      </label>
+      {techs.length === 0 ? (
+        <select disabled className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-500">
+          <option>No technicians</option>
+        </select>
+      ) : (
+        <select
+          className={`w-full mt-1 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand bg-zinc-800 border ${invalid ? 'border-red-500' : 'border-zinc-700'}`}
+          value={selectedTechId}
+          onChange={e => {
+            const id = e.target.value;
+            if (!id) { onChange(null); return; }
+            const tech = techs.find((t: any) => String(t.id) === id);
+            onChange(tech ? String(tech.id) : null);
+          }}
+        >
+          <option value="">Unassigned</option>
+          {techs.map((t: any) => (
+            <option key={t.id} value={String(t.id)}>{t.nickname?.trim() || t.firstName}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+};
+
+const WorkOrderDetailsMenu: React.FC<{
+  open: boolean;
+  workOrder: WorkOrderFull;
+  onToggle: () => void;
+  onClose: () => void;
+  onChange: (patch: Partial<WorkOrderFull>) => void;
+}> = ({ open, workOrder, onToggle, onClose, onChange }) => {
+  return (
+    <div className="gb-wo-details-menu">
+      <button
+        type="button"
+        className={`gb-wo-menu-button ${open ? 'active' : ''}`}
+        onClick={onToggle}
+        aria-label="Open status and dates"
+        aria-expanded={open}
+      >
+        <span aria-hidden="true"><i /><i /><i /></span>
+      </button>
+      {open ? (
+        <div className="gb-wo-details-popover" role="dialog" aria-label="Status and dates">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <div className="text-sm font-semibold text-zinc-100">Status & Dates</div>
+              <div className="text-[11px] text-zinc-500">Optional work order timing</div>
+            </div>
+            <button type="button" className="gb-wo-details-close" onClick={onClose} aria-label="Close status and dates">x</button>
+          </div>
+
+          <label className="block text-xs text-zinc-400">Status</label>
+          <select
+            className="w-full mt-1 mb-3 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
+            value={workOrder.status}
+            onChange={e => onChange({ status: e.target.value as WorkOrderStatus })}
+          >
+            <option value="open">open</option>
+            <option value="in progress">in progress</option>
+            <option value="closed">closed</option>
+          </select>
+
+          <label className="block text-xs text-zinc-400">Repair complete</label>
+          <div className="gb-wo-date-row mb-3">
+            <input
+              type="datetime-local"
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
+              value={toLocalDatetimeInput(workOrder.repairCompletionDate)}
+              onChange={e => onChange({ repairCompletionDate: fromLocalDatetimeInput(e.target.value) as any })}
+            />
+            <button type="button" className="bg-brand text-black rounded px-3 py-2 font-semibold" onClick={() => onChange({ repairCompletionDate: new Date().toISOString() })}>Now</button>
+          </div>
+
+          <label className="block text-xs text-zinc-400">Check-out</label>
+          <div className="gb-wo-date-row">
+            <input
+              type="datetime-local"
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
+              value={toLocalDatetimeInput(workOrder.checkoutDate)}
+              onChange={e => onChange({ checkoutDate: fromLocalDatetimeInput(e.target.value) as any })}
+            />
+            <button type="button" className="bg-brand text-black rounded px-3 py-2 font-semibold" onClick={() => onChange({ checkoutDate: new Date().toISOString() })}>Now</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const WorkOrderMobileTitleCard: React.FC<{
+  workOrder: WorkOrderFull;
+  customerSummary: { name?: string; phone?: string };
+  onChange: (patch: Partial<WorkOrderFull>) => void;
+  detailsMenu?: React.ReactNode;
+}> = ({ workOrder, customerSummary, onChange, detailsMenu }) => {
+  const [customMode, setCustomMode] = useState(false);
+  const invoiceId = Number((workOrder as any).id || 0) || 0;
+  const invoiceLabel = invoiceId > 0 ? `GB${String(invoiceId).padStart(7, '0')}` : 'Draft Work Order';
+  const name = customerSummary.name || String((workOrder as any).customerName || '').trim() || 'No client selected';
+  const rawPhone = customerSummary.phone || String((workOrder as any).customerPhone || '').trim();
+  const phone = formatPhone(rawPhone) || rawPhone;
+  const email = String((workOrder as any).customerEmail || '').trim();
+  const contact = [phone, email].filter(Boolean).join(' | ');
+  const isCustomValue = !!workOrder.intakeSource && !INTAKE_SOURCES.includes(workOrder.intakeSource as string);
+  const showCustomInput = customMode || isCustomValue;
+  const selectValue = showCustomInput ? '__custom__' : (workOrder.intakeSource || '');
+
+  return (
+    <section className="gb-wo-mobile-title-card" aria-label="Work order client summary">
+      {detailsMenu ? (
+        <div className="gb-wo-mobile-title-menu">
+          {detailsMenu}
+        </div>
+      ) : null}
+      <div className="gb-wo-title-line">
+        <span>Work Order</span>
+        <strong>{invoiceLabel}</strong>
+      </div>
+      <div className="gb-wo-client-line">
+        <span>Client</span>
+        <strong>{name}</strong>
+        <small>{contact || 'Client info will appear after selecting a customer.'}</small>
+      </div>
+      <button
+        type="button"
+        className="gb-wo-view-customer"
+        onClick={() => {
+          if (workOrder.customerId) (window as any).api.openCustomerOverview(workOrder.customerId);
+        }}
+        disabled={!workOrder.customerId}
+      >
+        View Customer
+      </button>
+      <label className="gb-wo-source-field">
+        <span>How did you hear about us?</span>
+        <select
+          value={selectValue}
+          onChange={e => {
+            const val = e.target.value;
+            if (val === '__custom__') {
+              setCustomMode(true);
+              if (!isCustomValue) onChange({ intakeSource: '' });
+              return;
+            }
+            setCustomMode(false);
+            onChange({ intakeSource: val });
+          }}
+        >
+          <option value="">{INTAKE_SOURCE_PLACEHOLDER}</option>
+          {INTAKE_SOURCES.map(src => (
+            <option key={src} value={src}>{src}</option>
+          ))}
+          <option value="__custom__">Custom...</option>
+        </select>
+      </label>
+      {showCustomInput ? (
+        <input
+          className="gb-wo-source-custom"
+          type="text"
+          value={workOrder.intakeSource || ''}
+          placeholder="Type source"
+          onChange={e => onChange({ intakeSource: e.target.value })}
+        />
+      ) : null}
+    </section>
+  );
+};
+
 function isConsultationSaleItem(row: Partial<SaleItemRow> | null | undefined): boolean {
   const cat = (row as any)?.category;
   const s = (cat == null ? '' : String(cat)).trim().toLowerCase();
@@ -171,6 +400,10 @@ const NewWorkOrderWindow: React.FC = () => {
   const [wo, setWo] = useState<WOState>({
     id: 0,
     customerId: initialCustomerId,
+    customerName: payload?.customerName || '',
+    customerPhone: payload?.customerPhone || '',
+    customerPhoneAlt: payload?.customerPhoneAlt || '',
+    customerEmail: payload?.customerEmail || '',
   status: 'open',
   assignedTo: null,
     addonSaleId: null,
@@ -208,11 +441,15 @@ const NewWorkOrderWindow: React.FC = () => {
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
+  const [detailsMenuOpen, setDetailsMenuOpen] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
   const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
   const [addonSale, setAddonSale] = useState<any | null>(null);
+  const [partsOrderUrlDraft, setPartsOrderUrlDraft] = useState('');
+  const [partsTrackingUrlDraft, setPartsTrackingUrlDraft] = useState('');
+  const [partsOrderUrlEditing, setPartsOrderUrlEditing] = useState(true);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -367,6 +604,8 @@ const NewWorkOrderWindow: React.FC = () => {
           labor: typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0)),
           status: it.status || 'pending',
           note: it.note || it.model || it.modelNumber || '',
+          partSource: it.partSource || '',
+          orderSourceUrl: it.orderSourceUrl || '',
         }));
         setWo(w => ({
           ...w,
@@ -434,6 +673,72 @@ const NewWorkOrderWindow: React.FC = () => {
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
 
+  const enrichWorkOrderCustomer = useCallback(async (raw: any) => {
+    const next = { ...(raw || {}) };
+    const customerId = Number(next.customerId || next.customerID || next.customer_id || 0) || 0;
+    let customerName = String(next.customerName || '').trim() || customerSummary.name || '';
+    let customerPhone = String(next.customerPhone || '').trim() || customerSummary.phone || '';
+    let customerPhoneAlt = String(next.customerPhoneAlt || '').trim();
+    let customerEmail = String(next.customerEmail || '').trim();
+
+    try {
+      const api: any = (window as any).api;
+      if (customerId && api?.findCustomers) {
+        const list = await api.findCustomers({ id: customerId });
+        const customer = Array.isArray(list) && list.length ? list[0] : null;
+        if (customer) {
+          const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
+          customerName = fullName || customerName;
+          customerPhone = customer.phone || customerPhone;
+          customerPhoneAlt = customer.phoneAlt || customerPhoneAlt;
+          customerEmail = customer.email || customerEmail;
+        }
+      }
+    } catch {
+      // Keep the local summary fallback if the customer lookup is unavailable.
+    }
+
+    return {
+      ...next,
+      customerId: customerId || next.customerId,
+      customerName,
+      customerPhone,
+      customerPhoneAlt,
+      customerEmail,
+    };
+  }, [customerSummary.name, customerSummary.phone]);
+
+  const applySavedCustomerSnapshot = useCallback((saved: any) => {
+    const savedId = Number(saved?.id || 0) || 0;
+    const customerName = String(saved?.customerName || '').trim();
+    const customerPhone = String(saved?.customerPhone || '').trim();
+    const customerPhoneAlt = String(saved?.customerPhoneAlt || '').trim();
+    const customerEmail = String(saved?.customerEmail || '').trim();
+    setWo(w => {
+      const next = {
+        ...w,
+        ...(savedId > 0 ? { id: savedId } : {}),
+        ...(customerName ? { customerName } : {}),
+        ...(customerPhone ? { customerPhone } : {}),
+        ...(customerPhoneAlt ? { customerPhoneAlt } : {}),
+        ...(customerEmail ? { customerEmail } : {}),
+      };
+      const unchanged =
+        Number((w as any).id || 0) === Number((next as any).id || 0) &&
+        String((w as any).customerName || '') === String((next as any).customerName || '') &&
+        String((w as any).customerPhone || '') === String((next as any).customerPhone || '') &&
+        String((w as any).customerPhoneAlt || '') === String((next as any).customerPhoneAlt || '') &&
+        String((w as any).customerEmail || '') === String((next as any).customerEmail || '');
+      return unchanged ? w : next;
+    });
+    if (customerName || customerPhone) {
+      setCustomerSummary(prev => ({
+        name: customerName || prev.name,
+        phone: customerPhone || prev.phone,
+      }));
+    }
+  }, []);
+
   // Bind the latest functions each render.
   onSaveRef.current = onSave;
   onCancelRef.current = onCancel;
@@ -465,14 +770,17 @@ const NewWorkOrderWindow: React.FC = () => {
       (async () => {
         try {
           const api = (window as any).api || {};
+          const payload = await enrichWorkOrderCustomer(current);
+          let saved: any = null;
           if (isEditingExistingRef.current || (current.id && current.id !== 0)) {
-            if (typeof api.update === 'function') await api.update('workOrders', { ...current });
-            else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', current.id, { ...current });
+            if (typeof api.update === 'function') saved = await api.update('workOrders', { ...payload });
+            else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', current.id, { ...payload });
           } else {
-            if (typeof api.addWorkOrder === 'function') await api.addWorkOrder({ ...current });
-            else if (typeof api.dbAdd === 'function') await api.dbAdd('workOrders', { ...current });
+            if (typeof api.addWorkOrder === 'function') saved = await api.addWorkOrder({ ...payload });
+            else if (typeof api.dbAdd === 'function') saved = await api.dbAdd('workOrders', { ...payload });
           }
-          try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
+          const savedId = Number(saved?.id || payload.id || current.id || 0);
+          try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
         } catch (err) {
           console.warn('Auto-save on close failed', err);
         } finally {
@@ -484,41 +792,43 @@ const NewWorkOrderWindow: React.FC = () => {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, []);
+  }, [enrichWorkOrderCustomer]);
 
   // Autosave work order after a short idle period (keeps UI responsive during typing)
   useAutosave(wo, async (val) => {
     try {
       const api = (window as any).api || {};
+      const payload = await enrichWorkOrderCustomer(val);
       let saved: any = null;
       // Decide add vs update
       if (isEditingExisting || (val.id && val.id !== 0)) {
-        if (typeof api.update === 'function') saved = await api.update('workOrders', { ...val });
-        else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', val.id, { ...val });
+        if (typeof api.update === 'function') saved = await api.update('workOrders', { ...payload });
+        else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', val.id, { ...payload });
       } else {
         // Only create a new record when some key fields have content
         const hasMeaningful = !!(val.productCategory || val.productDescription || val.customerId || (val.items && val.items.length));
         if (!hasMeaningful) return;
-        const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...val }) : await api.dbAdd('workOrders', { ...val });
+        const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...payload }) : await api.dbAdd('workOrders', { ...payload });
         saved = added;
-        if (added?.id) setWo(w => ({ ...w, id: added.id }));
       }
+      applySavedCustomerSnapshot(saved || payload);
       setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
-      try { window.opener?.postMessage({ type: 'workorders:changed', id: (val as any).id }, '*'); } catch {}
+      const savedId = Number((saved?.id ?? payload.id ?? (val as any).id) || 0);
+      try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
 
       // Reflect parts into Calendar only when relevant fields changed
       try {
-        const id = Number((saved?.id ?? val.id) || 0);
+        const id = Number((saved?.id ?? payload.id ?? val.id) || 0);
         const key = [
           id,
-          onlyDate((saved?.partsOrderDate ?? (val as any).partsOrderDate) || null),
-          onlyDate((saved?.partsEstDelivery ?? (val as any).partsEstDelivery) || null),
-          String((saved?.partsOrderUrl ?? (val as any).partsOrderUrl) || ''),
-          String((saved?.partsTrackingUrl ?? (val as any).partsTrackingUrl) || ''),
+          onlyDate((saved?.partsOrderDate ?? payload.partsOrderDate) || null),
+          onlyDate((saved?.partsEstDelivery ?? payload.partsEstDelivery) || null),
+          String((saved?.partsOrderUrl ?? payload.partsOrderUrl) || ''),
+          String((saved?.partsTrackingUrl ?? payload.partsTrackingUrl) || ''),
         ].join('|');
         if (id && key !== lastPartsCalendarSyncKey.current) {
           lastPartsCalendarSyncKey.current = key;
-          await reflectWorkOrderInCalendar(saved || val);
+          await reflectWorkOrderInCalendar(saved || payload);
         }
       } catch {
         // ignore
@@ -620,23 +930,25 @@ const NewWorkOrderWindow: React.FC = () => {
     (async () => {
       try {
         const api = (window as any).api || {};
+        const payload = await enrichWorkOrderCustomer(wo);
         let saved: any = null;
         if (isEditingExisting || (wo.id && wo.id !== 0)) {
-          if (typeof api.update === 'function') saved = await api.update('workOrders', { ...wo });
-          else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', wo.id, { ...wo });
+          if (typeof api.update === 'function') saved = await api.update('workOrders', { ...payload });
+          else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', wo.id, { ...payload });
           console.log('Work order updated', saved);
         } else {
-          if (typeof api.addWorkOrder === 'function') saved = await api.addWorkOrder({ ...wo });
-          else if (typeof api.dbAdd === 'function') saved = await api.dbAdd('workOrders', { ...wo });
+          if (typeof api.addWorkOrder === 'function') saved = await api.addWorkOrder({ ...payload });
+          else if (typeof api.dbAdd === 'function') saved = await api.dbAdd('workOrders', { ...payload });
           console.log('Work order added', saved);
         }
-        const savedId = Number(saved?.id || wo.id || 0);
+        applySavedCustomerSnapshot(saved || payload);
+        const savedId = Number(saved?.id || payload.id || wo.id || 0);
         try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
 
         // Reflect parts ordered/delivery dates into Calendar
         try {
-          await reflectWorkOrderInCalendar(saved || wo);
+          await reflectWorkOrderInCalendar(saved || payload);
         } catch (e) {
           console.warn('calendar sync failed', e);
         }
@@ -769,16 +1081,17 @@ const NewWorkOrderWindow: React.FC = () => {
     const api: any = (window as any).api;
     if (typeof api.addWorkOrder !== 'function') return 0;
     try {
-      const added = await api.addWorkOrder({ ...current });
+      const payload = await enrichWorkOrderCustomer(current);
+      const added = await api.addWorkOrder({ ...payload });
       if (added?.id) {
         const newId = Number(added.id) || 0;
         // Sync React state so the autosave takes the UPDATE path, not CREATE again
-        setWo(w => ({ ...w, id: newId }));
+        applySavedCustomerSnapshot({ ...payload, ...added, id: newId });
         return newId;
       }
     } catch (e) { console.error('Force-save before receipt failed', e); }
     return 0;
-  }, []); // stable — reads latest workOrder from ref
+  }, [applySavedCustomerSnapshot, enrichWorkOrderCustomer]); // reads latest workOrder from ref
 
   const handleFormChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
@@ -787,6 +1100,61 @@ const NewWorkOrderWindow: React.FC = () => {
   const handleItemsChange = useCallback((items: WorkOrderItemRow[]) => {
     setWo(w => ({ ...w, items }));
   }, []);
+
+  useEffect(() => {
+    const orderUrl = String((wo as any).partsOrderUrl || '').trim();
+    const trackingUrl = String((wo as any).partsTrackingUrl || '').trim();
+    setPartsOrderUrlDraft(orderUrl);
+    setPartsTrackingUrlDraft(trackingUrl);
+    setPartsOrderUrlEditing(!orderUrl);
+  }, [loaded, wo.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (String((wo as any).partsOrderUrl || '').trim()) return;
+    const sourceUrl = (wo.items || [])
+      .map((item: any) => String(item?.orderSourceUrl || '').trim())
+      .find(Boolean);
+    if (!sourceUrl) return;
+    const normalized = normalizeMaybeUrl(sourceUrl);
+    setWo(w => ({ ...w, partsOrderUrl: normalized, partsOrdered: true }));
+    setPartsOrderUrlDraft(normalized);
+    setPartsOrderUrlEditing(false);
+  }, [wo.items, (wo as any).partsOrderUrl]);
+
+  const handleSavePartsTracking = useCallback(() => {
+    const orderUrl = normalizeMaybeUrl(partsOrderUrlDraft);
+    const trackingUrl = normalizeMaybeUrl(partsTrackingUrlDraft);
+    setWo(w => ({
+      ...w,
+      partsOrderUrl: orderUrl,
+      partsTrackingUrl: trackingUrl,
+      partsOrdered: Boolean(orderUrl || trackingUrl || (w as any).partsOrderDate || (w as any).partsEstDelivery),
+    }));
+    setPartsOrderUrlDraft(orderUrl);
+    setPartsTrackingUrlDraft(trackingUrl);
+    setPartsOrderUrlEditing(!orderUrl);
+  }, [partsOrderUrlDraft, partsTrackingUrlDraft]);
+
+  const handleClearPartsTracking = useCallback(() => {
+    setPartsOrderUrlDraft('');
+    setPartsTrackingUrlDraft('');
+    setPartsOrderUrlEditing(true);
+    setWo(w => ({
+      ...w,
+      partsOrdered: false,
+      partsOrderDate: null,
+      partsEstDelivery: null,
+      partsOrderUrl: '',
+      partsTrackingUrl: '',
+      partsDates: '',
+    }));
+  }, []);
+
+  const handleOpenOrderUrl = useCallback(async () => {
+    const url = normalizeMaybeUrl((wo as any).partsOrderUrl || partsOrderUrlDraft);
+    if (!url) return;
+    try { await (window as any).api?.openUrl?.(url); } catch {}
+  }, [wo, partsOrderUrlDraft]);
 
   const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
@@ -1278,7 +1646,7 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         }
 
-        const nextWo = {
+        const nextWo = await enrichWorkOrderCustomer({
           ...wo,
           amountPaid: newAmountPaid,
           paymentType: result.paymentType,
@@ -1287,7 +1655,7 @@ const NewWorkOrderWindow: React.FC = () => {
           checkoutDate,
           items: updatedItems,
           totals: updatedTotals,
-        };
+        });
 
         setWo(() => nextWo);
 
@@ -1296,7 +1664,8 @@ const NewWorkOrderWindow: React.FC = () => {
         let effectiveId = Number((wo as any).id || 0) || 0;
         if (effectiveId > 0) {
           try {
-            await api.update('workOrders', { ...nextWo });
+            const savedWo = await api.update('workOrders', { ...nextWo });
+            applySavedCustomerSnapshot(savedWo || nextWo);
           } catch (e) {
             console.error('Failed persisting checkout update', e);
           }
@@ -1309,7 +1678,7 @@ const NewWorkOrderWindow: React.FC = () => {
             if (added?.id) {
               effectiveId = Number(added.id) || 0;
               // Sync state so autosave won't create a duplicate
-              setWo(w => ({ ...w, id: effectiveId }));
+              applySavedCustomerSnapshot({ ...nextWo, ...added, id: effectiveId });
             }
           } catch (e) {
             console.error('Failed creating work order on checkout', e);
@@ -1318,10 +1687,10 @@ const NewWorkOrderWindow: React.FC = () => {
 
         if (result.printReceipt) {
           try {
-            let customerName = (wo as any).customerName || '';
-            let customerPhone = (wo as any).customerPhone || '';
-            let customerPhoneAlt = '';
-            let customerEmail = (wo as any).customerEmail || '';
+            let customerName = (nextWo as any).customerName || (wo as any).customerName || '';
+            let customerPhone = (nextWo as any).customerPhone || (wo as any).customerPhone || '';
+            let customerPhoneAlt = (nextWo as any).customerPhoneAlt || '';
+            let customerEmail = (nextWo as any).customerEmail || (wo as any).customerEmail || '';
             try {
               const id = (wo as any).customerId;
               if (id && (window as any).api?.findCustomers) {
@@ -1348,7 +1717,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
             const payload = {
               id: effectiveId || (wo as any).id,
-              customerId: (wo as any).customerId,
+              customerId: (nextWo as any).customerId || (wo as any).customerId,
               customerName,
               customerPhone,
               customerPhoneAlt,
@@ -1357,15 +1726,15 @@ const NewWorkOrderWindow: React.FC = () => {
               payments: (nextWo as any).payments ?? (wo as any).payments ?? [],
               addonSaleId: addonSale?.id ?? (nextWo as any).addonSaleId ?? (wo as any).addonSaleId ?? null,
               addonSale: addonSale || null,
-              productCategory: wo.productCategory,
-              productDescription: wo.productDescription,
-              model: (wo as any).model,
-              serial: (wo as any).serial,
+              productCategory: (nextWo as any).productCategory ?? wo.productCategory,
+              productDescription: (nextWo as any).productDescription ?? wo.productDescription,
+              model: (nextWo as any).model ?? (wo as any).model,
+              serial: (nextWo as any).serial ?? (wo as any).serial,
               password: (nextWo as any).password ?? (wo as any).password ?? '',
               patternSequence: Array.isArray((nextWo as any).patternSequence)
                 ? (nextWo as any).patternSequence
                 : (Array.isArray((wo as any).patternSequence) ? (wo as any).patternSequence : []),
-              problemInfo: wo.problemInfo,
+              problemInfo: (nextWo as any).problemInfo ?? wo.problemInfo,
               items: (nextWo as any).items || [],
               partCosts: (nextWo as any).partCosts,
               laborCost: (nextWo as any).laborCost,
@@ -1419,7 +1788,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const saveDisabled = false;
 
   return (
-    <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
+    <div className="gb-wo-window h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
@@ -1428,17 +1797,65 @@ const NewWorkOrderWindow: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-        <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} validationFlags={sidebarValidationFlags} onRequestForceSave={handleSidebarForceSave} />
-        <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
-            <div className="flex items-center justify-between">
+      <div className="gb-wo-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
+        <WorkOrderSidebar
+          workOrder={workOrderFull}
+          onChange={handleSidebarChange}
+          hideStatus
+          hideDates
+          hideAssigned
+          validationFlags={sidebarValidationFlags}
+          onRequestForceSave={handleSidebarForceSave}
+          footerActions={(
+            <button
+              type="button"
+              className="gb-wo-mobile-checkout-button w-full px-3 py-2 bg-neon-green text-zinc-900 font-semibold rounded"
+              onClick={handleCheckout}
+            >
+              Checkout
+            </button>
+          )}
+        />
+        <div className="gb-wo-main-scroll flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
+          <div className="gb-wo-top-card bg-zinc-900 border border-zinc-700 rounded p-2">
+            <WorkOrderMobileTitleCard
+              workOrder={workOrderFull}
+              customerSummary={customerSummary}
+              onChange={handleIntakeChange}
+              detailsMenu={(
+                <WorkOrderDetailsMenu
+                  open={detailsMenuOpen}
+                  workOrder={workOrderFull}
+                  onToggle={() => setDetailsMenuOpen(open => !open)}
+                  onClose={() => setDetailsMenuOpen(false)}
+                  onChange={handleSidebarChange}
+                />
+              )}
+            />
+            <div className="gb-wo-top-row">
+              <AssignedTechnicianField
+                value={workOrderFull.assignedTo}
+                invalid={!!sidebarValidationFlags?.assignedTo}
+                onChange={assignedTo => handleSidebarChange({ assignedTo })}
+              />
+              <div className="gb-wo-desktop-details-menu">
+                <WorkOrderDetailsMenu
+                  open={detailsMenuOpen}
+                  workOrder={workOrderFull}
+                  onToggle={() => setDetailsMenuOpen(open => !open)}
+                  onClose={() => setDetailsMenuOpen(false)}
+                  onChange={handleSidebarChange}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
               <div className="text-sm font-semibold text-zinc-200">Work Order Type</div>
               <div className="text-xs text-zinc-500">Switching types can clear fields</div>
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="gb-wo-type-grid mt-2">
               <button
-                className={`px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                type="button"
+                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (!isCustomBuild && !isDrone) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial));
@@ -1453,7 +1870,8 @@ const NewWorkOrderWindow: React.FC = () => {
                 Standard
               </button>
               <button
-                className={`px-3 py-1.5 rounded border text-sm ${isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                type="button"
+                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${isCustomBuild ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (isCustomBuild) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));
@@ -1472,7 +1890,8 @@ const NewWorkOrderWindow: React.FC = () => {
                 Custom PC Build
               </button>
               <button
-                className={`px-3 py-1.5 rounded border text-sm ${isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                type="button"
+                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
                   if (isDrone) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial || wo.productCategory));
@@ -1532,49 +1951,73 @@ const NewWorkOrderWindow: React.FC = () => {
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
           {/* Parts dates + order URL (under line items) */}
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
+          <div className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4>
               <div className="text-[11px] text-zinc-500">Not shown on printouts</div>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              <div>
+            <div className="gb-wo-parts-grid grid grid-cols-4 gap-2">
+              <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Order date</label>
                 <input
                   type="date"
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   value={(wo as any).partsOrderDate ? String((wo as any).partsOrderDate).substring(0, 10) : ''}
-                  onChange={e => setWo(w => ({ ...w, partsOrderDate: e.target.value || null }))}
+                  onChange={e => setWo(w => ({ ...w, partsOrderDate: e.target.value || null, partsOrdered: Boolean(e.target.value || (w as any).partsEstDelivery || (w as any).partsOrderUrl || (w as any).partsTrackingUrl) }))}
                 />
               </div>
-              <div>
+              <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Est. delivery</label>
                 <input
                   type="date"
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   value={(wo as any).partsEstDelivery ? String((wo as any).partsEstDelivery).substring(0, 10) : ''}
-                  onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null }))}
+                  onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null, partsOrdered: Boolean((w as any).partsOrderDate || e.target.value || (w as any).partsOrderUrl || (w as any).partsTrackingUrl) }))}
                 />
               </div>
-              <div>
+              <div className="gb-wo-parts-url-field col-span-2">
                 <label className="block text-xs text-zinc-400">Order URL</label>
-                <input
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  placeholder="https://..."
-                  value={(wo as any).partsOrderUrl || ''}
-                  onChange={e => setWo(w => ({ ...w, partsOrderUrl: e.target.value }))}
-                />
+                {String((wo as any).partsOrderUrl || '').trim() && !partsOrderUrlEditing ? (
+                  <button
+                    type="button"
+                    className="w-full mt-1 bg-[#39FF14] text-zinc-950 border border-[#39FF14] rounded px-2 py-1 text-left font-semibold hover:brightness-110"
+                    onClick={handleOpenOrderUrl}
+                    onDoubleClick={() => setPartsOrderUrlEditing(true)}
+                    title={String((wo as any).partsOrderUrl || '')}
+                  >
+                    Open {urlHostLabel((wo as any).partsOrderUrl)}
+                  </button>
+                ) : (
+                  <input
+                    className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                    placeholder="https://..."
+                    value={partsOrderUrlDraft}
+                    onChange={e => setPartsOrderUrlDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSavePartsTracking();
+                      }
+                    }}
+                  />
+                )}
               </div>
-              <div>
+              <div className="gb-wo-parts-url-field col-span-2">
                 <label className="block text-xs text-zinc-400">Tracking URL</label>
                 <input
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   placeholder="https://..."
-                  value={(wo as any).partsTrackingUrl || ''}
-                  onChange={e => setWo(w => ({ ...w, partsTrackingUrl: e.target.value }))}
+                  value={partsTrackingUrlDraft}
+                  onChange={e => setPartsTrackingUrlDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSavePartsTracking();
+                    }
+                  }}
                 />
               </div>
-              <div className="col-span-4">
+              <div className="gb-wo-parts-notes-field col-span-2">
                 <label className="block text-xs text-zinc-400">Dates/notes</label>
                 <input
                   className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
@@ -1582,6 +2025,31 @@ const NewWorkOrderWindow: React.FC = () => {
                   value={(wo as any).partsDates || ''}
                   onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}
                 />
+              </div>
+              <div className="gb-wo-parts-actions col-span-4 flex justify-end gap-2">
+                {String((wo as any).partsOrderUrl || '').trim() && !partsOrderUrlEditing ? (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-200 hover:border-zinc-500"
+                    onClick={() => setPartsOrderUrlEditing(true)}
+                  >
+                    Edit URL
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-200 hover:border-red-400 hover:text-red-300"
+                  onClick={handleClearPartsTracking}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-neon-green text-zinc-900 rounded text-xs font-semibold hover:brightness-110"
+                  onClick={handleSavePartsTracking}
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>
@@ -1599,7 +2067,7 @@ const NewWorkOrderWindow: React.FC = () => {
             }}
           />
         </div>
-        <div className="flex flex-col gap-3 min-h-0 overflow-auto">
+        <div className="gb-wo-payment-scroll flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
           <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="flex items-center justify-between mb-2">

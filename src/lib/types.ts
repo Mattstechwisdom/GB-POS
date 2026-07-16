@@ -23,6 +23,8 @@ export interface WorkOrderItem {
   description: string;
   qty?: number;
   unitPrice?: number;
+  partSource?: string;
+  orderSourceUrl?: string;
 }
 
 export interface WorkOrderFull {
@@ -30,6 +32,11 @@ export interface WorkOrderFull {
   status: WorkOrderStatus;
   assignedTo?: string | null;
   customerId: number;
+  /** Snapshot of linked customer info for printouts, search, and cross-device display while customer lookups sync. */
+  customerName?: string;
+  customerPhone?: string;
+  customerPhoneAlt?: string;
+  customerEmail?: string;
   /** Optional linked retail sale (e.g., upsell at pickup) that should appear on the WO receipt. */
   addonSaleId?: number | null;
   checkInAt: string;

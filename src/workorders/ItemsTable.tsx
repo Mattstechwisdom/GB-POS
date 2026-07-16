@@ -13,6 +13,8 @@ export type WorkOrderItemRow = {
   labor: number;
   status?: string;
   note?: string;
+  partSource?: string;
+  orderSourceUrl?: string;
 };
 
 const MAX_ITEMS = 5;
@@ -142,6 +144,8 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
         labor: Number(selected.laborCost ?? 0) || 0,
         status: 'pending',
         note: selected.model || selected.modelNumber || '',
+        partSource: selected.partSource || '',
+        orderSourceUrl: selected.orderSourceUrl || selected.reorderUrlTemplate || '',
       };
       onChange([...items, row].slice(0, MAX_ITEMS));
       setSelected(row.id);
@@ -163,12 +167,12 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
   // No IPC handler here; handled in parent
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
-      <div className="flex items-center justify-between mb-1">
+    <div className="gb-wo-items-card bg-zinc-900 border border-zinc-700 rounded p-2">
+      <div className="gb-wo-items-header flex items-center justify-between mb-1">
         <h4 className="text-sm font-semibold text-zinc-200">Items</h4>
         <div className="text-xs text-zinc-400">Add parts/services (max {MAX_ITEMS})</div>
       </div>
-      <div className="overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '10rem' }}>
+      <div className="gb-wo-items-table-wrap overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '10rem' }}>
         <table className="w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
@@ -193,11 +197,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                   }}
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
-                  <td className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
-                  <td className="px-2 py-1 text-left text-zinc-400 text-xs">{it.repairCategory || ''}</td>
-                  <td className="px-2 py-1 text-left">{it.repair}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
+                  <td data-label="Device" className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
+                  <td data-label="Type" className="px-2 py-1 text-left text-zinc-400 text-xs">{it.repairCategory || ''}</td>
+                  <td data-label="Repair" className="px-2 py-1 text-left">{it.repair}</td>
+                  <td data-label="Parts" className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
+                  <td data-label="Labor" className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
                 </tr>
               );
             })}
@@ -220,18 +224,18 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                       : 'border-transparent bg-zinc-950/30 hover:bg-zinc-800/40'
                   }`}
                 >
-                  <td className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
-                  <td className="px-2 py-1 text-left text-zinc-500 text-xs">{it.repairCategory || ''}</td>
-                  <td className="px-2 py-1 text-left">{it.repair}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
+                  <td data-label="Device" className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
+                  <td data-label="Type" className="px-2 py-1 text-left text-zinc-500 text-xs">{it.repairCategory || ''}</td>
+                  <td data-label="Repair" className="px-2 py-1 text-left">{it.repair}</td>
+                  <td data-label="Parts" className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
+                  <td data-label="Labor" className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
                 </tr>
               );
             })}
 
             {/* filler rows only for the editable repair list (keep UI compact when readonly rows are present) */}
             {(ro.length === 0 ? Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }) : []).map((_, idx) => (
-              <tr key={`filler-${idx}`} className="opacity-60">
+              <tr key={`filler-${idx}`} className="gb-wo-items-filler opacity-60">
                 <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-left">&nbsp;</td>
                 <td className="px-2 py-1 text-left">&nbsp;</td>
@@ -243,7 +247,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
         </table>
       </div>
 
-      <div className="flex gap-2 mt-2 items-center">
+      <div className="gb-wo-items-actions flex gap-2 mt-2 items-center">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
         {onAddProduct ? (
           <button

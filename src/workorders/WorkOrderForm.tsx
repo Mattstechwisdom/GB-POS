@@ -334,7 +334,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
   useEffect(() => { setLocalCustomDesc(v => v === (workOrder.productDescription || '') ? v : (workOrder.productDescription || '')); }, [workOrder.productDescription]);
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
+    <div className="gb-wo-form-card bg-zinc-900 border border-zinc-700 rounded p-2">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-zinc-200">
           {headerLabel}
@@ -344,7 +344,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
       </div>
 
       {!isCustomBuild && (
-        <div className="grid grid-cols-3 gap-2 mb-2">
+        <div className="gb-wo-device-grid grid grid-cols-3 gap-2 mb-2">
           <div>
             <label className="block text-xs text-zinc-400">Device Category</label>
             <DeviceCategorySelect
@@ -405,7 +405,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
 
       {!isCustomBuild && (
         <>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="gb-wo-credential-grid grid grid-cols-3 gap-2">
             <div>
               <label className="block text-xs text-zinc-400">
                 Password

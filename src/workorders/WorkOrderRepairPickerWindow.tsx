@@ -42,10 +42,10 @@ export default function WorkOrderRepairPickerWindow() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
-      <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4 overflow-hidden w-full">
+    <div className="gb-repair-picker-window flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
+      <div className="gb-repair-picker-layout grid grid-cols-[620px_1fr] gap-4 h-full p-4 overflow-hidden w-full">
         {/* Left pane: Item list */}
-        <div className="flex flex-col min-h-0">
+        <div className="gb-repair-picker-list-pane flex flex-col min-h-0">
           <RepairItemList 
             items={repairItems}
             filteredItems={filteredItems}
@@ -55,7 +55,7 @@ export default function WorkOrderRepairPickerWindow() {
           />
         </div>
         {/* Right pane: Form */}
-        <div className="flex flex-col min-h-0">
+        <div className="gb-repair-picker-form-pane flex flex-col min-h-0">
           <RepairItemForm 
             selectedItem={selectedItem}
             onSave={(item) => finalize(item)}

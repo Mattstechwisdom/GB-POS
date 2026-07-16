@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
+declare global {
+  interface Window {
+    GBPosAndroid?: {
+      openExternalUrl?: (url: string) => void;
+    };
+  }
+}
+
 type ReleaseAsset = {
   name?: string;
   browser_download_url?: string;
@@ -74,6 +82,7 @@ async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
 export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500 }: MobileUpdateCheckProps) {
   const [update, setUpdate] = useState<MobileUpdate | null>(null);
   const [checking, setChecking] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -125,8 +134,24 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
 
   if (!update) return null;
 
+  const openExternal = (url: string) => {
+    const safeUrl = String(url || '').trim();
+    if (!/^https:\/\//i.test(safeUrl)) return;
+    setOpening(true);
+    try {
+      if (window.GBPosAndroid?.openExternalUrl) {
+        window.GBPosAndroid.openExternalUrl(safeUrl);
+        return;
+      }
+      const opened = window.open(safeUrl, '_blank', 'noopener,noreferrer');
+      if (!opened) window.location.href = safeUrl;
+    } finally {
+      window.setTimeout(() => setOpening(false), 1400);
+    }
+  };
+
   const download = () => {
-    window.open(update.apkUrl, '_blank', 'noopener,noreferrer');
+    openExternal(update.apkUrl);
   };
 
   const skip = () => {
@@ -158,9 +183,10 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
           <button
             type="button"
             onClick={download}
+            disabled={opening}
             className="flex-1 rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black"
           >
-            Download APK
+            {opening ? 'Opening...' : 'Download APK'}
           </button>
           <button
             type="button"

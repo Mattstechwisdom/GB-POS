@@ -8,17 +8,19 @@ interface Props {
   workOrder: WorkOrderFull;
   onChange: (patch: Partial<WorkOrderFull>) => void;
   hideStatus?: boolean; // optionally hide status control (used by Sale window)
+  hideAssigned?: boolean; // optionally hide assigned technician control when rendered elsewhere
   saleDates?: boolean; // when true, relabel date fields and show extra Client pickup
   hideDates?: boolean; // optionally hide the date controls entirely (used by Sale window)
   hideOrderDeliveryDates?: boolean; // when true in Sale window, hide Product ordered & Product delivered (keep Client pickup)
   renderActions?: (workOrder: WorkOrderFull) => React.ReactNode; // override default print buttons
+  footerActions?: React.ReactNode;
   validationFlags?: Partial<Record<'assignedTo', boolean>>;
   /** Called when the receipt button needs a saved work-order ID but the record is still unsaved.
    *  Should persist the work order immediately and return its new numeric ID (0 if it fails). */
   onRequestForceSave?: () => Promise<number>;
 }
 
-const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags, onRequestForceSave }) => {
+const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, hideAssigned = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, footerActions, validationFlags, onRequestForceSave }) => {
   const [techs, setTechs] = useState<any[]>([]);
   useEffect(() => {
     let mounted = true;
@@ -43,8 +45,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
   }, [techs, workOrder.assignedTo]);
 
   return (
-    <div className="bg-gradient-to-b from-slate-800 to-slate-900 p-3 rounded border border-zinc-700 h-full flex flex-col">
-      <h4 className="text-sm font-semibold text-zinc-200 mb-3">Status & Dates</h4>
+    <div className="gb-wo-side-actions bg-gradient-to-b from-slate-800 to-slate-900 p-3 rounded border border-zinc-700 h-full flex flex-col">
+      {(!hideStatus || !hideAssigned || !hideDates) && <h4 className="text-sm font-semibold text-zinc-200 mb-3">Status & Dates</h4>}
       {!hideStatus && (
         <>
           <label className="block text-xs text-zinc-400">Status</label>
@@ -55,6 +57,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
           </select>
         </>
       )}
+      {!hideAssigned && (
+        <>
           <label className="block text-xs text-zinc-400">
             Assigned to
             {validationFlags?.assignedTo && <span className="ml-1 text-red-500">*</span>}
@@ -79,6 +83,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
               ))}
             </select>
           )}
+        </>
+      )}
 
 
       {!hideDates && (
@@ -270,6 +276,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
             >
               Print customer receipt
             </button>
+            {footerActions}
           </>
         )}
       </div>
@@ -285,6 +292,7 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && prev.hideDates === next.hideDates
     && prev.hideOrderDeliveryDates === next.hideOrderDeliveryDates
     && prev.renderActions === next.renderActions
+    && prev.footerActions === next.footerActions
     && prev.onRequestForceSave === next.onRequestForceSave
     && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
     && String(a.status || '') === String(b.status || '')

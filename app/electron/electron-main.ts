@@ -1870,7 +1870,7 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
         preload: path.join(__dirname, '..', 'electron', 'preload.js'),
       },
       show: false,
-      title: windowTitle('Add Repair to Work Order'),
+      title: windowTitle('Repair Selection'),
     });
     showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -4878,7 +4878,42 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   }
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+  const mapped = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+  if (key === 'workOrders' && mapped.length > 0) {
+    try {
+      const customerIds = Array.from(new Set(
+        mapped
+          .map((row: any) => Number(row?.customerId || 0))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      ));
+      if (customerIds.length > 0) {
+        const customerRes = await client
+          .from('customers')
+          .select('legacy_id, first_name, last_name, phone, phone_alt, email')
+          .eq('shop_id', cloudSession.shopId)
+          .in('legacy_id', customerIds);
+        if (!customerRes.error && Array.isArray(customerRes.data)) {
+          const customersByLegacyId = new Map<number, any>();
+          for (const customer of customerRes.data) {
+            const id = Number(customer?.legacy_id || 0);
+            if (Number.isFinite(id) && id > 0) customersByLegacyId.set(id, customer);
+          }
+          for (const row of mapped) {
+            const customer = customersByLegacyId.get(Number(row?.customerId || 0));
+            if (!customer) continue;
+            const fullName = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
+            if (fullName && !row.customerName) row.customerName = fullName;
+            if (customer.phone && !row.customerPhone) row.customerPhone = customer.phone;
+            if (customer.phone_alt && !row.customerPhoneAlt) row.customerPhoneAlt = customer.phone_alt;
+            if (customer.email && !row.customerEmail) row.customerEmail = customer.email;
+          }
+        }
+      }
+    } catch {
+      // Customer snapshots are best effort; work-order reads still succeed without them.
+    }
+  }
+  return mapped;
 }
 
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
@@ -7151,9 +7186,11 @@ async function handleQrRequest(req: any, res: any) {
           storage_fee:     'Storage Fee Notice',
         };
         try {
+          const updatedAt = new Date().toISOString();
           const updates: any = {
             statusUpdate:    statusLabel,
-            statusUpdatedAt: new Date().toISOString(),
+            statusUpdatedAt: updatedAt,
+            updatedAt,
           };
           if (estimatedDate) updates.estimatedDate = estimatedDate;
           if (techNotes) updates.techNotes = techNotes;
@@ -7161,7 +7198,7 @@ async function handleQrRequest(req: any, res: any) {
             // Don't overwrite the order status; just record the note
             delete updates.statusUpdate;
             updates.lastUpdateNote = techNotes;
-            updates.lastUpdateAt = new Date().toISOString();
+            updates.lastUpdateAt = updatedAt;
           } else if (type === 'repair' && repairStatusMap[statusKey]) {
             updates.repairStatus = repairStatusMap[statusKey];
           } else if (type === 'sale' && saleStatusMap[statusKey]) {
@@ -7171,10 +7208,16 @@ async function handleQrRequest(req: any, res: any) {
           const col: any[] = Array.isArray(freshDb2[collection]) ? freshDb2[collection] : [];
           const idx = col.findIndex((r: any) => Number(r?.id || 0) === id);
           if (idx >= 0) {
-            col[idx] = { ...col[idx], ...updates };
+            const previousItem = col[idx];
+            const updatedItem = { ...previousItem, ...updates };
+            if (collection === 'workOrders') {
+              updatedItem.activityAt = computeWorkOrderActivityAt(previousItem, updatedItem, updatedAt);
+            }
+            col[idx] = updatedItem;
             freshDb2[collection] = col;
             writeDb(freshDb2);
             scheduleCollectionChanged(collection);
+            void syncCloudWriteOrQueue('upsert', collection, updatedItem);
           }
         } catch { /* non-fatal */ }
 
@@ -7781,7 +7824,7 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: windowTitle('Add Repair to Work Order'),
+    title: windowTitle('Repair Selection'),
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });

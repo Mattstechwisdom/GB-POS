@@ -32,7 +32,15 @@ const RecentCustomers: React.FC = () => {
     return [
       { type: 'header', label: name },
       { label: 'Open Customer', onClick: async () => { await api?.openCustomerOverview?.(ctxCustomer.id); } },
-      { label: 'New Work Order', onClick: async () => { await api?.openNewWorkOrder?.({ customerId: ctxCustomer.id, customerName: name, customerPhone: ctxCustomer.phone || '' }); } },
+      { label: 'New Work Order', onClick: async () => {
+        await api?.openNewWorkOrder?.({
+          customerId: ctxCustomer.id,
+          customerName: name,
+          customerPhone: ctxCustomer.phone || '',
+          customerPhoneAlt: (ctxCustomer as any).phoneAlt || '',
+          customerEmail: (ctxCustomer as any).email || '',
+        });
+      } },
       { type: 'separator' },
       { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(String(phone)); } catch {} } },
       { label: 'Copy Name', onClick: async () => { try { await navigator.clipboard.writeText(name); } catch {} } },

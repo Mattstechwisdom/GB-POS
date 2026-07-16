@@ -319,7 +319,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'reporting': return <ReportingWindow />;
     case 'reportEmail': return <ReportEmailWindow />;
     case 'charts': return <ChartsWindow />;
-    case 'notifications': return <NotificationsWindow />;
+    case 'notifications': return <NotificationsWindow hideCloseButton />;
     case 'notificationSettings': return <NotificationSettingsWindow />;
     case 'releaseForm': return <ReleaseFormWindow />;
     case 'customerReceipt': return <CustomerReceiptWindow />;
@@ -385,7 +385,7 @@ function titleForModal(type: string) {
     eod: 'Reports',
     products: 'Products',
     inventory: 'Inventory',
-    workOrderRepairPicker: 'Repair Picker',
+    workOrderRepairPicker: 'Repair Selection',
     customerOverview: 'Client',
     customerSearch: 'Clients',
     diagnosticTools: 'Diagnostic Tools',

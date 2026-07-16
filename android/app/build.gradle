@@ -1,4 +1,17 @@
+import groovy.json.JsonSlurper
+
 apply plugin: 'com.android.application'
+
+def gbposPackageJson = new JsonSlurper().parse(file('../../package.json'))
+def gbposVersionName = String.valueOf(gbposPackageJson.version ?: '0.0.0')
+def gbposVersionParts = gbposVersionName.tokenize('.').collect { part ->
+    def numeric = (part =~ /\d+/)
+    numeric.find() ? numeric.group().toInteger() : 0
+}
+while (gbposVersionParts.size() < 3) {
+    gbposVersionParts.add(0)
+}
+def gbposVersionCode = (gbposVersionParts[0] * 10000) + (gbposVersionParts[1] * 100) + gbposVersionParts[2]
 
 android {
     namespace = "com.gadgetboy.pos"
@@ -7,8 +20,8 @@ android {
         applicationId "com.gadgetboy.pos"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 492
-        versionName "0.4.92"
+        versionCode gbposVersionCode
+        versionName gbposVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

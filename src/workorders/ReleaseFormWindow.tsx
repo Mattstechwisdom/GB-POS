@@ -260,7 +260,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, background: '#fff' }}>
           <div style={{ fontWeight: 600, marginBottom: 10 }}>Acknowledgements</div>
           <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5, marginBottom: 54 }}>
-            By signing below, I authorize GadgetBoy Repair to perform the above repairs. I acknowledge that data backup is my responsibility and GadgetBoy is not liable for data loss. I agree to the terms and charges listed. Devices not picked up within 30 days of completion may incur storage fees.
+            By signing below, I confirm the client, phone, email, and device information above is correct. I authorize GadgetBoy Repair to diagnose and/or repair the device. I acknowledge that data backup is my responsibility and GadgetBoy is not liable for data loss. I agree to the diagnostic, repair, and storage terms listed.
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 120, color: '#444' }}>Customer Signature</div>

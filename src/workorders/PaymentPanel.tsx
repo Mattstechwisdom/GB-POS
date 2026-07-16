@@ -18,7 +18,7 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
   const salesTaxed = currentTaxRate > 0;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
+    <div className="gb-wo-payment-panel bg-zinc-900 border border-zinc-700 rounded p-3">
       <h4 className="text-sm font-semibold text-zinc-200 mb-2">Payment</h4>
 
       <div className="grid grid-cols-2 gap-2">

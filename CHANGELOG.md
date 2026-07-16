@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.97 (2026-07-16)
+- Mobile: refines the Repair Selection table so Device, Category, Repair, P, L, and Total all fit inside the visible phone/tablet width.
+- Mobile: moves Repair Selection filters behind the three-line search control and keeps Show All inside that filter panel.
+- Mobile Updates: opens Android APK downloads through the native Android browser/download handler and keeps the APK version synced to the release version.
+- Work Orders: strengthens client snapshot handling so newly created work orders retain visible customer details while cloud sync catches up.
+- Work Orders: adds a Repair Journal flow for archived internal notes tied to each work order.
+- Parts Tracking: improves order URL handling with saved/openable order links and selected-repair URL carryover.
+- Repairs: improves Repair Selection naming and mobile repair form layout for touch use.
+
 ## v0.4.96 (2026-07-13)
 - Mobile: reorganizes the side menu into priority actions, Client Database, Technician Tools, and Admin sections.
 - Mobile: refreshes the main toolbar with the GadgetBoy logo, larger purple brand text, version label, slimmer header, and search-bar filter menu.

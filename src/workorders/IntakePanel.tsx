@@ -39,7 +39,7 @@ const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary }) 
   const selectValue = showCustomInput ? '__custom__' : (workOrder.intakeSource || '');
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
+    <div className="gb-wo-intake-panel bg-zinc-900 border border-zinc-700 rounded p-3">
       <h4 className="text-sm font-semibold text-zinc-200 mb-2">Check-in & Customer</h4>
   <label className="block text-xs text-zinc-400">Check-in</label>
   <input type="datetime-local" className="w-full mt-1 mb-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={toLocalDatetimeInput(workOrder.checkInAt)} onChange={e => onChange({ checkInAt: fromLocalDatetimeInput(e.target.value) as any })} />

@@ -248,7 +248,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="gb-repair-item-form flex flex-col h-full">
       {/* Edit Repair button at top (admin only) */}
       {effectiveMode === 'admin' && showCreateAction && (
         <div className="flex justify-end mb-4">
@@ -261,9 +261,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           </button>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+      <div className="gb-repair-form-body flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
         {/* Repair Info Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="gb-repair-form-grid grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 1. Repair Category — always required, comes first */}
           <div className="md:col-span-2 relative">
             <label className="block text-sm font-medium text-gray-300 mb-1">
@@ -367,25 +367,27 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <label className="block text-sm font-medium text-gray-300 mb-1">Alt. description</label>
             <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} onKeyDown={handleEnterToSubmit} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
-            <MoneyInput
-              className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-              value={Number(formData.partCost || 0)}
-              onValueChange={(v) => setFormData(prev => ({ ...prev, partCost: Number(v || 0) }))}
-              onKeyDown={handleEnterToSubmit}
-              placeholder="0.00"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Labor costs</label>
-            <MoneyInput
-              className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-              value={Number(formData.laborCost || 0)}
-              onValueChange={(v) => setFormData(prev => ({ ...prev, laborCost: Number(v || 0) }))}
-              onKeyDown={handleEnterToSubmit}
-              placeholder="0.00"
-            />
+          <div className="gb-repair-cost-row md:col-span-2">
+            <div className="gb-repair-cost-field">
+              <label className="block text-sm font-medium text-gray-300 mb-1">Part costs</label>
+              <MoneyInput
+                className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
+                value={Number(formData.partCost || 0)}
+                onValueChange={(v) => setFormData(prev => ({ ...prev, partCost: Number(v || 0) }))}
+                onKeyDown={handleEnterToSubmit}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="gb-repair-cost-field">
+              <label className="block text-sm font-medium text-gray-300 mb-1">Labor costs</label>
+              <MoneyInput
+                className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
+                value={Number(formData.laborCost || 0)}
+                onValueChange={(v) => setFormData(prev => ({ ...prev, laborCost: Number(v || 0) }))}
+                onKeyDown={handleEnterToSubmit}
+                placeholder="0.00"
+              />
+            </div>
           </div>
           {effectiveMode === 'admin' && (
             <div className="md:col-span-2">
@@ -478,7 +480,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         <hr className="border-zinc-700 my-2" />
 
         {/* Part source + URL side by side */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="gb-repair-source-section grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>
             <input

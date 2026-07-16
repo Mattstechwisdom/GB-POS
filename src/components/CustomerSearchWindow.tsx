@@ -48,9 +48,10 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
     const f = customersList || [];
     const qFirst = (deferredFilters.firstName ?? '').trim().toLowerCase();
     const qLast = (deferredFilters.lastName ?? '').trim().toLowerCase();
-    const qPhone = (deferredFilters.phone ?? '').trim().toLowerCase();
+    const qPhoneRaw = (deferredFilters.phone ?? '').trim().toLowerCase();
+    const qPhoneDigits = qPhoneRaw.replace(/\D+/g, '');
     const qEmail = (deferredFilters.email ?? '').trim().toLowerCase();
-    const anyFilled = !!(qFirst || qLast || qPhone || qEmail);
+    const anyFilled = !!(qFirst || qLast || qPhoneRaw || qEmail);
     if (!anyFilled) {
       // No filters: show only the 8 most recently updated/created customers (newest first)
       const sorted = f.slice().sort((a, b) => {
@@ -65,10 +66,11 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
       const first = (c.firstName ?? '').toLowerCase();
       const last = (c.lastName ?? '').toLowerCase();
       const phone = ((c.phone ?? '')).toLowerCase();
+      const phoneDigits = phone.replace(/\D+/g, '');
       const email = (c.email ?? '').toLowerCase();
       return (!qFirst || first.includes(qFirst)) &&
              (!qLast || last.includes(qLast)) &&
-             (!qPhone || phone.includes(qPhone)) &&
+             (!qPhoneRaw || phone.includes(qPhoneRaw) || (!!qPhoneDigits && phoneDigits.includes(qPhoneDigits))) &&
              (!qEmail || email.includes(qEmail));
     });
   }, [deferredFilters, customersList]);
@@ -109,7 +111,13 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
       { type: 'header', label: name },
       { label: 'Open Customer', onClick: async () => { await api?.openCustomerOverview?.(ctxCustomer.id); } },
       { label: 'New Work Order', onClick: async () => {
-        await api?.openNewWorkOrder?.({ customerId: ctxCustomer.id, customerName: name, customerPhone: ctxCustomer.phone || '' });
+        await api?.openNewWorkOrder?.({
+          customerId: ctxCustomer.id,
+          customerName: name,
+          customerPhone: ctxCustomer.phone || '',
+          customerPhoneAlt: (ctxCustomer as any).phoneAlt || '',
+          customerEmail: (ctxCustomer as any).email || '',
+        });
       }},
       { type: 'separator' },
       { label: 'Copy Phone', disabled: !phone, hint: phone || undefined, onClick: async () => { if (!phone) return; try { await navigator.clipboard.writeText(phone); } catch {} } },

@@ -15,6 +15,32 @@ interface Props {
   closeAfterSave?: boolean; // default: save closes the window
 }
 
+function phoneDigits(value: any): string {
+  return String(value || '').replace(/\D+/g, '');
+}
+
+function isValidPhone(value: any): boolean {
+  return phoneDigits(value).length === 10;
+}
+
+function isValidEmail(value: any): boolean {
+  const email = String(value || '').trim();
+  if (!email) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function cleanCustomerPayload(value: Partial<Customer>): Partial<Customer> {
+  const next: any = { ...(value || {}) };
+  next.firstName = String(next.firstName || '').trim();
+  next.lastName = String(next.lastName || '').trim();
+  next.email = String(next.email || '').trim();
+  next.phone = String(next.phone || '').trim();
+  next.phoneAlt = String(next.phoneAlt || '').trim();
+  next.zip = String(next.zip || '').trim();
+  next.notes = String(next.notes || '');
+  return next;
+}
+
 const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true }) => {
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
@@ -79,19 +105,32 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   const isCustomerValid = useCallback((c: Partial<Customer> | null | undefined) => {
     if (!c) return false;
-    const hasFirst = !!c.firstName && !!c.firstName.trim();
-    const hasLast = !!c.lastName && !!c.lastName.trim();
-    const hasContact = !!(c.phone || c.email);
+    const cleaned = cleanCustomerPayload(c);
+    const hasFirst = !!cleaned.firstName;
+    const hasLast = !!cleaned.lastName;
+    const phoneOk = !cleaned.phone || isValidPhone(cleaned.phone);
+    const phoneAltOk = !cleaned.phoneAlt || isValidPhone(cleaned.phoneAlt);
+    const emailOk = !cleaned.email || isValidEmail(cleaned.email);
+    const hasContact = (!!cleaned.phone && phoneOk) || (!!cleaned.email && emailOk);
     const zipOk = !c.zip || /^[0-9]{5}$/.test(c.zip.toString());
-    return hasFirst && hasLast && hasContact && zipOk;
+    return hasFirst && hasLast && hasContact && phoneOk && phoneAltOk && emailOk && zipOk;
   }, []);
 
   const validate = useCallback(() => {
     const errs: string[] = [];
-    if (!local.firstName || !local.firstName.trim()) errs.push('First name required');
-    if (!local.lastName || !local.lastName.trim()) errs.push('Last name required');
-    if (!(local.phone || local.email)) errs.push('Phone or Email required');
-    if (local.zip && !/^[0-9]{5}$/.test(local.zip.toString())) errs.push('Zip must be 5 digits');
+    const cleaned = cleanCustomerPayload(local);
+    const phoneOk = !cleaned.phone || isValidPhone(cleaned.phone);
+    const phoneAltOk = !cleaned.phoneAlt || isValidPhone(cleaned.phoneAlt);
+    const emailOk = !cleaned.email || isValidEmail(cleaned.email);
+    if (!cleaned.firstName) errs.push('First name required');
+    if (!cleaned.lastName) errs.push('Last name required');
+    if (!cleaned.phone && !cleaned.email) errs.push('Phone or Email required');
+    if (cleaned.phone && !phoneOk) errs.push('Phone must be 10 digits');
+    if (cleaned.phoneAlt && !phoneAltOk) errs.push('Alt phone must be 10 digits');
+    if (cleaned.email && !emailOk) errs.push('Email must be valid');
+    if (!cleaned.phone && cleaned.email && !emailOk) errs.push('A valid phone or email is required');
+    if (cleaned.phone && !phoneOk && (!cleaned.email || !emailOk)) errs.push('A valid phone or email is required');
+    if (cleaned.zip && !/^[0-9]{5}$/.test(cleaned.zip.toString())) errs.push('Zip must be 5 digits');
     setErrors(errs);
     return errs.length === 0;
   }, [local]);
@@ -155,7 +194,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     if (!validate()) return null;
     setAutoSaving(true);
     const saveSeq = editSeqRef.current;
-    const payload = { ...local, updatedAt: new Date().toISOString(), createdAt: local.createdAt || new Date().toISOString() } as any;
+    const payload = { ...cleanCustomerPayload(local), id: (local as any).id, updatedAt: new Date().toISOString(), createdAt: local.createdAt || new Date().toISOString() } as any;
     try {
       let saved: Customer | null = null;
       if ((payload as any).id) {
@@ -184,7 +223,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     const saveSeq = editSeqRef.current;
     setAutoSaving(true);
     try {
-      const payload = { ...val, updatedAt: new Date().toISOString(), createdAt: (val as any)?.createdAt || new Date().toISOString() } as any;
+      const payload = { ...cleanCustomerPayload(val as any), id: (val as any)?.id, updatedAt: new Date().toISOString(), createdAt: (val as any)?.createdAt || new Date().toISOString() } as any;
       let saved: Customer | null = null;
       if ((payload as any).id) {
         saved = await window.api.update('customers', payload);
@@ -213,22 +252,27 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     }
   }, {
     debounceMs: 6000,
-    enabled: dirty && (isCustomerValid(local) || !!(local as any)?.id),
+    enabled: dirty && !!(local as any)?.id && isCustomerValid(local),
     equals: Object.is,
     getLastSavedValue: (_pending, res) => (res as any) || _pending,
     shouldSave: (v) => {
       if (!v) return false;
-      if ((v as any).id) return !!(v as any).firstName && !!(v as any).lastName;
-      return isCustomerValid(v as any);
+      return !!(v as any).id && isCustomerValid(v as any);
     },
   });
 
-  async function makePayloadForCustomer(): Promise<{ customerId?: number; customerName?: string; customerPhone?: string }> {
+  async function makePayloadForCustomer(): Promise<{ customerId?: number; customerName?: string; customerPhone?: string; customerPhoneAlt?: string; customerEmail?: string }> {
     const saved = await ensureCustomerSaved();
     const c = (saved || local || {}) as any;
     if (!c.id) return {} as any;
     const name = (c.name || `${c.firstName || ''} ${c.lastName || ''}`).trim();
-    return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
+    return {
+      customerId: c.id,
+      customerName: name,
+      customerPhone: c.phone || '',
+      customerPhoneAlt: c.phoneAlt || '',
+      customerEmail: c.email || '',
+    };
   }
 
   return (
@@ -283,6 +327,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
+                  if (!payload.customerId) return;
                   await (window as any).api.openNewWorkOrder(payload);
                 }}
               >New Work Order</Button>
@@ -290,6 +335,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
+                  if (!payload.customerId) return;
                   await (window as any).api.openNewSale(payload);
                 }}
               >New Sale</Button>

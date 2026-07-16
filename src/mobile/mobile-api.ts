@@ -906,6 +906,40 @@ async function cloudDbGet(key: string, opts?: SortOptions): Promise<any[]> {
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
   const rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, credentialExtra));
+  if (key === 'workOrders' && rows.length > 0) {
+    try {
+      const customerIds = Array.from(new Set(
+        rows
+          .map((row: any) => Number(row?.customerId || 0))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      ));
+      if (customerIds.length > 0) {
+        const customerRes = await supabase
+          .from('customers')
+          .select('legacy_id, first_name, last_name, phone, phone_alt, email')
+          .eq('shop_id', session.shopId)
+          .in('legacy_id', customerIds);
+        if (!customerRes.error && Array.isArray(customerRes.data)) {
+          const customersByLegacyId = new Map<number, any>();
+          for (const customer of customerRes.data) {
+            const id = Number(customer?.legacy_id || 0);
+            if (Number.isFinite(id) && id > 0) customersByLegacyId.set(id, customer);
+          }
+          for (const row of rows) {
+            const customer = customersByLegacyId.get(Number(row?.customerId || 0));
+            if (!customer) continue;
+            const fullName = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
+            if (fullName && !row.customerName) row.customerName = fullName;
+            if (customer.phone && !row.customerPhone) row.customerPhone = customer.phone;
+            if (customer.phone_alt && !row.customerPhoneAlt) row.customerPhoneAlt = customer.phone_alt;
+            if (customer.email && !row.customerEmail) row.customerEmail = customer.email;
+          }
+        }
+      }
+    } catch {
+      // Customer snapshots are best effort; work-order reads still succeed without them.
+    }
+  }
   writeLocalList(key, rows);
   return rows;
 }
