@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.3 (2026-07-16)
+- Mobile Updates: adds an Update button above Sync Now in the mobile side menu when a newer Android APK is available.
+- Mobile Updates: shares one update checker between the popup and side-menu button so both find the same latest APK release.
+- Android: downloads the APK through the native app bridge and opens Android's installer prompt to finish the update.
+
 ## v0.5.2 (2026-07-16)
 - Repairs: restores the desktop New Item / Repair Selection layout while keeping the compact mobile repair table only on mobile.
 - Repairs: makes Diagnostic show first, Additional Fees second, and all other repair categories alphabetically in lists and filters.

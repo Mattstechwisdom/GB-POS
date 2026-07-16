@@ -7,7 +7,7 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from '../li
 import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
 import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
-import MobileUpdateCheck from './MobileUpdateCheck';
+import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -695,9 +695,48 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   const [visibleCount, setVisibleCount] = useState(35);
   const [sheetRow, setSheetRow] = useState<MobileRow | null>(null);
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
+  const [mobileUpdate, setMobileUpdate] = useState<MobileUpdate | null>(null);
+  const [mobileUpdateOpening, setMobileUpdateOpening] = useState(false);
   const modalCounterRef = useRef(0);
   const deferredQuery = useDeferredValue(query);
   const { workOrders, sales, customers, technicians, loading, error, reload } = useMobileRecords(refreshKey);
+
+  useEffect(() => {
+    let alive = true;
+    let timer: number | null = null;
+
+    const runCheck = async () => {
+      try {
+        const next = await getLatestMobileUpdate();
+        if (alive) setMobileUpdate(next);
+      } catch {
+        if (alive) setMobileUpdate(null);
+      }
+    };
+
+    const scheduleCheck = (delay = 1200) => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void runCheck();
+      }, delay);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleCheck(600);
+    };
+    const onOnline = () => scheduleCheck(600);
+
+    scheduleCheck();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+
+    return () => {
+      alive = false;
+      if (timer) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
+    };
+  }, []);
 
   const openModal = useCallback((type: string, payload?: any) => {
     if (payload !== undefined && payload !== null) {
@@ -1033,6 +1072,12 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
           setRefreshKey((v) => v + 1);
           void reload();
         }}
+        update={mobileUpdate}
+        updateOpening={mobileUpdateOpening}
+        onUpdate={() => {
+          if (!mobileUpdate) return;
+          openMobileUpdateDownload(mobileUpdate, setMobileUpdateOpening);
+        }}
         onSignOut={onSignOut}
       />
 
@@ -1110,9 +1155,12 @@ function MobileDrawer(props: {
   onClose: () => void;
   onOpenModal: (type: string, payload?: any) => void;
   onRefresh: () => void;
+  update?: MobileUpdate | null;
+  updateOpening?: boolean;
+  onUpdate?: () => void;
   onSignOut: () => void;
 }) {
-  const { open, profileName, role, onClose, onOpenModal, onRefresh, onSignOut } = props;
+  const { open, profileName, role, onClose, onOpenModal, onRefresh, update, updateOpening = false, onUpdate, onSignOut } = props;
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     client: true,
     technician: true,
@@ -1172,6 +1220,16 @@ function MobileDrawer(props: {
         </DrawerSection>
 
         <div className="mobile-drawer-footer">
+          {update ? (
+            <button
+              type="button"
+              className="mobile-drawer-update"
+              onClick={onUpdate}
+              disabled={updateOpening}
+            >
+              {updateOpening ? 'Opening update...' : `Update to ${update.version}`}
+            </button>
+          ) : null}
           <button type="button" onClick={onRefresh}>Sync now</button>
           <button type="button" className="danger" onClick={onSignOut}>Sign out</button>
         </div>

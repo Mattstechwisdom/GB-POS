@@ -4,6 +4,7 @@ declare global {
   interface Window {
     GBPosAndroid?: {
       openExternalUrl?: (url: string) => void;
+      downloadAndInstallApk?: (url: string, fileName?: string) => void;
     };
   }
 }
@@ -20,7 +21,7 @@ type GitHubRelease = {
   assets?: ReleaseAsset[];
 };
 
-type MobileUpdate = {
+export type MobileUpdate = {
   version: string;
   releaseName: string;
   apkName: string;
@@ -82,7 +83,7 @@ function releaseToMobileUpdate(release: GitHubRelease): MobileUpdate | null {
   };
 }
 
-async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
+export async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
   const latest = await fetchGithubJson<GitHubRelease>(repoLatestUrl);
   const latestUpdate = latest ? releaseToMobileUpdate(latest) : null;
   if (latestUpdate) return latestUpdate;
@@ -94,6 +95,26 @@ async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
     .map(releaseToMobileUpdate)
     .filter((item): item is MobileUpdate => Boolean(item))
     .sort((a, b) => compareVersions(b.version, a.version))[0] || null;
+}
+
+export function openMobileUpdateDownload(update: MobileUpdate, setOpening?: (opening: boolean) => void) {
+  const safeUrl = String(update?.apkUrl || '').trim();
+  if (!/^https:\/\//i.test(safeUrl)) return;
+  setOpening?.(true);
+  try {
+    if (window.GBPosAndroid?.downloadAndInstallApk) {
+      window.GBPosAndroid.downloadAndInstallApk(safeUrl, update.apkName);
+      return;
+    }
+    if (window.GBPosAndroid?.openExternalUrl) {
+      window.GBPosAndroid.openExternalUrl(safeUrl);
+      return;
+    }
+    const opened = window.open(safeUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) window.location.href = safeUrl;
+  } finally {
+    window.setTimeout(() => setOpening?.(false), 1400);
+  }
 }
 
 export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500 }: MobileUpdateCheckProps) {
@@ -151,24 +172,8 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
 
   if (!update) return null;
 
-  const openExternal = (url: string) => {
-    const safeUrl = String(url || '').trim();
-    if (!/^https:\/\//i.test(safeUrl)) return;
-    setOpening(true);
-    try {
-      if (window.GBPosAndroid?.openExternalUrl) {
-        window.GBPosAndroid.openExternalUrl(safeUrl);
-        return;
-      }
-      const opened = window.open(safeUrl, '_blank', 'noopener,noreferrer');
-      if (!opened) window.location.href = safeUrl;
-    } finally {
-      window.setTimeout(() => setOpening(false), 1400);
-    }
-  };
-
   const download = () => {
-    openExternal(update.apkUrl);
+    openMobileUpdateDownload(update, setOpening);
   };
 
   const skip = () => {
@@ -196,7 +201,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
             {update.apkName}
           </div>
           <p className="text-xs text-zinc-500">
-            Android will open the APK download. Confirm the installer prompt to finish the update.
+            Android will download the APK and open the installer. Confirm the installer prompt to finish the update.
           </p>
         </div>
         <div className="flex gap-2 border-t border-zinc-800 px-4 py-3">

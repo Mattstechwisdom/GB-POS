@@ -660,6 +660,18 @@
   padding-top: 0.7rem;
 }
 
+.mobile-drawer-footer .mobile-drawer-update {
+  border-color: rgba(57, 255, 20, 0.7);
+  background: #39ff14;
+  color: #09090b;
+  font-weight: 900;
+  box-shadow: 0 0 18px rgba(57, 255, 20, 0.16);
+}
+
+.mobile-drawer-footer .mobile-drawer-update:disabled {
+  opacity: 0.72;
+}
+
 .mobile-drawer-footer .danger {
   border-color: rgba(239, 68, 68, 0.5);
   color: #fecaca;
