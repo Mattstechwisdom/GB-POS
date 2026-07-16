@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1 (2026-07-16)
+- Work Orders: reworks Parts tracking with side-by-side order and estimated-delivery dates, a cleaner mobile/desktop layout, and internal-only order notes.
+- Work Orders: turns saved Order URL and Tracking URL values into openable buttons after paste, Enter, blur, or Save.
+- Work Orders: keeps selected repair order-source URLs flowing into Parts tracking without adding website-scraper logic to work orders.
+- Work Orders: hydrates linked customer details when opening existing work orders so synced preview records retain client information.
+- Mobile Preview: allows the drawer preview menu to close and reopen while testing the full mobile interface.
+
 ## v0.5.0 (2026-07-16)
 - Inventory: adds markup-aware part pricing with a default 5% markup and quick presets for 5%, 10%, 15%, 20%, and 25%.
 - Inventory: turns saved vendor/order URLs into an Order URL button after paste, Enter, blur, or save, with Edit and Clear actions.
