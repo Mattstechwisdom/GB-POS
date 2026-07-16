@@ -95,7 +95,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
-  const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+  const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
   const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
   const displayPhoneAlt = formatPhone(String(wo.phoneAlt || '')) || String(wo.phoneAlt || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
@@ -149,10 +149,10 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       @page { size: A4; margin: 12mm; }
       html, body { background:#fff; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; margin: 0; }
       .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 12mm; }
-      .brand { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:0; margin-bottom:10px; }
-      .brand-left { display:flex; align-items:center; gap:12px; }
-      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
-      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 16px; }
+      .brand { display:grid; grid-template-columns:minmax(0, 1.35fr) auto minmax(210px, 0.9fr); align-items:center; gap:0; margin-bottom:10px; }
+      .brand-left { display:flex; align-items:center; gap:12px; min-width:0; }
+      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; white-space:nowrap; }
+      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 10px; }
       .brand-title { font-weight:700; letter-spacing:0.3px; }
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
@@ -215,7 +215,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         </div>
         ${opts?.qrSrc ? `
         <div class="brand-center">
-          <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:72px; height:72px; display:block;" />
+          <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:64px; height:64px; display:block;" />
           <div style="font-size:6.5pt; color:#555; text-align:center; margin-top:3px; letter-spacing:0.4px;">TECH SCAN</div>
         </div>
         ` : '<div class="brand-center"></div>'}

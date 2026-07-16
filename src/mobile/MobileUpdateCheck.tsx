@@ -43,8 +43,12 @@ function normalizeVersion(raw: string): string {
 }
 
 function compareVersions(aRaw: string, bRaw: string): number {
-  const a = normalizeVersion(aRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
-  const b = normalizeVersion(bRaw).split(/[.+-]/)[0].split('.').map((x) => parseInt(x, 10));
+  const parseParts = (value: string) => {
+    const main = normalizeVersion(value).split(/[+-]/)[0];
+    return main.split('.').map((x) => parseInt(x, 10));
+  };
+  const a = parseParts(aRaw);
+  const b = parseParts(bRaw);
   for (let i = 0; i < 3; i += 1) {
     const av = Number.isFinite(a[i]) ? a[i] : 0;
     const bv = Number.isFinite(b[i]) ? b[i] : 0;

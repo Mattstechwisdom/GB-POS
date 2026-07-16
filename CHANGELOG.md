@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.5 (2026-07-16)
+- Mobile Updates: fixes Android version comparison so newer patch releases are detected correctly after this update.
+- Quick Sale: supports multiple items in one checkout using the same item table and product picker as the Sales form.
+- Quick Sale: saves full sale item arrays so receipts, reports, sync, and backups treat quick sales like normal sales.
+- Printouts: reduces sales/work-order QR size and widens client info so Date/Time and customer rows stay on one line.
+- Devices/Repairs: shows recovered service types from saved repair items in the Service Types editor.
+
 ## v0.5.4 (2026-07-16)
 - Mobile: removes the bottom-bar Sync button because Sync Now already lives in the side menu.
 - Mobile: centers the top GADGETBOY POS title and keeps the version label grouped with POS when the title stacks.

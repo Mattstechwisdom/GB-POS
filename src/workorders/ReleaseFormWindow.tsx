@@ -164,9 +164,9 @@ const ReleaseFormWindow: React.FC = () => {
       `}</style>
       <div className="page">
         <div className="page-inner">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) auto minmax(210px, 0.9fr)', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
         {/* Left — logo + shop name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR</div>
@@ -176,16 +176,16 @@ const ReleaseFormWindow: React.FC = () => {
           </div>
         </div>
         {/* Center — technician QR code */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 10px' }}>
           {qrDataUrl ? (
             <>
-              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 72, height: 72, display: 'block' }} />
+              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 64, height: 64, display: 'block' }} />
               <div style={{ fontSize: 7, color: '#555', textAlign: 'center', marginTop: 3, letterSpacing: '0.4px' }}>TECH SCAN</div>
             </>
           ) : null}
         </div>
         {/* Right — WO info + client */}
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#111' }}>WO: {data.id ? String(data.id).padStart(6, '0') : '—'}</div>
           <div style={{ fontSize: 11, color: '#666' }}>Date: {new Date().toLocaleDateString()}</div>
           {fullName ? <div style={{ fontSize: 11, color: '#111', marginTop: 4 }}><strong>Client:</strong> {fullName}</div> : null}

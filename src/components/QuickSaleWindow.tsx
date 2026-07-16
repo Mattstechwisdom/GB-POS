@@ -1,26 +1,51 @@
 import React, { useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
-import MoneyInput from './MoneyInput';
+import SaleItemsTable, { SaleItemRow } from '@/sales/SaleItemsTable';
 
 const TAX_RATE = 8;
+
+function itemUnits(row: Partial<SaleItemRow> | null | undefined): number {
+  const category = String(row?.category || '').trim().toLowerCase();
+  if (category === 'consultation' || category.startsWith('consult')) {
+    const hours = Number(row?.consultationHours ?? row?.qty ?? 0);
+    return Number.isFinite(hours) && hours > 0 ? hours : 0;
+  }
+  const qty = Number(row?.qty ?? 0);
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+}
+
+function itemTotal(row: Partial<SaleItemRow> | null | undefined): number {
+  return round2(itemUnits(row) * (Number(row?.price) || 0));
+}
+
+function newLineId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `qs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
 
 const QuickSaleWindow: React.FC = () => {
   const api = (window as any)?.api as any;
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
-  const [description, setDescription] = useState<string>('');
-  const [amount, setAmount] = useState<number>(0);
+  const [items, setItems] = useState<SaleItemRow[]>([]);
   const [taxed, setTaxed] = useState<boolean>(true);
   const [busy, setBusy] = useState<boolean>(false);
 
+  const subTotal = useMemo(() => round2(items.reduce((sum, item) => sum + itemTotal(item), 0)), [items]);
   const taxRate = taxed ? TAX_RATE : 0;
   const totals = useMemo(
-    () => computeTotals({ laborCost: 0, partCosts: amount, discount: 0, taxRate, amountPaid: 0 }),
-    [amount, taxRate]
+    () => computeTotals({ laborCost: 0, partCosts: subTotal, discount: 0, taxRate, amountPaid: 0 }),
+    [subTotal, taxRate]
   );
 
-  const canCheckout = !busy && description.trim().length > 0 && amount > 0;
+  const canCheckout = !busy
+    && items.length > 0
+    && subTotal > 0
+    && items.every((item) => String(item.description || '').trim() && itemUnits(item) > 0 && Number(item.price) >= 0);
 
   async function closeSelf() {
     try {
@@ -39,8 +64,8 @@ const QuickSaleWindow: React.FC = () => {
         alert('Quick Sale requires the desktop app (window.api unavailable).');
         return;
       }
-      const amountDue = totals.total || 0;
-      const result = await api.openCheckout({ amountDue });
+
+      const result = await api.openCheckout({ amountDue: totals.total || 0 });
       if (!result) return;
 
       const checkoutLines = Array.isArray(result.payments) ? result.payments : [];
@@ -54,7 +79,9 @@ const QuickSaleWindow: React.FC = () => {
                 const pt = String(result.paymentType || '');
                 const isCash = pt.toLowerCase().includes('cash');
                 const tendered = Number(result.tendered ?? result.amountPaid);
-                return isCash ? (Number.isFinite(tendered) ? tendered : Number(result.amountPaid || 0) || 0) : (Number(result.amountPaid || 0) || 0);
+                return isCash
+                  ? (Number.isFinite(tendered) ? tendered : Number(result.amountPaid || 0) || 0)
+                  : (Number(result.amountPaid || 0) || 0);
               })(),
               tendered: result.tendered,
               change: result.changeDue,
@@ -63,17 +90,19 @@ const QuickSaleWindow: React.FC = () => {
 
       const amountPaid = round2(normalizedLines.reduce((sum: number, p: any) => sum + (Number(p?.applied) || 0), 0));
       const paymentType = result.paymentType;
-      const totalsAfter = computeTotals({ laborCost: 0, partCosts: amount, discount: 0, taxRate, amountPaid });
+      const totalsAfter = computeTotals({ laborCost: 0, partCosts: subTotal, discount: 0, taxRate, amountPaid });
       const remainingAfter = round2(Math.max(0, totalsAfter.remaining || 0));
       const shouldClose = remainingAfter <= 0 || !!result.markClosed;
 
       const now = new Date().toISOString();
-      const itemRow = {
-        id: (globalThis.crypto as any)?.randomUUID?.() || `qs-${Date.now()}`,
-        description: description.trim(),
-        qty: 1,
-        price: amount,
-      };
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        id: item.id || newLineId(),
+        description: String(item.description || '').trim(),
+        qty: itemUnits(item) || 1,
+        price: Number(item.price || 0) || 0,
+      }));
+      const firstItem = normalizedItems[0];
 
       const payments = (amountPaid > 0)
         ? normalizedLines
@@ -103,11 +132,11 @@ const QuickSaleWindow: React.FC = () => {
         customerId: 0,
         customerName: 'Quick Sale',
         customerPhone: '',
-        itemDescription: description.trim(),
-        quantity: 1,
-        price: amount,
-        items: [itemRow],
-        inStock: true,
+        itemDescription: firstItem?.description || 'Quick Sale',
+        quantity: firstItem ? itemUnits(firstItem) || 1 : 1,
+        price: Number(firstItem?.price || 0) || 0,
+        items: normalizedItems,
+        inStock: normalizedItems.every((item) => !!item.inStock),
         notes: 'Quick Sale',
         status: shouldClose ? 'closed' : 'open',
         assignedTo: 'Quick Sale',
@@ -120,7 +149,7 @@ const QuickSaleWindow: React.FC = () => {
         payments,
         taxRate,
         laborCost: 0,
-        partCosts: amount,
+        partCosts: subTotal,
         totals: totalsAfter,
         total: totalsAfter.total,
       };
@@ -130,17 +159,23 @@ const QuickSaleWindow: React.FC = () => {
       if (result.printReceipt) {
         try {
           const receiptPayload = {
+            receiptType: 'sale',
             id: created?.id,
             customerId: 0,
-            customerName: '',
+            customerName: 'Quick Sale',
             customerPhone: '',
             customerEmail: '',
             paymentType,
             payments,
-            productCategory: 'Quick Sale',
-            productDescription: description.trim(),
-            items: [{ description: description.trim(), parts: amount, labor: 0, qty: 1 }],
-            partCosts: amount,
+            productCategory: 'Retail',
+            productDescription: firstItem?.description || 'Quick Sale',
+            items: normalizedItems.map((item) => ({
+              id: item.id,
+              description: item.description,
+              qty: itemUnits(item) || 1,
+              price: Number(item.price) || 0,
+            })),
+            partCosts: subTotal,
             laborCost: 0,
             discount: 0,
             taxRate,
@@ -162,6 +197,7 @@ const QuickSaleWindow: React.FC = () => {
       }
 
       try { window.opener?.postMessage({ type: 'sales:changed', customerId: 0 }, '*'); } catch {}
+      setItems([]);
       if (result.closeParent) {
         await closeSelf();
       }
@@ -201,38 +237,22 @@ const QuickSaleWindow: React.FC = () => {
       </div>
 
       <div className="p-4 grid grid-cols-1 gap-4">
+        <SaleItemsTable items={items} onChange={setItems} showRequiredIndicator={items.length === 0} />
+
         <div className="bg-zinc-950/40 border border-zinc-800 rounded p-4 space-y-3">
-          <div>
-            <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Description</label>
-            <input
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-neon-green"
-              placeholder="e.g. Phone charger, HDMI cable, screen protector"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Sale amount</label>
-              <MoneyInput
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-neon-green"
-                value={amount}
-                onValueChange={(v) => setAmount(Number(v || 0))}
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <input
+                className="scale-95"
+                type="checkbox"
+                checked={taxed}
+                onChange={(e) => setTaxed(e.target.checked)}
               />
-            </div>
-
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-                <input
-                  className="scale-95"
-                  type="checkbox"
-                  checked={taxed}
-                  onChange={(e) => setTaxed(e.target.checked)}
-                />
-                Taxed
-                <span className="text-xs text-zinc-400">(8%)</span>
-              </label>
+              Taxed
+              <span className="text-xs text-zinc-400">(8%)</span>
+            </label>
+            <div className="text-xs text-zinc-500">
+              {items.length} item{items.length === 1 ? '' : 's'} in this checkout
             </div>
           </div>
 
@@ -262,7 +282,7 @@ const QuickSaleWindow: React.FC = () => {
               onClick={handleCheckout}
               disabled={!canCheckout}
             >
-              {busy ? 'Processing…' : 'Checkout'}
+              {busy ? 'Processing...' : 'Checkout'}
             </button>
           </div>
         </div>

@@ -232,7 +232,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       </div>
 
       <div className="flex gap-2 mt-2">
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
+        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Add item</button>
         <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
