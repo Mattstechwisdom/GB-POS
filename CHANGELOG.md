@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.4 (2026-07-16)
+- Mobile: removes the bottom-bar Sync button because Sync Now already lives in the side menu.
+- Mobile: centers the top GADGETBOY POS title and keeps the version label grouped with POS when the title stacks.
+
 ## v0.5.3 (2026-07-16)
 - Mobile Updates: adds an Update button above Sync Now in the mobile side menu when a newer Android APK is available.
 - Mobile Updates: shares one update checker between the popup and side-menu button so both find the same latest APK release.

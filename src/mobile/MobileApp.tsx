@@ -645,12 +645,7 @@ function MobileDrawerPreview() {
           <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
         </button>
         <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
-        <div className="mobile-brand-block">
-          <div className="mobile-brand-row">
-            <div className="mobile-brand">GADGETBOY POS</div>
-            <span className="mobile-version">v{__APP_VERSION__}</span>
-          </div>
-        </div>
+        <MobileBrandTitle />
         <button type="button" className="mobile-icon-button" aria-label="Open notifications">
           <span aria-hidden="true">!</span>
         </button>
@@ -679,6 +674,20 @@ function MobileDrawerPreview() {
         />
       ))}
     </main>
+  );
+}
+
+function MobileBrandTitle() {
+  return (
+    <div className="mobile-brand-block" aria-label={`GadgetBoy POS version ${__APP_VERSION__}`}>
+      <div className="mobile-brand">
+        <span className="mobile-brand-word">GADGETBOY</span>
+        <span className="mobile-brand-bottom">
+          <span>POS</span>
+          <span className="mobile-version">v{__APP_VERSION__}</span>
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -942,12 +951,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
           <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
         </button>
         <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
-        <div className="mobile-brand-block">
-          <div className="mobile-brand-row">
-            <div className="mobile-brand">GADGETBOY POS</div>
-            <span className="mobile-version">v{__APP_VERSION__}</span>
-          </div>
-        </div>
+        <MobileBrandTitle />
         <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
           <span aria-hidden="true">!</span>
         </button>
@@ -1059,7 +1063,6 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         <button type="button" onClick={() => openModal('newWorkOrder')}>New WO</button>
         <button type="button" onClick={() => openModal('newSale')}>New Sale</button>
         <button type="button" onClick={() => openModal('customerSearch')}>Clients</button>
-        <button type="button" onClick={() => void reload()}>Sync</button>
       </nav>
 
       <MobileDrawer
