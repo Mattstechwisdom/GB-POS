@@ -11,6 +11,33 @@ function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
   return d;
 }
 
+function endOfDate(value: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function getRecordDate(record: any): Date {
+  return new Date(record.activityAt || record.checkoutDate || record.repairCompletionDate || record.clientPickupDate || record.checkInAt || record.createdAt || record.updatedAt || 0);
+}
+
+function bucketRecordDate(date: Date, period: 'day'|'week'|'month'|'year') {
+  if (period === 'week') return startOfPeriod(date, 'day').toISOString().slice(0, 10);
+  if (period === 'month') return startOfPeriod(date, 'week').toISOString().slice(0, 10);
+  if (period === 'year') return startOfPeriod(date, 'month').toISOString().slice(0, 10);
+  return startOfPeriod(date, 'day').toISOString().slice(0, 10);
+}
+
+function bucketLabel(bucket: string, period: 'day'|'week'|'month'|'year') {
+  const date = new Date(bucket);
+  if (Number.isNaN(date.getTime())) return bucket;
+  if (period === 'year') return date.toLocaleDateString(undefined, { month: 'short' });
+  if (period === 'month') return `Week ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 const PERIODS = [
   { key: 'day', label: 'Daily' },
   { key: 'week', label: 'Weekly' },
@@ -94,11 +121,11 @@ const ChartsWindow: React.FC = () => {
   const filtered = useMemo(() => {
     if (!data?.length) return [] as any[];
     const fromDate = from ? new Date(from) : null;
-    const toDate = to ? new Date(to) : null;
+    const toDate = to ? endOfDate(to) : null;
     return data.filter(w => {
       if (w.kind === 'repair' && !includeRepairs) return false;
       if (w.kind === 'sale' && !includeSales) return false;
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
+      const d = getRecordDate(w);
       if (isNaN(d.getTime())) return false;
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
@@ -114,12 +141,23 @@ const ChartsWindow: React.FC = () => {
   const grouped = useMemo(() => {
     const map = new Map<string, { orders: number; total: number; profit: number }>();
     const sumCost = (w:any) => {
-      let sum = 0; if (Array.isArray(w.items)) for (const it of w.items) sum += Number(it.internalCost||it.cost||0)||0; sum += Number(w.internalCost||0)||0; return sum;
+      if (Array.isArray(w.items) && w.items.length) {
+        let sum = 0;
+        for (const it of w.items) {
+          const cost = Number(it?.internalCost ?? it?.cost ?? 0);
+          const qty = Number(it?.qty ?? it?.quantity ?? 1);
+          const units = Number.isFinite(qty) && qty > 0 ? qty : 1;
+          if (Number.isFinite(cost)) sum += cost * units;
+        }
+        return sum;
+      }
+      const direct = Number(w.internalCost || 0);
+      return Number.isFinite(direct) ? direct : 0;
     };
     for (const w of filtered) {
       const t = computeTotals({ laborCost: Number(w.laborCost||0), partCosts: Number(w.partCosts||0), discount: Number(w.discount||0), taxRate: Number(w.taxRate||0), amountPaid: Number(w.amountPaid||0) });
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
-      const bucket = startOfPeriod(d, period).toISOString().slice(0,10);
+      const d = getRecordDate(w);
+      const bucket = bucketRecordDate(d, period);
       const prev = map.get(bucket) || { orders: 0, total: 0, profit: 0 };
       const labor = Number(w.laborCost||0); const parts = Number(w.partCosts||0); const discount = Number(w.discount||0);
       const subtotal = Math.max(0, labor + parts - discount);
@@ -134,7 +172,7 @@ const ChartsWindow: React.FC = () => {
     const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const counts: Record<string, { orders: number; revenue: number }> = {}; for (const n of names) counts[n] = { orders: 0, revenue: 0 };
     for (const w of filtered) {
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
+      const d = getRecordDate(w);
       const name = names[d.getDay()];
       const t = computeTotals({ laborCost: Number(w.laborCost||0), partCosts: Number(w.partCosts||0), discount: Number(w.discount||0), taxRate: Number(w.taxRate||0), amountPaid: Number(w.amountPaid||0) });
       const labor = Number(w.laborCost||0); const parts = Number(w.partCosts||0); const discount = Number(w.discount||0);
@@ -179,10 +217,10 @@ const ChartsWindow: React.FC = () => {
           <select className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={tech} onChange={e => setTech(e.target.value)}>
             <option value="">All</option>
             <option value="__unassigned">Unassigned</option>
-            {(technicians || []).map((t:any) => {
+            {(technicians || []).map((t:any, idx: number) => {
               const value = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
               const label = [t.firstName, t.lastName].filter(Boolean).join(' ') || t.nickname || `Tech ${t.id}`;
-              return <option key={value} value={value}>{label}</option>;
+              return <option key={`${value}-${t.id ?? idx}`} value={value}>{label}</option>;
             })}
           </select>
         </div>
@@ -217,7 +255,7 @@ const ChartsWindow: React.FC = () => {
                   <div key={g.date} className="flex-1 flex flex-col items-center" title={`${g.date}\nOrders: ${g.orders}\nRevenue: $${g.total.toFixed(2)}\nProfit: $${g.profit.toFixed(2)}`}>
                     <div className="text-[10px] text-zinc-400 mb-1">${g.total.toFixed(0)}</div>
                     <div className="w-6 bg-[#39FF14]" style={{ height: h }}></div>
-                    <div className="text-[10px] text-zinc-400 mt-1">{g.date.slice(5)}</div>
+                    <div className="text-[10px] text-zinc-400 mt-1 text-center">{bucketLabel(g.date, period)}</div>
                   </div>
                 );
               });

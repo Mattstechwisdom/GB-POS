@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.98 (2026-07-16)
+- Inventory: refreshes the Parts/Products window with compact catalog-style rows, search-bar filters, low-stock filtering, and add/edit controls in the detail pane.
+- Inventory: adds multi-device associations for shared repair parts like universal power cables.
+- Supabase: adds product inventory metadata fields for item type, part category, distributors, reorder links, and associated devices.
+- Admin: moves Local Backup into Data Tools, removes separate Products navigation on mobile, and hides Clover/Twilio setup from the visible desktop/mobile menus.
+- Notifications: merges notification settings into the Notifications window behind a Settings toggle.
+- Reporting: defaults reports to daily totals, keeps date ranges explicit, and adds month-end commission/audit reporting.
+- End of Day: separates parts charged from parts cost, and products sold from product cost, using saved internal-cost values only.
+
 ## v0.4.97 (2026-07-16)
 - Mobile: refines the Repair Selection table so Device, Category, Repair, P, L, and Total all fit inside the visible phone/tablet width.
 - Mobile: moves Repair Selection filters behind the three-line search control and keeps Show All inside that filter panel.

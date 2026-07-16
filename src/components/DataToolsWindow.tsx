@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { dispatchOpenModal } from '@/lib/modalBus';
 
 type LogLevel = 'info' | 'warn' | 'error';
 interface LogEntry { ts: string; level: LogLevel; message: string }
@@ -308,6 +309,7 @@ export default function DataToolsWindow() {
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 gap-3">
+        <button className="px-3 py-2 bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:brightness-110 disabled:opacity-50" onClick={() => dispatchOpenModal('backup')} disabled={busy}>Local Backup</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={findOrphansAndDuplicates} disabled={busy || !hasElectron}>Orphans & Duplicates</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={fixAllIssues} disabled={busy || !hasElectron}>Fix All Issues</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={seedDemoData} disabled={busy || !hasElectron}>Seed Demo Data</button>

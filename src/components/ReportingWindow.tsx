@@ -39,10 +39,300 @@ const PERIODS = [
   { key: 'year', label: 'Yearly' },
 ] as const;
 
+const SALES_COMMISSION_RATE = 0.05;
+const CONSULTATION_TECH_RATE = 25;
+
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function money(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined' || !Number.isFinite(Number(value))) return '-';
+  return Number(value).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+function dateOnly(value: any) {
+  const d = new Date(value || 0);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+}
+
+function monthRange(monthValue: string) {
+  const [yearRaw, monthRaw] = String(monthValue || '').split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const now = new Date();
+  const safeYear = Number.isFinite(year) ? year : now.getFullYear();
+  const safeMonthIndex = Number.isFinite(month) ? Math.max(0, Math.min(11, month - 1)) : now.getMonth();
+  const start = new Date(safeYear, safeMonthIndex, 1, 0, 0, 0, 0);
+  const end = new Date(safeYear, safeMonthIndex + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function dateInRange(value: any, start: Date, end: Date) {
+  const d = new Date(value || 0);
+  if (Number.isNaN(d.getTime())) return false;
+  const t = d.getTime();
+  return t >= start.getTime() && t <= end.getTime();
+}
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function endOfInputDate(value: string) {
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function saleReportDate(sale: any) {
+  return sale?.checkoutDate || sale?.saleDate || sale?.transactionDate || sale?.invoiceDate || sale?.checkInAt || sale?.createdAt || sale?.updatedAt || '';
+}
+
+function saleItemsForReport(sale: any) {
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  if (items.length) return items;
+  if (sale?.itemDescription || sale?.price || sale?.quantity) {
+    return [{
+      description: sale.itemDescription || 'Sale Item',
+      qty: sale.quantity || 1,
+      price: sale.price || 0,
+      internalCost: sale.internalCost,
+      category: sale.category,
+      consultationHours: sale.consultationHours,
+    }];
+  }
+  return [];
+}
+
+function isConsultationLine(item: any, sale?: any) {
+  const category = String(item?.category || sale?.category || '').trim().toLowerCase();
+  const description = String(item?.description || item?.name || item?.title || sale?.itemDescription || '').trim().toLowerCase();
+  return category.startsWith('consult') || description.includes('consultation');
+}
+
+function lineUnits(item: any) {
+  const qty = Number(item?.qty ?? item?.quantity ?? 1);
+  return Number.isFinite(qty) && qty > 0 ? qty : 1;
+}
+
+function consultationHours(item: any, sale: any) {
+  const direct = Number(item?.consultationHours ?? sale?.consultationHours);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const qty = Number(item?.qty ?? item?.quantity);
+  if (Number.isFinite(qty) && qty > 0) return qty;
+  return 0;
+}
+
+function lineTitle(item: any, sale: any) {
+  return String(item?.description || item?.itemDescription || item?.name || item?.title || sale?.itemDescription || sale?.productDescription || 'Sale Item').trim();
+}
+
+function lineSoldTotal(item: any, sale: any) {
+  if (isConsultationLine(item, sale)) {
+    return roundMoney(consultationHours(item, sale) * Number(item?.price || 0));
+  }
+  return roundMoney(lineUnits(item) * Number(item?.price || 0));
+}
+
+function lineInternalCost(item: any) {
+  const raw = item?.internalCost ?? item?.cost;
+  if (raw === null || typeof raw === 'undefined' || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return roundMoney(n * lineUnits(item));
+}
+
+function technicianDisplay(tech: any) {
+  return [tech?.firstName, tech?.lastName].filter(Boolean).join(' ') || tech?.nickname || String(tech?.id || '').trim() || 'Unknown technician';
+}
+
+function technicianKey(tech: any) {
+  return String(tech?.nickname || tech?.firstName || tech?.id || '').trim().toLowerCase();
+}
+
+function technicianMatchKeys(tech: any) {
+  return [
+    tech?.nickname,
+    tech?.firstName,
+    [tech?.firstName, tech?.lastName].filter(Boolean).join(' '),
+    tech?.id,
+  ]
+    .map(value => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function saleAssignedTechKey(sale: any) {
+  return String(sale?.assignedTo || sale?.technician || sale?.technicianName || sale?.techName || '').trim().toLowerCase();
+}
+
+function buildEndOfMonthReport(sales: any[], technicians: any[], monthValue: string) {
+  const { start, end } = monthRange(monthValue);
+  const activeTechs = (technicians || []).filter((tech: any) => tech && tech.active !== false);
+  const salesSplitTechs = activeTechs.length ? activeTechs : [{ id: 'unassigned-sales', nickname: 'Unassigned Sales Split' }];
+  const salesSplitCount = salesSplitTechs.length;
+  const techTotals = new Map<string, {
+    technician: string;
+    salesCommission: number;
+    consultationCommission: number;
+    consultationHours: number;
+    totalCommission: number;
+  }>();
+
+  const ensureTech = (key: string, label: string) => {
+    const safeKey = key || label.toLowerCase() || 'unassigned';
+    if (!techTotals.has(safeKey)) {
+      techTotals.set(safeKey, {
+        technician: label || 'Unassigned',
+        salesCommission: 0,
+        consultationCommission: 0,
+        consultationHours: 0,
+        totalCommission: 0,
+      });
+    }
+    return techTotals.get(safeKey)!;
+  };
+
+  for (const tech of salesSplitTechs) ensureTech(technicianKey(tech), technicianDisplay(tech));
+
+  const productRows: Array<Record<string, any>> = [];
+  const consultationRows: Array<Record<string, any>> = [];
+  let physicalSalesBase = 0;
+  let physicalSalesCommissionPool = 0;
+  let knownInternalCost = 0;
+  let knownProfit = 0;
+  let missingInternalCostCount = 0;
+  let missingConsultationAssignmentCount = 0;
+  let missingConsultationHoursCount = 0;
+
+  const monthSales = (sales || []).filter((sale) => dateInRange(saleReportDate(sale), start, end));
+
+  for (const sale of monthSales) {
+    const items = saleItemsForReport(sale);
+    const gross = items.reduce((sum: number, item: any) => sum + lineSoldTotal(item, sale), 0);
+    const discount = Math.max(0, Number(sale?.discount || 0) || 0);
+
+    for (const item of items) {
+      const soldGross = lineSoldTotal(item, sale);
+      const allocatedDiscount = gross > 0 ? roundMoney(discount * (soldGross / gross)) : 0;
+      const soldNet = roundMoney(Math.max(0, soldGross - allocatedDiscount));
+      const title = lineTitle(item, sale);
+      const date = dateOnly(saleReportDate(sale));
+
+      if (isConsultationLine(item, sale)) {
+        const hours = roundMoney(consultationHours(item, sale));
+        const assignedKey = saleAssignedTechKey(sale);
+        const assignedTech = activeTechs.find((tech: any) => technicianMatchKeys(tech).includes(assignedKey));
+        const techLabel = assignedTech ? technicianDisplay(assignedTech) : (sale?.assignedTo || 'Unassigned');
+        const commission = roundMoney(hours * CONSULTATION_TECH_RATE);
+        if (!assignedKey) missingConsultationAssignmentCount += 1;
+        if (!(hours > 0)) missingConsultationHoursCount += 1;
+        const techTotal = ensureTech(assignedKey || 'unassigned', techLabel);
+        techTotal.consultationHours = roundMoney(techTotal.consultationHours + hours);
+        techTotal.consultationCommission = roundMoney(techTotal.consultationCommission + commission);
+        techTotal.totalCommission = roundMoney(techTotal.totalCommission + commission);
+        consultationRows.push({
+          Date: date,
+          Technician: techLabel,
+          Customer: sale?.customerName || '',
+          Consultation: title,
+          Hours: hours.toFixed(2),
+          'Hourly Payout': money(CONSULTATION_TECH_RATE),
+          'Commission Earned': money(commission),
+          'Audit Flag': !assignedKey ? 'Missing assigned technician' : (!(hours > 0) ? 'Missing consultation hours' : ''),
+        });
+        continue;
+      }
+
+      const cost = lineInternalCost(item);
+      const profit = cost === null ? null : roundMoney(soldNet - cost);
+      const margin = profit === null || soldNet <= 0 ? null : roundMoney((profit / soldNet) * 100);
+      const commissionPool = roundMoney(soldNet * SALES_COMMISSION_RATE);
+      const perTechCommission = roundMoney(commissionPool / salesSplitCount);
+      physicalSalesBase = roundMoney(physicalSalesBase + soldNet);
+      physicalSalesCommissionPool = roundMoney(physicalSalesCommissionPool + commissionPool);
+      if (cost === null) {
+        missingInternalCostCount += 1;
+      } else {
+        knownInternalCost = roundMoney(knownInternalCost + cost);
+        knownProfit = roundMoney(knownProfit + (profit || 0));
+      }
+
+      for (const tech of salesSplitTechs) {
+        const total = ensureTech(technicianKey(tech), technicianDisplay(tech));
+        total.salesCommission = roundMoney(total.salesCommission + perTechCommission);
+        total.totalCommission = roundMoney(total.totalCommission + perTechCommission);
+      }
+
+      productRows.push({
+        Date: date,
+        'Sale ID': sale?.id || '',
+        Customer: sale?.customerName || '',
+        Product: title,
+        Qty: lineUnits(item),
+        'Sold Total': money(soldNet),
+        'Internal Cost': cost === null ? 'Missing' : money(cost),
+        'Gross Profit': profit === null ? 'Needs internal cost' : money(profit),
+        'Margin %': margin === null ? 'Needs internal cost' : `${margin.toFixed(2)}%`,
+        'Commission Pool (5%)': money(commissionPool),
+        'Per-Tech Sales Commission': money(perTechCommission),
+        'Split Across Techs': salesSplitCount,
+        'Audit Flag': cost === null ? 'Missing internal cost' : '',
+      });
+    }
+  }
+
+  const technicianRows = Array.from(techTotals.values())
+    .map((row) => ({
+      Technician: row.technician,
+      'Sales Commission': money(row.salesCommission),
+      'Consultation Hours': row.consultationHours.toFixed(2),
+      'Consultation Commission': money(row.consultationCommission),
+      'Total Commission': money(row.totalCommission),
+    }))
+    .sort((a, b) => String(a.Technician).localeCompare(String(b.Technician)));
+
+  const totalCommission = Array.from(techTotals.values()).reduce((sum, row) => sum + row.totalCommission, 0);
+
+  return {
+    monthLabel: start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+    start,
+    end,
+    productRows,
+    consultationRows,
+    technicianRows,
+    summary: {
+      salesCount: productRows.length,
+      consultationCount: consultationRows.length,
+      physicalSalesBase,
+      physicalSalesCommissionPool,
+      knownInternalCost,
+      knownProfit,
+      totalCommission: roundMoney(totalCommission),
+      salesSplitCount,
+      missingInternalCostCount,
+      missingConsultationAssignmentCount,
+      missingConsultationHoursCount,
+      salesSplitWarning: !activeTechs.length
+        ? 'No active technicians were found, so sales commission is parked in Unassigned Sales Split.'
+        : (activeTechs.length !== 2 ? `Sales commission is split across ${salesSplitCount} active technician(s), not exactly 2.` : ''),
+    },
+  };
+}
+
+function csvSections(sections: Array<{ title: string; rows: Array<Record<string, any>> }>) {
+  return sections.map((section) => {
+    if (!section.rows.length) return `${section.title}\n(no rows)`;
+    return `${section.title}\n${formatCSV(section.rows)}`;
+  }).join('\n\n');
+}
+
 const ReportingWindow: React.FC = () => {
-  const [period, setPeriod] = useState<'day'|'week'|'month'|'year'>('month');
-  const [from, setFrom] = useState<string>('');
-  const [to, setTo] = useState<string>('');
+  const [period, setPeriod] = useState<'day'|'week'|'month'|'year'>('day');
+  const [from, setFrom] = useState<string>(() => todayInputValue());
+  const [to, setTo] = useState<string>(() => todayInputValue());
+  const [reportView, setReportView] = useState<'summary' | 'monthEnd'>('summary');
+  const [monthEndMonth, setMonthEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
   // Store filter removed
   const [tech, setTech] = useState<string>('');
   const [excludeTax, setExcludeTax] = useState<boolean>(true);
@@ -70,6 +360,7 @@ const ReportingWindow: React.FC = () => {
         const items = Array.isArray(s.items) ? s.items : [{ description: s.itemDescription, qty: s.quantity || 1, price: s.price || 0, internalCost: s.internalCost }];
         const parts = items.reduce((sum: number, it: any) => sum + (Number(it.qty || 1) * Number(it.price || 0)), 0);
         return {
+          ...s,
           kind: 'sale' as const,
           id: s.id,
           checkInAt: s.checkInAt || s.createdAt,
@@ -92,7 +383,7 @@ const ReportingWindow: React.FC = () => {
   const filtered = useMemo(() => {
     if (!data?.length) return [] as any[];
     const fromDate = from ? new Date(from) : null;
-    const toDate = to ? new Date(to) : null;
+    const toDate = to ? endOfInputDate(to) : null;
     return data.filter(w => {
       if (w.kind === 'repair' && !includeRepairs) return false;
       if (w.kind === 'sale' && !includeSales) return false;
@@ -169,7 +460,9 @@ const ReportingWindow: React.FC = () => {
       let sum = 0;
       for (const it of w.items) {
         const val = Number((it && (it.internalCost || it.cost || 0)) || 0);
-        if (Number.isFinite(val)) sum += val;
+        const qty = Number((it && (it.qty ?? it.quantity ?? 1)) || 1);
+        const units = Number.isFinite(qty) && qty > 0 ? qty : 1;
+        if (Number.isFinite(val)) sum += val * units;
       }
       return sum;
     }
@@ -273,6 +566,48 @@ const ReportingWindow: React.FC = () => {
     const avgTicket = s.orders ? (s.revenue / s.orders) : 0;
     return { ...s, margin, avgTicket };
   }, [grouped]);
+
+  const endOfMonthReport = useMemo(() => {
+    const sales = data.filter((row: any) => row.kind === 'sale');
+    return buildEndOfMonthReport(sales, technicians, monthEndMonth);
+  }, [data, technicians, monthEndMonth]);
+
+  function downloadEndOfMonthReport() {
+    const report = endOfMonthReport;
+    const summaryRows = [{
+      Month: report.monthLabel,
+      'Physical Sales Lines': report.summary.salesCount,
+      'Consultation Lines': report.summary.consultationCount,
+      'Sales Commission Base': money(report.summary.physicalSalesBase),
+      'Sales Commission Pool': money(report.summary.physicalSalesCommissionPool),
+      'Known Internal Cost': money(report.summary.knownInternalCost),
+      'Known Gross Profit': money(report.summary.knownProfit),
+      'Total Commission': money(report.summary.totalCommission),
+      'Sales Split Across Techs': report.summary.salesSplitCount,
+      'Missing Internal Cost Lines': report.summary.missingInternalCostCount,
+      'Missing Consultation Assignment Lines': report.summary.missingConsultationAssignmentCount,
+      'Missing Consultation Hour Lines': report.summary.missingConsultationHoursCount,
+      'Audit Note': [
+        report.summary.salesSplitWarning,
+        report.summary.missingInternalCostCount ? 'Some product rows need internal cost before profit/margin is final.' : '',
+        report.summary.missingConsultationAssignmentCount ? 'Some consultation rows need an assigned technician.' : '',
+        report.summary.missingConsultationHoursCount ? 'Some consultation rows need logged hours.' : '',
+      ].filter(Boolean).join(' '),
+    }];
+    const body = csvSections([
+      { title: 'End of Month Summary', rows: summaryRows },
+      { title: 'Product Sales Commission', rows: report.productRows },
+      { title: 'Consultation Commission', rows: report.consultationRows },
+      { title: 'Technician Totals', rows: report.technicianRows },
+    ]);
+    const blob = new Blob([body], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `end-of-month-report-${monthEndMonth}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const paymentTotals = useMemo(() => {
     let cashTender = 0;
@@ -436,7 +771,225 @@ const ReportingWindow: React.FC = () => {
 
   return (
     <div className="h-screen bg-zinc-900 text-gray-100 p-4 space-y-4">
-      <div className="text-xl font-bold">Reporting</div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-xl font-bold">Reporting</div>
+          <div className="text-xs text-zinc-500">Sales, repair intake, payments, and exportable summaries.</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
+            <span className="text-xs text-zinc-500">Reports</span>
+            <select
+              className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2"
+              value={reportView}
+              onChange={e => setReportView(e.target.value as any)}
+            >
+              <option value="summary">Summary Report</option>
+              <option value="monthEnd">End of the Month Report</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
+            onClick={() => dispatchOpenModal('eod')}
+          >
+            End of Day Reports
+          </button>
+          <button
+            type="button"
+            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#BC13FE]"
+            onClick={() => {
+              try {
+                const payload = (filtered || []).map((w: any) => ({ ...w }));
+                dispatchOpenModal('charts', { payload });
+              } catch {}
+            }}
+          >
+            Charts
+          </button>
+        </div>
+      </div>
+      {reportView === 'monthEnd' ? (
+        <>
+          <div className="bg-zinc-950 border border-zinc-800 rounded p-4 space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold text-zinc-100">End of the Month Report</div>
+                <div className="text-xs text-zinc-500">
+                  Product sales commission, consultation commission, internal cost, gross profit, and audit flags.
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block">
+                  <span className="block text-xs mb-1 text-zinc-400">Month</span>
+                  <input
+                    type="month"
+                    className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2"
+                    value={monthEndMonth}
+                    onChange={e => setMonthEndMonth(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="px-3 py-2 bg-[#39FF14] text-black rounded font-semibold disabled:opacity-50"
+                  onClick={downloadEndOfMonthReport}
+                  disabled={!endOfMonthReport.productRows.length && !endOfMonthReport.consultationRows.length}
+                >
+                  Download Spreadsheet CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Sales Commission Base</div>
+                <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.physicalSalesBase)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Sales Commission Pool</div>
+                <div className="mt-1 text-2xl font-bold">{money(endOfMonthReport.summary.physicalSalesCommissionPool)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Known Gross Profit</div>
+                <div className="mt-1 text-2xl font-bold">{money(endOfMonthReport.summary.knownProfit)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Total Commission</div>
+                <div className="mt-1 text-2xl font-bold text-[#BC13FE]">{money(endOfMonthReport.summary.totalCommission)}</div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm text-zinc-300 space-y-2">
+              <div className="font-semibold text-zinc-100">Audit Rules</div>
+              <div>Repairs are excluded from commission. Product sales commission is the saved product sale total after saved discounts multiplied by 5%, then split across active technicians.</div>
+              <div>Consultation commission is saved consultation hours multiplied by $25 and assigned to the saved technician on that sale.</div>
+              <div>Internal cost is pulled only from saved line item cost values. Missing costs, missing hours, and missing technician assignments are flagged instead of estimated.</div>
+              {(endOfMonthReport.summary.salesSplitWarning
+                || endOfMonthReport.summary.missingInternalCostCount
+                || endOfMonthReport.summary.missingConsultationAssignmentCount
+                || endOfMonthReport.summary.missingConsultationHoursCount) && (
+                <div className="mt-2 rounded border border-yellow-500/40 bg-yellow-500/10 p-2 text-yellow-100">
+                  {endOfMonthReport.summary.salesSplitWarning && <div>{endOfMonthReport.summary.salesSplitWarning}</div>}
+                  {endOfMonthReport.summary.missingInternalCostCount > 0 && <div>{endOfMonthReport.summary.missingInternalCostCount} product line(s) are missing internal cost.</div>}
+                  {endOfMonthReport.summary.missingConsultationAssignmentCount > 0 && <div>{endOfMonthReport.summary.missingConsultationAssignmentCount} consultation line(s) are missing an assigned technician.</div>}
+                  {endOfMonthReport.summary.missingConsultationHoursCount > 0 && <div>{endOfMonthReport.summary.missingConsultationHoursCount} consultation line(s) are missing logged hours.</div>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-sm text-zinc-400">Technician Commission Totals</div>
+              <div className="text-xs text-zinc-500">{endOfMonthReport.monthLabel}</div>
+            </div>
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-800 text-zinc-400">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Technician</th>
+                    <th className="px-2 py-1 text-right">Sales Commission</th>
+                    <th className="px-2 py-1 text-right">Consultation Hours</th>
+                    <th className="px-2 py-1 text-right">Consultation Commission</th>
+                    <th className="px-2 py-1 text-right">Total Commission</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {endOfMonthReport.technicianRows.map((row, idx) => (
+                    <tr key={`${row.Technician}-${idx}`} className="border-b border-zinc-800">
+                      <td className="px-2 py-1">{row.Technician}</td>
+                      <td className="px-2 py-1 text-right">{row['Sales Commission']}</td>
+                      <td className="px-2 py-1 text-right">{row['Consultation Hours']}</td>
+                      <td className="px-2 py-1 text-right">{row['Consultation Commission']}</td>
+                      <td className="px-2 py-1 text-right font-semibold text-[#BC13FE]">{row['Total Commission']}</td>
+                    </tr>
+                  ))}
+                  {endOfMonthReport.technicianRows.length === 0 && (
+                    <tr><td colSpan={5} className="px-2 py-6 text-center text-zinc-500">No technician totals for this month.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+            <div className="text-sm text-zinc-400 mb-2">Product Sales Commission</div>
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-800 text-zinc-400">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Date</th>
+                    <th className="px-2 py-1 text-left">Product</th>
+                    <th className="px-2 py-1 text-right">Qty</th>
+                    <th className="px-2 py-1 text-right">Sold Total</th>
+                    <th className="px-2 py-1 text-right">Internal Cost</th>
+                    <th className="px-2 py-1 text-right">Gross Profit</th>
+                    <th className="px-2 py-1 text-right">Margin</th>
+                    <th className="px-2 py-1 text-right">Commission Pool</th>
+                    <th className="px-2 py-1 text-right">Per Tech</th>
+                    <th className="px-2 py-1 text-left">Audit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {endOfMonthReport.productRows.map((row, idx) => (
+                    <tr key={`${row['Sale ID']}-${idx}`} className="border-b border-zinc-800">
+                      <td className="px-2 py-1 whitespace-nowrap">{row.Date}</td>
+                      <td className="px-2 py-1 min-w-56">{row.Product}</td>
+                      <td className="px-2 py-1 text-right">{row.Qty}</td>
+                      <td className="px-2 py-1 text-right">{row['Sold Total']}</td>
+                      <td className="px-2 py-1 text-right">{row['Internal Cost']}</td>
+                      <td className="px-2 py-1 text-right">{row['Gross Profit']}</td>
+                      <td className="px-2 py-1 text-right">{row['Margin %']}</td>
+                      <td className="px-2 py-1 text-right">{row['Commission Pool (5%)']}</td>
+                      <td className="px-2 py-1 text-right">{row['Per-Tech Sales Commission']}</td>
+                      <td className="px-2 py-1 text-yellow-200">{row['Audit Flag']}</td>
+                    </tr>
+                  ))}
+                  {endOfMonthReport.productRows.length === 0 && (
+                    <tr><td colSpan={10} className="px-2 py-6 text-center text-zinc-500">No product sales for this month.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+            <div className="text-sm text-zinc-400 mb-2">Consultation Commission Log</div>
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-800 text-zinc-400">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Date</th>
+                    <th className="px-2 py-1 text-left">Technician</th>
+                    <th className="px-2 py-1 text-left">Consultation</th>
+                    <th className="px-2 py-1 text-right">Hours</th>
+                    <th className="px-2 py-1 text-right">Hourly Payout</th>
+                    <th className="px-2 py-1 text-right">Commission Earned</th>
+                    <th className="px-2 py-1 text-left">Audit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {endOfMonthReport.consultationRows.map((row, idx) => (
+                    <tr key={`${row.Date}-${row.Technician}-${idx}`} className="border-b border-zinc-800">
+                      <td className="px-2 py-1 whitespace-nowrap">{row.Date}</td>
+                      <td className="px-2 py-1">{row.Technician}</td>
+                      <td className="px-2 py-1 min-w-56">{row.Consultation}</td>
+                      <td className="px-2 py-1 text-right">{row.Hours}</td>
+                      <td className="px-2 py-1 text-right">{row['Hourly Payout']}</td>
+                      <td className="px-2 py-1 text-right font-semibold">{row['Commission Earned']}</td>
+                      <td className="px-2 py-1 text-yellow-200">{row['Audit Flag']}</td>
+                    </tr>
+                  ))}
+                  {endOfMonthReport.consultationRows.length === 0 && (
+                    <tr><td colSpan={7} className="px-2 py-6 text-center text-zinc-500">No consultations for this month.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
   <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs mb-1">Period</label>
@@ -477,12 +1030,6 @@ const ReportingWindow: React.FC = () => {
             <input type="checkbox" className="accent-[#39FF14]" checked={onlyPaid} onChange={e => setOnlyPaid(e.target.checked)} /> Paid only
           </label>
         </div>
-        <button className="ml-auto px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => {
-          try {
-            const payload = (filtered || []).map((w: any) => ({ ...w }));
-            dispatchOpenModal('charts', { payload });
-          } catch {}
-        }}>Charts</button>
         <button className="px-3 py-2 bg-[#39FF14] text-black rounded font-semibold" onClick={downloadSummary} disabled={!filtered.length}>Download</button>
       </div>
 
@@ -660,6 +1207,8 @@ const ReportingWindow: React.FC = () => {
         <div className="text-sm text-zinc-400 mb-2">CSV Preview</div>
         <pre className="text-xs whitespace-pre-wrap max-h-48 overflow-auto">{csv || 'No rows.'}</pre>
       </div>
+        </>
+      )}
     </div>
   );
 };

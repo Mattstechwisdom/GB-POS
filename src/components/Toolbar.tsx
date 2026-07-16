@@ -77,7 +77,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     const handler = (e: MouseEvent) => {
       if (adminRef.current && !adminRef.current.contains(e.target as Node)) {
         setShowAdmin(false);
-        setShowIntegrations(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -99,16 +98,16 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
             <div className="absolute left-0 top-full mt-1 w-52 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
               {[
                 { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
-                { label: 'Products',        action: () => dispatchOpenModal('products') },
-                { label: 'Reports',         action: () => dispatchOpenModal('eod') },
+                { label: 'Inventory',       action: () => dispatchOpenModal('inventory') },
+                { label: 'Reporting',       action: () => dispatchOpenModal('reporting') },
                 { label: 'Technicians',     action: () => setShowTechs(true) },
-                { label: 'Data Management', action: () => dispatchOpenModal('backup') },
+                { label: 'Data Tools',      action: () => dispatchOpenModal('dataTools') },
                 { label: 'Dev Menu',        action: () => dispatchOpenModal('devMenu') },
               ].map(item => (
                 <button key={item.label} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => { setShowAdmin(false); item.action(); }}>{item.label}</button>
               ))}
               {/* Integrations sub-menu */}
-              <div className="relative" onMouseEnter={() => setShowIntegrations(true)} onMouseLeave={() => setShowIntegrations(false)}>
+              <div className="hidden" onMouseEnter={() => setShowIntegrations(true)} onMouseLeave={() => setShowIntegrations(false)}>
                 <button
                   type="button"
                   className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 flex items-center justify-between text-[#39FF14]"

@@ -1056,12 +1056,13 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
 
 function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: () => void; onActions: () => void }) {
   const longPress = useLongPress(onActions);
+  const { wasLongPress, ...longPressHandlers } = longPress;
   return (
     <article
       className={`mobile-record-card ${row.type} ${row.status === 'closed' ? 'closed' : 'open'}`}
-      {...longPress}
+      {...longPressHandlers}
       onClick={() => {
-        if (longPress.wasLongPress()) return;
+        if (wasLongPress()) return;
         onOpen();
       }}
     >
@@ -1126,18 +1127,9 @@ function MobileDrawer(props: {
   ] as const;
   const adminTools = [
     ['repairCategories', 'Devices / Repairs'],
-    ['deviceCategories', 'Device Categories'],
-    ['products', 'Products'],
     ['inventory', 'Inventory'],
-    ['eod', 'End of Day Reports'],
     ['reporting', 'Reporting'],
-    ['charts', 'Charts'],
-    ['backup', 'Local Backup'],
     ['dataTools', 'Data Tools'],
-    ['cloverSettings', 'Clover'],
-    ['twilioSettings', 'SMS / Twilio'],
-    ['notifications', 'Notifications'],
-    ['notificationSettings', 'Notification Settings'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
 

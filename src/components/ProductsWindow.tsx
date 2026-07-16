@@ -8,9 +8,10 @@ type Product = {
   itemDescription: string;
   price?: number;
   internalCost?: number;
-  condition?: 'New'|'Excellent'|'Good'|'Fair';
+  condition?: string;
   notes?: string;
-  category?: 'Device' | 'Accessory' | 'Consultation' | 'Other';
+  category?: string;
+  associatedDevices?: string[];
   itemType?: 'Product' | 'Part';
   partCategory?: string;
   distributor?: string;
@@ -34,6 +35,7 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     internalCost: undefined,
     notes: '',
     condition: 'New',
+    associatedDevices: [],
     itemType: 'Product',
     partCategory: '',
     distributor: '',
@@ -47,11 +49,14 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [editing, setEditing] = useState<Product>(blank);
   const [search, setSearch] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
-  const CATEGORY_OPTIONS: Array<Product['category']> = ['Device', 'Accessory', 'Consultation', 'Other'];
+  const CATEGORY_OPTIONS = ['Phone', 'Tablet', 'Laptop', 'Desktop', 'Game Console', 'TV', 'Audio', 'Drone', 'Accessory', 'Other'];
   const [categoryFilter, setCategoryFilter] = useState<Product['category'] | ''>('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'product' | 'part' | ''>('');
   const ITEM_TYPE_OPTIONS: Array<NonNullable<Product['itemType']>> = ['Product', 'Part'];
-  const PART_CATEGORY_PRESETS = ['Phone Screen', 'Battery', 'Charging Port', 'Power Supply', 'Cable', 'Adhesive', 'Tools', 'Other'];
+  const PART_CATEGORY_PRESETS = ['Screen', 'Battery', 'Charging Port', 'Camera', 'Speaker', 'Microphone', 'Buttons', 'Housing', 'Motherboard', 'Power Supply', 'Cable', 'Adhesive', 'Other'];
+  const PRODUCT_CONDITION_OPTIONS = ['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor'];
+  const PART_CONDITION_OPTIONS = ['New', 'Used'];
   const api = useMemo(() => {
     try {
       const a = (window as any).api || ((window as any).opener && (window as any).opener.api);
@@ -105,7 +110,8 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       const type = (p.itemType || 'Product');
       const matchesQ = q ? (p.itemDescription || '').toLowerCase().includes(q) : true;
       const matchesType = typeFilter ? (typeFilter === 'product' ? type === 'Product' : type === 'Part') : true;
-      const matchesCat = categoryFilter ? (type === 'Product' ? (p.category === categoryFilter) : false) : true;
+      const devices = Array.isArray(p.associatedDevices) ? p.associatedDevices : [];
+      const matchesCat = categoryFilter ? (p.category === categoryFilter || devices.includes(categoryFilter)) : true;
       return matchesQ && matchesType && matchesCat;
     });
   }, [list, search, typeFilter, categoryFilter]);
@@ -159,6 +165,9 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       condition: (editing.condition || 'New') as any,
       itemType: (editing.itemType || 'Product') as any,
       category: ((editing.itemType || 'Product') === 'Product' ? (editing.category || 'Other') : (editing.category || 'Other')) as any,
+      associatedDevices: Array.from(new Set((Array.isArray(editing.associatedDevices) ? editing.associatedDevices : [])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean))),
       partCategory: ((editing.itemType || 'Product') === 'Part' ? String(editing.partCategory || '').trim() : ''),
       distributor: String(editing.distributor || '').trim(),
       distributorSku: String(editing.distributorSku || '').trim(),
@@ -229,22 +238,46 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4 w-full">
         {/* Left pane: filters + list */}
         <div className="flex flex-col min-w-0">
-          <div className="flex gap-2 mb-4 p-3 bg-zinc-800 rounded border border-zinc-700">
-            <select value={typeFilter} onChange={e => {
-              const v = (e.target.value || '') as any;
-              setTypeFilter(v);
-              if (v === 'part') setCategoryFilter('');
-            }} className="bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none">
-              <option value="">All Types</option>
-              <option value="product">Products</option>
-              <option value="part">Parts</option>
-            </select>
-            <select value={categoryFilter} onChange={e => setCategoryFilter((e.target.value || '') as any)} className="bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none">
-              <option value="">All Categories</option>
-              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+          <div className="relative flex gap-2 mb-4 p-3 bg-zinc-800 rounded border border-zinc-700">
             <input type="text" placeholder="search products…" value={search} onChange={e => setSearch(e.target.value)} className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-1 text-sm focus:border-[#39FF14] focus:outline-none" />
-            <button onClick={addNew} className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm">Clear</button>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              className={`px-3 py-1 border rounded text-sm ${filtersOpen || typeFilter || categoryFilter ? 'bg-[#BC13FE]/20 border-[#BC13FE] text-white' : 'bg-zinc-700 hover:bg-zinc-600 border-zinc-600'}`}
+              aria-label="Open product filters"
+              aria-expanded={filtersOpen}
+            >
+              ☰
+            </button>
+            {filtersOpen ? (
+              <div className="absolute right-3 top-full z-20 mt-2 w-72 rounded border border-zinc-700 bg-zinc-950 p-3 shadow-xl">
+                <label className="block text-xs text-zinc-400 mb-2">
+                  Type
+                  <select value={typeFilter} onChange={e => setTypeFilter((e.target.value || '') as any)} className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none">
+                    <option value="">All Types</option>
+                    <option value="product">Products</option>
+                    <option value="part">Parts</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Device Type
+                  <select value={categoryFilter} onChange={e => setCategoryFilter((e.target.value || '') as any)} className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none">
+                    <option value="">All Device Types</option>
+                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="mt-3 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm hover:border-[#39FF14]"
+                  onClick={() => {
+                    setTypeFilter('');
+                    setCategoryFilter('');
+                  }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="flex-1 overflow-auto rounded border border-zinc-700">
             {filtered.length === 0 ? (
@@ -297,7 +330,10 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
         {/* Right pane: form */}
         <div className="flex flex-col">
           <div className="bg-zinc-800 border border-zinc-700 rounded p-4">
-            <h3 className="text-lg font-semibold mb-3">Product Details</h3>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold">{selectedId ? 'Edit Listing' : 'Add Product'}</h3>
+              <button type="button" onClick={addNew} className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm">Add Product</button>
+            </div>
 
             <label className="block text-sm">Type</label>
             <select
@@ -315,16 +351,52 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
               {ITEM_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
 
-            <label className="block text-sm">Category</label>
+            <label className="block text-sm">{(editing.itemType || 'Product') === 'Part' ? 'Part Details' : 'Device Type'}</label>
             {(editing.itemType || 'Product') === 'Part' ? (
               <>
-                <label className="block text-xs text-zinc-400 -mt-1 mb-1">Part category</label>
+                <label className="block text-xs text-zinc-400 -mt-1 mb-1">Device type</label>
+                <input
+                  list="product-device-type-presets"
+                  value={editing.category || ''}
+                  onChange={e => setEditing(ed => ({ ...ed, category: e.target.value || 'Other' }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2"
+                  placeholder="e.g. Phone, Laptop, Game Console"
+                />
+                <datalist id="product-device-type-presets">
+                  {CATEGORY_OPTIONS.map(v => <option key={v} value={v} />)}
+                </datalist>
+                <div className="mb-2">
+                  <div className="block text-xs text-zinc-400 mb-1">Works with device types</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {CATEGORY_OPTIONS.map((value) => {
+                      const checked = Array.isArray(editing.associatedDevices) && editing.associatedDevices.includes(value);
+                      return (
+                        <label key={value} className={`flex items-center gap-2 rounded border px-2 py-1 text-xs ${checked ? 'border-[#BC13FE] bg-[#BC13FE]/15 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
+                          <input
+                            type="checkbox"
+                            className="accent-[#BC13FE]"
+                            checked={checked}
+                            onChange={(event) => setEditing(ed => {
+                              const currentDevices = Array.isArray(ed.associatedDevices) ? ed.associatedDevices : [];
+                              const next = event.target.checked
+                                ? Array.from(new Set([...currentDevices, value]))
+                                : currentDevices.filter((device) => device !== value);
+                              return { ...ed, associatedDevices: next, category: next[0] || ed.category };
+                            })}
+                          />
+                          {value}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label className="block text-xs text-zinc-400 -mt-1 mb-1">Part type</label>
                 <input
                   list="part-category-presets"
                   value={editing.partCategory || ''}
                   onChange={e => setEditing(ed => ({ ...ed, partCategory: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2"
-                  placeholder="e.g. Phone Screen, Charging Port"
+                  placeholder="e.g. Screen, Charging Port"
                 />
                 <datalist id="part-category-presets">
                   {PART_CATEGORY_PRESETS.map(v => <option key={v} value={v} />)}
@@ -361,10 +433,9 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
             <label className="block text-sm">Condition</label>
             <select value={editing.condition || 'New'} onChange={e => setEditing(ed => ({ ...ed, condition: e.target.value as any }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 mb-2">
-              <option value="New">New</option>
-              <option value="Excellent">Excellent</option>
-              <option value="Good">Good</option>
-              <option value="Fair">Fair</option>
+              {((editing.itemType || 'Product') === 'Part' ? PART_CONDITION_OPTIONS : PRODUCT_CONDITION_OPTIONS).map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
             </select>
 
             <label className="block text-sm">Notes</label>

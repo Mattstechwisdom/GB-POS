@@ -371,11 +371,18 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
     return {
       id,
       itemDescription: row.item_description || '',
+      itemType: row.item_type || 'Product',
       price: cloudNumber(row.price),
       internalCost: cloudNumber(row.internal_cost),
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
+      partCategory: row.part_category || '',
+      distributor: row.distributor || '',
+      distributorSku: row.distributor_sku || '',
+      reorderQty: cloudNumber(row.reorder_qty) || 1,
+      reorderUrlTemplate: row.reorder_url_template || '',
+      associatedDevices: Array.isArray(row.associated_devices) ? row.associated_devices : [],
       trackStock: !!row.track_stock,
       stockCount: cloudNumber(row.stock_count),
       lowStockThreshold: cloudNumber(row.low_stock_threshold),
@@ -647,11 +654,18 @@ function toCloudRow(key: string, item: any): any | null {
       shop_id,
       legacy_id,
       item_description: toCloudString(item.itemDescription),
+      item_type: toCloudString(item.itemType || 'Product'),
       price: toCloudMoney(item.price),
       internal_cost: toCloudMoney(item.internalCost),
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
+      part_category: toCloudString(item.partCategory),
+      distributor: toCloudString(item.distributor),
+      distributor_sku: toCloudString(item.distributorSku),
+      reorder_qty: toCloudIntId(item.reorderQty) || 1,
+      reorder_url_template: toCloudString(item.reorderUrlTemplate),
+      associated_devices: Array.isArray(item.associatedDevices) ? item.associatedDevices.map((value: any) => String(value || '').trim()).filter(Boolean) : [],
       track_stock: toCloudBool(item.trackStock),
       stock_count: toCloudIntId(item.stockCount) || 0,
       low_stock_threshold: toCloudIntId(item.lowStockThreshold) || 0,
@@ -1064,10 +1078,24 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
   const row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
   try {
-    const res = await supabase.from(table).upsert(row, {
+    let res = await supabase.from(table).upsert(row, {
       onConflict: cloudConflictForKey(key),
       ignoreDuplicates: false,
     }).select('*').maybeSingle();
+    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.item_type;
+      delete fallbackRow.part_category;
+      delete fallbackRow.distributor;
+      delete fallbackRow.distributor_sku;
+      delete fallbackRow.reorder_qty;
+      delete fallbackRow.reorder_url_template;
+      delete fallbackRow.associated_devices;
+      res = await supabase.from(table).upsert(fallbackRow, {
+        onConflict: cloudConflictForKey(key),
+        ignoreDuplicates: false,
+      }).select('*').maybeSingle();
+    }
     if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
     await syncTechnicianCredential(key, item, res.data);
     const saved = fromCloudRow(key, res.data || row);
@@ -1091,7 +1119,18 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     if ((key === 'workOrders' || key === 'sales') && attempt > 0) candidate.id = Number(candidate.id) + 1;
     const row = toCloudRow(key, candidate);
     if (!row) throw new Error(`Cloud ${key} insert skipped: unsupported row.`);
-    const res = await supabase.from(table).insert(row).select('*').single();
+    let res = await supabase.from(table).insert(row).select('*').single();
+    if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.item_type;
+      delete fallbackRow.part_category;
+      delete fallbackRow.distributor;
+      delete fallbackRow.distributor_sku;
+      delete fallbackRow.reorder_qty;
+      delete fallbackRow.reorder_url_template;
+      delete fallbackRow.associated_devices;
+      res = await supabase.from(table).insert(fallbackRow).select('*').single();
+    }
     if (!res.error) {
       await syncTechnicianCredential(key, candidate, res.data);
       const saved = fromCloudRow(key, res.data || row);

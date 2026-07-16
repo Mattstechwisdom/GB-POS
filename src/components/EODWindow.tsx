@@ -344,6 +344,29 @@ function readNumber(record: any, key: string): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function itemQty(item: any): number {
+  const qty = Number(item?.qty ?? item?.quantity ?? 1);
+  return Number.isFinite(qty) && qty > 0 ? qty : 1;
+}
+
+function itemSoldTotal(item: any): number {
+  const price = Number(item?.price ?? item?.partCost ?? item?.partCosts ?? 0);
+  return Number.isFinite(price) ? round2(price * itemQty(item)) : 0;
+}
+
+function itemInternalCostTotal(item: any): number {
+  const cost = Number(item?.internalCost ?? item?.cost ?? 0);
+  return Number.isFinite(cost) ? round2(cost * itemQty(item)) : 0;
+}
+
+function recordInternalCostTotal(record: any): number {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  if (items.length) {
+    return round2(items.reduce((sum: number, item: any) => sum + itemInternalCostTotal(item), 0));
+  }
+  return round2(readNumber(record, 'internalCost') ?? readNumber(record, 'cost') ?? 0);
+}
+
 function resolveTotals(record: any) {
   const totalFields = ['total', 'grandTotal', 'invoiceTotal', 'totalAmount', 'amountTotal', 'totalDue', 'total_due', 'amountDue', 'amount_due', 'balanceDue', 'balance_due', 'balance'];
   const paidFields = ['amountPaid', 'paid', 'totalPaid', 'paidAmount', 'paid_amount', 'collected', 'amountCollected'];
@@ -1165,6 +1188,19 @@ const EODWindow: React.FC = () => {
     const cardTotal = round2(paymentSummary.card + paymentSummary.other);
     const cashTotal = round2(paymentSummary.cashNet);
     const totalTaken = round2(cardTotal + cashTotal);
+    const workRowsInRange = (workOrders || []).filter((workOrder) => isDateWithin(getTimelineDate(workOrder), min, max));
+    const saleRowsInRange = (sales || []).filter((sale) => isDateWithin(getSaleReportDate(sale), min, max));
+    const partsSold = round2(workRowsInRange.reduce((sum, workOrder) => {
+      const parts = readNumber(workOrder, 'partCosts') ?? readNumber(workOrder, 'partsTotal') ?? readNumber(workOrder, 'parts') ?? 0;
+      return sum + parts;
+    }, 0));
+    const partsCost = round2(workRowsInRange.reduce((sum, workOrder) => sum + recordInternalCostTotal(workOrder), 0));
+    const productsSold = round2(saleRowsInRange.reduce((sum, sale) => {
+      const items = Array.isArray(sale?.items) ? sale.items : [];
+      if (items.length) return sum + items.reduce((lineSum: number, item: any) => lineSum + itemSoldTotal(item), 0);
+      return sum + (readNumber(sale, 'partCosts') ?? readNumber(sale, 'total') ?? 0);
+    }, 0));
+    const productsCost = round2(saleRowsInRange.reduce((sum, sale) => sum + recordInternalCostTotal(sale), 0));
 
     const checkInCount = (workOrders || []).reduce((count, workOrder) => {
       const checkInDate = firstDateInKeys(workOrder, ['checkInAt', 'checkInDate', 'check_in_at', 'createdAt', 'createdDate']);
@@ -1193,10 +1229,14 @@ const EODWindow: React.FC = () => {
       totalTaken,
       cardTotal,
       cashTotal,
+      partsSold,
+      partsCost,
+      productsSold,
+      productsCost,
       checkInCount,
       closedTicketCount,
     };
-  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, start, workOrders]);
+  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, sales, start, workOrders]);
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -1316,6 +1356,8 @@ const EODWindow: React.FC = () => {
       lines.push(`Total taken in: ${formatCurrency(dailyBatchSummary.totalTaken)}`);
       lines.push(`Card: ${formatCurrency(dailyBatchSummary.cardTotal)}`);
       lines.push(`Cash: ${formatCurrency(dailyBatchSummary.cashTotal)}`);
+      lines.push(`Parts charged: ${formatCurrency(dailyBatchSummary.partsSold)} | Parts cost: ${formatCurrency(dailyBatchSummary.partsCost)}`);
+      lines.push(`Products sold: ${formatCurrency(dailyBatchSummary.productsSold)} | Product cost: ${formatCurrency(dailyBatchSummary.productsCost)}`);
     }
     if (draftSettings.includeCounts) {
       lines.push(`Check-ins: ${dailyBatchSummary.checkInCount}`);
@@ -1335,7 +1377,7 @@ const EODWindow: React.FC = () => {
       lines.push(`Last Batch Out: ${last}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, reportHasAnyActivity, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, reportHasAnyActivity, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining]);
 
   const presetBody = useMemo(() => {
     const header = `Batch report for ${rangeLabel(range, start, end)}`;
@@ -1745,6 +1787,10 @@ const EODWindow: React.FC = () => {
       rows.push(['Total taken in', formatCurrency(dailyBatchSummary.totalTaken)]);
       rows.push(['Card', formatCurrency(dailyBatchSummary.cardTotal)]);
       rows.push(['Cash', formatCurrency(dailyBatchSummary.cashTotal)]);
+      rows.push(['Parts charged', formatCurrency(dailyBatchSummary.partsSold)]);
+      rows.push(['Parts cost', formatCurrency(dailyBatchSummary.partsCost)]);
+      rows.push(['Products sold', formatCurrency(dailyBatchSummary.productsSold)]);
+      rows.push(['Product cost', formatCurrency(dailyBatchSummary.productsCost)]);
     }
     if (draftSettings.includeCounts) {
       rows.push(['Check-ins', String(dailyBatchSummary.checkInCount)]);
@@ -1769,7 +1815,7 @@ const EODWindow: React.FC = () => {
       .join('');
 
     return `<div style="${wrapperStyle}"><div style="${headerStyle}">${escapeHtml(header)}</div><table style="${tableStyle}"><tbody>${body}</tbody></table>${trendSectionHtml}${emailDetailsHtml}</div>`;
-  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, emailDetailsHtml, end, range, reportHasAnyActivity, start, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining, trendSectionHtml]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, emailDetailsHtml, end, range, reportHasAnyActivity, start, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining, trendSectionHtml]);
 
   async function handleRowOpen(row: UnifiedRow) {
     const api = (window as any).api;
@@ -1944,6 +1990,26 @@ const EODWindow: React.FC = () => {
                     <div className="text-xs text-zinc-500">Cash</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cashTotal)}</div>
                     <div className="text-[11px] text-zinc-400">after change given</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Parts charged</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.partsSold)}</div>
+                    <div className="text-[11px] text-zinc-400">parts billed on work orders</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Parts cost</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.partsCost)}</div>
+                    <div className="text-[11px] text-zinc-400">saved internal part costs</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Products sold</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.productsSold)}</div>
+                    <div className="text-[11px] text-zinc-400">sales item totals</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Product cost</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.productsCost)}</div>
+                    <div className="text-[11px] text-zinc-400">saved internal product costs</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Check-ins</div>
@@ -2482,6 +2548,10 @@ const EODWindow: React.FC = () => {
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Total taken in</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.totalTaken)}</div></div>
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Card</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cardTotal)}</div></div>
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Cash</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cashTotal)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts charged</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.partsSold)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts cost</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.partsCost)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Products sold</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.productsSold)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Product cost</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.productsCost)}</div></div>
                               </>
                             ) : null}
                             {draftSettings.includeCounts ? (

@@ -8,6 +8,8 @@ import {
   NotificationRecord,
 } from '@/lib/notifications';
 
+const NotificationSettingsWindow = React.lazy(() => import('./NotificationSettingsWindow'));
+
 function fmtWhen(iso?: string) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -41,6 +43,7 @@ function kindColor(kind: NotificationRecord['kind']) {
 const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideCloseButton = false }) => {
   const [list, setList] = useState<NotificationRecord[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(true);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
   const load = async () => {
@@ -107,6 +110,12 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           >
             Clear read
           </button>
+          <button
+            className={`px-3 py-1.5 rounded border text-sm ${showSettings ? 'bg-[#BC13FE] text-white border-[#BC13FE]' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+            onClick={() => setShowSettings(v => !v)}
+          >
+            Settings
+          </button>
           {!hideCloseButton ? (
             <button
               className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
@@ -126,6 +135,13 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
         </div>
       </div>
 
+      {showSettings ? (
+        <div className="flex-1 overflow-auto border border-zinc-800 rounded">
+          <React.Suspense fallback={<div className="p-6 text-center text-zinc-400">Loading settings...</div>}>
+            <NotificationSettingsWindow />
+          </React.Suspense>
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto border border-zinc-800 rounded">
         {loading && (
           <div className="p-6 text-center text-zinc-400">Loading…</div>
@@ -230,6 +246,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           );
         })}
       </div>
+      )}
     </div>
   );
 };
