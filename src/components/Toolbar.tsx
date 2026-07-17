@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import TechniciansWindow from './TechniciansWindow';
-import { getUnreadCount, syncNotificationsFromCalendar } from '@/lib/notifications';
+import { getUnreadCount, syncNotificationsFromCalendar, syncNotificationsFromRecords } from '@/lib/notifications';
 import { dispatchOpenModal } from '@/lib/modalBus';
 
 const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void; keyword?: string; onKeywordChange?: (v: string) => void }> = ({ mode, onModeChange, keyword = '', onKeywordChange }) => {
@@ -35,6 +35,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     const refresh = async () => {
       try {
         await syncNotificationsFromCalendar();
+        await syncNotificationsFromRecords();
       } catch {
         // ignore
       }
@@ -57,12 +58,16 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
       }
     };
     const offCal = api?.onCalendarEventsChanged?.(() => refresh());
+    const offWO = api?.onWorkOrdersChanged?.(() => refresh());
+    const offSales = api?.onSalesChanged?.(() => refresh());
     const offNot = api?.onNotificationsChanged?.(() => refreshCountOnly());
     const offTech = api?.onTechniciansChanged?.(() => refresh());
     const timer = window.setInterval(() => refresh(), 60_000);
     return () => {
       alive = false;
       try { offCal && offCal(); } catch {}
+      try { offWO && offWO(); } catch {}
+      try { offSales && offSales(); } catch {}
       try { offNot && offNot(); } catch {}
       try { offTech && offTech(); } catch {}
       try { window.clearInterval(timer); } catch {}

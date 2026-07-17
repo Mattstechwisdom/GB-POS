@@ -1,4 +1,4 @@
-export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'tech_schedule' | 'daily_look';
+export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'tech_schedule' | 'daily_look' | 'work_order' | 'sale';
 
 export type NotificationRecord = {
   id?: number;
@@ -50,6 +50,19 @@ export type NotificationSettings = {
   purgeReadAfterDays: number;
 };
 
+export type DeviceNotificationSettings = {
+  enabled: boolean;
+  permission: 'default' | 'prompt' | 'granted' | 'denied' | 'unsupported';
+  consultationReminders: boolean;
+  consultationLeadHours: number;
+  newWorkOrders: boolean;
+  newSales: boolean;
+  partsDelivery: boolean;
+  calendarEvents: boolean;
+  dailyLook: boolean;
+  technicianSchedules: boolean;
+};
+
 const DEFAULT_SETTINGS: NotificationSettings = {
   enabledConsultations: true,
   consultationLeadMinutes: 60,
@@ -72,6 +85,23 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   keepUnreadDays: 30,
   purgeReadAfterDays: 14,
 };
+
+const DEFAULT_DEVICE_SETTINGS: DeviceNotificationSettings = {
+  enabled: false,
+  permission: 'default',
+  consultationReminders: true,
+  consultationLeadHours: 1,
+  newWorkOrders: true,
+  newSales: true,
+  partsDelivery: true,
+  calendarEvents: false,
+  dailyLook: true,
+  technicianSchedules: true,
+};
+
+const DEVICE_SETTINGS_KEY = 'gbpos:deviceNotificationSettings:v1';
+const DEVICE_PENDING_IDS_KEY = 'gbpos:deviceNotificationPendingIds:v1';
+const SEEN_RECORDS_PREFIX = 'gbpos:deviceNotificationSeen';
 
 function isValidHHmm(v: any): v is string {
   return /^\d{2}:\d{2}$/.test(String(v || ''));
@@ -113,6 +143,30 @@ function hashString(input: string) {
   return (h >>> 0).toString(16);
 }
 
+function notificationIdForKey(key: string): number {
+  const hex = hashString(key).slice(0, 7);
+  const id = parseInt(hex, 16);
+  return Number.isFinite(id) ? id : Math.floor(Math.random() * 2_000_000_000);
+}
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJson(key: string, value: any) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
 function startOfTodayLocal() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -148,6 +202,231 @@ function fmtTime12(hhmm?: string) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   const hh = ((h + 11) % 12) + 1;
   return `${hh}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function channelEnabledForKind(settings: DeviceNotificationSettings, kind: NotificationKind) {
+  if (!settings.enabled || settings.permission !== 'granted') return false;
+  if (kind === 'consultation') return settings.consultationReminders;
+  if (kind === 'work_order') return settings.newWorkOrders;
+  if (kind === 'sale') return settings.newSales;
+  if (kind === 'parts_delivery') return settings.partsDelivery;
+  if (kind === 'event') return settings.calendarEvents;
+  if (kind === 'daily_look') return settings.dailyLook;
+  if (kind === 'tech_schedule') return settings.technicianSchedules;
+  return false;
+}
+
+async function getLocalNotificationsPlugin(): Promise<any | null> {
+  try {
+    const mod = await import('@capacitor/local-notifications');
+    return (mod as any).LocalNotifications || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  const native = await getLocalNotificationsPlugin();
+  if (native?.checkPermissions) {
+    try {
+      const status = await native.checkPermissions();
+      const display = String(status?.display || '').toLowerCase();
+      if (display === 'granted') return 'granted';
+      if (display === 'denied') return 'denied';
+      return 'prompt';
+    } catch {
+      // fall through to browser API
+    }
+  }
+  if (typeof Notification !== 'undefined') {
+    if (Notification.permission === 'granted') return 'granted';
+    if (Notification.permission === 'denied') return 'denied';
+    return 'prompt';
+  }
+  return 'unsupported';
+}
+
+async function ensureAndroidNotificationChannel() {
+  const native = await getLocalNotificationsPlugin();
+  if (!native?.createChannel) return;
+  try {
+    await native.createChannel({
+      id: 'gbpos-tech-alerts',
+      name: 'GadgetBoy POS Alerts',
+      description: 'Work order, sale, consultation, and shop reminders',
+      importance: 4,
+      visibility: 1,
+    });
+  } catch {
+    // createChannel is Android-only; ignore unsupported platforms.
+  }
+}
+
+async function sendDeviceNotification(rec: NotificationRecord, settings?: DeviceNotificationSettings) {
+  const deviceSettings = settings || await loadDeviceNotificationSettings();
+  if (!channelEnabledForKind(deviceSettings, rec.kind)) return;
+  const title = String(rec.title || 'GadgetBoy POS').trim();
+  const body = String(rec.message || '').trim();
+  const id = notificationIdForKey(rec.key || `${rec.kind}:${title}:${rec.eventAt || rec.createdAt}`);
+
+  const native = await getLocalNotificationsPlugin();
+  if (native?.schedule) {
+    try {
+      await ensureAndroidNotificationChannel();
+      await native.schedule({
+        notifications: [{
+          id,
+          title,
+          body,
+          largeBody: body || title,
+          channelId: 'gbpos-tech-alerts',
+          schedule: { at: new Date(Date.now() + 250) },
+        }],
+      });
+      return;
+    } catch {
+      // fall through to browser API
+    }
+  }
+
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      new Notification(title, { body, tag: rec.key });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function scheduleDeviceConsultationReminders(calendarInput?: any[], settingsInput?: DeviceNotificationSettings): Promise<void> {
+  const native = await getLocalNotificationsPlugin();
+  if (!native?.schedule) return;
+  const settings = settingsInput || await loadDeviceNotificationSettings();
+  if (!settings.enabled || settings.permission !== 'granted' || !settings.consultationReminders) return;
+
+  const a = api();
+  const calendar: any[] = Array.isArray(calendarInput)
+    ? calendarInput
+    : await a?.dbGet?.('calendarEvents').catch(() => []);
+  const now = Date.now();
+  const leadMs = settings.consultationLeadHours * 60 * 60 * 1000;
+  const notifications: any[] = [];
+  const pendingIds: number[] = loadJson<number[]>(DEVICE_PENDING_IDS_KEY, []);
+  if (pendingIds.length && native.cancel) {
+    try {
+      await native.cancel({ notifications: pendingIds.map(id => ({ id })) });
+    } catch {
+      // ignore stale pending IDs
+    }
+  }
+
+  for (const ev of Array.isArray(calendar) ? calendar : []) {
+    if (ev?.category !== 'consultation') continue;
+    const eventAt = parseCalendarEventAt(ev);
+    if (!eventAt) continue;
+    const alertAt = new Date(eventAt.getTime() - leadMs);
+    if (alertAt.getTime() <= now) continue;
+    const key = calendarNotificationKey(ev, 'consultation');
+    const id = notificationIdForKey(`scheduled:${key}:${settings.consultationLeadHours}`);
+    const customerName = String(ev.customerName || '').trim() || 'Customer';
+    const time = fmtTime12(ev.time);
+    notifications.push({
+      id,
+      title: `Consultation reminder: ${customerName}`,
+      body: `${time ? `${time} - ` : ''}${String(ev.title || 'Consultation').trim() || 'Consultation'}`,
+      largeBody: `${customerName}${time ? ` at ${time}` : ''}${ev.customerPhone ? `\n${ev.customerPhone}` : ''}`,
+      channelId: 'gbpos-tech-alerts',
+      schedule: {
+        at: alertAt,
+        allowWhileIdle: true,
+      },
+    });
+  }
+
+  await ensureAndroidNotificationChannel();
+  if (notifications.length) {
+    await native.schedule({ notifications });
+  }
+  saveJson(DEVICE_PENDING_IDS_KEY, notifications.map(n => n.id));
+}
+
+function recordDateForNotification(record: any): string {
+  const raw = record?.activityAt || record?.checkInAt || record?.createdAt || record?.updatedAt || new Date().toISOString();
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+async function syncNewRecordNotificationsForKey(
+  key: 'workOrders' | 'sales',
+  rows: any[],
+  enabled: boolean,
+): Promise<void> {
+  if (!enabled) return;
+  const storageKey = `${SEEN_RECORDS_PREFIX}:${key}`;
+  const seen = new Set(loadJson<string[]>(storageKey, []));
+  const currentIds = (Array.isArray(rows) ? rows : [])
+    .map(row => String(row?.id || '').trim())
+    .filter(Boolean);
+
+  if (!seen.size) {
+    saveJson(storageKey, currentIds);
+    return;
+  }
+
+  const existingNotifications = await listNotifications();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = String(row?.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    if (key === 'workOrders') {
+      const customer = String(row?.customerName || [row?.firstName, row?.lastName].filter(Boolean).join(' ') || '').trim();
+      const device = String(row?.productDescription || row?.productCategory || 'Work order').trim();
+      await upsertByKeyWithCache(existingNotifications, {
+        key: `workOrder:new:${id}`,
+        kind: 'work_order',
+        title: `New work order #${id}`,
+        message: [customer, device].filter(Boolean).join(' - ') || undefined,
+        createdAt: nowIso(),
+        eventAt: recordDateForNotification(row),
+        workOrderId: Number(id),
+        customerId: row?.customerId != null ? Number(row.customerId) : undefined,
+        readAt: null,
+      });
+    } else {
+      const customer = String(row?.customerName || '').trim();
+      const item = String(
+        Array.isArray(row?.items) && row.items[0]
+          ? row.items.map((it: any) => it?.description || it?.name || it?.title || '').filter(Boolean).join(', ')
+          : row?.itemDescription || 'Sale'
+      ).trim();
+      await upsertByKeyWithCache(existingNotifications, {
+        key: `sale:new:${id}`,
+        kind: 'sale',
+        title: `New sale #${id}`,
+        message: [customer, item].filter(Boolean).join(' - ') || undefined,
+        createdAt: nowIso(),
+        eventAt: recordDateForNotification(row),
+        saleId: Number(id),
+        customerId: row?.customerId != null ? Number(row.customerId) : undefined,
+        readAt: null,
+      });
+    }
+  }
+  saveJson(storageKey, Array.from(seen).slice(-2000));
+}
+
+export async function syncNotificationsFromRecords(): Promise<void> {
+  const a = api();
+  if (!a?.dbGet) return;
+  const settings = await loadDeviceNotificationSettings();
+  if (!settings.enabled) return;
+  const [workOrders, sales] = await Promise.all([
+    (a.getWorkOrders?.({ limit: 500, sortBy: 'activityAt', sortDir: 'desc' }) || a.dbGet('workOrders')).catch(() => []),
+    a.dbGet('sales', { limit: 500, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
+  ]);
+  await syncNewRecordNotificationsForKey('workOrders', workOrders, settings.newWorkOrders);
+  await syncNewRecordNotificationsForKey('sales', sales, settings.newSales);
 }
 
 function parseCalendarEventAt(ev: any): Date | null {
@@ -258,6 +537,81 @@ export async function saveNotificationSettings(next: NotificationSettings): Prom
   return { ...settings, ...(added || {}) };
 }
 
+export async function loadDeviceNotificationSettings(): Promise<DeviceNotificationSettings> {
+  const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
+  const permission = await getDeviceNotificationPermission();
+  const settings: DeviceNotificationSettings = {
+    ...DEFAULT_DEVICE_SETTINGS,
+    ...stored,
+    enabled: !!stored.enabled,
+    permission,
+    consultationReminders: stored.consultationReminders !== false,
+    consultationLeadHours: clamp(asNumber(stored.consultationLeadHours, DEFAULT_DEVICE_SETTINGS.consultationLeadHours), 1, 24),
+    newWorkOrders: stored.newWorkOrders !== false,
+    newSales: stored.newSales !== false,
+    partsDelivery: stored.partsDelivery !== false,
+    calendarEvents: !!stored.calendarEvents,
+    dailyLook: stored.dailyLook !== false,
+    technicianSchedules: stored.technicianSchedules !== false,
+  };
+  saveJson(DEVICE_SETTINGS_KEY, settings);
+  return settings;
+}
+
+export async function saveDeviceNotificationSettings(next: DeviceNotificationSettings): Promise<DeviceNotificationSettings> {
+  const permission = await getDeviceNotificationPermission();
+  const settings: DeviceNotificationSettings = {
+    ...DEFAULT_DEVICE_SETTINGS,
+    ...next,
+    enabled: !!next.enabled,
+    permission,
+    consultationReminders: !!next.consultationReminders,
+    consultationLeadHours: clamp(asNumber(next.consultationLeadHours, DEFAULT_DEVICE_SETTINGS.consultationLeadHours), 1, 24),
+    newWorkOrders: !!next.newWorkOrders,
+    newSales: !!next.newSales,
+    partsDelivery: !!next.partsDelivery,
+    calendarEvents: !!next.calendarEvents,
+    dailyLook: !!next.dailyLook,
+    technicianSchedules: !!next.technicianSchedules,
+  };
+  saveJson(DEVICE_SETTINGS_KEY, settings);
+  return settings;
+}
+
+export async function requestDeviceNotificationPermission(): Promise<DeviceNotificationSettings> {
+  let permission = await getDeviceNotificationPermission();
+  const native = await getLocalNotificationsPlugin();
+  if (native?.requestPermissions && permission !== 'granted' && permission !== 'unsupported') {
+    try {
+      const status = await native.requestPermissions();
+      const display = String(status?.display || '').toLowerCase();
+      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    try {
+      const result = await Notification.requestPermission();
+      permission = result === 'granted' ? 'granted' : (result === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  }
+
+  const current = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
+  const settings = await saveDeviceNotificationSettings({
+    ...DEFAULT_DEVICE_SETTINGS,
+    ...current,
+    enabled: permission === 'granted',
+    permission,
+  } as DeviceNotificationSettings);
+  if (permission === 'granted') {
+    try { await ensureAndroidNotificationChannel(); } catch {}
+    try { await scheduleDeviceConsultationReminders(); } catch {}
+  }
+  return settings;
+}
+
 export async function listNotifications(): Promise<NotificationRecord[]> {
   const list = await api()?.dbGet?.('notifications').catch(() => []);
   return Array.isArray(list) ? (list as NotificationRecord[]) : [];
@@ -338,6 +692,7 @@ async function upsertByKeyWithCache(list: NotificationRecord[], rec: Notificatio
     return;
   }
   await api()?.dbAdd?.('notifications', rec);
+  await sendDeviceNotification(rec).catch(() => {});
 }
 
 let _syncInflight = false;
@@ -357,6 +712,7 @@ async function _syncNotificationsFromCalendar(): Promise<void> {
   if (!a?.dbGet || !a?.dbAdd) return;
 
   const settings = await loadNotificationSettings();
+  const deviceSettings = await loadDeviceNotificationSettings();
   const calendar: any[] = await a.dbGet('calendarEvents').catch(() => []);
   const existingNotifications: NotificationRecord[] = await listNotifications();
   const now = new Date();
@@ -365,11 +721,18 @@ async function _syncNotificationsFromCalendar(): Promise<void> {
 
   const desiredKeys = new Set<string>();
 
-  const consultLeadMs = settings.consultationLeadMinutes * 60 * 1000;
+  const consultationLeadMinutes = deviceSettings.enabled && deviceSettings.consultationReminders
+    ? deviceSettings.consultationLeadHours * 60
+    : settings.consultationLeadMinutes;
+  const consultLeadMs = consultationLeadMinutes * 60 * 1000;
   const eventLeadMs = settings.eventLeadMinutes * 60 * 1000;
   const lookaheadPartsMs = settings.partsDeliveryLookaheadDays * 24 * 60 * 60 * 1000;
   const todayStart = startOfTodayLocal();
   const todayYmd = fmtLocalYmd(todayStart);
+
+  if (deviceSettings.enabled && deviceSettings.permission === 'granted' && deviceSettings.consultationReminders) {
+    try { await scheduleDeviceConsultationReminders(calendar, deviceSettings); } catch {}
+  }
 
   // Daily Look digest (once per day)
   if (settings.enabledDailyLook && !quietNow) {

@@ -8,6 +8,7 @@ import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
 import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
 import { technicianDisplayName } from '../lib/admin';
+import { syncNotificationsFromCalendar, syncNotificationsFromRecords } from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
@@ -321,7 +322,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'reportEmail': return <ReportEmailWindow />;
     case 'charts': return <ChartsWindow />;
     case 'notifications': return <NotificationsWindow hideCloseButton />;
-    case 'notificationSettings': return <NotificationSettingsWindow />;
+    case 'notificationSettings': return <NotificationSettingsWindow hideCloseButton />;
     case 'releaseForm': return <ReleaseFormWindow />;
     case 'customerReceipt': return <CustomerReceiptWindow />;
     case 'consultSheet': return <ConsultSheetWindow />;
@@ -745,6 +746,30 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       if (timer) window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onOnline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const runNotificationSync = async () => {
+      if (!alive) return;
+      try { await syncNotificationsFromCalendar(); } catch {}
+      try { await syncNotificationsFromRecords(); } catch {}
+    };
+    const api: any = window.api;
+    const offCal = api?.onCalendarEventsChanged?.(() => { void runNotificationSync(); });
+    const offWO = api?.onWorkOrdersChanged?.(() => { void runNotificationSync(); });
+    const offSales = api?.onSalesChanged?.(() => { void runNotificationSync(); });
+    const offTech = api?.onTechniciansChanged?.(() => { void runNotificationSync(); });
+    const timer = window.setInterval(() => { void runNotificationSync(); }, 60_000);
+    void runNotificationSync();
+    return () => {
+      alive = false;
+      try { offCal && offCal(); } catch {}
+      try { offWO && offWO(); } catch {}
+      try { offSales && offSales(); } catch {}
+      try { offTech && offTech(); } catch {}
+      window.clearInterval(timer);
     };
   }, []);
 

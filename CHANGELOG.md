@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.7 (2026-07-17)
+- Notifications: adds per-device notification permission and settings for mobile/Android, with a checklist for consultation reminders, new work orders, new sales, parts delivery, calendar events, technician schedule changes, and Daily Look.
+- Notifications: schedules native Android consultation reminders with selectable hour lead times and keeps browser/Windows notification fallback support where available.
+- Notifications: syncs work order, sale, calendar, and technician changes into the notification system on both desktop and mobile.
+- Mobile: keeps Notification Settings inside the mobile modal shell without an extra internal Close button.
+- Android: registers the Capacitor local notifications plugin so future APK builds can request OS notification permission.
+
 ## v0.5.6 (2026-07-17)
 - Login: replaces the visible email/password form with a shop username/PIN form and routes the configured `Gadgetboyz` username to a hidden Supabase Auth email.
 - Login: blocks direct email entry in the POS login screen so the shop alias is the only visible sign-in path.

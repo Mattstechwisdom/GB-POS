@@ -29,6 +29,8 @@ function kindLabel(kind: NotificationRecord['kind']) {
   if (kind === 'parts_delivery') return 'Parts';
   if (kind === 'tech_schedule') return 'Technicians';
   if (kind === 'daily_look') return 'Daily Look';
+  if (kind === 'work_order') return 'Work Orders';
+  if (kind === 'sale') return 'Sales';
   return 'Event';
 }
 
@@ -37,6 +39,8 @@ function kindColor(kind: NotificationRecord['kind']) {
   if (kind === 'parts_delivery') return 'bg-blue-500';
   if (kind === 'tech_schedule') return 'bg-[#39FF14]';
   if (kind === 'daily_look') return 'bg-purple-500';
+  if (kind === 'work_order') return 'bg-emerald-500';
+  if (kind === 'sale') return 'bg-[#BC13FE]';
   return 'bg-red-500';
 }
 
@@ -138,7 +142,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
       {showSettings ? (
         <div className="flex-1 overflow-auto border border-zinc-800 rounded">
           <React.Suspense fallback={<div className="p-6 text-center text-zinc-400">Loading settings...</div>}>
-            <NotificationSettingsWindow />
+            <NotificationSettingsWindow embedded />
           </React.Suspense>
         </div>
       ) : (
