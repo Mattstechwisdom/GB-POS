@@ -9,6 +9,8 @@ export type WorkOrderItemRow = {
   labor: number;
   status?: string;
   note?: string;
+  partSource?: string;
+  orderSourceUrl?: string;
 };
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -31,6 +33,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
+import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -501,6 +504,9 @@ const NewWorkOrderWindow: React.FC = () => {
   const [partsTrackingUrlDraft, setPartsTrackingUrlDraft] = useState('');
   const [partsOrderUrlEditing, setPartsOrderUrlEditing] = useState(true);
   const [partsTrackingUrlEditing, setPartsTrackingUrlEditing] = useState(true);
+  const [partsUrlScraping, setPartsUrlScraping] = useState(false);
+  const [partsUrlMeta, setPartsUrlMeta] = useState<PartUrlMetadata | null>(null);
+  const [partsSaveBusy, setPartsSaveBusy] = useState<'part' | 'repair' | null>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -1168,6 +1174,61 @@ const NewWorkOrderWindow: React.FC = () => {
     setPartsOrderUrlEditing(false);
   }, [wo.items, (wo as any).partsOrderUrl]);
 
+  const primaryPartsItem = useMemo(() => {
+    const rows = Array.isArray(wo.items) ? wo.items : [];
+    return rows.find((item: any) => String(item?.orderSourceUrl || '').trim())
+      || rows.find((item: any) => Number(item?.parts || 0) > 0)
+      || rows[0]
+      || null;
+  }, [wo.items]);
+
+  const scrapeAndApplyPartsUrl = useCallback(async (value: string) => {
+    const orderUrl = normalizeMaybeUrl(value);
+    if (!orderUrl) return null;
+    setPartsUrlScraping(true);
+    try {
+      const meta = await scrapePartUrl(orderUrl);
+      const vendor = meta.vendor || derivePartVendorFromUrl(orderUrl);
+      setPartsUrlMeta(meta);
+      setWo(w => {
+        const items = Array.isArray(w.items) ? [...w.items] : [];
+        let idx = items.findIndex((item: any) => String(item?.orderSourceUrl || '').trim() === orderUrl);
+        if (idx < 0) idx = items.findIndex((item: any) => Number(item?.parts || 0) > 0);
+        if (idx < 0 && items.length) idx = 0;
+        if (idx >= 0) {
+          const current: any = items[idx];
+          const nextParts = typeof meta.price === 'number' && Number(current.parts || 0) <= 0
+            ? (markedUpPartPrice(meta.price, DEFAULT_PART_MARKUP_PCT) ?? current.parts)
+            : current.parts;
+          items[idx] = {
+            ...current,
+            repair: meta.title || current.repair,
+            parts: Number(nextParts || 0) || 0,
+            partSource: current.partSource || vendor,
+            orderSourceUrl: orderUrl,
+          };
+        }
+        return {
+          ...w,
+          items,
+          partsOrderUrl: orderUrl,
+          partsOrdered: true,
+        };
+      });
+      if (meta.ok) {
+        triggerWarningBanner('Part URL scanned', meta.title || vendor || 'Part details were found.');
+      } else if (meta.error) {
+        triggerWarningBanner('URL saved', `Could not auto-fill details: ${meta.error}`);
+      }
+      return meta;
+    } catch (error: any) {
+      triggerWarningBanner('Could not scan part URL', error?.message || 'The URL was saved for ordering.');
+      return null;
+    } finally {
+      setPartsUrlScraping(false);
+    }
+  }, []);
+
   const commitPartsOrderUrl = useCallback((value: string) => {
     const orderUrl = normalizeMaybeUrl(value);
     if (!orderUrl) return;
@@ -1178,7 +1239,8 @@ const NewWorkOrderWindow: React.FC = () => {
       partsOrderUrl: orderUrl,
       partsOrdered: true,
     }));
-  }, []);
+    void scrapeAndApplyPartsUrl(orderUrl);
+  }, [scrapeAndApplyPartsUrl]);
 
   const commitPartsTrackingUrl = useCallback((value: string) => {
     const trackingUrl = normalizeMaybeUrl(value);
@@ -1242,6 +1304,123 @@ const NewWorkOrderWindow: React.FC = () => {
       else window.open(url, '_blank', 'noopener,noreferrer');
     } catch {}
   }, [wo, partsTrackingUrlDraft]);
+
+  const buildPartOrderingContext = useCallback(() => {
+    const item: any = primaryPartsItem || {};
+    const orderUrl = normalizeMaybeUrl((wo as any).partsOrderUrl || partsOrderUrlDraft || item.orderSourceUrl);
+    const vendor = item.partSource || partsUrlMeta?.vendor || derivePartVendorFromUrl(orderUrl);
+    const title = String(partsUrlMeta?.title || item.repair || (wo as any).productDescription || 'Repair Part').trim();
+    const device = String(item.device || (wo as any).productCategory || (wo as any).productDescription || 'Other').trim() || 'Other';
+    const repairCategory = String(item.repairCategory || 'Repair').trim() || 'Repair';
+    const internalCost = typeof partsUrlMeta?.price === 'number' ? partsUrlMeta.price : undefined;
+    const partCost = Number(item.parts || 0) > 0
+      ? Number(item.parts || 0)
+      : (internalCost != null ? (markedUpPartPrice(internalCost, DEFAULT_PART_MARKUP_PCT) || 0) : 0);
+    const laborCost = Number(item.labor || 0) || 0;
+    return { item, orderUrl, vendor, title, device, repairCategory, internalCost, partCost, laborCost };
+  }, [partsOrderUrlDraft, partsUrlMeta, primaryPartsItem, wo]);
+
+  const handleSavePartSource = useCallback(async (opts?: { silent?: boolean }) => {
+    const api: any = (window as any).api;
+    const ctx = buildPartOrderingContext();
+    if (!ctx.orderUrl) {
+      if (!opts?.silent) triggerWarningBanner('Order URL is missing', 'Paste the distributor URL before saving this part.');
+      return null;
+    }
+    if (!ctx.title) {
+      if (!opts?.silent) triggerWarningBanner('Part title is missing', 'Enter or scrape the part title first.');
+      return null;
+    }
+    setPartsSaveBusy('part');
+    try {
+      let current = await api?.dbGet?.('products').catch(() => []);
+      if (!Array.isArray(current)) current = [];
+      const normalizedUrl = normalizeMaybeUrl(ctx.orderUrl);
+      const existing = current.find((row: any) => {
+        const rowUrl = normalizeMaybeUrl(row?.reorderUrlTemplate);
+        return (rowUrl && rowUrl === normalizedUrl)
+          || (String(row?.itemDescription || '').trim().toLowerCase() === ctx.title.toLowerCase()
+            && String(row?.distributor || '').trim().toLowerCase() === String(ctx.vendor || '').trim().toLowerCase());
+      });
+      const now = new Date().toISOString();
+      const payload: any = {
+        ...(existing || {}),
+        itemDescription: ctx.title,
+        itemType: 'Part',
+        category: ctx.device,
+        associatedDevices: Array.from(new Set([ctx.device].filter(Boolean))),
+        partCategory: ctx.repairCategory,
+        condition: 'New',
+        price: ctx.partCost,
+        internalCost: ctx.internalCost,
+        markupPct: DEFAULT_PART_MARKUP_PCT,
+        distributor: ctx.vendor || '',
+        reorderQty: 1,
+        reorderUrlTemplate: normalizedUrl,
+        trackStock: true,
+        stockCount: Number(existing?.stockCount ?? 0) || 0,
+        lowStockThreshold: Number(existing?.lowStockThreshold ?? 1) || 1,
+        updatedAt: now,
+      };
+      const saved = existing?.id
+        ? (api?.update ? await api.update('products', payload) : await api?.dbUpdate?.('products', existing.id, payload))
+        : await api?.dbAdd?.('products', { ...payload, createdAt: now });
+      if (!opts?.silent) triggerWarningBanner('Part saved', `${ctx.title} is now saved in Inventory.`);
+      return saved || payload;
+    } catch (error) {
+      console.error('Save part source failed', error);
+      if (!opts?.silent) triggerWarningBanner('Part could not be saved', 'See console for details.');
+      return null;
+    } finally {
+      setPartsSaveBusy(null);
+    }
+  }, [buildPartOrderingContext]);
+
+  const handleSaveRepairTemplate = useCallback(async () => {
+    const api: any = (window as any).api;
+    const ctx = buildPartOrderingContext();
+    if (!ctx.title || !ctx.repairCategory) {
+      triggerWarningBanner('Repair details missing', 'Add a repair line item before saving the repair template.');
+      return;
+    }
+    setPartsSaveBusy('repair');
+    try {
+      await handleSavePartSource({ silent: true });
+      let rows = await api?.dbGet?.('repairCategories').catch(() => []);
+      if (!Array.isArray(rows)) rows = [];
+      const existing = rows.find((row: any) =>
+        String(row?.category || '').trim().toLowerCase() === ctx.device.toLowerCase()
+        && String(row?.repairCategory || '').trim().toLowerCase() === ctx.repairCategory.toLowerCase()
+        && String(row?.title || '').trim().toLowerCase() === ctx.title.toLowerCase()
+      );
+      const payload: any = {
+        ...(existing || {}),
+        category: ctx.device,
+        repairCategory: ctx.repairCategory,
+        title: ctx.title,
+        altDescription: ctx.item?.repair || ctx.title,
+        partCost: ctx.partCost,
+        laborCost: ctx.laborCost,
+        internalCost: ctx.internalCost,
+        markupPct: DEFAULT_PART_MARKUP_PCT,
+        partSource: ctx.vendor || '',
+        orderSourceUrl: ctx.orderUrl,
+        type: 'service',
+        model: ctx.item?.note || '',
+      };
+      const saved = existing?.id
+        ? (api?.update ? await api.update('repairCategories', payload) : await api?.dbUpdate?.('repairCategories', existing.id, payload))
+        : await api?.dbAdd?.('repairCategories', { ...payload, id: crypto.randomUUID() });
+      triggerWarningBanner('Repair saved', `${ctx.title} is now available in Devices/Repairs.`);
+      return saved || payload;
+    } catch (error) {
+      console.error('Save repair template failed', error);
+      triggerWarningBanner('Repair could not be saved', 'See console for details.');
+      return null;
+    } finally {
+      setPartsSaveBusy(null);
+    }
+  }, [buildPartOrderingContext, handleSavePartSource]);
 
   const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
@@ -2081,6 +2260,18 @@ const NewWorkOrderWindow: React.FC = () => {
                 </div>
               ) : null}
             </div>
+            {(partsUrlMeta?.title || partsUrlMeta?.price || primaryPartsItem) ? (
+              <div className="gb-wo-parts-meta-row">
+                <div className="gb-wo-parts-meta-main" title={partsUrlMeta?.title || primaryPartsItem?.repair || ''}>
+                  {partsUrlMeta?.title || primaryPartsItem?.repair || 'No part selected'}
+                </div>
+                <div className="gb-wo-parts-meta-sub">
+                  {partsUrlMeta?.price != null ? `Internal $${partsUrlMeta.price.toFixed(2)}` : 'Internal cost not scanned'}
+                  {primaryPartsItem?.parts != null ? ` • Sold $${Number(primaryPartsItem.parts || 0).toFixed(2)}` : ''}
+                  {primaryPartsItem?.labor != null ? ` • Labor $${Number(primaryPartsItem.labor || 0).toFixed(2)}` : ''}
+                </div>
+              </div>
+            ) : null}
             <div className="gb-wo-parts-grid">
               <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Order date</label>
@@ -2201,10 +2392,34 @@ const NewWorkOrderWindow: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  className="gb-wo-parts-secondary-button"
+                  disabled={partsUrlScraping || !String((wo as any).partsOrderUrl || partsOrderUrlDraft || '').trim()}
+                  onClick={() => { void scrapeAndApplyPartsUrl(String((wo as any).partsOrderUrl || partsOrderUrlDraft || '')); }}
+                >
+                  {partsUrlScraping ? 'Scanning...' : 'Scrape'}
+                </button>
+                <button
+                  type="button"
+                  className="gb-wo-parts-secondary-button gb-wo-parts-save-part-button"
+                  disabled={partsSaveBusy !== null || !String((wo as any).partsOrderUrl || partsOrderUrlDraft || '').trim()}
+                  onClick={() => { void handleSavePartSource(); }}
+                >
+                  {partsSaveBusy === 'part' ? 'Saving...' : 'Save Part'}
+                </button>
+                <button
+                  type="button"
+                  className="gb-wo-parts-secondary-button gb-wo-parts-save-repair-button"
+                  disabled={partsSaveBusy !== null || !primaryPartsItem}
+                  onClick={() => { void handleSaveRepairTemplate(); }}
+                >
+                  {partsSaveBusy === 'repair' ? 'Saving...' : 'Save Repair'}
+                </button>
+                <button
+                  type="button"
                   className="gb-wo-parts-save-button"
                   onClick={handleSavePartsTracking}
                 >
-                  Save
+                  Save Tracking
                 </button>
               </div>
             </div>

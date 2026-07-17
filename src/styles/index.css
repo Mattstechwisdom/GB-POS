@@ -418,6 +418,34 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   white-space: nowrap;
 }
 
+.gb-wo-parts-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(188, 19, 254, 0.35);
+  border-radius: 8px;
+  background: rgba(188, 19, 254, 0.08);
+}
+
+.gb-wo-parts-meta-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f5d0fe;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.gb-wo-parts-meta-sub {
+  color: #d4d4d8;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .gb-wo-parts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(8.5rem, 0.7fr)) repeat(2, minmax(14rem, 1.3fr));
@@ -512,8 +540,18 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 .gb-wo-parts-actions {
   display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+.gb-wo-parts-save-part-button {
+  border-color: rgba(188, 19, 254, 0.65);
+  color: #f5d0fe;
+}
+
+.gb-wo-parts-save-repair-button {
+  border-color: rgba(57, 255, 20, 0.55);
+  color: #bbf7d0;
 }
 
 .gb-wo-top-row {

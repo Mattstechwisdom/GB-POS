@@ -11,17 +11,55 @@ function compact(value: any): string {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
-function normalizeName(value: any): string {
+export function normalizeCustomerName(value: any): string {
   return compact(value).toLowerCase();
 }
 
-function normalizeEmail(value: any): string {
+export function normalizeCustomerEmail(value: any): string {
   return compact(value).toLowerCase();
 }
 
-function normalizePhone(value: any): string {
+export function normalizeCustomerPhone(value: any): string {
   const digits = String(value || '').replace(/\D+/g, '');
   return digits.length >= 7 ? digits.slice(-10) : '';
+}
+
+export type CustomerSearchValues = {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+};
+
+export function customerMatchesSearch(customer: Partial<Customer> | any, filters: CustomerSearchValues): boolean {
+  const firstQuery = normalizeCustomerName(filters?.firstName);
+  const lastQuery = normalizeCustomerName(filters?.lastName);
+  const emailQuery = normalizeCustomerEmail(filters?.email);
+  const phoneQuery = String(filters?.phone || '').replace(/\D+/g, '');
+  const firstName = normalizeCustomerName(customer?.firstName);
+  const lastName = normalizeCustomerName(customer?.lastName);
+  const fullName = compact(`${customer?.firstName || ''} ${customer?.lastName || ''}`).toLowerCase();
+  const mainPhone = String(customer?.phone || '').replace(/\D+/g, '');
+  const altPhone = String(customer?.phoneAlt || '').replace(/\D+/g, '');
+  const email = normalizeCustomerEmail(customer?.email);
+
+  return (!firstQuery || firstName.includes(firstQuery) || fullName.includes(firstQuery))
+    && (!lastQuery || lastName.includes(lastQuery) || fullName.includes(lastQuery))
+    && (!phoneQuery || mainPhone.includes(phoneQuery) || altPhone.includes(phoneQuery))
+    && (!emailQuery || email.includes(emailQuery));
+}
+
+export function customerMatchesSearchText(customer: Partial<Customer> | any, query: any): boolean {
+  const text = compact(query).toLowerCase();
+  if (!text) return false;
+  const digits = text.replace(/\D+/g, '');
+  const fullName = compact(`${customer?.firstName || ''} ${customer?.lastName || ''}`).toLowerCase();
+  const email = normalizeCustomerEmail(customer?.email);
+  const mainPhone = String(customer?.phone || '').replace(/\D+/g, '');
+  const altPhone = String(customer?.phoneAlt || '').replace(/\D+/g, '');
+  return fullName.includes(text)
+    || email.includes(text)
+    || (!!digits && (mainPhone.includes(digits) || altPhone.includes(digits)));
 }
 
 export function customerDisplayName(customer: Partial<Customer> | any): string {
@@ -35,11 +73,11 @@ export function findDuplicateCustomers(
   opts: { excludeId?: number } = {},
 ): CustomerDuplicateMatch[] {
   const excludeId = Number(opts.excludeId || candidate?.id || 0);
-  const firstName = normalizeName(candidate?.firstName);
-  const lastName = normalizeName(candidate?.lastName);
-  const phone = normalizePhone(candidate?.phone);
-  const phoneAlt = normalizePhone(candidate?.phoneAlt);
-  const email = normalizeEmail(candidate?.email);
+  const firstName = normalizeCustomerName(candidate?.firstName);
+  const lastName = normalizeCustomerName(candidate?.lastName);
+  const phone = normalizeCustomerPhone(candidate?.phone);
+  const phoneAlt = normalizeCustomerPhone(candidate?.phoneAlt);
+  const email = normalizeCustomerEmail(candidate?.email);
   const canMatchName = !!firstName && !!lastName;
 
   const matches: CustomerDuplicateMatch[] = [];
@@ -50,16 +88,16 @@ export function findDuplicateCustomers(
     const reasons: CustomerDuplicateReason[] = [];
     if (
       canMatchName &&
-      normalizeName(raw?.firstName) === firstName &&
-      normalizeName(raw?.lastName) === lastName
+      normalizeCustomerName(raw?.firstName) === firstName &&
+      normalizeCustomerName(raw?.lastName) === lastName
     ) {
       reasons.push('name');
     }
 
     // Compare same field to same field only. Main phone does not match alt phone.
-    if (phone && normalizePhone(raw?.phone) === phone) reasons.push('phone');
-    if (phoneAlt && normalizePhone(raw?.phoneAlt) === phoneAlt) reasons.push('phoneAlt');
-    if (email && normalizeEmail(raw?.email) === email) reasons.push('email');
+    if (phone && normalizeCustomerPhone(raw?.phone) === phone) reasons.push('phone');
+    if (phoneAlt && normalizeCustomerPhone(raw?.phoneAlt) === phoneAlt) reasons.push('phoneAlt');
+    if (email && normalizeCustomerEmail(raw?.email) === email) reasons.push('email');
 
     if (reasons.length) matches.push({ customer: raw as Customer, reasons });
   }

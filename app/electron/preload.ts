@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('api', {
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),
+  scrapePartUrl: (url: string): Promise<any> => ipcRenderer.invoke('parts:scrapeUrl', url),
   openReporting: (): Promise<any> => ipcRenderer.invoke('open-reporting'),
   openReportEmail: (payload: any): Promise<any> => ipcRenderer.invoke('open-report-email', payload),
   openCustomBuildItem: (payload: any): Promise<any> => ipcRenderer.invoke('customBuild:openItem', payload),

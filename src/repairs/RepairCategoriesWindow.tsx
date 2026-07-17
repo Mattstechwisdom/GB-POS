@@ -163,7 +163,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
     <ErrorBoundary>
       <div className={`gb-repair-catalog-window flex ${isModalShell ? 'h-full' : 'h-screen'} overflow-hidden bg-zinc-900 text-gray-100`}>
         {/* Two-column grid: 620px | 1fr with 16px gap */}
-        <div className="gb-repair-catalog-layout grid grid-cols-[620px_1fr] gap-4 h-full p-4 overflow-hidden w-full">
+        <div className="gb-repair-catalog-layout grid grid-cols-[minmax(680px,0.95fr)_minmax(430px,1.05fr)] gap-4 h-full p-4 overflow-hidden w-full">
           {/* Left pane: Item list */}
           <div className="gb-repair-catalog-list-pane flex flex-col min-h-0">
             <RepairItemList 

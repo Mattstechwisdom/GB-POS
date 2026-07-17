@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { dispatchOpenModal } from '../lib/modalBus';
 import { storeWindowPayload } from '../lib/windowPayload';
+import { extractPartMetadataFromHtml, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
+import { CapacitorHttp } from '@capacitor/core';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
 type CloudSession = {
@@ -1094,15 +1096,32 @@ async function cloudDbGet(key: string, opts?: SortOptions): Promise<any[]> {
   if (key === 'notificationSettings') return getPreferenceBackedList('notificationSettings');
 
   const credentialExtra = key === 'technicians' ? await getTechnicianCredentials() : undefined;
-  let q = supabase.from(table).select('*').eq('shop_id', session.shopId);
   const sortColumn = cloudSortColumn(key, opts?.sortBy);
-  q = q.order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
-  if (typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0) {
-    q = q.limit(Math.floor(opts.limit));
-  }
-  const res = await q;
-  if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  let rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, credentialExtra));
+  const requestedLimit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0
+    ? Math.floor(opts.limit)
+    : 0;
+  const pageSize = 1000;
+  const rawRows: any[] = [];
+  let pageStart = 0;
+
+  do {
+    let q = supabase
+      .from(table)
+      .select('*')
+      .eq('shop_id', session.shopId)
+      .order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
+    if (sortColumn !== 'legacy_id') q = q.order('legacy_id', { ascending: true, nullsFirst: false });
+    if (requestedLimit > 0) q = q.limit(requestedLimit);
+    else q = q.range(pageStart, pageStart + pageSize - 1);
+    const res = await q;
+    if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
+    const page = Array.isArray(res.data) ? res.data : [];
+    rawRows.push(...page);
+    if (requestedLimit > 0 || page.length < pageSize) break;
+    pageStart += pageSize;
+  } while (true);
+
+  let rows = rawRows.map((row: any) => fromCloudRow(key, row, credentialExtra));
   if (key === 'technicians') rows = rows.filter(isAssignableTechnicianRow);
   if (key === 'workOrders' && rows.length > 0) {
     try {
@@ -1599,6 +1618,35 @@ function makeApi() {
     openUrl: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer');
       return { ok: true };
+    },
+    scrapePartUrl: async (rawUrl: string) => {
+      const url = normalizePartOrderUrl(rawUrl);
+      if (!url) return { ok: false, error: 'Missing URL.' };
+      try {
+        if (CapacitorHttp?.get) {
+          const nativeRes = await CapacitorHttp.get({
+            url,
+            responseType: 'text',
+            connectTimeout: 12000,
+            readTimeout: 12000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36 GBPOS/1.0',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+          if (nativeRes.status < 200 || nativeRes.status >= 300) {
+            return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${nativeRes.status}` };
+          }
+          const html = typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data || '');
+          return extractPartMetadataFromHtml(html, url);
+        }
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
+        const html = await res.text();
+        return extractPartMetadataFromHtml(html, url);
+      } catch (error: any) {
+        return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+      }
     },
     openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer');

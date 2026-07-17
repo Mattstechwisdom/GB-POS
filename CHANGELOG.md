@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.8 (2026-07-17)
+- Parts Ordering: adds URL scraping for part title, cost, device/category details, condition, and source information in the Devices / Repairs workflow.
+- Parts Ordering: adds Save Part and Save Repair actions so technicians can retain reusable supplier and repair-template information.
+- Work Orders: refreshes Parts Tracking with order and delivery dates, saved Order URL and Tracking URL buttons, clear/save controls, and mobile-friendly sizing.
+- Client Search: makes duplicate detection and search agree across Clients, Consultations, and Quotes, including full names, formatted phone numbers, alternate phones, and email.
+- Client Search: pages complete Supabase customer reads so older clients remain searchable as the database grows.
+- Railway / QR: validates public Supabase runtime settings, supports standard Railway variable aliases, and loads runtime settings before the mobile web app starts.
+
 ## v0.5.7 (2026-07-17)
 - Notifications: adds per-device notification permission and settings for mobile/Android, with a checklist for consultation reminders, new work orders, new sales, parts delivery, calendar events, technician schedule changes, and Daily Look.
 - Notifications: schedules native Android consultation reminders with selectable hour lead times and keeps browser/Windows notification fallback support where available.

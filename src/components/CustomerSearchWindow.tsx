@@ -7,6 +7,7 @@ import CustomerOverviewWindow from './CustomerOverviewWindow';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
 import { formatPhone } from '../lib/format';
+import { customerMatchesSearch } from '../lib/customerDuplicates';
 
 interface Props {
   onClose: () => void;
@@ -49,7 +50,6 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
     const qFirst = (deferredFilters.firstName ?? '').trim().toLowerCase();
     const qLast = (deferredFilters.lastName ?? '').trim().toLowerCase();
     const qPhoneRaw = (deferredFilters.phone ?? '').trim().toLowerCase();
-    const qPhoneDigits = qPhoneRaw.replace(/\D+/g, '');
     const qEmail = (deferredFilters.email ?? '').trim().toLowerCase();
     const anyFilled = !!(qFirst || qLast || qPhoneRaw || qEmail);
     if (!anyFilled) {
@@ -62,17 +62,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
       });
       return sorted.slice(0, 8);
     }
-    return f.filter(c => {
-      const first = (c.firstName ?? '').toLowerCase();
-      const last = (c.lastName ?? '').toLowerCase();
-      const phone = ((c.phone ?? '')).toLowerCase();
-      const phoneDigits = phone.replace(/\D+/g, '');
-      const email = (c.email ?? '').toLowerCase();
-      return (!qFirst || first.includes(qFirst)) &&
-             (!qLast || last.includes(qLast)) &&
-             (!qPhoneRaw || phone.includes(qPhoneRaw) || (!!qPhoneDigits && phoneDigits.includes(qPhoneDigits))) &&
-             (!qEmail || email.includes(qEmail));
-    });
+    return f.filter(c => customerMatchesSearch(c, deferredFilters));
   }, [deferredFilters, customersList]);
 
   const handleSearch = useCallback((f: CustomerSearchFilters) => {

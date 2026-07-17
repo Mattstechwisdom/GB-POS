@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
+import { derivePartVendorFromUrl, scrapePartUrl } from '../lib/partOrdering';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -91,6 +92,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
   const [markupPct, setMarkupPct] = useState<string>(DEFAULT_MARKUP_PCT);
   const [orderUrlEditing, setOrderUrlEditing] = useState(false);
+  const [scrapingUrl, setScrapingUrl] = useState(false);
+  const [scrapeStatus, setScrapeStatus] = useState('');
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
     repairCategory: '',
@@ -285,6 +288,39 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     if (mode === 'admin' && !formData.id) {
       clearFormFields();
       focusRepairCategorySoon();
+    }
+  }
+
+  async function handleScrapeOrderUrl() {
+    const url = normalizeOrderUrl(formData.orderSourceUrl);
+    if (!url) {
+      setScrapeStatus('Paste an order URL first.');
+      return;
+    }
+    setScrapingUrl(true);
+    setScrapeStatus('Scanning part page...');
+    try {
+      const meta = await scrapePartUrl(url);
+      const nextVendor = meta.vendor || deriveVendorLabelFromUrl(url) || derivePartVendorFromUrl(url);
+      const nextInternalCost = typeof meta.price === 'number' ? meta.price : formData.internalCost;
+      const nextPartCost = typeof meta.price === 'number' && (!formData.partCost || Number(formData.partCost) <= 0)
+        ? markedUpPrice(meta.price, markupPct || DEFAULT_MARKUP_PCT)
+        : formData.partCost;
+      setFormData(prev => ({
+        ...prev,
+        orderSourceUrl: url,
+        ...(meta.title ? { title: meta.title } : {}),
+        ...(nextVendor && !prev.partSource ? { partSource: nextVendor } : {}),
+        ...(typeof nextInternalCost === 'number' ? { internalCost: nextInternalCost } : {}),
+        ...(typeof nextPartCost === 'number' ? { partCost: nextPartCost } : {}),
+        markupPct: markupPct || DEFAULT_MARKUP_PCT,
+      }));
+      setOrderUrlEditing(false);
+      setScrapeStatus(meta.ok ? 'Part details filled from URL.' : (meta.error || 'No title or price found. URL saved.'));
+    } catch (error: any) {
+      setScrapeStatus(error?.message || 'Could not scan this URL.');
+    } finally {
+      setScrapingUrl(false);
     }
   }
 
@@ -537,6 +573,21 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         <hr className="border-zinc-700 my-2" />
 
         {/* Part source + URL side by side */}
+        <div className="gb-repair-source-card md:col-span-2 border border-zinc-700 rounded p-3 bg-zinc-950/35">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="text-sm font-semibold text-zinc-200">Part Ordering</div>
+              <div className="text-[11px] text-zinc-500">Paste a distributor URL, scan it, then save this repair template.</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleScrapeOrderUrl}
+              disabled={scrapingUrl || !String(formData.orderSourceUrl || '').trim()}
+              className="px-3 py-1.5 rounded bg-[#BC13FE] text-white text-xs font-bold disabled:opacity-50"
+            >
+              {scrapingUrl ? 'Scanning...' : 'Scrape URL'}
+            </button>
+          </div>
         <div className="gb-repair-source-section grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>
@@ -590,7 +641,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   const url = e.target.value;
                   setFormData(prev => ({ ...prev, orderSourceUrl: url }));
                   if (!formData.partSource) {
-                    const v = deriveVendorLabelFromUrl(url);
+                    const v = derivePartVendorFromUrl(url) || deriveVendorLabelFromUrl(url);
                     if (v) setFormData(prev => ({ ...prev, partSource: v }));
                   }
                 }}
@@ -618,6 +669,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               />
             )}
           </div>
+        </div>
+          {scrapeStatus ? <div className="mt-2 text-[11px] text-zinc-400">{scrapeStatus}</div> : null}
         </div>
       </div>
 

@@ -1190,9 +1190,24 @@
 
 .gbpos-mobile .gb-repair-toolbar,
 .gbpos-mobile .gb-repair-table-shell,
+.gbpos-mobile .gb-repair-source-card,
 .gbpos-mobile .gb-repair-source-section {
   border-radius: 8px !important;
   background: #111114 !important;
+}
+
+.gbpos-mobile .gb-repair-source-card {
+  padding: 0.75rem !important;
+}
+
+.gbpos-mobile .gb-repair-source-card > .flex {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gbpos-mobile .gb-repair-source-card > .flex button {
+  min-height: 2.6rem;
+  width: 100%;
 }
 
 .gbpos-mobile .gb-repair-search-row {
@@ -1927,6 +1942,16 @@
   line-height: 1.15;
 }
 
+.gbpos-mobile .gb-wo-parts-meta-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
+}
+
+.gbpos-mobile .gb-wo-parts-meta-main,
+.gbpos-mobile .gb-wo-parts-meta-sub {
+  white-space: normal;
+}
+
 .gbpos-mobile .gb-wo-parts-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: 0.7rem !important;
@@ -1968,6 +1993,10 @@
 .gbpos-mobile .gb-wo-parts-actions {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gbpos-mobile .gb-wo-parts-actions .gb-wo-parts-save-button {
+  grid-column: 1 / -1;
 }
 
 .gbpos-mobile .gb-wo-notes-card {

@@ -57,6 +57,117 @@ function isExternalUrl(url: string, sourceUrl?: string) {
   }
 }
 
+function normalizePartOrderUrl(value: any): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return /^(https?:)?\/\//i.test(raw) ? raw.replace(/^\/\//, 'https://') : `https://${raw}`;
+}
+
+function derivePartVendorFromUrl(value: any): string {
+  const url = normalizePartOrderUrl(value);
+  if (!url) return '';
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, '');
+    const base = host.split('.')[0] || '';
+    const cleaned = base.replace(/[^a-z0-9]+/gi, ' ').trim();
+    return cleaned
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  } catch {
+    return '';
+  }
+}
+
+function decodeScrapedHtml(value: string): string {
+  return String(value || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanScrapedPartTitle(value: any): string {
+  return decodeScrapedHtml(String(value || ''))
+    .replace(/\s+[|-]\s+Phone LCD Parts.*$/i, '')
+    .replace(/\s+[|-]\s+Wholesale.*$/i, '')
+    .replace(/\s+[|-]\s+Parts.*$/i, '')
+    .trim();
+}
+
+function parseScrapedMoney(value: any): number | undefined {
+  const match = String(value || '').replace(/,/g, '').match(/(?:[$\u20ac\u00a3]\s*)?(\d+(?:\.\d{1,2})?)/);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
+}
+
+function findScrapedMeta(html: string, names: string[]): string {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const first = new RegExp(`<meta\\s+[^>]*(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i');
+    const second = new RegExp(`<meta\\s+[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${escaped}["'][^>]*>`, 'i');
+    const match = html.match(first) || html.match(second);
+    if (match?.[1]) return decodeScrapedHtml(match[1]);
+  }
+  return '';
+}
+
+function collectScrapedJsonLd(html: string): any[] {
+  const list: any[] = [];
+  const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      if (Array.isArray(parsed)) list.push(...parsed);
+      else if (parsed) list.push(parsed);
+    } catch {
+      // ignore malformed embedded product data
+    }
+  }
+  return list;
+}
+
+function flattenScrapedJsonLd(input: any): any[] {
+  if (!input || typeof input !== 'object') return [];
+  const out = [input];
+  if (Array.isArray(input['@graph'])) {
+    for (const child of input['@graph']) out.push(...flattenScrapedJsonLd(child));
+  }
+  return out;
+}
+
+function extractPartMetadataFromHtml(html: string, url: string) {
+  const jsonLd = collectScrapedJsonLd(html).flatMap(flattenScrapedJsonLd);
+  const product = jsonLd.find((entry) => {
+    const type = entry?.['@type'];
+    return String(Array.isArray(type) ? type.join(' ') : type || '').toLowerCase().includes('product');
+  });
+  const offer = Array.isArray(product?.offers) ? product.offers[0] : product?.offers;
+  const title =
+    cleanScrapedPartTitle(product?.name) ||
+    cleanScrapedPartTitle(findScrapedMeta(html, ['og:title', 'twitter:title'])) ||
+    cleanScrapedPartTitle(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+  const price =
+    parseScrapedMoney(offer?.price) ||
+    parseScrapedMoney(findScrapedMeta(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
+    parseScrapedMoney(html.match(/(?:price|salePrice|regularPrice)["']?\s*[:=]\s*["']?\$?(\d+(?:\.\d{1,2})?)/i)?.[1]);
+  return {
+    ok: Boolean(title || price),
+    url: normalizePartOrderUrl(url),
+    title,
+    price,
+    currency: offer?.priceCurrency || findScrapedMeta(html, ['product:price:currency']) || 'USD',
+    vendor: derivePartVendorFromUrl(url),
+  };
+}
+
 // Prevent random blank popup windows (often caused by window.open or target=_blank)
 // and route external links to the default browser.
 app.on('web-contents-created', (_event: any, contents: any) => {
@@ -1928,6 +2039,30 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
     return { ok: true };
   } catch (err) {
     return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('parts:scrapeUrl', async (_e: any, rawUrl: string) => {
+  const url = normalizePartOrderUrl(rawUrl);
+  if (!url || !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a valid part URL.' };
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), 12_000);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36 GBPOS/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    } as any);
+    if (timer) clearTimeout(timer);
+    if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
+    const html = await res.text();
+    return extractPartMetadataFromHtml(html, url);
+  } catch (e: any) {
+    if (timer) clearTimeout(timer);
+    return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
   }
 });
 
@@ -4916,15 +5051,32 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) return null;
-  let q = client.from(table).select('*').eq('shop_id', cloudSession.shopId);
   const sortColumn = cloudSortColumn(key, opts?.sortBy);
-  q = q.order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
-  if (typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0) {
-    q = q.limit(Math.floor(opts.limit));
-  }
-  const res = await q;
-  if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  const mapped = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+  const requestedLimit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0
+    ? Math.floor(opts.limit)
+    : 0;
+  const pageSize = 1000;
+  const rawRows: any[] = [];
+  let pageStart = 0;
+
+  do {
+    let q = client
+      .from(table)
+      .select('*')
+      .eq('shop_id', cloudSession.shopId)
+      .order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
+    if (sortColumn !== 'legacy_id') q = q.order('legacy_id', { ascending: true, nullsFirst: false });
+    if (requestedLimit > 0) q = q.limit(requestedLimit);
+    else q = q.range(pageStart, pageStart + pageSize - 1);
+    const res = await q;
+    if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
+    const page = Array.isArray(res.data) ? res.data : [];
+    rawRows.push(...page);
+    if (requestedLimit > 0 || page.length < pageSize) break;
+    pageStart += pageSize;
+  } while (true);
+
+  const mapped = rawRows.map((row: any) => fromCloudRow(key, row));
   if (key === 'workOrders' && mapped.length > 0) {
     try {
       const customerIds = Array.from(new Set(

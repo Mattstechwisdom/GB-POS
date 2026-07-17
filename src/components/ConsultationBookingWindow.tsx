@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
 import DuplicateCustomerDialog from './DuplicateCustomerDialog';
-import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
+import { CustomerDuplicateMatch, customerMatchesSearchText, findDuplicateCustomers } from '../lib/customerDuplicates';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
 const CONSULTATION_BASE_RATE = 75;
@@ -132,7 +132,7 @@ export default function ConsultationBookingWindow() {
   const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customerIndexRef = useRef<Array<{ c: Customer; fullLower: string; phoneDigits: string }>>([]);
+  const customerIndexRef = useRef<Customer[]>([]);
 
   // ── Consultation state ──────────────────────────────────────────
   const [date, setDate] = useState(todayISO());
@@ -294,11 +294,7 @@ export default function ConsultationBookingWindow() {
   useEffect(() => {
     try {
       const safe = Array.isArray(allCustomers) ? allCustomers : [];
-      customerIndexRef.current = safe.map((c) => ({
-        c,
-        fullLower: customerDisplayName(c).toLowerCase(),
-        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
-      }));
+      customerIndexRef.current = safe;
     } catch {
       customerIndexRef.current = [];
     }
@@ -317,16 +313,10 @@ export default function ConsultationBookingWindow() {
     if (!query) { setCustomerResults([]); return; }
     setSearchBusy(true);
     try {
-      const ql = query.toLowerCase();
-      const digits = query.replace(/\D/g, '');
       const idx = customerIndexRef.current || [];
       const out: Customer[] = [];
-      for (const it of idx) {
-        if (it.fullLower.includes(ql)) {
-          out.push(it.c);
-        } else if (digits && it.phoneDigits.includes(digits)) {
-          out.push(it.c);
-        }
+      for (const customer of idx) {
+        if (customerMatchesSearchText(customer, query)) out.push(customer);
         if (out.length >= 8) break;
       }
       setCustomerResults(out);

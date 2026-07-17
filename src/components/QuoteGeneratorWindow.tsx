@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
+import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { useAutosave } from '../lib/useAutosave';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
@@ -249,18 +250,14 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
   const [busy, setBusy] = React.useState(false);
   const [selected, setSelected] = React.useState<any | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customersIndexRef = React.useRef<Array<{ c: any; fullLower: string; phoneDigits: string }>>([]);
+  const customersIndexRef = React.useRef<any[]>([]);
 
   const loadCustomers = React.useCallback(async () => {
     try {
       const api: any = (window as any).api;
       const list = await (api?.getCustomers ? api.getCustomers() : api?.dbGet ? api.dbGet('customers') : Promise.resolve([])).catch(() => []);
       const safe = Array.isArray(list) ? list : [];
-      customersIndexRef.current = safe.map((c: any) => ({
-        c,
-        fullLower: `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase(),
-        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
-      }));
+      customersIndexRef.current = safe;
     } catch {
       customersIndexRef.current = [];
     }
@@ -284,16 +281,10 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
     if (!v) { setResults([]); return; }
     setBusy(true);
     try {
-      const digits = v.replace(/\D/g, '');
-      const vl = v.toLowerCase();
       const idx = customersIndexRef.current || [];
       const out: any[] = [];
-      for (const it of idx) {
-        if (it.fullLower.includes(vl)) {
-          out.push(it.c);
-        } else if (digits && it.phoneDigits.includes(digits)) {
-          out.push(it.c);
-        }
+      for (const customer of idx) {
+        if (customerMatchesSearchText(customer, v)) out.push(customer);
         if (out.length >= 8) break;
       }
       setResults(out);
