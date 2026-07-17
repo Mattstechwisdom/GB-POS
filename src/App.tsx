@@ -47,6 +47,7 @@ const ClearDatabaseWindow       = React.lazy(() => import('./components/ClearDat
 const RepairCategoriesWindow    = React.lazy(() => import('./repairs/RepairCategoriesWindow'));
 const DeviceCategoriesWindow    = React.lazy(() => import('./components/DeviceCategoriesWindow'));
 const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBuildItemWindow'));
+const ClientUpdatePanel         = React.lazy(() => import('./workorders/ClientUpdatePanel'));
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -202,6 +203,14 @@ const StartupStatusScreen: React.FC<{ title: string; message?: string; error?: s
 };
 
 const App: React.FC = () => {
+  const clientUpdateToken = useRef<string>('');
+  if (!clientUpdateToken.current) {
+    try {
+      clientUpdateToken.current = new URLSearchParams(window.location.search).get('clientUpdateToken') || '';
+    } catch {
+      clientUpdateToken.current = '';
+    }
+  }
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
@@ -351,6 +360,26 @@ const App: React.FC = () => {
   }
 
   removeInitialHtmlLoader();
+
+  if (clientUpdateToken.current) {
+    return (
+      <React.Suspense fallback={<StartupStatusScreen title="Loading Update Client" message="Opening the QR status panel..." />}>
+        <ClientUpdatePanel
+          token={clientUpdateToken.current}
+          onClose={() => {
+            try {
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {
+              // ignore
+            }
+            clientUpdateToken.current = '';
+            window.location.reload();
+          }}
+        />
+      </React.Suspense>
+    );
+  }
+
   return (
     <PaginationProvider pageSize={30}>
       <AppInner
@@ -648,9 +677,10 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
   React.useEffect(() => {
     const refreshTechs = async () => {
       try {
-        const techs = await (await import('./lib/admin')).listTechnicians();
+        const admin = await import('./lib/admin');
+        const techs = await admin.listTechnicians();
         const map: Record<string,string> = {};
-        techs.forEach((t: any) => { map[t.id] = (t.nickname && t.nickname.trim()) || t.firstName || t.id; });
+        techs.forEach((t: any) => { map[t.id] = admin.technicianDisplayName(t); });
         setTechIndex(map);
       } catch {}
     };

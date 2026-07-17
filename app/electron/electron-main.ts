@@ -6,6 +6,7 @@ const https = require('https');
 const http = require('http');
 const { pathToFileURL } = require('url');
 const os = require('os');
+const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 
@@ -1857,8 +1858,9 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
     })();
     const child = new BrowserWindow({
-      width: 1200,
+      width: 1480,
       height: 960,
+      minWidth: 1320,
       resizable: true,
       parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
@@ -4371,6 +4373,13 @@ function fromCloudRow(key: string, row: any): any {
       payments: cloudArray(row.payments),
       internalNotes: row.internal_notes || '',
       internalNotesLog: cloudArray(row.internal_notes_log),
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      repairStatus: row.repair_status || '',
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -4424,6 +4433,12 @@ function fromCloudRow(key: string, row: any): any {
       items: cloudArray(row.items),
       payments: cloudArray(row.payments),
       totals: cloudObject(row.totals),
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4627,6 +4642,13 @@ function toCloudRow(key: string, item: any): any | null {
       payments: toCloudArray(item.payments),
       internal_notes: toCloudString(item.internalNotes),
       internal_notes_log: toCloudArray(item.internalNotesLog),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      repair_status: typeof item.repairStatus === 'undefined' ? undefined : toCloudString(item.repairStatus),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),
@@ -4682,6 +4704,12 @@ function toCloudRow(key: string, item: any): any | null {
       items: toCloudArray(item.items),
       payments: toCloudArray(item.payments),
       totals: toCloudObject(item.totals),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -6553,12 +6581,12 @@ function getQrHost(): string {
   return getLanIp(); // fallback to IP if hostname unavailable
 }
 
-function qrStatusUrl(type: 'repair' | 'sale', id: number | string): string {
-  return `http://${getQrHost()}:${QR_PORT}/status/${type}/${id}`;
+function qrStatusUrl(type: 'repair' | 'sale' | 'consult', id: number | string): string {
+  return `http://${getLanIp()}:${QR_PORT}/status/${type}/${id}`;
 }
 
 function qrConsultUrl(id: number | string): string {
-  return `http://${getQrHost()}:${QR_PORT}/status/consult/${id}`;
+  return qrStatusUrl('consult', id);
 }
 
 function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUrl: string; ipUrl: string } {
@@ -6574,12 +6602,187 @@ function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUr
   };
 }
 
+function getPublicAppUrl(): string {
+  const candidates = [
+    process.env.GBPOS_PUBLIC_APP_URL,
+    process.env.VITE_PUBLIC_APP_URL,
+    process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '',
+  ];
+  const picked = candidates.map(v => String(v || '').trim()).find(Boolean) || 'https://gb-pos-production.up.railway.app';
+  return picked.replace(/\/+$/, '');
+}
+
+function makeQrToken(): string {
+  try {
+    return nodeCrypto.randomBytes(24).toString('base64url');
+  } catch {
+    return nodeCrypto.randomBytes(24).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+}
+
 function escHtml(s: any): string {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+type QrStatusType = 'repair' | 'sale' | 'consult';
+
+function normalizeQrStatusType(value: any): QrStatusType {
+  const raw = String(value || '').trim().toLowerCase();
+  if (/^(sale|sales|invoice|inv)$/.test(raw)) return 'sale';
+  if (/^(consult|consultation|appointment)$/.test(raw)) return 'consult';
+  return 'repair';
+}
+
+function cloudRecordKeyForQrType(type: QrStatusType): string {
+  if (type === 'sale') return 'sales';
+  if (type === 'consult') return 'calendarEvents';
+  return 'workOrders';
+}
+
+async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<string | null> {
+  const client = getCloudClient();
+  if (!client || !cloudSession?.shopId || !id) return null;
+
+  const recordKey = cloudRecordKeyForQrType(type);
+  const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
+  if (!recordTable) return null;
+
+  const existing = await client
+    .from('qr_status_tokens')
+    .select('token')
+    .eq('shop_id', cloudSession.shopId)
+    .eq('record_type', type)
+    .eq('legacy_record_id', id)
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
+  if (existing.data?.token) return `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+
+  let recordCloudId: string | null = null;
+  try {
+    const recordRes = await client
+      .from(recordTable)
+      .select('id')
+      .eq('shop_id', cloudSession.shopId)
+      .eq('legacy_id', id)
+      .maybeSingle();
+    if (!recordRes.error && recordRes.data?.id) recordCloudId = recordRes.data.id;
+  } catch {
+    // Token can still be created from the legacy id; record resolution will happen at scan time.
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = makeQrToken();
+    const inserted = await client
+      .from('qr_status_tokens')
+      .insert({
+        shop_id: cloudSession.shopId,
+        token,
+        record_type: type,
+        legacy_record_id: id,
+        record_id: recordCloudId,
+        metadata: { createdBy: 'gb-pos' },
+      })
+      .select('token')
+      .single();
+    if (!inserted.error && inserted.data?.token) {
+      return `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
+    }
+    if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
+      throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
+    }
+  }
+
+  throw new Error('Cloud QR token create failed after duplicate retries.');
+}
+
+async function resolveCloudQrStatusToken(token: string) {
+  const client = getCloudClient();
+  if (!client || !cloudSession?.shopId) throw new Error('Cloud session is not ready.');
+  const cleaned = String(token || '').trim();
+  if (!cleaned) throw new Error('Missing QR token.');
+
+  const tokenRes = await client
+    .from('qr_status_tokens')
+    .select('*')
+    .eq('token', cleaned)
+    .eq('shop_id', cloudSession.shopId)
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (tokenRes.error) throw new Error(`Cloud QR token read failed: ${tokenRes.error.message}`);
+  const tokenRow = tokenRes.data;
+  if (!tokenRow) throw new Error('QR token was not found for this shop.');
+  if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) {
+    throw new Error('This QR token is expired.');
+  }
+
+  void client
+    .from('qr_status_tokens')
+    .update({ last_opened_at: new Date().toISOString() })
+    .eq('id', tokenRow.id)
+    .then(() => undefined);
+
+  const type = normalizeQrStatusType(tokenRow.record_type);
+  const recordKey = cloudRecordKeyForQrType(type);
+  const table = CLOUD_TABLE_BY_KEY[recordKey];
+  const recordRes = await client
+    .from(table)
+    .select('*')
+    .eq('shop_id', cloudSession.shopId)
+    .eq('legacy_id', Number(tokenRow.legacy_record_id))
+    .maybeSingle();
+  if (recordRes.error) throw new Error(`Cloud QR record read failed: ${recordRes.error.message}`);
+  if (!recordRes.data) throw new Error('The QR record no longer exists.');
+
+  const record = fromCloudRow(recordKey, recordRes.data);
+  let customer: any = null;
+  const customerId = Number((record as any)?.customerId || 0) || 0;
+  if (customerId > 0) {
+    try {
+      const customerRes = await client
+        .from('customers')
+        .select('*')
+        .eq('shop_id', cloudSession.shopId)
+        .eq('legacy_id', customerId)
+        .maybeSingle();
+      if (!customerRes.error && customerRes.data) customer = fromCloudRow('customers', customerRes.data);
+    } catch {
+      // customer context is best effort
+    }
+  }
+
+  return { token: tokenRow, type, record, customer };
+}
+
+function parseQrStatusRoute(rawUrl: string): { type: QrStatusType; id: number } | null {
+  let pathname = '';
+  let params: URLSearchParams | null = null;
+  try {
+    const parsed = new URL(rawUrl || '/', 'http://qr.local');
+    pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+    params = parsed.searchParams;
+  } catch {
+    pathname = String(rawUrl || '').split('?')[0].replace(/\/+$/, '') || '/';
+  }
+
+  const legacyQueryId = Number(params?.get('id') || params?.get('recordId') || params?.get('workOrderId') || 0) || 0;
+  if ((pathname === '/status' || pathname === '/qr' || pathname === '/') && legacyQueryId > 0) {
+    return { type: normalizeQrStatusType(params?.get('type') || params?.get('kind')), id: legacyQueryId };
+  }
+
+  const typed = pathname.match(/^\/status\/([^/]+)\/(\d+)$/) || pathname.match(/^\/([^/]+)\/(\d+)$/);
+  if (typed) {
+    return { type: normalizeQrStatusType(typed[1]), id: parseInt(typed[2], 10) };
+  }
+
+  const defaultRepair = pathname.match(/^\/status\/(\d+)$/);
+  if (defaultRepair) return { type: 'repair', id: parseInt(defaultRepair[1], 10) };
+
+  return null;
 }
 
 function buildConsultPageHtml(event: any): string {
@@ -6946,6 +7149,7 @@ function sendStatus(key,label,extra){
 async function handleQrRequest(req: any, res: any) {
   const rawUrl = String(req.url || '');
   const url = rawUrl.split('?')[0];
+  const statusRoute = parseQrStatusRoute(rawUrl);
 
   if (url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -6960,7 +7164,14 @@ async function handleQrRequest(req: any, res: any) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
-    res.end(JSON.stringify({ ip: getLanIp() }));
+    const info = getQrServerInfo();
+    res.end(JSON.stringify({
+      ip: info.ip,
+      host: info.hostname,
+      port: info.port,
+      hostUrl: info.hostUrl,
+      ipUrl: info.ipUrl,
+    }));
     return;
   }
 
@@ -6981,9 +7192,8 @@ async function handleQrRequest(req: any, res: any) {
   }
 
   // ── Consultation status page ───────────────────────────────────────────
-  const consultMatch = url.match(/^\/status\/consult\/(\d+)$/);
-  if (consultMatch) {
-    const eventId = parseInt(consultMatch[1], 10);
+  if (statusRoute?.type === 'consult') {
+    const eventId = statusRoute.id;
     const db = readDb();
     const events: any[] = Array.isArray(db['calendarEvents']) ? db['calendarEvents'] : [];
     const event = events.find((e: any) => Number(e?.id || 0) === eventId) || null;
@@ -7138,15 +7348,14 @@ async function handleQrRequest(req: any, res: any) {
     return;
   }
 
-  const match = url.match(/^\/status\/(repair|sale)\/(\d+)$/);
-  if (!match) {
+  if (!statusRoute || (statusRoute.type !== 'repair' && statusRoute.type !== 'sale')) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found');
     return;
   }
 
-  const type = match[1] as 'repair' | 'sale';
-  const id = parseInt(match[2], 10);
+  const type = statusRoute.type;
+  const id = statusRoute.id;
   const collection = type === 'repair' ? 'workOrders' : 'sales';
 
   const db = readDb();
@@ -7611,9 +7820,20 @@ ipcMain.handle('qr:getDataUrl', async (_event: any, url: string) => {
 // IPC: return the LAN-accessible status URL for a work order or sale
 ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => {
   try {
-    const t = String(type || '') === 'sale' ? 'sale' : 'repair';
+    const t = normalizeQrStatusType(type);
     const safeId = Number(id) || 0;
-    return { ok: true, url: qrStatusUrl(t as 'repair' | 'sale', safeId) };
+    const cloudUrl = await ensureCloudQrStatusUrl(t, safeId).catch(() => null);
+    if (cloudUrl) return { ok: true, url: cloudUrl, cloud: true };
+    return { ok: true, url: qrStatusUrl(t, safeId) };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('qr:resolveStatusToken', async (_event: any, token: string) => {
+  try {
+    const resolved = await resolveCloudQrStatusToken(token);
+    return { ok: true, ...resolved };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }

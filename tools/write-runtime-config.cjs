@@ -4,6 +4,8 @@ const path = require('path');
 const config = {
   VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || '',
   VITE_SUPABASE_PUBLISHABLE_KEY: process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+  VITE_SHOP_LOGIN_USERNAME: process.env.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz',
+  VITE_SHOP_LOGIN_EMAIL: process.env.VITE_SHOP_LOGIN_EMAIL || '',
 };
 
 const outDir = path.join(process.cwd(), 'dist');

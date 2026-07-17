@@ -21,12 +21,13 @@ import CustomBuildItemsTable from './CustomBuildItemsTable';
 import IntakePanel from './IntakePanel';
 import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
+import ClientUpdatePanel from './ClientUpdatePanel';
 import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPanel';
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import { computeTotals, round2 } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus } from '../lib/types';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
@@ -35,7 +36,7 @@ type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'passwo
 
 type ValidationActionKey = 'save' | 'checkout' | 'close';
 
-type TechnicianOption = { id: string | number; nickname?: string; firstName?: string };
+type TechnicianOption = { id: string | number; nickname?: string; firstName?: string; email?: string };
 
 const REQUIRED_LABELS: Record<RequiredKey, string> = {
   assignedTo: 'Assigned technician',
@@ -192,7 +193,7 @@ const AssignedTechnicianField: React.FC<{
     if (!value) return '';
     const raw = String(value).trim();
     if (techs.some((t: any) => String(t.id) === raw)) return raw;
-    const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
+    const matchByLabel = techs.find((t: any) => technicianDisplayName(t) === raw);
     return matchByLabel ? String(matchByLabel.id) : '';
   }, [techs, value]);
 
@@ -219,7 +220,7 @@ const AssignedTechnicianField: React.FC<{
         >
           <option value="">Unassigned</option>
           {techs.map((t: any) => (
-            <option key={t.id} value={String(t.id)}>{t.nickname?.trim() || t.firstName}</option>
+            <option key={t.id} value={String(t.id)}>{technicianDisplayName(t)}</option>
           ))}
         </select>
       )}
@@ -298,7 +299,8 @@ const WorkOrderMobileTitleCard: React.FC<{
   customerSummary: { name?: string; phone?: string };
   onChange: (patch: Partial<WorkOrderFull>) => void;
   detailsMenu?: React.ReactNode;
-}> = ({ workOrder, customerSummary, onChange, detailsMenu }) => {
+  onUpdateClient?: () => void;
+}> = ({ workOrder, customerSummary, onChange, detailsMenu, onUpdateClient }) => {
   const [customMode, setCustomMode] = useState(false);
   const invoiceId = Number((workOrder as any).id || 0) || 0;
   const invoiceLabel = invoiceId > 0 ? `GB${String(invoiceId).padStart(7, '0')}` : 'Draft Work Order';
@@ -337,6 +339,15 @@ const WorkOrderMobileTitleCard: React.FC<{
       >
         View Customer
       </button>
+      {onUpdateClient ? (
+        <button
+          type="button"
+          className="gb-wo-update-client-button"
+          onClick={onUpdateClient}
+        >
+          Update Client
+        </button>
+      ) : null}
       <label className="gb-wo-source-field">
         <span>How did you hear about us?</span>
         <select
@@ -480,6 +491,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const [detailsMenuOpen, setDetailsMenuOpen] = useState<boolean>(false);
+  const [clientUpdateOpen, setClientUpdateOpen] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
@@ -1107,6 +1119,25 @@ const NewWorkOrderWindow: React.FC = () => {
     } catch (e) { console.error('Force-save before receipt failed', e); }
     return 0;
   }, [applySavedCustomerSnapshot, enrichWorkOrderCustomer]); // reads latest workOrder from ref
+
+  const handleOpenClientUpdate = useCallback(async () => {
+    try {
+      if (!Number((workOrderFullRef.current as any)?.customerId || 0)) {
+        triggerWarningBanner('Customer is missing', 'Select a customer before opening Update Client.');
+        return;
+      }
+      let id = Number((workOrderFullRef.current as any)?.id || 0) || 0;
+      if (!id) id = await handleSidebarForceSave();
+      if (!id) {
+        triggerWarningBanner('Save work order first', 'The update panel needs a saved work order number.');
+        return;
+      }
+      setClientUpdateOpen(true);
+    } catch (e) {
+      console.error('Open Update Client failed', e);
+      triggerWarningBanner('Could not open Update Client', 'Save the work order and try again.');
+    }
+  }, [handleSidebarForceSave]);
 
   const handleFormChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
@@ -1864,6 +1895,21 @@ const NewWorkOrderWindow: React.FC = () => {
           </div>
         </div>
       )}
+      {clientUpdateOpen ? (
+        <ClientUpdatePanel
+          embedded
+          recordType="repair"
+          recordId={Number((workOrderFull as any).id || 0) || undefined}
+          initialRecord={workOrderFull}
+          initialCustomer={undefined}
+          onClose={() => setClientUpdateOpen(false)}
+          onUpdated={(updated) => {
+            if (updated) {
+              setWo(w => ({ ...w, ...updated, items: w.items }));
+            }
+          }}
+        />
+      ) : null}
       <div className="gb-wo-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
         <WorkOrderSidebar
           workOrder={workOrderFull}
@@ -1891,6 +1937,7 @@ const NewWorkOrderWindow: React.FC = () => {
                   workOrder={workOrderFull}
                   customerSummary={customerSummary}
                   onChange={handleIntakeChange}
+                  onUpdateClient={handleOpenClientUpdate}
                   detailsMenu={(
                     <WorkOrderDetailsMenu
                       open={detailsMenuOpen}
@@ -2178,6 +2225,15 @@ const NewWorkOrderWindow: React.FC = () => {
         </div>
         <div className="gb-wo-payment-scroll flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
+          {!isMobileRuntime ? (
+            <button
+              type="button"
+              className="gb-wo-update-client-button"
+              onClick={handleOpenClientUpdate}
+            >
+              Update Client
+            </button>
+          ) : null}
           <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-zinc-200">Retail add-on</h4>

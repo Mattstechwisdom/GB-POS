@@ -302,22 +302,28 @@ export async function printSaleReleaseForm(
   const recordId = Number(sale.id || sale.invoiceId || 0) || 0;
   if (recordId > 0) {
     try {
-      let lanIp = 'localhost';
+      let qrUrl = '';
       try {
+        const result = await window.api?.qrGetStatusUrl?.('sale', recordId);
+        if (result?.ok && result.url) qrUrl = result.url;
+      } catch { /* QR helper unavailable */ }
+      if (!qrUrl) {
         const ipRes = await fetch('http://localhost:7777/ip');
         if (ipRes.ok) {
           const json = await ipRes.json();
-          if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+          const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
+          if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/sale/${recordId}`;
         }
-      } catch { /* QR server not running */ }
-      const qrUrl = `http://${lanIp}:7777/status/sale/${recordId}`;
-      const QRCode = (await import('qrcode')).default;
-      const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-        width: 176, margin: 1,
-        color: { dark: '#000000', light: '#ffffff' },
-        errorCorrectionLevel: 'M',
-      });
-      if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
+      }
+      if (qrUrl) {
+        const QRCode = (await import('qrcode')).default;
+        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+          width: 176, margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
+      }
     } catch { /* print without QR */ }
   }
 

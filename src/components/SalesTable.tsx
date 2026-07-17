@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { usePagination } from '../lib/pagination';
 import CustomerHoverCard from './CustomerHoverCard';
 import ItemsDescriptionHoverCard from './ItemsDescriptionHoverCard';
@@ -61,7 +61,7 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
       try {
         const techs = await listTechnicians();
         const map: Record<string, string> = {};
-        techs.forEach((t: any) => { map[t.id] = (t.nickname && t.nickname.trim()) || t.firstName || t.id; });
+        techs.forEach((t: any) => { map[t.id] = technicianDisplayName(t); });
         setTechIndex(map);
       } catch (e) { /* ignore */ }
     };

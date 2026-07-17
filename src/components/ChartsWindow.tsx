@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listTechnicians } from '@/lib/admin';
+import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { computeTotals } from '../lib/calc';
 
 function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
@@ -218,8 +218,8 @@ const ChartsWindow: React.FC = () => {
             <option value="">All</option>
             <option value="__unassigned">Unassigned</option>
             {(technicians || []).map((t:any, idx: number) => {
-              const value = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
-              const label = [t.firstName, t.lastName].filter(Boolean).join(' ') || t.nickname || `Tech ${t.id}`;
+              const value = technicianDisplayName(t);
+              const label = technicianDisplayName(t);
               return <option key={`${value}-${t.id ?? idx}`} value={value}>{label}</option>;
             })}
           </select>

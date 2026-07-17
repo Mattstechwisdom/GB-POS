@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { publicAsset } from '../lib/publicAsset';
 
 interface Props {
@@ -92,7 +92,7 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           <option value="">All</option>
           <option value="__unassigned">Unassigned</option>
           {techs.map(t => {
-            const label = [t.firstName, t.lastName].filter(Boolean).join(' ') || (t.nickname && t.nickname.trim()) || t.id;
+            const label = technicianDisplayName(t);
             return <option key={t.id} value={t.id}>{label}</option>;
           })}
         </select>

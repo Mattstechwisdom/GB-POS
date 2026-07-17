@@ -49,21 +49,27 @@ const ReleaseFormWindow: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        let lanIp = 'localhost';
+        let qrUrl = '';
         try {
+          const result = await (window as any).api?.qrGetStatusUrl?.(type, recordId);
+          if (result?.ok && result.url) qrUrl = result.url;
+        } catch { /* QR helper unavailable */ }
+        if (!qrUrl) {
           const ipRes = await fetch('http://localhost:7777/ip');
           if (ipRes.ok) {
             const json = await ipRes.json();
-            if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+            const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
+            if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/${type}/${recordId}`;
           }
-        } catch { /* QR server not running */ }
-        const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
-        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-          width: 176, margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
+        }
+        if (qrUrl) {
+          const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+            width: 176, margin: 1,
+            color: { dark: '#000000', light: '#ffffff' },
+            errorCorrectionLevel: 'M',
+          });
+          if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
+        }
       } catch { /* QR generation failed silently */ }
     })();
     return () => { alive = false; };

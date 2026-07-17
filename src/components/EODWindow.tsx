@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -720,8 +720,8 @@ const EODWindow: React.FC = () => {
 
   const technicianOptions = useMemo(() => {
     return (technicians || []).filter((t: any) => t && (t.active !== false)).map((t: any) => {
-      const value = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
-      const label = [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.nickname || `Tech ${t.id}`;
+      const value = technicianDisplayName(t);
+      const label = technicianDisplayName(t);
       return { value, label };
     });
   }, [technicians]);
@@ -732,10 +732,10 @@ const EODWindow: React.FC = () => {
 
     for (const t of (technicians || [])) {
       if (!t || (t.active === false)) continue;
-      const canonicalDisplay = (t.nickname?.trim() || t.firstName || String(t.id)).toString();
+      const canonicalDisplay = technicianDisplayName(t);
       const canonicalKey = normalizeTechKey(canonicalDisplay);
       const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ').trim();
-      const label = fullName || t.nickname || `Tech ${t.id}`;
+      const label = technicianDisplayName(t);
 
       labelMap.set(canonicalKey, label);
 

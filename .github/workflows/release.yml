@@ -22,6 +22,8 @@ jobs:
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_SHOP_LOGIN_USERNAME: ${{ vars.VITE_SHOP_LOGIN_USERNAME || secrets.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz' }}
+      VITE_SHOP_LOGIN_EMAIL: ${{ vars.VITE_SHOP_LOGIN_EMAIL || secrets.VITE_SHOP_LOGIN_EMAIL }}
 
     steps:
       - name: Checkout
@@ -69,6 +71,9 @@ jobs:
           }
           if ([string]::IsNullOrWhiteSpace($env:VITE_SUPABASE_PUBLISHABLE_KEY)) {
             throw "Missing VITE_SUPABASE_PUBLISHABLE_KEY. Add it in GitHub repo Settings > Secrets and variables > Actions."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:VITE_SHOP_LOGIN_EMAIL)) {
+            throw "Missing VITE_SHOP_LOGIN_EMAIL. Add the Supabase Auth email that Gadgetboyz should sign into."
           }
 
       - name: Build renderer (Vite)

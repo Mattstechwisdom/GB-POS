@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { printReleaseForm, WorkOrder as PrintWorkOrder } from './releasePrint';
 import { WorkOrderFull, WorkOrderStatus } from '../lib/types';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
-import { listTechnicians } from '../../src/lib/admin';
+import { listTechnicians, technicianDisplayName } from '../../src/lib/admin';
 
 interface Props {
   workOrder: WorkOrderFull;
@@ -40,7 +40,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
     // If stored as id
     if (techs.some((t: any) => String(t.id) === raw)) return raw;
     // If stored as label (nickname/first)
-    const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
+    const matchByLabel = techs.find((t: any) => technicianDisplayName(t) === raw);
     return matchByLabel ? String(matchByLabel.id) : '';
   }, [techs, workOrder.assignedTo]);
 
@@ -79,7 +79,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
             >
               <option value="">—</option>
               {techs.map((t: any) => (
-                <option key={t.id} value={String(t.id)}>{t.nickname?.trim() || t.firstName}</option>
+                <option key={t.id} value={String(t.id)}>{technicianDisplayName(t)}</option>
               ))}
             </select>
           )}

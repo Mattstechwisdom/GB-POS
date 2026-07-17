@@ -236,7 +236,8 @@ contextBridge.exposeInMainWorld('api', {
   restoreEncryptedBackup: (password: string): Promise<any> => ipcRenderer.invoke('restore-encrypted-backup', password),
   getLastBackupPath: (): Promise<string> => ipcRenderer.invoke('get-last-backup-path'),
   // QR Code status server
-  qrGetStatusUrl: (type: 'repair' | 'sale', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
+  qrGetStatusUrl: (type: 'repair' | 'sale' | 'consult', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
+  qrResolveStatusToken: (token: string): Promise<{ ok: boolean; token?: any; type?: 'repair' | 'sale' | 'consult'; record?: any; customer?: any; error?: string }> => ipcRenderer.invoke('qr:resolveStatusToken', token),
   qrGetDataUrl: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getDataUrl', url),
   qrGetServerInfo: (): Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getServerInfo'),
 });

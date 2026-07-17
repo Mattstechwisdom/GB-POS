@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.6 (2026-07-17)
+- Login: replaces the visible email/password form with a shop username/PIN form and routes the configured `Gadgetboyz` username to a hidden Supabase Auth email.
+- Login: blocks direct email entry in the POS login screen so the shop alias is the only visible sign-in path.
+- Technicians: prevents Supabase login-only staff profile rows from appearing as assignable technicians in consultation, work-order, calendar, reporting, and mobile filters.
+- Mobile: hides the Supabase profile name from the side drawer and shows a generic shop session label instead.
+- QR / Client Updates: adds cloud-backed QR status tokens so status/client update links can resolve through Supabase instead of relying only on the desktop status server.
+- Work Orders: adds the in-app Update Client panel and keeps customer/status QR flows available from desktop and mobile app screens.
+
 ## v0.5.5 (2026-07-16)
 - Mobile Updates: fixes Android version comparison so newer patch releases are detected correctly after this update.
 - Quick Sale: supports multiple items in one checkout using the same item table and product picker as the Sales form.

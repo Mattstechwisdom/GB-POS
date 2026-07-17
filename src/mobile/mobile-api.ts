@@ -257,6 +257,13 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       payments: cloudArray(row.payments),
       internalNotes: row.internal_notes || '',
       internalNotesLog: cloudArray(row.internal_notes_log),
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      repairStatus: row.repair_status || '',
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -310,6 +317,12 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       items: cloudArray(row.items),
       payments: cloudArray(row.payments),
       totals: cloudObject(row.totals),
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -443,6 +456,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
     const credential = extra?.credentialsByStaffId?.get(String(row.id)) || extra?.credentialsByLegacyId?.get(String(row.legacy_id || '')) || {};
     return {
       id: row.legacy_id || row.id,
+      legacyId: row.legacy_id || '',
       firstName: row.first_name || '',
       lastName: row.last_name || '',
       nickname: row.nickname || '',
@@ -455,6 +469,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       createdAt: cloudDate(row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
+      isLoginProfile: !row.legacy_id,
     };
   }
   return {
@@ -465,6 +480,21 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
     updatedAt: cloudDate(row.updated_at),
     cloudId: row.id,
   };
+}
+
+function hasScheduleValue(schedule: any): boolean {
+  return !!schedule && typeof schedule === 'object' && Object.keys(schedule).length > 0;
+}
+
+function isAssignableTechnicianRow(row: any): boolean {
+  if (!row || row.active === false || row.status === 'disabled') return false;
+  if (!row.isLoginProfile) return true;
+  return !!(
+    String(row.nickname || '').trim()
+    || String(row.passcode || '').trim()
+    || String(row.phone || '').trim()
+    || hasScheduleValue(row.schedule)
+  );
 }
 
 function cloudConflictForKey(key: string): string {
@@ -532,6 +562,13 @@ function toCloudRow(key: string, item: any): any | null {
       payments: toCloudArray(item.payments),
       internal_notes: toCloudString(item.internalNotes),
       internal_notes_log: toCloudArray(item.internalNotesLog),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      repair_status: typeof item.repairStatus === 'undefined' ? undefined : toCloudString(item.repairStatus),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),
@@ -587,6 +624,12 @@ function toCloudRow(key: string, item: any): any | null {
       items: toCloudArray(item.items),
       payments: toCloudArray(item.payments),
       totals: toCloudObject(item.totals),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -813,6 +856,142 @@ function requireCloudSession(): CloudSession {
   return cloudSession;
 }
 
+function normalizeQrStatusType(value: any): 'repair' | 'sale' | 'consult' {
+  const raw = String(value || '').trim().toLowerCase();
+  if (/^(sale|sales|invoice|inv)$/.test(raw)) return 'sale';
+  if (/^(consult|consultation|appointment)$/.test(raw)) return 'consult';
+  return 'repair';
+}
+
+function cloudRecordKeyForQrType(type: 'repair' | 'sale' | 'consult'): string {
+  if (type === 'sale') return 'sales';
+  if (type === 'consult') return 'calendarEvents';
+  return 'workOrders';
+}
+
+function getHostedAppUrl(): string {
+  const envUrl = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || '').trim();
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  try {
+    const origin = String(window.location.origin || '').trim();
+    if (/^https?:\/\//i.test(origin)) return origin.replace(/\/+$/, '');
+  } catch {
+    // ignore
+  }
+  return 'https://gb-pos-production.up.railway.app';
+}
+
+function makeQrToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  let raw = '';
+  bytes.forEach((b) => { raw += String.fromCharCode(b); });
+  return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<string | null> {
+  const session = requireCloudSession();
+  const type = normalizeQrStatusType(typeInput);
+  const id = Number(idInput) || 0;
+  if (!id) return null;
+
+  const existing = await supabase
+    .from('qr_status_tokens')
+    .select('token')
+    .eq('shop_id', session.shopId)
+    .eq('record_type', type)
+    .eq('legacy_record_id', id)
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
+  if (existing.data?.token) return `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+
+  const recordKey = cloudRecordKeyForQrType(type);
+  const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
+  let recordCloudId: string | null = null;
+  if (recordTable) {
+    const recordRes = await supabase
+      .from(recordTable)
+      .select('id')
+      .eq('shop_id', session.shopId)
+      .eq('legacy_id', id)
+      .maybeSingle();
+    if (!recordRes.error && recordRes.data?.id) recordCloudId = recordRes.data.id;
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = makeQrToken();
+    const inserted = await supabase
+      .from('qr_status_tokens')
+      .insert({
+        shop_id: session.shopId,
+        token,
+        record_type: type,
+        legacy_record_id: id,
+        record_id: recordCloudId,
+        metadata: { createdBy: 'gb-pos-mobile' },
+      })
+      .select('token')
+      .single();
+    if (!inserted.error && inserted.data?.token) {
+      return `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
+    }
+    if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
+      throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
+    }
+  }
+  throw new Error('Cloud QR token create failed after duplicate retries.');
+}
+
+async function resolveCloudQrStatusToken(token: string) {
+  const session = requireCloudSession();
+  const cleaned = String(token || '').trim();
+  if (!cleaned) throw new Error('Missing QR token.');
+
+  const tokenRes = await supabase
+    .from('qr_status_tokens')
+    .select('*')
+    .eq('shop_id', session.shopId)
+    .eq('token', cleaned)
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (tokenRes.error) throw new Error(`Cloud QR token read failed: ${tokenRes.error.message}`);
+  const tokenRow = tokenRes.data;
+  if (!tokenRow) throw new Error('QR token was not found for this shop.');
+  if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) {
+    throw new Error('This QR token is expired.');
+  }
+
+  void supabase.from('qr_status_tokens').update({ last_opened_at: new Date().toISOString() }).eq('id', tokenRow.id);
+
+  const type = normalizeQrStatusType(tokenRow.record_type);
+  const recordKey = cloudRecordKeyForQrType(type);
+  const table = CLOUD_TABLE_BY_KEY[recordKey];
+  const recordRes = await supabase
+    .from(table)
+    .select('*')
+    .eq('shop_id', session.shopId)
+    .eq('legacy_id', Number(tokenRow.legacy_record_id))
+    .maybeSingle();
+  if (recordRes.error) throw new Error(`Cloud QR record read failed: ${recordRes.error.message}`);
+  if (!recordRes.data) throw new Error('The QR record no longer exists.');
+
+  const record = fromCloudRow(recordKey, recordRes.data);
+  let customer: any = null;
+  const customerId = Number((record as any)?.customerId || 0) || 0;
+  if (customerId > 0) {
+    const customerRes = await supabase
+      .from('customers')
+      .select('*')
+      .eq('shop_id', session.shopId)
+      .eq('legacy_id', customerId)
+      .maybeSingle();
+    if (!customerRes.error && customerRes.data) customer = fromCloudRow('customers', customerRes.data);
+  }
+
+  return { token: tokenRow, type, record, customer };
+}
+
 function localKey(key: string): string {
   return `gbpos-mobile-cache:${key}`;
 }
@@ -923,7 +1102,8 @@ async function cloudDbGet(key: string, opts?: SortOptions): Promise<any[]> {
   }
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  const rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, credentialExtra));
+  let rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, credentialExtra));
+  if (key === 'technicians') rows = rows.filter(isAssignableTechnicianRow);
   if (key === 'workOrders' && rows.length > 0) {
     try {
       const customerIds = Array.from(new Set(
@@ -1462,9 +1642,24 @@ function makeApi() {
     _emitSaleProductSelected: () => undefined,
     _emitCustomBuildItemSave: () => undefined,
     _emitCustomBuildItemCancel: () => undefined,
-    qrGetStatusUrl: async () => ({ ok: false, error: 'QR status server is desktop-only.' }),
+    qrGetStatusUrl: async (type: 'repair' | 'sale' | 'consult', id: number) => {
+      try {
+        const url = await ensureCloudQrStatusUrl(type, id);
+        return url ? { ok: true, url, cloud: true } : { ok: false, error: 'Missing record id.' };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
+      }
+    },
+    qrResolveStatusToken: async (token: string) => {
+      try {
+        const resolved = await resolveCloudQrStatusToken(token);
+        return { ok: true, ...resolved };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
+      }
+    },
     qrGetDataUrl: async () => ({ ok: false, error: 'QR generation is desktop-only.' }),
-    qrGetServerInfo: async () => ({ ok: false, error: 'QR status server is desktop-only.' }),
+    qrGetServerInfo: async () => ({ ok: true, hostUrl: getHostedAppUrl(), ipUrl: getHostedAppUrl() }),
   };
 
   for (const method of Object.keys(API_TO_MODAL)) {

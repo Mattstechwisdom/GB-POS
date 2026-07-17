@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { formatPhone } from '../lib/format';
 import { useAutosave } from '@/lib/useAutosave';
 import { formatTime12FromHHmm } from '@/lib/datetime';
-import { listTechnicians } from '@/lib/admin';
+import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 
 type CalendarEvent = {
   id?: number;
@@ -334,7 +334,7 @@ const CalendarWindow: React.FC = () => {
           // Show line if off or has start/end
           if (sd.off || (sd.start && sd.end)) {
             if (!map[k]) map[k] = [];
-            const techName = t.nickname || `${t.firstName || ''} ${t.lastName || ''}`.trim() || `Tech ${t.id}`;
+            const techName = technicianDisplayName(t);
             const ev: CalendarEvent = {
               date: k,
               title: `${techName} - Work Schedule`,
@@ -565,7 +565,7 @@ const CalendarWindow: React.FC = () => {
       const schedule = t?.schedule || {};
       const sd = schedule?.[dayKey];
       if (!sd) continue;
-      const techName = t.nickname || `${t.firstName || ''} ${t.lastName || ''}`.trim() || `Tech ${t.id}`;
+      const techName = technicianDisplayName(t);
       if (assigned && techName !== assigned) continue;
       if (sd.off || (sd.start && sd.end)) schedules.push({ name: techName, start: sd.start, end: sd.end, off: !!sd.off });
     }
@@ -886,7 +886,7 @@ const CalendarWindow: React.FC = () => {
                 >
                   <option value="">Assigned: All</option>
                   {Array.isArray(techs) && techs.map((t: any) => {
-                    const techName = t.nickname || `${t.firstName || ''} ${t.lastName || ''}`.trim() || `Tech ${t.id}`;
+                    const techName = technicianDisplayName(t);
                     return (
                       <option key={t.id || techName} value={techName}>
                         {techName}
@@ -1077,8 +1077,8 @@ const TechnicianSelect: React.FC<{ value: string; onChange: (v: string) => void 
     <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={value} onChange={e => onChange(e.target.value)}>
       <option value="">Select technician</option>
       {techs.map(t => (
-        <option key={t.id} value={t.nickname || `${t.firstName||''} ${t.lastName||''}`.trim()}>
-          {(t.nickname || `${t.firstName||''} ${t.lastName||''}`.trim()) || t.id}
+        <option key={t.id} value={technicianDisplayName(t)}>
+          {technicianDisplayName(t)}
         </option>
       ))}
     </select>

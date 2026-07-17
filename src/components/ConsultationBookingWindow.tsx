@@ -4,6 +4,7 @@ import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
 import DuplicateCustomerDialog from './DuplicateCustomerDialog';
 import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
 const CONSULTATION_BASE_RATE = 75;
 const CONSULTATION_EXTRA_RATE = 50;
@@ -229,14 +230,23 @@ export default function ConsultationBookingWindow() {
     let alive = true;
     (async () => {
       try {
-        let lanIp = 'localhost';
+        let qrUrl = '';
         try {
+          const result = await api?.qrGetStatusUrl?.('consult', done.eventId);
+          if (result?.ok && result.url) qrUrl = result.url;
+        } catch { /* QR helper unavailable */ }
+        if (!qrUrl) {
           const ipRes = await fetch('http://localhost:7777/ip');
-          if (ipRes.ok) { const j = await ipRes.json(); if (j?.ip) lanIp = j.ip; }
-        } catch {}
-        const qrUrl = `http://${lanIp}:7777/status/consult/${done.eventId}`;
-        const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
-        if (alive) setQrDataUrl(dataUrl);
+          if (ipRes.ok) {
+            const j = await ipRes.json();
+            const baseUrl = String(j?.ipUrl || (j?.ip ? `http://${j.ip}:7777` : '')).trim();
+            if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/consult/${done.eventId}`;
+          }
+        }
+        if (qrUrl) {
+          const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
+          if (alive) setQrDataUrl(dataUrl);
+        }
       } catch {}
     })();
     return () => { alive = false; };
@@ -246,11 +256,11 @@ export default function ConsultationBookingWindow() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await api.dbGet('technicians');
-        setTechs(Array.isArray(list) ? list.filter((t: any) => t?.active !== false) : []);
+        const list = await listTechnicians();
+        setTechs(Array.isArray(list) ? list : []);
       } catch {}
     })();
-  }, [api]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -352,8 +362,7 @@ export default function ConsultationBookingWindow() {
     setEndTime(addHour(v));
   };
 
-  const techLabel = (t: Technician) =>
-    t.nickname || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.id;
+  const techLabel = (t: Technician) => technicianDisplayName(t);
 
   const billedHours = Math.max(1, Number(hours) || 1);
   const extraHours = Math.max(0, billedHours - 1);

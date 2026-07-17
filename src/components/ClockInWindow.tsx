@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
 interface TimeEntry {
   id: number;
@@ -80,7 +80,7 @@ const ClockInWindow: React.FC = () => {
       const timeEntry: TimeEntry = {
         id: Date.now(), // Simple ID generation
         technicianId: tech.id,
-        technicianName: tech.nickname || `${tech.firstName} ${tech.lastName}`,
+        technicianName: technicianDisplayName(tech),
         clockIn: new Date().toISOString(),
         date: today,
         status: 'clocked-in',
@@ -177,7 +177,7 @@ const ClockInWindow: React.FC = () => {
               <option value="">Choose technician...</option>
               {technicians.map(tech => (
                 <option key={tech.id} value={tech.id}>
-                  {tech.nickname || `${tech.firstName} ${tech.lastName}`}
+                  {technicianDisplayName(tech)}
                 </option>
               ))}
             </select>

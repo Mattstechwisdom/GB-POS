@@ -7,6 +7,7 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from '../li
 import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
 import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
+import { technicianDisplayName } from '../lib/admin';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
@@ -837,7 +838,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
     technicians.forEach((tech) => {
       const id = String(tech?.id || '').trim();
       if (!id) return;
-      map[id] = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
+      map[id] = technicianDisplayName(tech);
     });
     return map;
   }, [technicians]);
@@ -936,7 +937,6 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   }, [dateFrom, dateTo, deferredQuery, mode, statusFilter, technicianFilter]);
 
   const visibleRows = filteredRows.slice(0, visibleCount);
-  const profileName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || profile.email;
   const filtersActive = statusFilter !== 'all' || !!technicianFilter || !!dateFrom || !!dateTo;
 
   const actionSheetActions = useMemo(() => sheetRow ? makeSheetActions(sheetRow, () => {
@@ -1009,7 +1009,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
               {technicians.map((tech) => {
                 const id = String(tech?.id || '').trim();
                 if (!id) return null;
-                const label = String(tech?.nickname || tech?.firstName || tech?.email || id).trim();
+                const label = technicianDisplayName(tech);
                 return <option key={id} value={id}>{label}</option>;
               })}
             </select>
@@ -1067,7 +1067,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
 
       <MobileDrawer
         open={drawerOpen}
-        profileName={profileName}
+        profileName="Shop Access"
         role={profile.role}
         onClose={() => setDrawerOpen(false)}
         onOpenModal={openModal}
@@ -1198,7 +1198,7 @@ function MobileDrawer(props: {
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">
           <div>
-            <strong>{profileName}</strong>
+            <strong>{profileName || 'Shop Access'}</strong>
             <span>{role} session</span>
           </div>
           <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>

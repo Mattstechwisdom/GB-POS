@@ -6,6 +6,9 @@ declare global {
   interface ImportMetaEnv {
     readonly VITE_SUPABASE_URL?: string;
     readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+    readonly VITE_SHOP_LOGIN_USERNAME?: string;
+    readonly VITE_SHOP_LOGIN_EMAIL?: string;
+    readonly VITE_PUBLIC_APP_URL?: string;
   }
 
   interface ImportMeta {
@@ -16,6 +19,8 @@ declare global {
     __GB_POS_CONFIG__?: {
       VITE_SUPABASE_URL?: string;
       VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+      VITE_SHOP_LOGIN_USERNAME?: string;
+      VITE_SHOP_LOGIN_EMAIL?: string;
     };
   }
 
@@ -96,6 +101,10 @@ declare global {
     exportPdf: (html: string, filenameBase?: string) => Promise<any>;
     openInteractiveHtml: (html: string, title?: string) => Promise<any>;
     openUrl: (url: string) => Promise<any>;
+    qrGetStatusUrl: (type: 'repair' | 'sale' | 'consult', id: number) => Promise<{ ok: boolean; url?: string; error?: string }>;
+    qrResolveStatusToken: (token: string) => Promise<{ ok: boolean; token?: any; type?: 'repair' | 'sale' | 'consult'; record?: any; customer?: any; error?: string }>;
+    qrGetDataUrl: (url: string) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
+    qrGetServerInfo: () => Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }>;
     // email
     emailGetConfig: () => Promise<{ ok: boolean; fromEmail?: string; fromName?: string; bodyTemplate?: string | null; hasAppPassword?: boolean; error?: string }>;
     emailSetGmailAppPassword: (appPassword: string, fromName?: string) => Promise<{ ok: boolean; error?: string }>;

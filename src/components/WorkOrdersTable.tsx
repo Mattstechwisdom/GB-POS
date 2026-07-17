@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import CustomerHoverCard from './CustomerHoverCard';
@@ -101,7 +101,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
       try {
         const techs = await listTechnicians();
         const map: Record<string,string> = {};
-        techs.forEach((t: any) => { map[t.id] = (t.nickname && t.nickname.trim()) || t.firstName || t.id; });
+        techs.forEach((t: any) => { map[t.id] = technicianDisplayName(t); });
         setTechIndex(map);
       } catch (e) { console.error('tech load', e); }
     };

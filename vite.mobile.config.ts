@@ -36,6 +36,8 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ''),
       'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY || ''),
+      'import.meta.env.VITE_SHOP_LOGIN_USERNAME': JSON.stringify(env.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz'),
+      'import.meta.env.VITE_SHOP_LOGIN_EMAIL': JSON.stringify(env.VITE_SHOP_LOGIN_EMAIL || ''),
     },
     plugins: [
       react(),
