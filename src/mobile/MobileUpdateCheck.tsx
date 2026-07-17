@@ -59,12 +59,26 @@ function compareVersions(aRaw: string, bRaw: string): number {
 }
 
 async function fetchGithubJson<T>(url: string): Promise<T | null> {
-  const res = await fetch(url, {
-    headers: { Accept: 'application/vnd.github+json' },
-    cache: 'no-store',
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      const separator = url.includes('?') ? '&' : '?';
+      const res = await fetch(`${url}${separator}_=${Date.now()}-${attempt}`, {
+        headers: { Accept: 'application/vnd.github+json' },
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      if (res.ok) return (await res.json()) as T;
+      if (res.status !== 403 && res.status !== 429 && res.status < 500) return null;
+    } catch {
+      // A resumed WebView can briefly report online before networking is ready.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  return null;
 }
 
 function releaseToMobileUpdate(release: GitHubRelease): MobileUpdate | null {
@@ -88,17 +102,23 @@ function releaseToMobileUpdate(release: GitHubRelease): MobileUpdate | null {
 }
 
 export async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
+  // The releases list is more reliable in Android WebView than /releases/latest
+  // and also survives a mistakenly marked prerelease. Keep latest as fallback.
+  const releases = await fetchGithubJson<GitHubRelease[]>(repoReleasesUrl);
+  const listedUpdate = Array.isArray(releases)
+    ? releases
+      .map(releaseToMobileUpdate)
+      .filter((item): item is MobileUpdate => Boolean(item))
+      .sort((a, b) => compareVersions(b.version, a.version))[0] || null
+    : null;
+  if (listedUpdate) return listedUpdate;
+
   const latest = await fetchGithubJson<GitHubRelease>(repoLatestUrl);
   const latestUpdate = latest ? releaseToMobileUpdate(latest) : null;
   if (latestUpdate) return latestUpdate;
 
-  const releases = await fetchGithubJson<GitHubRelease[]>(repoReleasesUrl);
   if (!Array.isArray(releases)) return null;
-
-  return releases
-    .map(releaseToMobileUpdate)
-    .filter((item): item is MobileUpdate => Boolean(item))
-    .sort((a, b) => compareVersions(b.version, a.version))[0] || null;
+  return null;
 }
 
 export function openMobileUpdateDownload(update: MobileUpdate, setOpening?: (opening: boolean) => void) {

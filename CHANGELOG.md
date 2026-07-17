@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.9 (2026-07-17)
+- Windows Updates: pins the production GitHub release feed explicitly and repeats update checks while the POS remains open.
+- Mobile Updates: retries temporary Android WebView network failures, avoids cached release responses, and checks the release list before the latest-release fallback.
+- Release Safety: adds an automated feed verifier for version ordering and required Windows/Android update assets.
+
 ## v0.5.8 (2026-07-17)
 - Parts Ordering: adds URL scraping for part title, cost, device/category details, condition, and source information in the Devices / Repairs workflow.
 - Parts Ordering: adds Save Part and Save Repair actions so technicians can retain reusable supplier and repair-template information.

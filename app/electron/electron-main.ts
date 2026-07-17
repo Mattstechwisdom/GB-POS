@@ -57,6 +57,8 @@ function isExternalUrl(url: string, sourceUrl?: string) {
   }
 }
 
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+
 function normalizePartOrderUrl(value: any): string {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -1654,6 +1656,15 @@ function setupAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+  // Do not rely solely on the generated app-update.yml. Older installs have
+  // shipped with stale metadata, so keep the production feed explicit.
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'Mattstechwisdom',
+    repo: 'GB-POS',
+  });
   autoUpdater.on('checking-for-update', () => {
     try { console.log('[AutoUpdate] checking for update'); } catch {}
   });
@@ -1694,13 +1705,15 @@ function checkForAppUpdatesSoon() {
     if ((process.env.GBPOS_DISABLE_AUTO_UPDATE || '').toString().trim() === '1') return;
     setupAutoUpdater();
     if (!autoUpdater) return;
-    setTimeout(() => {
+    const check = () => {
       try {
         void autoUpdater.checkForUpdates();
       } catch (e: any) {
         try { console.error('[AutoUpdate] check failed:', e?.message || e); } catch {}
       }
-    }, 2500);
+    };
+    setTimeout(check, 2500);
+    setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
   } catch (e: any) {
     try { console.error('[AutoUpdate] setup failed:', e?.message || e); } catch {}
   }
