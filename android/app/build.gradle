@@ -29,10 +29,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keyStorePath = System.getenv('GBPOS_ANDROID_KEYSTORE_PATH')
+            if (keyStorePath) {
+                storeFile file(keyStorePath)
+                storePassword System.getenv('GBPOS_ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('GBPOS_ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('GBPOS_ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }

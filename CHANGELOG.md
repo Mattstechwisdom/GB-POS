@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.10 (2026-07-17)
+- Android Updates: signs every release with one persistent production certificate so future APK updates install over the existing app.
+- Railway: binds the hosted web server to Railway's assigned `PORT` and fails clearly when required runtime configuration is missing.
+- Work Orders: clarifies that an unusable ordered part may be refunded while the applicable $25 or $50 diagnostic fee remains non-refundable.
+
 ## v0.5.9 (2026-07-17)
 - Windows Updates: pins the production GitHub release feed explicitly and repeats update checks while the POS remains open.
 - Mobile Updates: retries temporary Android WebView network failures, avoids cached release responses, and checks the release list before the latest-release fallback.

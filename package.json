@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -27,7 +27,7 @@
     "android:add": "cap add android",
     "android:open": "cap open android",
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
-    "start:web": "node tools/write-runtime-config.cjs && serve -s dist -l tcp://0.0.0.0:3000",
+    "start:web": "node tools/start-web.cjs",
     "predist": "npm run generate:icon && npm run typecheck && npm run electron:buildmain && npm run build",
     "dist": "electron-builder --win nsis",
     "postdist": "node -e \"const fs=require('fs'),p=require('path'),pkg=require('./package.json'),v=pkg.version,src=p.join('release','GadgetBoy-POS-Setup-'+v+'.exe'),dst=p.join('release','GadgetBoy-POS-Update-'+v+'.exe');if(fs.existsSync(src)){fs.copyFileSync(src,dst);console.log('Created '+dst);}else{console.warn('Setup exe not found:',src);}\"",

@@ -24,6 +24,9 @@ jobs:
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SHOP_LOGIN_USERNAME: ${{ vars.VITE_SHOP_LOGIN_USERNAME || secrets.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz' }}
       VITE_SHOP_LOGIN_EMAIL: ${{ vars.VITE_SHOP_LOGIN_EMAIL || secrets.VITE_SHOP_LOGIN_EMAIL }}
+      GBPOS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GBPOS_ANDROID_KEYSTORE_PASSWORD }}
+      GBPOS_ANDROID_KEY_ALIAS: ${{ secrets.GBPOS_ANDROID_KEY_ALIAS }}
+      GBPOS_ANDROID_KEY_PASSWORD: ${{ secrets.GBPOS_ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -93,14 +96,20 @@ jobs:
       - name: Build Android APK
         shell: pwsh
         run: |
+          if ([string]::IsNullOrWhiteSpace('${{ secrets.GBPOS_ANDROID_KEYSTORE_BASE64 }}')) {
+            throw 'Missing GBPOS_ANDROID_KEYSTORE_BASE64 GitHub secret.'
+          }
+          $keyStorePath = Join-Path $env:RUNNER_TEMP 'gadgetboy-pos-release.jks'
+          [IO.File]::WriteAllBytes($keyStorePath, [Convert]::FromBase64String('${{ secrets.GBPOS_ANDROID_KEYSTORE_BASE64 }}'))
+          $env:GBPOS_ANDROID_KEYSTORE_PATH = $keyStorePath
           npm.cmd run android:sync
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location android
-          .\gradlew.bat assembleDebug
+          .\gradlew.bat assembleRelease
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
           $version = $env:RELEASE_VERSION
-          $apkSource = 'android/app/build/outputs/apk/debug/app-debug.apk'
+          $apkSource = 'android/app/build/outputs/apk/release/app-release.apk'
           if (-not (Test-Path $apkSource)) { throw "Android APK not found: $apkSource" }
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item -Force $apkSource "release/Android-APK-universal-$version.apk"
