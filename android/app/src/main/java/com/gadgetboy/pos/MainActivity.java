@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
@@ -20,11 +21,23 @@ import java.io.File;
 import java.util.Locale;
 
 public class MainActivity extends BridgeActivity {
+    private File pendingUpdateApk;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().addJavascriptInterface(new GBPosAndroidBridge(), "GBPosAndroid");
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (pendingUpdateApk != null && canInstallPackages()) {
+            File apkFile = pendingUpdateApk;
+            pendingUpdateApk = null;
+            installDownloadedApk(apkFile);
         }
     }
 
@@ -90,7 +103,12 @@ public class MainActivity extends BridgeActivity {
                             try {
                                 unregisterReceiver(this);
                             } catch (Exception ignored) {}
-                            installDownloadedApk(apkFile);
+                            if (canInstallPackages()) {
+                                installDownloadedApk(apkFile);
+                            } else {
+                                pendingUpdateApk = apkFile;
+                                requestInstallPermission();
+                            }
                         }
                     };
 
@@ -104,6 +122,22 @@ public class MainActivity extends BridgeActivity {
                     openExternalUrl(rawUrl);
                 }
             });
+        }
+    }
+
+    private boolean canInstallPackages() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O
+            || getPackageManager().canRequestPackageInstalls();
+    }
+
+    private void requestInstallPermission() {
+        try {
+            Toast.makeText(this, "Allow GadgetBoy POS to install updates, then return to the app.", Toast.LENGTH_LONG).show();
+            Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Enable Install unknown apps for GadgetBoy POS in Android Settings.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -124,10 +158,11 @@ public class MainActivity extends BridgeActivity {
                 return;
             }
             Uri apkUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", apkFile);
-            Intent installIntent = new Intent(Intent.ACTION_VIEW);
-            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            Intent installIntent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+            installIntent.setData(apkUri);
             installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            installIntent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
             startActivity(installIntent);
         } catch (Exception e) {
             Toast.makeText(this, "Open the downloaded APK to finish updating.", Toast.LENGTH_LONG).show();

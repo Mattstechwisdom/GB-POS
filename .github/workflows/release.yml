@@ -111,6 +111,26 @@ jobs:
           $version = $env:RELEASE_VERSION
           $apkSource = 'android/app/build/outputs/apk/release/app-release.apk'
           if (-not (Test-Path $apkSource)) { throw "Android APK not found: $apkSource" }
+          $buildTools = Get-ChildItem (Join-Path $env:ANDROID_HOME 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $aapt = Join-Path $buildTools.FullName 'aapt.exe'
+          $apksigner = Join-Path $buildTools.FullName 'apksigner.bat'
+          $badging = & $aapt dump badging $apkSource | Select-Object -First 1
+          if ($badging -notmatch "name='com\.gadgetboy\.pos'") { throw "Unexpected Android application id: $badging" }
+          if ($badging -notmatch "versionName='$([regex]::Escape($version))'") { throw "APK versionName does not match release $version`: $badging" }
+          & $apksigner verify --verbose --print-certs $apkSource
+          if ($LASTEXITCODE -ne 0) { throw 'Android APK signature verification failed.' }
+          $newSigner = (& $apksigner verify --print-certs $apkSource | Select-String 'Signer #1 certificate SHA-256 digest:' | ForEach-Object { ($_ -split ': ', 2)[1].Trim() })
+          if ([string]::IsNullOrWhiteSpace($newSigner)) { throw 'Could not read the new APK signing certificate.' }
+          $previousDir = Join-Path $env:RUNNER_TEMP 'previous-android-release'
+          New-Item -ItemType Directory -Force -Path $previousDir | Out-Null
+          gh release download --repo $env:GITHUB_REPOSITORY --pattern 'Android-APK-universal-*.apk' --dir $previousDir
+          if ($LASTEXITCODE -eq 0) {
+            $previousApk = Get-ChildItem $previousDir -Filter '*.apk' | Select-Object -First 1
+            if ($previousApk) {
+              $previousSigner = (& $apksigner verify --print-certs $previousApk.FullName | Select-String 'Signer #1 certificate SHA-256 digest:' | ForEach-Object { ($_ -split ': ', 2)[1].Trim() })
+              if ($previousSigner -ne $newSigner) { throw 'Android signing certificate changed; publishing this APK would force users to uninstall.' }
+            }
+          }
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item -Force $apkSource "release/Android-APK-universal-$version.apk"
 

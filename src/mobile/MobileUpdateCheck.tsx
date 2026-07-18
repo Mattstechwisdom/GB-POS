@@ -146,6 +146,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
   const skippedVersionRef = useRef<string | null>(null);
+  const attemptedVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -162,6 +163,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
           // ignore legacy skip cleanup
         }
         if (skippedVersionRef.current === `${checkKey}:${next.version}`) return;
+        if (attemptedVersionRef.current === `${checkKey}:${next.version}`) return;
         setUpdate(next);
       } catch {
         // Update checks should never block POS startup.
@@ -197,6 +199,8 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   if (!update) return null;
 
   const download = () => {
+    attemptedVersionRef.current = `${checkKey}:${update.version}`;
+    setUpdate(null);
     openMobileUpdateDownload(update, setOpening);
   };
 
@@ -225,7 +229,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
             {update.apkName}
           </div>
           <p className="text-xs text-zinc-500">
-            Android will download the APK and open the installer. Confirm the installer prompt to finish the update.
+            Android will download the APK and open the installer. The first update may ask you to allow GadgetBoy POS to install unknown apps; enable it, return here, and Android will continue the update.
           </p>
         </div>
         <div className="flex gap-2 border-t border-zinc-800 px-4 py-3">

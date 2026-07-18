@@ -1,6 +1,9 @@
 # Changelog
 
 ## v0.5.12 (2026-07-18)
+- Android Updates: checks the system install-source permission before opening an APK, resumes installation after permission is granted, and dismisses the in-app prompt once installer handoff begins.
+- Android Releases: verifies the APK application ID, version, signature, and signing-certificate continuity before publishing so updates install over the existing app.
+- Work Orders: clarifies that diagnostic fees remain non-refundable and labor refunds may be declined or issued partially based on work performed and repair circumstances.
 - Railway: adds a production build contract that publishes distinct desktop and mobile web entry points together and checks runtime configuration health before deployment completes.
 - Railway: restores the required public Supabase runtime variables and corrects the production domain target from port 3000 to the service's assigned port 8080.
 - End of Day: locks the closeout overview and its email to the current local calendar day, refreshes automatically after midnight, and keeps monthly totals and historical filters in Reporting.
