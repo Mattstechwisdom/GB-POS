@@ -1233,6 +1233,7 @@ function MobileDrawer(props: {
           <DrawerButton label="Generate Quote" tone="green" featured onClick={() => handleOpenModal('quoteGenerator')} />
           <DrawerButton label="Consultation" tone="blue" featured onClick={() => handleOpenModal('consultation')} />
           <DrawerButton label="Quick Sale" tone="purple" featured onClick={() => handleOpenModal('quickSale')} />
+          <DrawerButton label="End of Day Report" tone="amber" featured onClick={() => handleOpenModal('eod')} />
         </div>
 
         <DrawerSection title="Client Database" open={openSections.client} tone="default" onToggle={() => toggleSection('client')}>
@@ -1287,7 +1288,7 @@ function DrawerSection({ title, open, tone = 'default', onToggle, children }: { 
   );
 }
 
-function DrawerButton({ label, onClick, tone = 'default', featured = false }: { label: string; onClick: () => void; tone?: 'default' | 'green' | 'blue' | 'purple'; featured?: boolean }) {
+function DrawerButton({ label, onClick, tone = 'default', featured = false }: { label: string; onClick: () => void; tone?: 'default' | 'green' | 'blue' | 'purple' | 'amber'; featured?: boolean }) {
   return (
     <button type="button" className={`mobile-drawer-button mobile-drawer-button-${tone}${featured ? ' featured' : ''}`} onClick={onClick}>
       <span>{label}</span>

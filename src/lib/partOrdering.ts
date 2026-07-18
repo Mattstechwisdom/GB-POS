@@ -8,7 +8,20 @@ export type PartUrlMetadata = {
   error?: string;
 };
 
-export const DEFAULT_PART_MARKUP_PCT = 5;
+export const DEFAULT_PART_MARKUP_PCT = 10;
+
+export const PART_MARKUP_PRESETS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+
+export function splitTaxIncludedCost(cost: unknown, taxExempt: boolean, taxRate = 8) {
+  const total = Math.max(0, Number(cost) || 0);
+  if (taxExempt || !(taxRate > 0)) return { total: Math.round(total * 100) / 100, preTax: Math.round(total * 100) / 100, tax: 0 };
+  const preTax = total / (1 + taxRate / 100);
+  return {
+    total: Math.round(total * 100) / 100,
+    preTax: Math.round(preTax * 100) / 100,
+    tax: Math.round((total - preTax) * 100) / 100,
+  };
+}
 
 export function normalizePartOrderUrl(value: unknown): string {
   const raw = String(value || '').trim();

@@ -655,6 +655,12 @@
   color: #f3e8ff;
 }
 
+.mobile-drawer-button-amber {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: #18181b;
+}
+
 .mobile-drawer label {
   display: block;
   margin-bottom: 0.55rem;

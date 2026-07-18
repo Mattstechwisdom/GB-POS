@@ -30,6 +30,11 @@ export interface WorkOrderItem {
   labor?: number;
   internalCost?: number;
   markupPct?: number | string;
+  distributor?: string;
+  requiresOrder?: boolean;
+  taxExempt?: boolean;
+  supplierTaxRate?: number;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   stockSource?: "repairCategories" | "products" | string;
   stockConsumed?: boolean;
   trackStock?: boolean;
@@ -153,6 +158,7 @@ export interface RepairItem {
   // Internal cost for reporting/analytics only; not shown in work order UI
   internalCost?: number;
   markupPct?: number | string;
+  taxExempt?: boolean;
   orderDate?: string;      // ISO
   estDelivery?: string;    // ISO
   partSource?: string;

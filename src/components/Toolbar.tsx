@@ -164,6 +164,12 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         >
           Consultation
         </button>
+        <button
+          className="px-4 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
+          onClick={() => dispatchOpenModal('eod')}
+        >
+          End of Day Report
+        </button>
       </div>
       <div className="flex items-center gap-3">
         <button

@@ -15,6 +15,13 @@ export type WorkOrderItemRow = {
   note?: string;
   partSource?: string;
   orderSourceUrl?: string;
+  internalCost?: number;
+  markupPct?: number | string;
+  distributor?: string;
+  requiresOrder?: boolean;
+  taxExempt?: boolean;
+  supplierTaxRate?: number;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
 };
 
 const MAX_ITEMS = 5;
@@ -146,6 +153,13 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
         note: selected.model || selected.modelNumber || '',
         partSource: selected.partSource || '',
         orderSourceUrl: selected.orderSourceUrl || selected.reorderUrlTemplate || '',
+        internalCost: typeof selected.internalCost === 'number' ? selected.internalCost : undefined,
+        markupPct: selected.markupPct ?? 10,
+        distributor: selected.distributor || selected.partSource || '',
+        requiresOrder: false,
+        taxExempt: selected.taxExempt === true,
+        supplierTaxRate: 8,
+        orderStatus: 'in_stock',
       };
       onChange([...items, row].slice(0, MAX_ITEMS));
       setSelected(row.id);

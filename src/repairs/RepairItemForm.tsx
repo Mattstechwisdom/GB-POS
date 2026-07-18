@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
-import { derivePartVendorFromUrl, scrapePartUrl } from '../lib/partOrdering';
+import { PART_MARKUP_PRESETS, derivePartVendorFromUrl, scrapePartUrl } from '../lib/partOrdering';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -42,8 +42,8 @@ const DUMMY_DEVICE_CATEGORIES = [
   'Other'
 ];
 
-const MARKUP_PRESETS = [5, 10, 15, 20, 25];
-const DEFAULT_MARKUP_PCT = '5';
+const MARKUP_PRESETS = PART_MARKUP_PRESETS;
+const DEFAULT_MARKUP_PCT = '10';
 
 function repairCategoryRank(value: unknown): number {
   const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
@@ -103,6 +103,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     laborCost: 0,
     internalCost: undefined,
     markupPct: DEFAULT_MARKUP_PCT,
+    taxExempt: false,
     orderDate: '',
     estDelivery: '',
     partSource: '',
@@ -203,6 +204,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         laborCost: 0,
         internalCost: undefined,
         markupPct: DEFAULT_MARKUP_PCT,
+        taxExempt: false,
         orderDate: '',
         estDelivery: '',
         partSource: '',
@@ -233,6 +235,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       laborCost: 0,
       internalCost: undefined,
       markupPct: DEFAULT_MARKUP_PCT,
+      taxExempt: false,
       orderDate: '',
       estDelivery: '',
       partSource: '',
@@ -303,7 +306,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       const meta = await scrapePartUrl(url);
       const nextVendor = meta.vendor || deriveVendorLabelFromUrl(url) || derivePartVendorFromUrl(url);
       const nextInternalCost = typeof meta.price === 'number' ? meta.price : formData.internalCost;
-      const nextPartCost = typeof meta.price === 'number' && (!formData.partCost || Number(formData.partCost) <= 0)
+      const nextPartCost = typeof meta.price === 'number'
         ? markedUpPrice(meta.price, markupPct || DEFAULT_MARKUP_PCT)
         : formData.partCost;
       setFormData(prev => ({
@@ -472,7 +475,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               />
             </div>
           </div>
-          {effectiveMode === 'admin' && (
+          {(
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-300 mb-1">Internal Cost (reporting only)</label>
               <MoneyInput
@@ -527,7 +530,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               </div>
 
               {/* Stock tracking (admin only) */}
-              <div className="border border-zinc-700 rounded p-3 mt-3">
+              {effectiveMode === 'admin' ? <div className="border border-zinc-700 rounded p-3 mt-3">
                 <div className="flex items-center gap-2 mb-2">
                   <input
                     id="repair-track-stock-cb"
@@ -564,7 +567,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     </div>
                   </div>
                 )}
-              </div>
+              </div> : null}
             </div>
           )}
         </div>
@@ -588,6 +591,15 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               {scrapingUrl ? 'Scanning...' : 'Scrape URL'}
             </button>
           </div>
+          <label className="mb-3 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={formData.taxExempt === true}
+              onChange={e => setFormData(prev => ({ ...prev, taxExempt: e.target.checked }))}
+            />
+            Tax Exempt
+            <span className="text-xs text-zinc-500">Cost is the exact supplier total; no supplier tax is separated in reporting.</span>
+          </label>
         <div className="gb-repair-source-section grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>

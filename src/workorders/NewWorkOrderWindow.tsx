@@ -11,6 +11,13 @@ export type WorkOrderItemRow = {
   note?: string;
   partSource?: string;
   orderSourceUrl?: string;
+  internalCost?: number;
+  markupPct?: number | string;
+  distributor?: string;
+  requiresOrder?: boolean;
+  taxExempt?: boolean;
+  supplierTaxRate?: number;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
 };
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,7 +40,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
-import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
+import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -1182,6 +1189,17 @@ const NewWorkOrderWindow: React.FC = () => {
       || null;
   }, [wo.items]);
 
+  const updatePrimaryPartsItem = useCallback((patch: Partial<WorkOrderItemRow>) => {
+    setWo(w => {
+      const items = Array.isArray(w.items) ? [...w.items] : [];
+      let idx = items.findIndex((item: any) => item.id === (primaryPartsItem as any)?.id);
+      if (idx < 0) idx = items.findIndex((item: any) => Number(item?.parts || 0) > 0);
+      if (idx < 0) return w;
+      items[idx] = { ...items[idx], ...patch };
+      return { ...w, items };
+    });
+  }, [primaryPartsItem]);
+
   const scrapeAndApplyPartsUrl = useCallback(async (value: string) => {
     const orderUrl = normalizeMaybeUrl(value);
     if (!orderUrl) return null;
@@ -1205,6 +1223,13 @@ const NewWorkOrderWindow: React.FC = () => {
             repair: meta.title || current.repair,
             parts: Number(nextParts || 0) || 0,
             partSource: current.partSource || vendor,
+            distributor: current.distributor || vendor,
+            internalCost: typeof meta.price === 'number' ? meta.price : current.internalCost,
+            markupPct: current.markupPct ?? DEFAULT_PART_MARKUP_PCT,
+            requiresOrder: true,
+            orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
+            taxExempt: current.taxExempt === true,
+            supplierTaxRate: Number(current.supplierTaxRate ?? 8),
             orderSourceUrl: orderUrl,
           };
         }
@@ -1312,7 +1337,9 @@ const NewWorkOrderWindow: React.FC = () => {
     const title = String(partsUrlMeta?.title || item.repair || (wo as any).productDescription || 'Repair Part').trim();
     const device = String(item.device || (wo as any).productCategory || (wo as any).productDescription || 'Other').trim() || 'Other';
     const repairCategory = String(item.repairCategory || 'Repair').trim() || 'Repair';
-    const internalCost = typeof partsUrlMeta?.price === 'number' ? partsUrlMeta.price : undefined;
+    const internalCost = typeof item.internalCost === 'number'
+      ? item.internalCost
+      : (typeof partsUrlMeta?.price === 'number' ? partsUrlMeta.price : undefined);
     const partCost = Number(item.parts || 0) > 0
       ? Number(item.parts || 0)
       : (internalCost != null ? (markedUpPartPrice(internalCost, DEFAULT_PART_MARKUP_PCT) || 0) : 0);
@@ -2270,6 +2297,39 @@ const NewWorkOrderWindow: React.FC = () => {
                   {primaryPartsItem?.parts != null ? ` • Sold $${Number(primaryPartsItem.parts || 0).toFixed(2)}` : ''}
                   {primaryPartsItem?.labor != null ? ` • Labor $${Number(primaryPartsItem.labor || 0).toFixed(2)}` : ''}
                 </div>
+              </div>
+            ) : null}
+            {primaryPartsItem ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                <label className="text-xs text-zinc-400">Internal cost
+                  <input type="number" min="0" step="0.01" className="gb-wo-parts-control mt-1"
+                    value={primaryPartsItem.internalCost ?? ''}
+                    onChange={e => {
+                      const internalCost = e.target.value === '' ? undefined : Number(e.target.value);
+                      const parts = internalCost == null ? primaryPartsItem.parts : markedUpPartPrice(internalCost, primaryPartsItem.markupPct ?? DEFAULT_PART_MARKUP_PCT);
+                      updatePrimaryPartsItem({ internalCost, ...(parts == null ? {} : { parts }) });
+                    }} />
+                </label>
+                <label className="text-xs text-zinc-400">Markup %
+                  <input type="number" min="0" step="1" list="part-markup-presets" className="gb-wo-parts-control mt-1"
+                    value={primaryPartsItem.markupPct ?? DEFAULT_PART_MARKUP_PCT}
+                    onChange={e => {
+                      const markupPct = Number(e.target.value || 0);
+                      const parts = markedUpPartPrice(primaryPartsItem.internalCost, markupPct);
+                      updatePrimaryPartsItem({ markupPct, ...(parts == null ? {} : { parts }) });
+                    }} />
+                  <datalist id="part-markup-presets">{PART_MARKUP_PRESETS.map(value => <option key={value} value={value} />)}</datalist>
+                </label>
+                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={primaryPartsItem.requiresOrder !== false}
+                    onChange={e => updatePrimaryPartsItem({ requiresOrder: e.target.checked, orderStatus: e.target.checked ? 'needed' : 'in_stock' })} />
+                  Order required
+                </label>
+                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={primaryPartsItem.taxExempt === true}
+                    onChange={e => updatePrimaryPartsItem({ taxExempt: e.target.checked, supplierTaxRate: 8 })} />
+                  Tax Exempt
+                </label>
               </div>
             ) : null}
             <div className="gb-wo-parts-grid">

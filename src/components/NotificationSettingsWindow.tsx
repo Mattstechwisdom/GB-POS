@@ -151,7 +151,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        <Section title="Device Notifications" accent>
+        <Section title="Device Notifications" detail="Authorize this device first, then choose the alerts this technician wants to receive." accent>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="text-xs text-zinc-400">
               Permission: <span className={deviceAllowed ? 'text-[#39FF14]' : deviceBlocked ? 'text-red-300' : 'text-zinc-200'}>{permissionLabel[deviceSettings.permission]}</span>
@@ -163,7 +163,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
                 disabled={requestingPermission || deviceUnsupported}
                 onClick={askForPermission}
               >
-                {requestingPermission ? 'Requesting...' : deviceBlocked ? 'Open app permission settings' : 'Allow device notifications'}
+                {requestingPermission ? 'Waiting for phone...' : deviceBlocked ? 'Try authorization again' : 'Authorize notifications'}
               </button>
             ) : (
               <label className="flex items-center gap-2 text-sm">
@@ -219,7 +219,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
               <DeviceToggle checked={deviceSettings.dailyLook} disabled={deviceDisabled} title="Daily Look digest" detail="Send the daily shop rundown to this device." onChange={checked => updateDevice({ dailyLook: checked })} />
             </div>
           ) : (
-            <div className="mt-3 text-xs text-zinc-400">After permission is allowed, this device will show a checklist for the alerts the tech wants to receive.</div>
+            <div className="mt-3 text-xs text-zinc-400">Tap Authorize notifications and accept the phone's notification request. Your alert checklist will appear here after access is allowed.</div>
           )}
         </Section>
 

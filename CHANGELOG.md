@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.11 (2026-07-18)
+- Parts Ordering: records distributor, internal cost, adjustable markup, order-required status, supplier tax treatment, and order state on each work-order part.
+- Parts Ordering: changes the default part markup to 10% while retaining 5% increments and custom percentage entry in Devices/Repairs and Repair Selection.
+- Parts Ordering: keeps in-stock parts out of the purchase queue and turns pasted distributor URLs into saved, openable ordering links with scraped title, vendor, and cost details.
+- End of Day: adds direct desktop and mobile entry points with labor, parts, products, payment, check-in, closeout, cost, tax, and margin summaries.
+- End of Day: adds a parts-to-purchase queue with distributor links, payment verification indicators, and explicit warnings for missing costs.
+- End of Day: adds saved report recipients and a concise email flow, with desktop sending and a prefilled mobile email fallback.
+- Notifications: opens notification settings as a dedicated window and clarifies the device authorization flow before showing alert choices.
+
 ## v0.5.10 (2026-07-17)
 - Android Updates: signs every release with one persistent production certificate so future APK updates install over the existing app.
 - Railway: binds the hosted web server to Railway's assigned `PORT` and fails clearly when required runtime configuration is missing.

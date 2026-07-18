@@ -8,8 +8,6 @@ import {
   NotificationRecord,
 } from '@/lib/notifications';
 
-const NotificationSettingsWindow = React.lazy(() => import('./NotificationSettingsWindow'));
-
 function fmtWhen(iso?: string) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -47,7 +45,6 @@ function kindColor(kind: NotificationRecord['kind']) {
 const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideCloseButton = false }) => {
   const [list, setList] = useState<NotificationRecord[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(true);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
   const load = async () => {
@@ -115,8 +112,15 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
             Clear read
           </button>
           <button
-            className={`px-3 py-1.5 rounded border text-sm ${showSettings ? 'bg-[#BC13FE] text-white border-[#BC13FE]' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
-            onClick={() => setShowSettings(v => !v)}
+            className="px-3 py-1.5 rounded border text-sm bg-zinc-800 border-zinc-700 text-zinc-200"
+            onClick={async () => {
+              const api: any = (window as any).api;
+              if (typeof api?.openNotificationSettings === 'function') {
+                await api.openNotificationSettings();
+                return;
+              }
+              dispatchOpenModal('notificationSettings');
+            }}
           >
             Settings
           </button>
@@ -139,13 +143,6 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
         </div>
       </div>
 
-      {showSettings ? (
-        <div className="flex-1 overflow-auto border border-zinc-800 rounded">
-          <React.Suspense fallback={<div className="p-6 text-center text-zinc-400">Loading settings...</div>}>
-            <NotificationSettingsWindow embedded />
-          </React.Suspense>
-        </div>
-      ) : (
       <div className="flex-1 overflow-auto border border-zinc-800 rounded">
         {loading && (
           <div className="p-6 text-center text-zinc-400">Loading…</div>
@@ -250,7 +247,6 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           );
         })}
       </div>
-      )}
     </div>
   );
 };

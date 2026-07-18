@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
+import { derivePartVendorFromUrl, splitTaxIncludedCost } from '../lib/partOrdering';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -696,6 +697,7 @@ const EODWindow: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [viewMode, setViewMode] = useState<'reports' | 'trends'>('reports');
   const [showCommissionPanel, setShowCommissionPanel] = useState(false);
+  const [showEmailSettings, setShowEmailSettings] = useState(false);
   const [commissionRange, setCommissionRange] = useState<CommissionRangeKey>('currentMonth');
   const [commissionCustomFrom, setCommissionCustomFrom] = useState('');
   const [commissionCustomTo, setCommissionCustomTo] = useState('');
@@ -1195,6 +1197,7 @@ const EODWindow: React.FC = () => {
       return sum + parts;
     }, 0));
     const partsCost = round2(workRowsInRange.reduce((sum, workOrder) => sum + recordInternalCostTotal(workOrder), 0));
+    const laborSold = round2(workRowsInRange.reduce((sum, workOrder) => sum + (readNumber(workOrder, 'laborCost') ?? 0), 0));
     const productsSold = round2(saleRowsInRange.reduce((sum, sale) => {
       const items = Array.isArray(sale?.items) ? sale.items : [];
       if (items.length) return sum + items.reduce((lineSum: number, item: any) => lineSum + itemSoldTotal(item), 0);
@@ -1231,12 +1234,63 @@ const EODWindow: React.FC = () => {
       cashTotal,
       partsSold,
       partsCost,
+      laborSold,
       productsSold,
       productsCost,
       checkInCount,
       closedTicketCount,
     };
   }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, sales, start, workOrders]);
+
+  const partsPurchaseQueue = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
+    const rows: Array<any> = [];
+    for (const workOrder of (workOrders || [])) {
+      if (!isDateWithin(getTimelineDate(workOrder), min, max)) continue;
+      const items = Array.isArray(workOrder?.items) ? workOrder.items : [];
+      for (const item of items) {
+        const url = String(item?.orderSourceUrl || workOrder?.partsOrderUrl || '').trim();
+        const requiresOrder = item?.requiresOrder === true || (!!url && item?.requiresOrder !== false);
+        const status = String(item?.orderStatus || (workOrder?.partsOrderDate ? 'ordered' : 'needed')).toLowerCase();
+        if (!requiresOrder || status === 'ordered' || status === 'received' || status === 'in_stock') continue;
+        const internalCost = Number(item?.internalCost);
+        const hasCost = Number.isFinite(internalCost) && internalCost >= 0;
+        const taxExempt = item?.taxExempt === true;
+        const taxRate = Number(item?.supplierTaxRate ?? 8) || 8;
+        const cost = splitTaxIncludedCost(hasCost ? internalCost : 0, taxExempt, taxRate);
+        rows.push({
+          workOrderId: workOrder?.id,
+          customer: workOrder?.customerName || `Client #${workOrder?.customerId || ''}`,
+          title: item?.repair || item?.description || 'Repair part',
+          distributor: item?.distributor || item?.partSource || derivePartVendorFromUrl(url) || 'Unknown distributor',
+          url,
+          hasCost,
+          totalCost: cost.total,
+          preTaxCost: cost.preTax,
+          supplierTax: cost.tax,
+          sold: Number(item?.parts || 0) || 0,
+          taxExempt,
+          paymentRecorded: Number(workOrder?.amountPaid || 0) > 0 || (Array.isArray(workOrder?.payments) && workOrder.payments.length > 0),
+        });
+      }
+    }
+    rows.sort((a, b) => a.distributor.localeCompare(b.distributor) || Number(a.workOrderId || 0) - Number(b.workOrderId || 0));
+    return rows;
+  }, [end, start, workOrders]);
+
+  const partsPurchaseTotals = useMemo(() => {
+    const verified = partsPurchaseQueue.filter(row => row.hasCost);
+    return {
+      count: partsPurchaseQueue.length,
+      missingCost: partsPurchaseQueue.length - verified.length,
+      cost: round2(verified.reduce((sum, row) => sum + row.totalCost, 0)),
+      preTax: round2(verified.reduce((sum, row) => sum + row.preTaxCost, 0)),
+      supplierTax: round2(verified.reduce((sum, row) => sum + row.supplierTax, 0)),
+      charged: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.sold, 0)),
+      profit: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.sold, 0) - verified.reduce((sum, row) => sum + row.totalCost, 0)),
+    };
+  }, [partsPurchaseQueue]);
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -1841,7 +1895,7 @@ const EODWindow: React.FC = () => {
     try {
       const api = (window as any).api;
       if (!api?.emailSendReportHtml) {
-        alert('Email sending not configured in this build.');
+        window.location.href = `mailto:${encodeURIComponent(recipients.join(','))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailText)}`;
         return;
       }
       const sentAtIso = new Date().toISOString();
@@ -1853,7 +1907,11 @@ const EODWindow: React.FC = () => {
         html = `${html}<div style="margin-top:10px;color:#a1a1aa;font-size:12px;">${escapeHtml(stamp)}</div>`;
       }
       for (const to of recipients) {
-        await api.emailSendReportHtml({ to, subject, bodyText: text, html });
+        const result = await api.emailSendReportHtml({ to, subject, bodyText: text, html });
+        if (result?.ok === false) {
+          window.location.href = `mailto:${encodeURIComponent(recipients.join(','))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+          return;
+        }
       }
       setSavedSettings(s => ({ ...s, lastSentAt: sentAtIso }));
       alert('Report sent');
@@ -1896,8 +1954,8 @@ const EODWindow: React.FC = () => {
               >← Back</button>
             )}
             <div>
-              <div className="text-sm uppercase tracking-[0.2em] text-zinc-500">Reports</div>
-              <h1 className="text-3xl font-bold text-[#39FF14]">{viewMode === 'trends' ? 'Trends & Insights' : 'Daily & Custom Reports'}</h1>
+              <div className="text-sm uppercase tracking-[0.2em] text-zinc-500">Shop closeout</div>
+              <h1 className="text-3xl font-bold text-[#39FF14]">{viewMode === 'trends' ? 'Trends & Insights' : 'End of Day Report'}</h1>
               <p className="text-zinc-400 text-sm max-w-2xl">{viewMode === 'trends'
                 ? 'Review monthly volume, busy days, and popular devices/repairs at a glance.'
                 : 'Track daily intake, check-ins, and closures for any range. Monthly totals and commission live in their own view.'}
@@ -1907,6 +1965,10 @@ const EODWindow: React.FC = () => {
           <div className="flex gap-2">
             {viewMode === 'reports' && (
               <>
+                <button
+                  className="px-3 py-2 text-sm bg-amber-500 text-black border border-amber-400 rounded hover:brightness-110"
+                  onClick={() => setShowEmailSettings(true)}
+                >EOD Report Email</button>
                 <button
                   className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
                   onClick={() => setShowCommissionPanel(true)}
@@ -1990,6 +2052,11 @@ const EODWindow: React.FC = () => {
                     <div className="text-xs text-zinc-500">Cash</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cashTotal)}</div>
                     <div className="text-[11px] text-zinc-400">after change given</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
+                    <div className="text-xs text-zinc-500">Labor billed</div>
+                    <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.laborSold)}</div>
+                    <div className="text-[11px] text-zinc-400">customer labor charges</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Parts charged</div>
@@ -2079,6 +2146,68 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            <section className="bg-zinc-950 border border-amber-500/40 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-amber-300">Parts to Purchase</h3>
+                  <div className="text-xs text-zinc-400">Only saved work-order parts marked Order required and not yet marked ordered or received.</div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-right text-xs">
+                  <div><div className="text-zinc-500">Verified cost</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.cost)}</div></div>
+                  <div><div className="text-zinc-500">Supplier tax</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.supplierTax)}</div></div>
+                  <div><div className="text-zinc-500">Parts charged</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.charged)}</div></div>
+                  <div><div className="text-zinc-500">Part margin</div><div className="font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div></div>
+                </div>
+              </div>
+              {partsPurchaseTotals.missingCost > 0 ? (
+                <div className="mb-3 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+                  {partsPurchaseTotals.missingCost} part{partsPurchaseTotals.missingCost === 1 ? '' : 's'} missing internal cost. They remain in the queue but are excluded from cost and margin totals.
+                </div>
+              ) : null}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="text-xs text-zinc-500 border-b border-zinc-800">
+                    <tr><th className="py-2 text-left">Distributor / Part</th><th className="py-2 text-left">WO / Client</th><th className="py-2 text-right">Cost</th><th className="py-2 text-right">Tax</th><th className="py-2 text-right">Charged</th><th className="py-2 text-center">Payment</th><th className="py-2 text-right">Order</th></tr>
+                  </thead>
+                  <tbody>
+                    {partsPurchaseQueue.map((row, index) => (
+                      <tr key={`${row.workOrderId}-${row.url}-${index}`} className="border-b border-zinc-900">
+                        <td className="py-2 pr-3"><div className="font-medium">{row.distributor}</div><div className="text-xs text-zinc-400">{row.title}</div></td>
+                        <td className="py-2 pr-3"><div>WO #{row.workOrderId}</div><div className="text-xs text-zinc-400">{row.customer}</div></td>
+                        <td className="py-2 text-right">{row.hasCost ? formatCurrency(row.totalCost) : 'Not entered'}</td>
+                        <td className="py-2 text-right">{row.taxExempt ? 'Exempt' : formatCurrency(row.supplierTax)}</td>
+                        <td className="py-2 text-right">{formatCurrency(row.sold)}</td>
+                        <td className={`py-2 text-center text-xs ${row.paymentRecorded ? 'text-[#39FF14]' : 'text-amber-300'}`}>{row.paymentRecorded ? 'Recorded' : 'Verify'}</td>
+                        <td className="py-2 text-right">{row.url ? <button type="button" className="px-3 py-1 rounded bg-amber-500 text-black font-semibold" onClick={() => { const api = (window as any).api; if (api?.openUrl) void api.openUrl(row.url); else if (api?.openExternal) void api.openExternal(row.url); else window.open(row.url, '_blank', 'noopener,noreferrer'); }}>Open URL</button> : <span className="text-red-300">Missing URL</span>}</td>
+                      </tr>
+                    ))}
+                    {!partsPurchaseQueue.length ? <tr><td colSpan={7} className="py-6 text-center text-zinc-500">No parts need purchasing in this report range.</td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {showEmailSettings ? (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onClick={() => setShowEmailSettings(false)}>
+                <div className="w-full max-w-lg rounded-lg border border-amber-500/50 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.65)]" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div><h3 className="text-xl font-semibold text-amber-300">EOD Report Email</h3><p className="text-xs text-zinc-400 mt-1">Separate multiple recipients with commas. These settings sync with the report configuration.</p></div>
+                    <button type="button" className="text-zinc-400 hover:text-white" onClick={() => setShowEmailSettings(false)}>x</button>
+                  </div>
+                  <label className="block text-sm text-zinc-300 mb-3">Recipients
+                    <textarea className="mt-1 min-h-24 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" placeholder="tech@example.com, owner@example.com" value={draftSettings.recipients} onChange={e => setDraftSettings(s => ({ ...s, recipients: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm text-zinc-300 mb-4">Subject
+                    <input className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={draftSettings.subject || ''} onChange={e => setDraftSettings(s => ({ ...s, subject: e.target.value }))} />
+                  </label>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" onClick={() => setShowEmailSettings(false)}>Cancel</button>
+                    <button type="button" className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-black" onClick={() => { setSavedSettings(s => ({ ...s, recipients: draftSettings.recipients, subject: draftSettings.subject })); setShowEmailSettings(false); }}>Save Email Settings</button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {showCommissionPanel ? (
               <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 p-4" onClick={() => setShowCommissionPanel(false)}>
@@ -2387,7 +2516,9 @@ const EODWindow: React.FC = () => {
               </div>
             ) : null}
 
-            <div className="grid grid-cols-12 gap-3">
+            <details className="rounded-lg border border-zinc-800 bg-zinc-950/60">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-[#39FF14]">Advanced reporting and batch schedule</summary>
+            <div className="grid grid-cols-12 gap-3 p-3 pt-0">
               <div className="col-span-12 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
@@ -2679,6 +2810,7 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
             </div>
+            </details>
           </div>
         ) : (
           <div className="grid grid-cols-12 gap-3">
