@@ -640,6 +640,11 @@ function MobileDrawerPreview() {
     setModalStack((stack) => stack.filter((entry) => entry.id !== id));
   };
 
+  useEffect(() => {
+    registerOpenModal(openModal);
+    return () => unregisterOpenModal();
+  }, []);
+
   return (
     <main className="mobile-shell">
       <header className="mobile-topbar">
@@ -648,7 +653,7 @@ function MobileDrawerPreview() {
         </button>
         <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
         <MobileBrandTitle />
-        <button type="button" className="mobile-icon-button" aria-label="Open notifications">
+        <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
           <span aria-hidden="true">!</span>
         </button>
       </header>

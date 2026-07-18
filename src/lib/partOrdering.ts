@@ -5,6 +5,9 @@ export type PartUrlMetadata = {
   price?: number;
   currency?: string;
   vendor?: string;
+  description?: string;
+  images?: string[];
+  specs?: Array<{ name: string; value: string }>;
   error?: string;
 };
 
@@ -119,6 +122,54 @@ function flattenJsonLd(input: any): any[] {
   return out;
 }
 
+function absoluteHttpUrl(value: unknown, pageUrl: string): string {
+  const raw = decodeHtml(String(value || '')).trim();
+  if (!raw) return '';
+  try {
+    const resolved = new URL(raw, pageUrl);
+    return /^https?:$/i.test(resolved.protocol) ? resolved.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function uniqueImages(values: unknown[], pageUrl: string): string[] {
+  const output: string[] = [];
+  for (const value of values.flat(Infinity)) {
+    const url = absoluteHttpUrl(value, pageUrl);
+    if (url && !output.includes(url)) output.push(url);
+    if (output.length === 2) break;
+  }
+  return output;
+}
+
+function stripHtml(value: unknown): string {
+  return decodeHtml(String(value || '').replace(/<script\b[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' '));
+}
+
+function productSpecs(product: any, html: string): Array<{ name: string; value: string }> {
+  const properties = Array.isArray(product?.additionalProperty) ? product.additionalProperty : [];
+  const structured = properties
+    .map((entry: any) => ({
+      name: decodeHtml(String(entry?.name || entry?.propertyID || '')),
+      value: decodeHtml(String(entry?.value || '')),
+    }))
+    .filter((entry: any) => entry.name && entry.value);
+  const tableSpecs: Array<{ name: string; value: string }> = [];
+  const rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let row: RegExpExecArray | null;
+  while ((row = rowPattern.exec(html)) && tableSpecs.length < 20) {
+    const cells = [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((cell) => stripHtml(cell[1]));
+    if (cells.length >= 2 && cells[0] && cells[1] && cells[0].length <= 80 && cells[1].length <= 240) {
+      tableSpecs.push({ name: cells[0], value: cells[1] });
+    }
+  }
+  const combined = [...structured, ...tableSpecs];
+  return combined
+    .filter((entry, index) => combined.findIndex((candidate) => candidate.name.toLowerCase() === entry.name.toLowerCase()) === index)
+    .slice(0, 20);
+}
+
 export function extractPartMetadataFromHtml(html: string, url: string): PartUrlMetadata {
   const jsonLd = collectJsonLd(html).flatMap(flattenJsonLd);
   const product = jsonLd.find((entry) => {
@@ -137,13 +188,25 @@ export function extractPartMetadataFromHtml(html: string, url: string): PartUrlM
     parseMoney(findMetaContent(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
     parseMoney(html.match(/(?:price|salePrice|regularPrice)["']?\s*[:=]\s*["']?\$?(\d+(?:\.\d{1,2})?)/i)?.[1]);
 
+  const description = decodeHtml(
+    product?.description || findMetaContent(html, ['og:description', 'twitter:description', 'description'])
+  );
+  const images = uniqueImages([
+    product?.image,
+    findMetaContent(html, ['og:image', 'twitter:image']),
+  ], url);
+  const specs = productSpecs(product, html);
+
   return {
-    ok: Boolean(title || price),
+    ok: Boolean(title || price || description || images.length),
     url: normalizePartOrderUrl(url),
     title,
     price,
     currency: offer?.priceCurrency || findMetaContent(html, ['product:price:currency']) || 'USD',
     vendor: derivePartVendorFromUrl(url),
+    description: description || undefined,
+    images,
+    specs,
   };
 }
 

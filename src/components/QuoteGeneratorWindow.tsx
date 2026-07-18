@@ -10,6 +10,7 @@ import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
+import { DEFAULT_PART_MARKUP_PCT, markedUpPartPrice, scrapePartUrl } from '../lib/partOrdering';
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
 
@@ -496,6 +497,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Mode: sales or repairs quote workflow
   const [mode, setMode] = useState<'sales' | 'repairs'>('sales');
   const [sales, setSales] = useState<SalesState>({ items: [] });
+  const [scrapingItem, setScrapingItem] = useState<number | null>(null);
+  const [scrapeMessages, setScrapeMessages] = useState<Record<number, string>>({});
   const [repairs, setRepairs] = useState<RepairsState>({ lines: [] });
   const [quotes, setQuotes] = useState<any[]>([]);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -3967,6 +3970,56 @@ function QuoteGeneratorWindow(): JSX.Element {
   function addSaleItem() {
     setSales((s) => ({ ...s, items: [...s.items, { expanded: true, dynamic: {}, images: [] }] }));
   }
+
+  async function scrapeQuoteItem(idx: number) {
+    const item = sales.items[idx];
+    const url = String(item?.url || '').trim();
+    if (!url || scrapingItem !== null) return;
+    setScrapingItem(idx);
+    setScrapeMessages((current) => ({ ...current, [idx]: 'Reading product page...' }));
+    try {
+      const metadata = await scrapePartUrl(url);
+      if (!metadata.ok) throw new Error(metadata.error || 'This website did not expose readable product details.');
+      setSales((current) => ({
+        ...current,
+        items: current.items.map((existing, itemIdx) => {
+          if (itemIdx !== idx) return existing;
+          const markupPct = String(existing.markupPct || DEFAULT_PART_MARKUP_PCT);
+          const internalCost = metadata.price ?? existing.internalCost;
+          const price = metadata.price === undefined
+            ? existing.price
+            : markedUpPartPrice(metadata.price, markupPct);
+          const scrapedSpecs = (metadata.specs || []).map((spec) => ({ desc: spec.name, value: spec.value }));
+          const existingSpecs = Array.isArray(existing.dynamic?.otherSpecs) ? existing.dynamic.otherSpecs : [];
+          const images = [...(metadata.images || []), ...(existing.images || [])]
+            .filter((image, imageIdx, all) => image && all.indexOf(image) === imageIdx)
+            .slice(0, 3);
+          return {
+            ...existing,
+            url: metadata.url || existing.url,
+            model: metadata.title || existing.model,
+            description: metadata.description || existing.description,
+            prompt: metadata.description || existing.prompt,
+            images,
+            internalCost,
+            markupPct,
+            price,
+            dynamic: {
+              ...(existing.dynamic || {}),
+              otherSpecs: scrapedSpecs.length ? scrapedSpecs : existingSpecs,
+              sourceVendor: metadata.vendor || existing.dynamic?.sourceVendor,
+            },
+          };
+        }),
+      }));
+      const found = [metadata.title && 'title', metadata.price !== undefined && 'cost', metadata.images?.length && `${metadata.images.length} image${metadata.images.length === 1 ? '' : 's'}`, metadata.description && 'summary', metadata.specs?.length && 'specs'].filter(Boolean);
+      setScrapeMessages((current) => ({ ...current, [idx]: `Added ${found.join(', ') || 'available details'}. Review before saving.` }));
+    } catch (error: any) {
+      setScrapeMessages((current) => ({ ...current, [idx]: error?.message || 'Could not read this product page.' }));
+    } finally {
+      setScrapingItem(null);
+    }
+  }
   function removeSaleItem(idx: number) {
     setSales((s) => ({ ...s, items: s.items.filter((_, i) => i !== idx) }));
     if (createSaleSelecting) {
@@ -6192,7 +6245,20 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 value={it.url || ''}
                                 onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
                                 placeholder="https://example.com/product"
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void scrapeQuoteItem(idx);
+                                  }
+                                }}
                               />
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
+                                onClick={() => void scrapeQuoteItem(idx)}
+                                disabled={!it.url || scrapingItem !== null}
+                                title="Fill this quote item from the product page"
+                              >{scrapingItem === idx ? 'Reading...' : 'Auto Fill'}</button>
                               <button
                                 type="button"
                                 className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
@@ -6214,7 +6280,9 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 title="Open in default browser"
                               >Open</button>
                             </div>
-                            <div className="text-[10px] text-zinc-400 mt-0.5">Optional link to supplier or reference</div>
+                            <div className={`text-[10px] mt-0.5 ${scrapeMessages[idx]?.startsWith('Added') ? 'text-[#39FF14]' : 'text-zinc-400'}`}>
+                              {scrapeMessages[idx] || 'Paste a product link, then choose Auto Fill. All imported details remain editable.'}
+                            </div>
                           </div>
                           <div className="col-span-4 mt-2">
                             <div className="flex gap-2 items-end">

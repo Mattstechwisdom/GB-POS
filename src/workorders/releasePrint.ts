@@ -146,9 +146,9 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Release Form - ${htmlEscape(invoiceDisplay)}</title>
     <style>
-      @page { size: A4; margin: 12mm; }
+      @page { size: A4; margin: 6mm; }
       html, body { background:#fff; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; margin: 0; }
-      .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 12mm; }
+      .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 5mm; }
       .brand { display:grid; grid-template-columns:minmax(0, 1.35fr) auto minmax(210px, 0.9fr); align-items:center; gap:0; margin-bottom:10px; }
       .brand-left { display:flex; align-items:center; gap:12px; min-width:0; }
       .brand-right { text-align:right; font-size: 10pt; line-height:1.2; white-space:nowrap; }
@@ -172,9 +172,9 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
       .totals .row { display:flex; gap:12px; align-items:center; }
       .totals .label { width:60%; color:#444; }
-      .terms { font-size:9pt; text-align:center; color:#222; }
+      .terms { width:100%; box-sizing:border-box; font-size:8pt; line-height:1.18; text-align:justify; color:#222; break-inside:avoid-page; page-break-inside:avoid; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
-      .final-block { page-break-inside: avoid; margin-top:12px; }
+      .final-block { break-inside:avoid-page; page-break-inside:avoid; margin-top:10px; }
       .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
       .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
       .muted-label { color:#444; font-size:10pt; }

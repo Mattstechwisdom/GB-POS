@@ -1,5 +1,8 @@
 export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'tech_schedule' | 'daily_look' | 'work_order' | 'sale';
 
+import { publicAsset } from './publicAsset';
+import { Capacitor } from '@capacitor/core';
+
 export type NotificationRecord = {
   id?: number;
   key: string; // stable de-dup key
@@ -217,6 +220,7 @@ function channelEnabledForKind(settings: DeviceNotificationSettings, kind: Notif
 }
 
 async function getLocalNotificationsPlugin(): Promise<any | null> {
+  if (!Capacitor.isNativePlatform()) return null;
   try {
     const mod = await import('@capacitor/local-notifications');
     return (mod as any).LocalNotifications || null;
@@ -280,6 +284,9 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
           body,
           largeBody: body || title,
           channelId: 'gbpos-tech-alerts',
+          smallIcon: 'ic_launcher_foreground',
+          largeIcon: 'ic_launcher',
+          iconColor: '#BC13FE',
           schedule: { at: new Date(Date.now() + 250) },
         }],
       });
@@ -291,7 +298,7 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
 
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
-      new Notification(title, { body, tag: rec.key });
+      new Notification(title, { body, tag: rec.key, icon: publicAsset('logo.png') });
     } catch {
       // ignore
     }
@@ -610,6 +617,19 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
     try { await scheduleDeviceConsultationReminders(); } catch {}
   }
   return settings;
+}
+
+export async function sendTestDeviceNotification(): Promise<boolean> {
+  const settings = await loadDeviceNotificationSettings();
+  if (!settings.enabled || settings.permission !== 'granted') return false;
+  await sendDeviceNotification({
+    key: `device-test:${Date.now()}`,
+    kind: 'daily_look',
+    title: 'GadgetBoy POS',
+    message: 'Notifications are enabled on this device.',
+    createdAt: nowIso(),
+  }, { ...settings, dailyLook: true });
+  return true;
 }
 
 export async function listNotifications(): Promise<NotificationRecord[]> {

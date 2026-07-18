@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { dispatchOpenModal } from '@/lib/modalBus';
+import { canDispatchOpenModal, dispatchOpenModal } from '@/lib/modalBus';
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -114,6 +114,10 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           <button
             className="px-3 py-1.5 rounded border text-sm bg-zinc-800 border-zinc-700 text-zinc-200"
             onClick={async () => {
+              if (canDispatchOpenModal()) {
+                dispatchOpenModal('notificationSettings');
+                return;
+              }
               const api: any = (window as any).api;
               if (typeof api?.openNotificationSettings === 'function') {
                 await api.openNotificationSettings();

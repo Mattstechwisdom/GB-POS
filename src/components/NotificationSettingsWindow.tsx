@@ -8,9 +8,11 @@ import {
   saveDeviceNotificationSettings,
   saveNotificationSettings,
   scheduleDeviceConsultationReminders,
+  sendTestDeviceNotification,
   syncNotificationsFromCalendar,
   syncNotificationsFromRecords,
 } from '@/lib/notifications';
+import { publicAsset } from '@/lib/publicAsset';
 
 const consultationLeadHourOptions = [1, 2, 3, 4, 6, 12, 24];
 
@@ -58,16 +60,26 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
   const [saving, setSaving] = useState(false);
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [permissionMessage, setPermissionMessage] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
 
-  useEffect(() => {
-    (async () => {
+  const load = async () => {
+    setLoadError('');
+    try {
       const [notificationSettings, nextDeviceSettings] = await Promise.all([
         loadNotificationSettings(),
         loadDeviceNotificationSettings(),
       ]);
       setSettings(notificationSettings);
       setDeviceSettings(nextDeviceSettings);
-    })();
+    } catch (error: any) {
+      setLoadError(error?.message || 'Notification settings could not be loaded.');
+    }
+  };
+
+  useEffect(() => {
+    void load();
   }, []);
 
   const updateDevice = (patch: Partial<DeviceNotificationSettings>) => {
@@ -94,20 +106,36 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
 
   const askForPermission = async () => {
     setRequestingPermission(true);
+    setPermissionMessage('');
     try {
       const next = await requestDeviceNotificationPermission();
       setDeviceSettings(next);
       if (next.permission === 'granted') {
+        setPermissionMessage('Notifications are allowed. Choose the alerts this device should receive, then save.');
         try { await syncNotificationsFromCalendar(); } catch {}
         try { await syncNotificationsFromRecords(); } catch {}
+      } else if (next.permission === 'denied') {
+        setPermissionMessage('Notifications are blocked in this device\'s operating-system settings.');
+      } else if (next.permission === 'unsupported') {
+        setPermissionMessage('This device does not expose system notifications to the app.');
       }
+    } catch (error: any) {
+      setPermissionMessage(error?.message || 'The operating-system permission request could not be opened.');
     } finally {
       setRequestingPermission(false);
     }
   };
 
   if (!settings || !deviceSettings) {
-    return <div className="p-4 text-zinc-200 bg-zinc-900 h-screen">Loading...</div>;
+    return (
+      <div className="p-4 text-zinc-200 bg-zinc-900 h-screen flex items-center justify-center">
+        <div className="text-center">
+          <img src={publicAsset('logo.png')} alt="GadgetBoy POS" className="w-16 h-16 object-contain mx-auto mb-3" />
+          <div>{loadError || 'Loading notification settings...'}</div>
+          {loadError ? <button type="button" className="mt-3 px-3 py-1.5 rounded bg-[#BC13FE] text-white" onClick={() => void load()}>Retry</button> : null}
+        </div>
+      </div>
+    );
   }
 
   const deviceAllowed = deviceSettings.permission === 'granted';
@@ -118,9 +146,12 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
   return (
     <div className="h-screen bg-zinc-900 text-zinc-100 p-4 overflow-auto">
       <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <div className="text-xl font-semibold">Notification Settings</div>
-          <div className="text-xs text-zinc-400">Choose what to track and which alerts this device should receive.</div>
+        <div className="flex items-center gap-3 min-w-0">
+          <img src={publicAsset('logo.png')} alt="GadgetBoy POS" className="w-12 h-12 object-contain flex-none" />
+          <div>
+            <div className="text-xl font-semibold text-[#BC13FE]">Notification Settings</div>
+            <div className="text-xs text-zinc-400">Choose what to track and which alerts this device should receive.</div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {savedAt ? <div className="text-xs text-neon-green">Saved {savedAt}</div> : null}
@@ -163,7 +194,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
                 disabled={requestingPermission || deviceUnsupported}
                 onClick={askForPermission}
               >
-                {requestingPermission ? 'Waiting for phone...' : deviceBlocked ? 'Try authorization again' : 'Authorize notifications'}
+                {requestingPermission ? 'Waiting for device...' : 'Allow notifications'}
               </button>
             ) : (
               <label className="flex items-center gap-2 text-sm">
@@ -183,6 +214,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
           {deviceBlocked ? (
             <div className="mt-3 text-xs text-red-200">Notifications are blocked by the operating system. Turn them back on in this device's app settings, then return here.</div>
           ) : null}
+          {permissionMessage ? <div className={`mt-3 text-xs ${deviceAllowed ? 'text-[#39FF14]' : 'text-zinc-300'}`}>{permissionMessage}</div> : null}
 
           {deviceAllowed ? (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -217,9 +249,23 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
               <DeviceToggle checked={deviceSettings.calendarEvents} disabled={deviceDisabled} title="Calendar event reminders" detail="Use for non-consultation calendar reminders." onChange={checked => updateDevice({ calendarEvents: checked })} />
               <DeviceToggle checked={deviceSettings.technicianSchedules} disabled={deviceDisabled} title="Technician schedule changes" detail="Alert when availability is edited." onChange={checked => updateDevice({ technicianSchedules: checked })} />
               <DeviceToggle checked={deviceSettings.dailyLook} disabled={deviceDisabled} title="Daily Look digest" detail="Send the daily shop rundown to this device." onChange={checked => updateDevice({ dailyLook: checked })} />
+              <button
+                type="button"
+                className="md:col-span-2 px-3 py-2 rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 text-[#f3c4ff] text-sm font-semibold disabled:opacity-50"
+                disabled={deviceDisabled || sendingTest}
+                onClick={async () => {
+                  setSendingTest(true);
+                  try {
+                    const sent = await sendTestDeviceNotification();
+                    setPermissionMessage(sent ? 'Test notification sent to this device.' : 'Enable alerts on this device before sending a test.');
+                  } finally {
+                    setSendingTest(false);
+                  }
+                }}
+              >{sendingTest ? 'Sending...' : 'Send test notification'}</button>
             </div>
           ) : (
-            <div className="mt-3 text-xs text-zinc-400">Tap Authorize notifications and accept the phone's notification request. Your alert checklist will appear here after access is allowed.</div>
+            <div className="mt-3 text-xs text-zinc-400">Choose Allow notifications and accept the operating-system request. Your alert checklist will appear here after access is allowed.</div>
           )}
         </Section>
 

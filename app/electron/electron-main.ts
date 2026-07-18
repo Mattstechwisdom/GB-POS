@@ -145,6 +145,17 @@ function flattenScrapedJsonLd(input: any): any[] {
   return out;
 }
 
+function absoluteScrapedUrl(value: any, pageUrl: string): string {
+  const raw = decodeScrapedHtml(String(value || '')).trim();
+  if (!raw) return '';
+  try {
+    const resolved = new URL(raw, pageUrl);
+    return /^https?:$/i.test(resolved.protocol) ? resolved.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
 function extractPartMetadataFromHtml(html: string, url: string) {
   const jsonLd = collectScrapedJsonLd(html).flatMap(flattenScrapedJsonLd);
   const product = jsonLd.find((entry) => {
@@ -160,13 +171,46 @@ function extractPartMetadataFromHtml(html: string, url: string) {
     parseScrapedMoney(offer?.price) ||
     parseScrapedMoney(findScrapedMeta(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
     parseScrapedMoney(html.match(/(?:price|salePrice|regularPrice)["']?\s*[:=]\s*["']?\$?(\d+(?:\.\d{1,2})?)/i)?.[1]);
+  const description = decodeScrapedHtml(
+    product?.description || findScrapedMeta(html, ['og:description', 'twitter:description', 'description'])
+  );
+  const imageValues = [product?.image, findScrapedMeta(html, ['og:image', 'twitter:image'])].flat(Infinity);
+  const images: string[] = [];
+  for (const value of imageValues) {
+    const imageUrl = absoluteScrapedUrl(value, url);
+    if (imageUrl && !images.includes(imageUrl)) images.push(imageUrl);
+    if (images.length === 2) break;
+  }
+  const structuredSpecs = (Array.isArray(product?.additionalProperty) ? product.additionalProperty : [])
+    .map((entry: any) => ({
+      name: decodeScrapedHtml(String(entry?.name || entry?.propertyID || '')),
+      value: decodeScrapedHtml(String(entry?.value || '')),
+    }))
+    .filter((entry: any) => entry.name && entry.value);
+  const tableSpecs: Array<{ name: string; value: string }> = [];
+  const rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let row: RegExpExecArray | null;
+  while ((row = rowPattern.exec(html)) && tableSpecs.length < 20) {
+    const cells = [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+      .map((cell) => decodeScrapedHtml(cell[1].replace(/<script\b[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')));
+    if (cells.length >= 2 && cells[0] && cells[1] && cells[0].length <= 80 && cells[1].length <= 240) {
+      tableSpecs.push({ name: cells[0], value: cells[1] });
+    }
+  }
+  const combinedSpecs = [...structuredSpecs, ...tableSpecs];
+  const specs = combinedSpecs
+    .filter((entry, index) => combinedSpecs.findIndex((candidate) => candidate.name.toLowerCase() === entry.name.toLowerCase()) === index)
+    .slice(0, 20);
   return {
-    ok: Boolean(title || price),
+    ok: Boolean(title || price || description || images.length),
     url: normalizePartOrderUrl(url),
     title,
     price,
     currency: offer?.priceCurrency || findScrapedMeta(html, ['product:price:currency']) || 'USD',
     vendor: derivePartVendorFromUrl(url),
+    description: description || undefined,
+    images,
+    specs,
   };
 }
 
