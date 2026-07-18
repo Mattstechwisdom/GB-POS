@@ -1971,10 +1971,6 @@ const EODWindow: React.FC = () => {
                 >EOD Report Email</button>
                 <button
                   className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
-                  onClick={() => setShowCommissionPanel(true)}
-                >Monthly totals</button>
-                <button
-                  className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
                   onClick={() => handleSend()}
                   disabled={sending}
                 >{sending ? 'Sending…' : 'Send report'}</button>

@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -23,6 +23,7 @@
     "dev:nodemon": "wait-on tcp:5173 dist-main/app/electron/electron-main.js && nodemon --watch dist-main/app/electron --ext js --exec \"electron ./dist-main/app/electron/electron-main.js\"",
     "build": "vite build --config vite.config.ts",
     "build:mobile": "vite build --config vite.mobile.config.ts",
+    "build:railway": "npm run build && npm run build:mobile && node tools/merge-web-builds.cjs",
     "android:sync": "npm run build:mobile && cap sync android",
     "android:add": "cap add android",
     "android:open": "cap open android",

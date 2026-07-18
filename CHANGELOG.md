@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.12 (2026-07-18)
+- Railway: adds a production build contract that publishes distinct desktop and mobile web entry points together and checks runtime configuration health before deployment completes.
+- Railway: restores the required public Supabase runtime variables and corrects the production domain target from port 3000 to the service's assigned port 8080.
+- End of Day: removes the Monthly Totals button so EOD remains focused on same-day closeout; monthly reporting stays in Reporting.
+
 ## v0.5.11 (2026-07-18)
 - Parts Ordering: records distributor, internal cost, adjustable markup, order-required status, supplier tax treatment, and order state on each work-order part.
 - Parts Ordering: changes the default part markup to 10% while retaining 5% increments and custom percentage entry in Devices/Repairs and Repair Selection.
