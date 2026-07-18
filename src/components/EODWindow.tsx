@@ -684,13 +684,14 @@ type UnifiedRow = {
 };
 
 const EODWindow: React.FC = () => {
+  const [reportDayKey, setReportDayKey] = useState(() => new Date().toDateString());
   const [savedSettings, setSavedSettings] = useState<EodSettings>(defaultSettings);
   const [draftSettings, setDraftSettings] = useState<EodSettings>(defaultSettings);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
-  const [range, setRange] = useState<RangeKey>('today');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  const range = useMemo<RangeKey>(() => 'today', []);
+  const customFrom = '';
+  const customTo = '';
   const [loadingData, setLoadingData] = useState(true);
   const [settingsReady, setSettingsReady] = useState(false);
   const [batchInfo, setBatchInfo] = useState<any>(null);
@@ -704,6 +705,14 @@ const EODWindow: React.FC = () => {
 
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [techSummary, setTechSummary] = useState<string>('');
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nextDayKey = new Date().toDateString();
+      setReportDayKey(current => current === nextDayKey ? current : nextDayKey);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -836,7 +845,10 @@ const EODWindow: React.FC = () => {
     }
   }, { enabled: settingsReady, debounceMs: 1000, equals: Object.is });
 
-  const { start, end } = useMemo(() => resolveRange(range, customFrom, customTo), [range, customFrom, customTo]);
+  const { start, end } = useMemo(
+    () => resolveRange(range, customFrom, customTo),
+    [range, customFrom, customTo, reportDayKey],
+  );
   const rangeKey = `${start.getTime()}-${end.getTime()}`;
   const { start: commissionStart, end: commissionEnd } = useMemo(
     () => resolveCommissionRange(commissionRange, commissionCustomFrom, commissionCustomTo),
@@ -1958,7 +1970,7 @@ const EODWindow: React.FC = () => {
               <h1 className="text-3xl font-bold text-[#39FF14]">{viewMode === 'trends' ? 'Trends & Insights' : 'End of Day Report'}</h1>
               <p className="text-zinc-400 text-sm max-w-2xl">{viewMode === 'trends'
                 ? 'Review monthly volume, busy days, and popular devices/repairs at a glance.'
-                : 'Track daily intake, check-ins, and closures for any range. Monthly totals and commission live in their own view.'}
+                : 'Today only: review the shop activity from local midnight through close. Historical and monthly analysis remains in Reporting.'}
               </p>
             </div>
           </div>
@@ -1979,10 +1991,6 @@ const EODWindow: React.FC = () => {
                   onClick={() => handleBatchOutNow()}
                   disabled={sending}
                 >Batch Out now</button>
-                <button
-                  className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
-                  onClick={() => setViewMode('trends')}
-                >Trends</button>
               </>
             )}
           </div>
@@ -1993,38 +2001,11 @@ const EODWindow: React.FC = () => {
             <div className="grid grid-cols-12 gap-3">
               <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Date & Filters</h3>
+                  <h3 className="text-lg font-semibold">Today</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? 'Loading…' : rangeLabel(range, start, end)}</span>
                 </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Range</label>
-                  <select
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm"
-                    value={range}
-                    onChange={e => setRange(e.target.value as RangeKey)}
-                  >
-                    <option value="today">Today</option>
-                    <option value="yesterday">Yesterday</option>
-                    <option value="thisWeek">This week</option>
-                    <option value="thisMonth">This month</option>
-                    <option value="last7">Last 7 days</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-                {range === 'custom' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">From</label>
-                      <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">To</label>
-                      <input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={customTo} onChange={e => setCustomTo(e.target.value)} />
-                    </div>
-                  </div>
-                )}
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
-                  Adjust the date range above to change the report window. Email contents are customizable in the Email report section.
+                  This daily snapshot refreshes automatically after local midnight. It does not delete or alter the transaction history used by Reporting.
                 </div>
               </div>
 
@@ -2037,12 +2018,12 @@ const EODWindow: React.FC = () => {
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Total taken in</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.totalTaken)}</div>
-                    <div className="text-[11px] text-zinc-400">cash plus card for the selected range</div>
+                    <div className="text-[11px] text-zinc-400">cash plus card today</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Card</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cardTotal)}</div>
-                    <div className="text-[11px] text-zinc-400">non-cash intake in range</div>
+                    <div className="text-[11px] text-zinc-400">non-cash intake today</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Cash</div>
@@ -2513,7 +2494,7 @@ const EODWindow: React.FC = () => {
             ) : null}
 
             <details className="rounded-lg border border-zinc-800 bg-zinc-950/60">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-[#39FF14]">Advanced reporting and batch schedule</summary>
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-[#39FF14]">Daily email and batch settings</summary>
             <div className="grid grid-cols-12 gap-3 p-3 pt-0">
               <div className="col-span-12 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -2591,44 +2572,6 @@ const EODWindow: React.FC = () => {
                           <input type="checkbox" checked={!!draftSettings.includeBatchInfo} onChange={e => setDraftSettings(s => ({ ...s, includeBatchInfo: e.target.checked }))} />
                           <span>Include batch info (last batch out / sent stamp)</span>
                         </label>
-                        <div className="col-span-2 pt-1">
-                          <div className="text-xs text-zinc-400 mb-2">Weekly / Monthly</div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              className={`px-2.5 py-1 text-xs rounded border transition-colors ${range === 'thisWeek' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
-                              onClick={() => { setRange('thisWeek'); setTrendEditor(prev => (prev === 'week' ? null : 'week')); }}
-                              title="Weekly report options"
-                            >Weekly</button>
-                            <button
-                              type="button"
-                              className={`px-2.5 py-1 text-xs rounded border transition-colors ${range === 'thisMonth' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
-                              onClick={() => { setRange('thisMonth'); setTrendEditor(prev => (prev === 'month' ? null : 'month')); }}
-                              title="Monthly report options"
-                            >Monthly</button>
-                            <div className="text-[11px] text-zinc-500">Buttons switch the preview range.</div>
-                          </div>
-                          {trendEditor === 'week' ? (
-                            <label className="mt-2 flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={weekTrendsEnabled}
-                                onChange={e => setDraftSettings(s => ({ ...s, emailIncludeTrendsWeek: e.target.checked }))}
-                              />
-                              <span>Include weekly trends table</span>
-                            </label>
-                          ) : null}
-                          {trendEditor === 'month' ? (
-                            <label className="mt-2 flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={monthTrendsEnabled}
-                                onChange={e => setDraftSettings(s => ({ ...s, emailIncludeTrendsMonth: e.target.checked }))}
-                              />
-                              <span>Include monthly trends table</span>
-                            </label>
-                          ) : null}
-                        </div>
                       </div>
 
                       <div className="mt-3 pt-3 border-t border-zinc-700">
@@ -2766,14 +2709,12 @@ const EODWindow: React.FC = () => {
                           setSavedSettings(s => ({
                             ...s,
                             schedule: next,
-                            sendTime: (next === 'weekly' || next === 'monthly') ? '00:00' : (s.sendTime || '18:00'),
+                            sendTime: s.sendTime || '18:00',
                           }));
                         }}
                     >
                       <option value="manual">Manual only</option>
                       <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
                     </select>
                   </div>
                   <div>
@@ -2781,8 +2722,7 @@ const EODWindow: React.FC = () => {
                       <input
                         type="time"
                         className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
-                        value={(savedSettings.schedule === 'weekly' || savedSettings.schedule === 'monthly') ? '00:00' : savedSettings.sendTime}
-                        disabled={savedSettings.schedule === 'weekly' || savedSettings.schedule === 'monthly'}
+                        value={savedSettings.sendTime}
                         onChange={e => setSavedSettings(s => ({ ...s, sendTime: e.target.value }))}
                       />
                   </div>
@@ -2792,9 +2732,7 @@ const EODWindow: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-xs text-zinc-500 -mt-1">
-                  This schedule controls batch-out and email timing only.
-                  {(savedSettings.schedule === 'weekly') ? ' Weekly emails send at 12:00 AM Sunday (end-of-week).' : ''}
-                  {(savedSettings.schedule === 'monthly') ? ' Monthly emails send at 12:00 AM on the 1st (covers the previous month).' : ''}
+                  This schedule sends today&apos;s EOD snapshot only. Monthly reporting remains available in Reporting.
                 </div>
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
                     <div>Last sent: {savedSettings.lastSentAt ? formatDate(savedSettings.lastSentAt) : 'Not yet sent'}</div>

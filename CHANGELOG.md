@@ -3,7 +3,8 @@
 ## v0.5.12 (2026-07-18)
 - Railway: adds a production build contract that publishes distinct desktop and mobile web entry points together and checks runtime configuration health before deployment completes.
 - Railway: restores the required public Supabase runtime variables and corrects the production domain target from port 3000 to the service's assigned port 8080.
-- End of Day: removes the Monthly Totals button so EOD remains focused on same-day closeout; monthly reporting stays in Reporting.
+- End of Day: locks the closeout overview and its email to the current local calendar day, refreshes automatically after midnight, and keeps monthly totals and historical filters in Reporting.
+- Reporting: removes the daily batch email action so EOD is the single place technicians configure, review, and send the daily closeout.
 
 ## v0.5.11 (2026-07-18)
 - Parts Ordering: records distributor, internal cost, adjustable markup, order-required status, supplier tax treatment, and order state on each work-order part.

@@ -714,61 +714,6 @@ const ReportingWindow: React.FC = () => {
     }
   }
 
-  async function openReportEmail() {
-    const payload = {
-      generatedAt: new Date().toISOString(),
-      title: 'GadgetBoy Report',
-      filters: {
-        period,
-        from: from || null,
-        to: to || null,
-        technician: tech || null,
-        excludeTax,
-        includeRepairs,
-        includeSales,
-      },
-      totals: {
-        grandTotal: Number(summary.revenue || 0),
-        cashTotal: Number(paymentTotals.cashTender || 0),
-        cardTotal: Number(paymentTotals.card || 0),
-        changeGiven: Number(paymentTotals.cashChange || 0),
-        cashToDeposit: Number(paymentTotals.cashNet || 0),
-        orders: Number(summary.orders || 0),
-        labor: Number(summary.labor || 0),
-        parts: Number(summary.parts || 0),
-        subtotal: Number(summary.subtotal || 0),
-        tax: Number(summary.tax || 0),
-        cost: Number(summary.cost || 0),
-        profit: Number(summary.profit || 0),
-        marginPct: Number((summary.margin || 0) * 100),
-        avgTicket: Number(summary.avgTicket || 0),
-      },
-      grouped: (grouped || []).map((g: any) => ({
-        date: g.date,
-        orders: Number(g.orders || 0),
-        labor: Number(g.labor || 0),
-        parts: Number(g.parts || 0),
-        subtotal: Number(g.subtotal || 0),
-        tax: Number(g.tax || 0),
-        total: Number(g.total || 0),
-        cost: Number(g.cost || 0),
-        profit: Number(g.profit || 0),
-        marginPct: Number(((g.subtotal ? (g.profit / g.subtotal) : 0) * 100) || 0),
-      })),
-      csv: String(csv || ''),
-    };
-
-    const api = (window as any).api;
-    if (api && typeof api.openReportEmail === 'function') {
-      await api.openReportEmail(payload);
-      return;
-    }
-
-    // Fallback for non-electron contexts
-    const url = window.location.origin + '/?reportEmail=' + encodeURIComponent(JSON.stringify(payload));
-    window.open(url, '_blank', 'width=1000,height=720');
-  }
-
   return (
     <div className="h-screen bg-zinc-900 text-gray-100 p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1061,17 +1006,6 @@ const ReportingWindow: React.FC = () => {
           <div className="text-sm text-zinc-400">Card Total</div>
           <div className="mt-2 text-2xl font-bold text-zinc-100">${paymentTotals.card.toFixed(2)}</div>
         </div>
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          className="px-4 py-2 bg-[#39FF14] text-black rounded font-semibold disabled:opacity-50"
-          onClick={openReportEmail}
-          disabled={!filtered.length}
-          title={!filtered.length ? 'No data in range' : 'Open email window'}
-        >
-          Send Email
-        </button>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
