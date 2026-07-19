@@ -7,6 +7,12 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#09090b',
   },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: 'gbpos_notification_icon',
+      iconColor: '#BC13FE',
+    },
+  },
 };
 
 export default config;

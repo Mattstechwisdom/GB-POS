@@ -128,6 +128,22 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      value => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      error => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
 function asNumber(v: any, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -222,7 +238,7 @@ function channelEnabledForKind(settings: DeviceNotificationSettings, kind: Notif
 async function getLocalNotificationsPlugin(): Promise<any | null> {
   if (!Capacitor.isNativePlatform()) return null;
   try {
-    const mod = await import('@capacitor/local-notifications');
+    const mod = await withTimeout(import('@capacitor/local-notifications'), 4000, 'Android notification service did not respond.');
     return (mod as any).LocalNotifications || null;
   } catch {
     return null;
@@ -233,12 +249,13 @@ async function getDeviceNotificationPermission(): Promise<DeviceNotificationSett
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
-      const status = await native.checkPermissions();
+      const status: any = await withTimeout(native.checkPermissions(), 4000, 'Notification permission check timed out.');
       const display = String(status?.display || '').toLowerCase();
       if (display === 'granted') return 'granted';
       if (display === 'denied') return 'denied';
       return 'prompt';
     } catch {
+      if (Capacitor.isNativePlatform()) return 'prompt';
       // fall through to browser API
     }
   }
@@ -284,8 +301,8 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
           body,
           largeBody: body || title,
           channelId: 'gbpos-tech-alerts',
-          smallIcon: 'ic_launcher_foreground',
-          largeIcon: 'ic_launcher',
+          smallIcon: 'gbpos_notification_icon',
+          largeIcon: 'gbpos_notification_logo',
           iconColor: '#BC13FE',
           schedule: { at: new Date(Date.now() + 250) },
         }],
@@ -478,7 +495,10 @@ function calendarNotificationKey(ev: any, kind: 'consultation' | 'parts_delivery
 
 export async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
-    const list = await api()?.dbGet?.('notificationSettings');
+    const pending = api()?.dbGet?.('notificationSettings');
+    const list = pending
+      ? await withTimeout(Promise.resolve(pending), 5000, 'Cloud notification settings timed out.')
+      : [];
     const first = Array.isArray(list) && list.length ? list[0] : null;
     if (!first) return { ...DEFAULT_SETTINGS };
     return {
@@ -566,7 +586,7 @@ export async function loadDeviceNotificationSettings(): Promise<DeviceNotificati
 }
 
 export async function saveDeviceNotificationSettings(next: DeviceNotificationSettings): Promise<DeviceNotificationSettings> {
-  const permission = await getDeviceNotificationPermission();
+  const permission = next.permission === 'granted' ? 'granted' : await getDeviceNotificationPermission();
   const settings: DeviceNotificationSettings = {
     ...DEFAULT_DEVICE_SETTINGS,
     ...next,
@@ -590,7 +610,7 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
   const native = await getLocalNotificationsPlugin();
   if (native?.requestPermissions && permission !== 'granted' && permission !== 'unsupported') {
     try {
-      const status = await native.requestPermissions();
+      const status: any = await withTimeout(native.requestPermissions(), 60000, 'The operating-system permission request timed out.');
       const display = String(status?.display || '').toLowerCase();
       permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
     } catch {
