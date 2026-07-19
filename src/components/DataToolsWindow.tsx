@@ -24,10 +24,11 @@ export default function DataToolsWindow() {
     { key: 'calendarEvents', label: 'Calendar Events', defaultSelected: false },
     { key: 'intakeSources', label: 'Intake Sources', defaultSelected: false },
     { key: 'partSources', label: 'Part Sources', defaultSelected: false },
+    { key: 'vendors', label: 'Distributors / Vendors', defaultSelected: true },
   ]);
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(([
-      'customers','workOrders','sales','technicians','timeEntries','deviceCategories','repairCategories','products','productCategories'
+      'customers','workOrders','sales','technicians','timeEntries','deviceCategories','repairCategories','products','productCategories','vendors'
     ]))
   );
   const [customKey, setCustomKey] = useState('');
@@ -83,6 +84,40 @@ export default function DataToolsWindow() {
       log('info', `Orphan WOs: ${fmt(orphans.length)}; Potential duplicate customers: ${fmt(dups.length)}`);
       if (orphans.length) log('warn', `Orphans: ${orphans.map((o: any) => o.id).join(', ')}`);
     } catch (e: any) { log('error', e?.message || String(e)); } finally { setBusy(false); }
+  };
+
+  const runAppHealthScan = async () => {
+    setBusy(true);
+    try {
+      const keys = ['customers', 'workOrders', 'sales', 'technicians', 'products', 'repairCategories', 'vendors'];
+      const loaded = await Promise.all(keys.map(async (key) => [key, await api.dbGet(key)] as const));
+      const data = Object.fromEntries(loaded);
+      for (const [key, rows] of loaded) {
+        if (!Array.isArray(rows)) throw new Error(`${key} did not return a list.`);
+        const ids = new Set<string>();
+        let duplicateIds = 0;
+        for (const row of rows) {
+          const id = String(row?.id ?? '');
+          if (!id) continue;
+          if (ids.has(id)) duplicateIds += 1;
+          ids.add(id);
+        }
+        log(duplicateIds ? 'warn' : 'info', `${key}: ${fmt(rows.length)} readable record(s)${duplicateIds ? `, ${duplicateIds} duplicate ID(s)` : ''}.`);
+      }
+      const customerIds = new Set((data.customers || []).map((row: any) => String(row?.id ?? '')));
+      const orphanWorkOrders = (data.workOrders || []).filter((row: any) => row?.customerId && !customerIds.has(String(row.customerId)));
+      const orphanSales = (data.sales || []).filter((row: any) => row?.customerId && !customerIds.has(String(row.customerId)));
+      if (orphanWorkOrders.length || orphanSales.length) {
+        log('warn', `References needing review: ${orphanWorkOrders.length} work order(s), ${orphanSales.length} sale(s). No records were changed.`);
+      } else {
+        log('info', 'Customer links for work orders and sales passed. No records were changed.');
+      }
+      log('info', 'App health scan complete. Sync reads, collection shapes, IDs, and customer links were checked.');
+    } catch (e: any) {
+      log('error', `Health scan failed: ${e?.message || String(e)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   // 2) Fix All Issues (recalc totals, close fully paid)
@@ -267,14 +302,14 @@ export default function DataToolsWindow() {
   useEffect(() => { if (!hasElectron) return; log('info', 'Data Tools ready'); }, [hasElectron]);
 
   return (
-    <div className="h-screen bg-zinc-900 text-gray-100 p-4 space-y-4">
+    <div className="min-h-screen overflow-y-auto bg-zinc-900 p-3 text-gray-100 space-y-4 sm:p-4">
       <div className="text-xl font-bold">Data Tools</div>
       {!hasElectron && <div className="text-sm text-yellow-300">Electron bridge not detected. Open via the Electron app.</div>}
       {/* Collections selection */}
       <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-zinc-300">Collections</div>
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-wrap gap-2 items-center">
             <input
               value={customKey}
               onChange={e => setCustomKey(e.target.value)}
@@ -285,7 +320,7 @@ export default function DataToolsWindow() {
                 }
               }}
               placeholder="Add custom (e.g. products2)"
-              className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded outline-none focus:border-[#39FF14] w-48"
+              className="min-w-0 flex-1 px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded outline-none focus:border-[#39FF14] sm:w-48 sm:flex-none"
             />
             <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={addCustomCollection} disabled={busy || !hasElectron}>Add</button>
             <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]" onClick={selectAll} disabled={busy}>Select All</button>
@@ -300,7 +335,7 @@ export default function DataToolsWindow() {
             </label>
           ))}
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={exportSelected} disabled={busy || !hasElectron || selected.size===0}>Export Selected</button>
           <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={importDryRun} disabled={busy || !hasElectron || selected.size===0}>Import Dry-Run (compare)</button>
           <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={clearSelected} disabled={busy || !hasElectron || selected.size===0}>Clear Selected (guarded)</button>
@@ -308,13 +343,24 @@ export default function DataToolsWindow() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button className="px-3 py-2 bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:brightness-110 disabled:opacity-50" onClick={() => dispatchOpenModal('backup')} disabled={busy}>Local Backup</button>
+        <button className="px-3 py-2 bg-[#BC13FE] text-white font-semibold border border-[#BC13FE] rounded hover:brightness-110 disabled:opacity-50" onClick={runAppHealthScan} disabled={busy || !hasElectron}>Run App Health Scan</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={findOrphansAndDuplicates} disabled={busy || !hasElectron}>Orphans & Duplicates</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={fixAllIssues} disabled={busy || !hasElectron}>Fix All Issues</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={seedDemoData} disabled={busy || !hasElectron}>Seed Demo Data</button>
         <button className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14] disabled:opacity-50" onClick={anonymizeAndExport} disabled={busy || !hasElectron}>Anonymize + Export</button>
         {/* Import Dry-Run now available above in collections section as well */}
+      </div>
+      <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+        <div className="mb-2 text-sm font-semibold text-zinc-300">Open Clean Workspace</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]" onClick={() => dispatchOpenModal('newWorkOrder')}>Work Order</button>
+          <button className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]" onClick={() => dispatchOpenModal('newSale')}>Sale</button>
+          <button className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]" onClick={() => dispatchOpenModal('customerSearch')}>Client Search</button>
+          <button className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]" onClick={() => dispatchOpenModal('inventory')}>Inventory</button>
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">These controls relaunch a fresh window state. Health scans never rewrite customer, transaction, or financial data.</p>
       </div>
       <div className="text-sm text-zinc-400">Log</div>
       <div className="h-80 overflow-auto bg-zinc-950 border border-zinc-800 rounded p-2 space-y-1">

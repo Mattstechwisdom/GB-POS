@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.15 (2026-07-19)
+- Inventory: separates Products and Repair Parts with a blue Products toggle, green Add Part action, vendor memory, device type/model fields, stock controls, and a red saved Order URL button.
+- Vendors: adds separate Product Vendor and Parts Distributor management, including wholesale/consignment settings, vendor share, tax exemption, and contact details.
+- Repairs: replaces duplicate ordering fields in Devices/Repairs and Repair Selection with a shared searchable inventory-part picker while retaining per-work-order dates, order state, and shipment tracking.
+- End of Day: adds selectable paid-and-ordered rows that sync part order status back to each work order and send confirmed client email updates where email delivery is configured.
+- Reporting: records vendor terms with sold items so historical vendor payout, internal cost, revenue, and profit calculations remain tied to the facts saved at sale time.
+- Mobile: keeps customer search columns within phone width and adds non-destructive health checks in Data Tools.
+
 ## v0.5.12 (2026-07-18)
 - Android Updates: checks the system install-source permission before opening an APK, resumes installation after permission is granted, and dismisses the in-app prompt once installer handoff begins.
 - Android Releases: verifies the APK application ID, version, signature, and signing-certificate continuity before publishing so updates install over the existing app.
@@ -444,3 +452,5 @@
 - Customer Receipt: printouts now include a Payments section showing cash received/change and card amount (supports Work Orders + linked retail add-on Sales).
 - Work Orders: "Add Product" retail add-ons are tracked via a linked Sale, shown inline as read-only rows, and included in checkout allocation + customer receipts.
 
+## v0.5.15 (2026-07-19)
+- No commits recorded.

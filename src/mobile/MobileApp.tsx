@@ -19,6 +19,7 @@ const QuoteGeneratorWindow = React.lazy(() => import('../components/QuoteGenerat
 const EODWindow = React.lazy(() => import('../components/EODWindow'));
 const ProductsWindow = React.lazy(() => import('../components/ProductsWindow'));
 const InventoryWindow = React.lazy(() => import('../components/InventoryWindow'));
+const VendorsWindow = React.lazy(() => import('../components/VendorsWindow'));
 const WorkOrderRepairPickerWindow = React.lazy(() => import('../workorders/WorkOrderRepairPickerWindow'));
 const CustomerOverviewWindow = React.lazy(() => import('../components/CustomerOverviewWindow'));
 const CustomerSearchWindow = React.lazy(() => import('../components/CustomerSearchWindow'));
@@ -309,6 +310,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'eod': return <EODWindow />;
     case 'products': return <ProductsWindow />;
     case 'inventory': return <InventoryWindow />;
+    case 'vendors': return <VendorsWindow />;
     case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow />;
     case 'customerOverview': return <CustomerOverviewWindow onClose={onClose} />;
     case 'customerSearch': return <CustomerSearchWindow onClose={onClose} />;
@@ -387,6 +389,7 @@ function titleForModal(type: string) {
     eod: 'Reports',
     products: 'Products',
     inventory: 'Inventory',
+    vendors: 'Distributors / Vendors',
     workOrderRepairPicker: 'Repair Selection',
     customerOverview: 'Client',
     customerSearch: 'Clients',
@@ -1211,6 +1214,7 @@ function MobileDrawer(props: {
   const adminTools = [
     ['repairCategories', 'Devices / Repairs'],
     ['inventory', 'Inventory'],
+    ['vendors', 'Distributors / Vendors'],
     ['reporting', 'Reporting'],
     ['dataTools', 'Data Tools'],
   ] as const;

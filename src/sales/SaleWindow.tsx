@@ -1412,6 +1412,10 @@ const SaleWindow: React.FC = () => {
         condition: picked.condition || 'New',
         productUrl: picked.productUrl || picked.url || picked.link || '',
         category: picked.category,
+        distributor: picked.distributor || '',
+        vendorRelationship: picked.vendorRelationship,
+        vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
+        vendorTaxExempt: !!picked.vendorTaxExempt,
       };
       setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
     }
@@ -1432,6 +1436,10 @@ const SaleWindow: React.FC = () => {
             condition: picked.condition || 'New',
             productUrl: picked.productUrl || picked.url || picked.link || '',
             category: picked.category,
+            distributor: picked.distributor || '',
+            vendorRelationship: picked.vendorRelationship,
+            vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
+            vendorTaxExempt: !!picked.vendorTaxExempt,
           };
           setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
         });

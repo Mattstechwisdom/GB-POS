@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
+import type { VendorRecord } from './VendorsWindow';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -9,6 +10,7 @@ type InventoryItem = {
   itemDescription: string;
   itemType?: 'Product' | 'Part';
   category?: string;
+  deviceModel?: string;
   associatedDevices?: string[];
   partCategory?: string;
   condition?: string;
@@ -17,6 +19,9 @@ type InventoryItem = {
   markupPct?: number | string;
   notes?: string;
   distributor?: string;
+  vendorRelationship?: 'wholesale' | 'consignment';
+  vendorSharePct?: number;
+  vendorTaxExempt?: boolean;
   distributorSku?: string;
   reorderQty?: number;
   reorderUrlTemplate?: string;
@@ -39,7 +44,8 @@ function blankItem(mode: InventoryMode): InventoryItem {
     itemDescription: '',
     itemType: mode === 'parts' ? 'Part' : 'Product',
     category: mode === 'parts' ? 'Phone' : 'Phone',
-    associatedDevices: mode === 'parts' ? ['Phone'] : [],
+    deviceModel: '',
+    associatedDevices: [],
     partCategory: mode === 'parts' ? 'Screen' : '',
     condition: 'New',
     price: undefined,
@@ -90,6 +96,8 @@ export default function InventoryWindow() {
   const api = (window as any).api;
   const [mode, setMode] = useState<InventoryMode>('parts');
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [vendors, setVendors] = useState<VendorRecord[]>([]);
+  const [repairCategories, setRepairCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
@@ -103,8 +111,14 @@ export default function InventoryWindow() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const products = await api?.dbGet?.('products').catch(() => []);
+      const [products, vendorRows, repairRows] = await Promise.all([
+        api?.dbGet?.('products').catch(() => []),
+        api?.dbGet?.('vendors').catch(() => []),
+        api?.dbGet?.('repairCategories').catch(() => []),
+      ]);
       setItems(Array.isArray(products) ? products : []);
+      setVendors(Array.isArray(vendorRows) ? vendorRows : []);
+      setRepairCategories(Array.isArray(repairRows) ? repairRows : []);
     } finally {
       setLoading(false);
     }
@@ -139,6 +153,7 @@ export default function InventoryWindow() {
         return [
           item.itemDescription,
           item.category,
+          item.deviceModel,
           item.partCategory,
           item.condition,
           item.distributor,
@@ -159,6 +174,24 @@ export default function InventoryWindow() {
     };
   }, [items]);
 
+  const visibleVendors = useMemo(() => vendors
+    .filter((vendor) => (vendor.inventoryMode || 'Product') === (mode === 'parts' ? 'Part' : 'Product'))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [mode, vendors]);
+
+  const deviceModels = useMemo(() => {
+    const deviceType = String(editing.category || '').trim().toLowerCase();
+    const models = repairCategories
+      .filter((row) => String(row?.type || row?.category || '').trim().toLowerCase() === deviceType)
+      .map((row) => String(row?.model || row?.deviceModel || '').trim())
+      .filter(Boolean);
+    items.forEach((item) => {
+      if (String(item.category || '').trim().toLowerCase() === deviceType && String(item.deviceModel || '').trim()) {
+        models.push(String(item.deviceModel).trim());
+      }
+    });
+    return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b));
+  }, [editing.category, items, repairCategories]);
+
   const selectItem = (item: InventoryItem) => {
     setSelectedId(item.id);
     setEditing({ ...blankItem(mode), ...item, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
@@ -169,6 +202,31 @@ export default function InventoryWindow() {
     setSelectedId(undefined);
     setEditing(blankItem(mode));
     setEditingOrderUrl(false);
+  };
+
+  const clearFields = () => {
+    setSelectedId(undefined);
+    setEditing(blankItem(mode));
+    setEditingOrderUrl(false);
+  };
+
+  const ensureVendor = async (nameValue: string) => {
+    const name = nameValue.trim();
+    if (!name) return;
+    const inventoryMode = mode === 'parts' ? 'Part' : 'Product';
+    const existing = vendors.find((vendor) => (vendor.inventoryMode || 'Product') === inventoryMode
+      && String(vendor.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (existing) return;
+    const now = new Date().toISOString();
+    const saved = await api?.dbAdd?.('vendors', {
+      name,
+      inventoryMode,
+      relationship: 'wholesale',
+      taxExempt: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (saved) setVendors((current) => [...current, saved]);
   };
 
   const save = async () => {
@@ -185,6 +243,7 @@ export default function InventoryWindow() {
         itemDescription: description,
         itemType: mode === 'parts' ? 'Part' : 'Product',
         category: String(editing.category || 'Other').trim() || 'Other',
+        deviceModel: String(editing.deviceModel || '').trim(),
         associatedDevices: Array.from(new Set((Array.isArray(editing.associatedDevices) ? editing.associatedDevices : [])
           .map((value) => String(value || '').trim())
           .filter(Boolean))),
@@ -200,6 +259,15 @@ export default function InventoryWindow() {
         lowStockThreshold: editing.trackStock ? Math.max(0, Math.round(Number(editing.lowStockThreshold || 0))) : undefined,
         updatedAt: now,
       };
+
+      const selectedVendor = vendors.find((vendor) =>
+        (vendor.inventoryMode || 'Product') === (mode === 'parts' ? 'Part' : 'Product')
+        && String(vendor.name || '').trim().toLowerCase() === String(payload.distributor || '').trim().toLowerCase());
+      payload.vendorRelationship = selectedVendor?.relationship === 'consignment' ? 'consignment' : 'wholesale';
+      payload.vendorSharePct = selectedVendor?.relationship === 'consignment' ? Number(selectedVendor.vendorSharePct || 0) : undefined;
+      payload.vendorTaxExempt = !!selectedVendor?.taxExempt;
+
+      await ensureVendor(payload.distributor || '');
 
       let saved: InventoryItem | undefined;
       if (payload.id) {
@@ -277,26 +345,10 @@ export default function InventoryWindow() {
               <h1 className="text-xl font-bold tracking-wide">Inventory</h1>
               <div className="text-xs text-zinc-400">{counts.tracked} tracked items, {counts.low} low-stock alerts</div>
             </div>
-            <div className="flex rounded border border-zinc-700 bg-zinc-950 p-1">
-              <button
-                type="button"
-                onClick={() => setMode('parts')}
-                className={`px-4 py-2 text-sm font-semibold rounded ${mode === 'parts' ? 'bg-[#BC13FE] text-white' : 'text-zinc-400 hover:text-white'}`}
-              >
-                Parts ({counts.parts})
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('products')}
-                className={`px-4 py-2 text-sm font-semibold rounded ${mode === 'products' ? 'bg-[#39FF14] text-black' : 'text-zinc-400 hover:text-white'}`}
-              >
-                Products ({counts.products})
-              </button>
-            </div>
           </div>
         </header>
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(360px,44%)_1fr]">
+        <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(360px,42%)_minmax(0,1fr)] lg:overflow-hidden">
           <section className="flex min-h-[320px] flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
             <div className="shrink-0 border-b border-zinc-800 p-3">
               <div className="relative flex flex-wrap gap-2">
@@ -398,18 +450,75 @@ export default function InventoryWindow() {
             </div>
           </section>
 
-          <section className="rounded border border-zinc-700 bg-zinc-950 p-4">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <section className="min-w-0 rounded border border-zinc-700 bg-zinc-950 p-4 lg:overflow-y-auto">
+            <div className="mb-4 flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">{selectedId ? `Edit ${mode === 'parts' ? 'Repair Part' : 'Product'}` : `Add ${mode === 'parts' ? 'Repair Part' : 'Product'}`}</h2>
                 <div className="text-xs text-zinc-500">Saved here syncs through the Products collection.</div>
               </div>
-              <button type="button" onClick={startNew} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm hover:border-[#39FF14]">
-                Add {mode === 'parts' ? 'Part' : 'Product'}
-              </button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+                <div className="gb-inventory-mode-toggle grid w-full grid-cols-2 rounded border border-zinc-700 bg-zinc-900 p-1 sm:w-[260px]" role="group" aria-label="Inventory section">
+                  <button
+                    type="button"
+                    onClick={() => setMode('products')}
+                    aria-pressed={mode === 'products'}
+                    className={`rounded px-3 py-2 text-sm font-semibold transition ${mode === 'products' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Products ({counts.products})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('parts')}
+                    aria-pressed={mode === 'parts'}
+                    className={`rounded px-3 py-2 text-sm font-semibold transition ${mode === 'parts' ? 'bg-[#BC13FE] text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Parts ({counts.parts})
+                  </button>
+                </div>
+                <div className="gb-inventory-action-row grid w-full grid-cols-2 gap-2 sm:w-[260px]">
+                  <button type="button" onClick={startNew} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black">{mode === 'parts' ? 'Add Part' : 'Add Product'}</button>
+                  <button type="button" onClick={clearFields} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]">Clear</button>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="block md:col-span-2">
+                <span className="mb-1 block text-xs text-zinc-400">Order URL</span>
+                {editing.reorderUrlTemplate && !editingOrderUrl ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => openReorder(editing)} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">Order URL</button>
+                    <button type="button" onClick={() => setEditingOrderUrl(true)} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">Edit</button>
+                    <button type="button" onClick={() => { setEditing((current) => ({ ...current, reorderUrlTemplate: '' })); setEditingOrderUrl(true); }} className="rounded border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-100">Clear URL</button>
+                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-500" title={editing.reorderUrlTemplate}>{editing.reorderUrlTemplate}</span>
+                  </div>
+                ) : (
+                  <input
+                    value={editing.reorderUrlTemplate || ''}
+                    onChange={(event) => setEditing((current) => ({ ...current, reorderUrlTemplate: event.target.value }))}
+                    onBlur={() => { const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (url) { setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); } }}
+                    onKeyDown={(event) => { if (event.key !== 'Enter') return; const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (!url) return; event.preventDefault(); setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); }}
+                    className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
+                    placeholder="Paste the distributor product URL"
+                  />
+                )}
+              </div>
+
+              <label className="block md:col-span-2 md:mx-auto md:w-[72%]">
+                <span className="mb-1 block text-center text-xs text-zinc-400">Vendor / Distributor</span>
+                <input
+                  list={`inventory-vendors-${mode}`}
+                  value={editing.distributor || ''}
+                  onChange={(event) => setEditing((current) => ({ ...current, distributor: event.target.value }))}
+                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-center text-sm outline-none focus:border-[#39FF14]"
+                  placeholder={mode === 'parts' ? 'Select or enter a parts distributor' : 'Select or enter a product vendor'}
+                />
+                <datalist id={`inventory-vendors-${mode}`}>
+                  {visibleVendors.map((vendor) => <option key={`${vendor.id}-${vendor.name}`} value={vendor.name} />)}
+                </datalist>
+                <span className="mt-1 block text-center text-[11px] text-zinc-500">New names are saved to the {mode === 'parts' ? 'Parts' : 'Products'} vendor list when this listing is saved.</span>
+              </label>
+
               <label className="block md:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Part Name' : 'Product Name'}</span>
                 <input
@@ -434,32 +543,11 @@ export default function InventoryWindow() {
               </datalist>
 
               {mode === 'parts' ? (
-                <div className="block md:col-span-2">
-                  <span className="mb-2 block text-xs text-zinc-400">Works With Devices</span>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {DEVICE_CATEGORY_OPTIONS.map((value) => {
-                      const checked = Array.isArray(editing.associatedDevices) && editing.associatedDevices.includes(value);
-                      return (
-                        <label key={value} className={`flex items-center gap-2 rounded border px-3 py-2 text-sm ${checked ? 'border-[#BC13FE] bg-[#BC13FE]/15 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
-                          <input
-                            type="checkbox"
-                            className="accent-[#BC13FE]"
-                            checked={checked}
-                            onChange={(event) => setEditing((current) => {
-                              const currentDevices = Array.isArray(current.associatedDevices) ? current.associatedDevices : [];
-                              const next = event.target.checked
-                                ? Array.from(new Set([...currentDevices, value]))
-                                : currentDevices.filter((device) => device !== value);
-                              return { ...current, associatedDevices: next, category: next[0] || current.category };
-                            })}
-                          />
-                          {value}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-1 text-[11px] text-zinc-500">Use this for universal parts like power cables that fit multiple device families.</div>
-                </div>
+                <label className="block">
+                  <span className="mb-1 block text-xs text-zinc-400">Device Model</span>
+                  <input list="inventory-device-models" value={editing.deviceModel || ''} onChange={(event) => setEditing((current) => ({ ...current, deviceModel: event.target.value }))} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" placeholder="Select or enter a model" />
+                  <datalist id="inventory-device-models">{deviceModels.map((value) => <option key={value} value={value} />)}</datalist>
+                </label>
               ) : null}
 
               {mode === 'parts' ? (
@@ -582,16 +670,6 @@ export default function InventoryWindow() {
               </div>
 
               <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">Distributor</span>
-                <input
-                  value={editing.distributor || ''}
-                  onChange={(event) => setEditing((current) => ({ ...current, distributor: event.target.value }))}
-                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
-                  placeholder="MobileSentrix"
-                />
-              </label>
-
-              <label className="block">
                 <span className="mb-1 block text-xs text-zinc-400">SKU</span>
                 <input
                   value={editing.distributorSku || ''}
@@ -611,58 +689,6 @@ export default function InventoryWindow() {
                 />
               </label>
 
-              <div className="block md:col-span-2">
-                <span className="mb-1 block text-xs text-zinc-400">Reorder URL Template</span>
-                {editing.reorderUrlTemplate && !editingOrderUrl ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-700 bg-zinc-900 p-2">
-                    <button
-                      type="button"
-                      onClick={() => openReorder(editing)}
-                      className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black"
-                    >
-                      Order URL
-                    </button>
-                    <button type="button" onClick={() => setEditingOrderUrl(true)} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">Edit</button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditing((current) => ({ ...current, reorderUrlTemplate: '' }));
-                        setEditingOrderUrl(true);
-                      }}
-                      className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100"
-                    >
-                      Clear
-                    </button>
-                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-400" title={editing.reorderUrlTemplate}>{editing.reorderUrlTemplate}</span>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      value={editing.reorderUrlTemplate || ''}
-                      onChange={(event) => setEditing((current) => ({ ...current, reorderUrlTemplate: event.target.value }))}
-                      onBlur={() => {
-                        const normalized = normalizeOrderUrl(editing.reorderUrlTemplate);
-                        if (normalized) {
-                          setEditing((current) => ({ ...current, reorderUrlTemplate: normalized }));
-                          setEditingOrderUrl(false);
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter') return;
-                        const normalized = normalizeOrderUrl(editing.reorderUrlTemplate);
-                        if (!normalized) return;
-                        event.preventDefault();
-                        setEditing((current) => ({ ...current, reorderUrlTemplate: normalized }));
-                        setEditingOrderUrl(false);
-                      }}
-                      className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
-                      placeholder="https://vendor.example/cart/add?sku={{sku}}&qty={{qty}}"
-                    />
-                    <div className="mt-1 text-[11px] text-zinc-500">Paste the vendor link once. After it is saved here, this becomes an Order URL button. Tokens supported: {'{{sku}}'} and {'{{qty}}'}.</div>
-                  </>
-                )}
-              </div>
-
               <label className="block md:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">Notes</span>
                 <textarea
@@ -674,9 +700,6 @@ export default function InventoryWindow() {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {editing.reorderUrlTemplate ? (
-                <button type="button" onClick={() => openReorder(editing)} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]">Open Reorder Link</button>
-              ) : null}
               <button type="button" onClick={remove} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
               <button type="button" onClick={save} disabled={saving} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">
                 {saving ? 'Saving...' : 'Save Listing'}

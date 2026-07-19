@@ -4693,6 +4693,7 @@ function fromCloudRow(key: string, row: any): any {
       id,
       itemDescription: row.item_description || '',
       itemType: row.item_type || 'Product',
+      deviceModel: row.device_model || '',
       price: cloudNumber(row.price),
       internalCost: cloudNumber(row.internal_cost),
       markupPct: cloudNumber(row.markup_pct),
@@ -4701,6 +4702,9 @@ function fromCloudRow(key: string, row: any): any {
       category: row.category || '',
       partCategory: row.part_category || '',
       distributor: row.distributor || '',
+      vendorRelationship: row.vendor_relationship || 'wholesale',
+      vendorSharePct: cloudNullableNumber(row.vendor_share_pct),
+      vendorTaxExempt: !!row.vendor_tax_exempt,
       distributorSku: row.distributor_sku || '',
       reorderQty: cloudNumber(row.reorder_qty) || 1,
       reorderUrlTemplate: row.reorder_url_template || '',
@@ -4972,6 +4976,7 @@ function toCloudRow(key: string, item: any): any | null {
       legacy_id,
       item_description: toCloudString(item.itemDescription),
       item_type: toCloudString(item.itemType || 'Product'),
+      device_model: toCloudString(item.deviceModel),
       price: toCloudMoney(item.price),
       internal_cost: toCloudMoney(item.internalCost),
       markup_pct: toCloudNumber(item.markupPct),
@@ -4980,6 +4985,9 @@ function toCloudRow(key: string, item: any): any | null {
       category: toCloudString(item.category),
       part_category: toCloudString(item.partCategory),
       distributor: toCloudString(item.distributor),
+      vendor_relationship: toCloudString(item.vendorRelationship || 'wholesale'),
+      vendor_share_pct: toCloudNumber(item.vendorSharePct),
+      vendor_tax_exempt: toCloudBool(item.vendorTaxExempt),
       distributor_sku: toCloudString(item.distributorSku),
       reorder_qty: toCloudIntId(item.reorderQty) || 1,
       reorder_url_template: toCloudString(item.reorderUrlTemplate),
@@ -5220,11 +5228,15 @@ async function cloudDbUpsert(key: string, item: any) {
     onConflict: cloudConflictForKey(key),
     ignoreDuplicates: false,
   });
-  if (res.error && key === 'products' && /item_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+  if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
     const fallbackRow = { ...row };
     delete fallbackRow.item_type;
     delete fallbackRow.part_category;
     delete fallbackRow.distributor;
+    delete fallbackRow.vendor_relationship;
+    delete fallbackRow.device_model;
+    delete fallbackRow.vendor_share_pct;
+    delete fallbackRow.vendor_tax_exempt;
     delete fallbackRow.distributor_sku;
     delete fallbackRow.reorder_qty;
     delete fallbackRow.reorder_url_template;

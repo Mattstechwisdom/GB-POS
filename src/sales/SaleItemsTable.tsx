@@ -14,6 +14,10 @@ export type SaleItemRow = {
   inStock?: boolean; // whether this specific item is in stock
   productUrl?: string;
   category?: 'Device' | 'Accessory' | 'Consultation' | 'Other' | string;
+  distributor?: string;
+  vendorRelationship?: 'wholesale' | 'consignment';
+  vendorSharePct?: number;
+  vendorTaxExempt?: boolean;
 };
 
 interface Props {
@@ -149,6 +153,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           inStock: !!picked.inStock,
           productUrl: picked.productUrl || picked.url || picked.link || '',
           category: picked.category,
+          distributor: picked.distributor || '',
+          vendorRelationship: picked.vendorRelationship,
+          vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
+          vendorTaxExempt: !!picked.vendorTaxExempt,
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);

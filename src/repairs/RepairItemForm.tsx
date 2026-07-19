@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
-import { PART_MARKUP_PRESETS, derivePartVendorFromUrl, scrapePartUrl } from '../lib/partOrdering';
+import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
+import { PART_MARKUP_PRESETS } from '../lib/partOrdering';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -12,23 +13,6 @@ interface RepairItemFormProps {
   mode?: 'admin' | 'workorder' | 'workorderpicker';
   // When true (default), show the internal Edit Repair action at the top
   showCreateAction?: boolean;
-}
-
-// Helper to derive a vendor label from a URL (editable afterwards)
-function deriveVendorLabelFromUrl(url: string): string {
-  if (!url) return '';
-  try {
-    const withProto = /^(https?:)?\/\//i.test(url) ? url : 'https://' + url;
-    const u = new URL(withProto);
-    let host = (u.hostname || '').replace(/^www\./i, '');
-    const base = host.split('.')[0];
-    const cleaned = (base || '').replace(/[^a-z0-9]/gi, '');
-    if (!cleaned) return '';
-    // Simple PascalCase: first letter upper, rest lower; user can edit on the fly
-    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
-  } catch {
-    return '';
-  }
 }
 
 // Dummy device categories for now; replace with prop or API as needed
@@ -92,8 +76,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
   const [markupPct, setMarkupPct] = useState<string>(DEFAULT_MARKUP_PCT);
   const [orderUrlEditing, setOrderUrlEditing] = useState(false);
-  const [scrapingUrl, setScrapingUrl] = useState(false);
-  const [scrapeStatus, setScrapeStatus] = useState('');
+  const [partPickerOpen, setPartPickerOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
     repairCategory: '',
@@ -294,37 +277,25 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     }
   }
 
-  async function handleScrapeOrderUrl() {
-    const url = normalizeOrderUrl(formData.orderSourceUrl);
-    if (!url) {
-      setScrapeStatus('Paste an order URL first.');
-      return;
+  function selectInventoryPart(part: InventoryPartSelection) {
+    setFormData((current) => ({
+      ...current,
+      category: part.category || current.category,
+      model: part.deviceModel || current.model,
+      partCost: Number(part.price || 0),
+      internalCost: typeof part.internalCost === 'number' ? part.internalCost : current.internalCost,
+      markupPct: part.markupPct ?? DEFAULT_MARKUP_PCT,
+      partSource: part.distributor || '',
+      orderSourceUrl: normalizeOrderUrl(part.reorderUrlTemplate),
+      taxExempt: part.vendorTaxExempt === true,
+    }));
+    if (part.category) {
+      setHasDeviceCategory(true);
+      setDeviceCategoryInput(part.category);
     }
-    setScrapingUrl(true);
-    setScrapeStatus('Scanning part page...');
-    try {
-      const meta = await scrapePartUrl(url);
-      const nextVendor = meta.vendor || deriveVendorLabelFromUrl(url) || derivePartVendorFromUrl(url);
-      const nextInternalCost = typeof meta.price === 'number' ? meta.price : formData.internalCost;
-      const nextPartCost = typeof meta.price === 'number'
-        ? markedUpPrice(meta.price, markupPct || DEFAULT_MARKUP_PCT)
-        : formData.partCost;
-      setFormData(prev => ({
-        ...prev,
-        orderSourceUrl: url,
-        ...(meta.title ? { title: meta.title } : {}),
-        ...(nextVendor && !prev.partSource ? { partSource: nextVendor } : {}),
-        ...(typeof nextInternalCost === 'number' ? { internalCost: nextInternalCost } : {}),
-        ...(typeof nextPartCost === 'number' ? { partCost: nextPartCost } : {}),
-        markupPct: markupPct || DEFAULT_MARKUP_PCT,
-      }));
-      setOrderUrlEditing(false);
-      setScrapeStatus(meta.ok ? 'Part details filled from URL.' : (meta.error || 'No title or price found. URL saved.'));
-    } catch (error: any) {
-      setScrapeStatus(error?.message || 'Could not scan this URL.');
-    } finally {
-      setScrapingUrl(false);
-    }
+    setMarkupPct(String(part.markupPct ?? DEFAULT_MARKUP_PCT));
+    setOrderUrlEditing(!part.reorderUrlTemplate);
+    setPartPickerOpen(false);
   }
 
   const handleEnterToSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -572,119 +543,21 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           )}
         </div>
 
-        {/* Divider */}
         <hr className="border-zinc-700 my-2" />
-
-        {/* Part source + URL side by side */}
-        <div className="gb-repair-source-card md:col-span-2 border border-zinc-700 rounded p-3 bg-zinc-950/35">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div>
-              <div className="text-sm font-semibold text-zinc-200">Part Ordering</div>
-              <div className="text-[11px] text-zinc-500">Paste a distributor URL, scan it, then save this repair template.</div>
-            </div>
-            <button
-              type="button"
-              onClick={handleScrapeOrderUrl}
-              disabled={scrapingUrl || !String(formData.orderSourceUrl || '').trim()}
-              className="px-3 py-1.5 rounded bg-[#BC13FE] text-white text-xs font-bold disabled:opacity-50"
-            >
-              {scrapingUrl ? 'Scanning...' : 'Scrape URL'}
-            </button>
+        <div className="rounded border border-zinc-700 bg-zinc-950/35 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setPartPickerOpen(true)} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white">Select Part</button>
+            <button type="button" onClick={() => setFormData((current) => ({ ...current, partCost: 0, internalCost: undefined, markupPct: DEFAULT_MARKUP_PCT, partSource: '', orderSourceUrl: '', taxExempt: false, model: '' }))} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm">Clear Part Fields</button>
+            {formData.orderSourceUrl ? (
+              <button type="button" title={formData.orderSourceUrl} onClick={() => { const url = normalizeOrderUrl(formData.orderSourceUrl); if ((window as any).api?.openUrl) (window as any).api.openUrl(url); else window.open(url, '_blank', 'noopener,noreferrer'); }} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white">Order URL</button>
+            ) : null}
           </div>
-          <label className="mb-3 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={formData.taxExempt === true}
-              onChange={e => setFormData(prev => ({ ...prev, taxExempt: e.target.checked }))}
-            />
-            Tax Exempt
-            <span className="text-xs text-zinc-500">Cost is the exact supplier total; no supplier tax is separated in reporting.</span>
-          </label>
-        <div className="gb-repair-source-section grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Part source</label>
-            <input
-              type="text"
-              name="partSource"
-              value={formData.partSource || ''}
-              onChange={handleChange}
-              onKeyDown={handleEnterToSubmit}
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
-              placeholder="Vendor name (auto from URL)"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Order source url</label>
-            {formData.orderSourceUrl && !orderUrlEditing ? (
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  title={formData.orderSourceUrl}
-                  onClick={() => {
-                    const url = normalizeOrderUrl(formData.orderSourceUrl);
-                    if (url) {
-                      if ((window as any).api?.openExternal) (window as any).api.openExternal(url);
-                      else if ((window as any).api?.openUrl) (window as any).api.openUrl(url);
-                      else window.open(url, '_blank', 'noopener,noreferrer');
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 rounded text-sm border border-[#39FF14] bg-[#39FF14] text-black font-semibold hover:brightness-110"
-                >
-                  Order URL
-                </button>
-                <button type="button" onClick={() => setOrderUrlEditing(true)} className="px-3 py-2 rounded text-sm border border-zinc-600 bg-zinc-800 text-zinc-300 hover:bg-zinc-700">Edit</button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => ({ ...prev, orderSourceUrl: '' }));
-                    setOrderUrlEditing(true);
-                  }}
-                  className="px-3 py-2 rounded text-sm border border-red-700 bg-red-950 text-red-100"
-                >
-                  Clear
-                </button>
-              </div>
-            ) : (
-              <input
-                type="url"
-                value={formData.orderSourceUrl || ''}
-                name="orderSourceUrl"
-                onChange={(e) => {
-                  const url = e.target.value;
-                  setFormData(prev => ({ ...prev, orderSourceUrl: url }));
-                  if (!formData.partSource) {
-                    const v = derivePartVendorFromUrl(url) || deriveVendorLabelFromUrl(url);
-                    if (v) setFormData(prev => ({ ...prev, partSource: v }));
-                  }
-                }}
-                onBlur={() => {
-                  const url = normalizeOrderUrl(formData.orderSourceUrl);
-                  if (url) {
-                    setFormData(prev => ({ ...prev, orderSourceUrl: url }));
-                    setOrderUrlEditing(false);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    const url = normalizeOrderUrl(formData.orderSourceUrl);
-                    if (url) {
-                      event.preventDefault();
-                      setFormData(prev => ({ ...prev, orderSourceUrl: url }));
-                      setOrderUrlEditing(false);
-                      return;
-                    }
-                  }
-                  handleEnterToSubmit(event);
-                }}
-                placeholder="https://"
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text"
-              />
-            )}
-          </div>
-        </div>
-          {scrapeStatus ? <div className="mt-2 text-[11px] text-zinc-400">{scrapeStatus}</div> : null}
+          <div className="mt-2 text-xs text-zinc-500">Catalog parts come from Inventory. Manual values remain on this repair or work order only.</div>
+          {formData.partSource ? <div className="mt-2 text-sm text-zinc-300">Vendor: <span className="font-semibold">{formData.partSource}</span></div> : null}
         </div>
       </div>
+
+      {partPickerOpen ? <PartInventoryPicker onSelect={selectInventoryPart} onClose={() => setPartPickerOpen(false)} /> : null}
 
       {/* Footer buttons */}
       {mode === 'admin' && (

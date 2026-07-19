@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
@@ -689,6 +689,10 @@ const EODWindow: React.FC = () => {
   const [draftSettings, setDraftSettings] = useState<EodSettings>(defaultSettings);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
+  const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
+  const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const range = useMemo<RangeKey>(() => 'today', []);
   const customFrom = '';
   const customTo = '';
@@ -791,17 +795,19 @@ const EODWindow: React.FC = () => {
             ? api.dbGet('sales').catch(() => [])
             : Promise.resolve([]);
         const settingsPromise = api.dbGet ? api.dbGet('eodSettings').catch(() => []) : Promise.resolve([]);
+        const customersPromise = api.dbGet ? api.dbGet('customers').catch(() => []) : Promise.resolve([]);
         const batchPromise = api.getBatchOutInfo
           ? api.getBatchOutInfo().catch(() => null)
           : api.dbGet
             ? api.dbGet('batchInfo').catch(() => null)
             : Promise.resolve(null);
 
-        const [wo, sa, stored, batch] = await Promise.all([woPromise, saPromise, settingsPromise, batchPromise]);
+        const [wo, sa, stored, batch, customerRows] = await Promise.all([woPromise, saPromise, settingsPromise, batchPromise, customersPromise]);
         if (disposed) return;
 
         setWorkOrders(Array.isArray(wo) ? wo : []);
         setSales(Array.isArray(sa) ? sa : []);
+        setCustomers(Array.isArray(customerRows) ? customerRows : []);
 
         const storedSettings = Array.isArray(stored) ? stored[0] : stored;
         if (storedSettings && typeof storedSettings === 'object') {
@@ -1261,7 +1267,7 @@ const EODWindow: React.FC = () => {
     for (const workOrder of (workOrders || [])) {
       if (!isDateWithin(getTimelineDate(workOrder), min, max)) continue;
       const items = Array.isArray(workOrder?.items) ? workOrder.items : [];
-      for (const item of items) {
+      for (const [itemIndex, item] of items.entries()) {
         const url = String(item?.orderSourceUrl || workOrder?.partsOrderUrl || '').trim();
         const requiresOrder = item?.requiresOrder === true || (!!url && item?.requiresOrder !== false);
         const status = String(item?.orderStatus || (workOrder?.partsOrderDate ? 'ordered' : 'needed')).toLowerCase();
@@ -1272,6 +1278,8 @@ const EODWindow: React.FC = () => {
         const taxRate = Number(item?.supplierTaxRate ?? 8) || 8;
         const cost = splitTaxIncludedCost(hasCost ? internalCost : 0, taxExempt, taxRate);
         rows.push({
+          key: `${workOrder?.id}-${item?.id || itemIndex}`,
+          itemIndex,
           workOrderId: workOrder?.id,
           customer: workOrder?.customerName || `Client #${workOrder?.customerId || ''}`,
           title: item?.repair || item?.description || 'Repair part',
@@ -1290,6 +1298,67 @@ const EODWindow: React.FC = () => {
     rows.sort((a, b) => a.distributor.localeCompare(b.distributor) || Number(a.workOrderId || 0) - Number(b.workOrderId || 0));
     return rows;
   }, [end, start, workOrders]);
+
+  const markSelectedPurchasesOrdered = useCallback(async () => {
+    const selected = partsPurchaseQueue.filter((row) => selectedPurchaseRows.has(row.key));
+    if (!selected.length) return;
+    setPurchaseUpdateBusy(true);
+    setPurchaseUpdateMessage('');
+    const api = (window as any).api || {};
+    const now = new Date().toISOString();
+    const date = now.slice(0, 10);
+    let updatedCount = 0;
+    let emailCount = 0;
+    const failures: string[] = [];
+    try {
+      const workOrderIds = Array.from(new Set(selected.map((row) => row.workOrderId)));
+      for (const workOrderId of workOrderIds) {
+        const current = workOrders.find((row) => Number(row?.id) === Number(workOrderId));
+        if (!current) { failures.push(`WO #${workOrderId} was not found.`); continue; }
+        const selectedForWorkOrder = selected.filter((row) => Number(row.workOrderId) === Number(workOrderId));
+        const items = (Array.isArray(current.items) ? current.items : []).map((item: any, itemIndex: number) => {
+          if (!selectedForWorkOrder.some((row) => row.itemIndex === itemIndex)) return item;
+          return { ...item, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+        });
+        const updated = {
+          ...current,
+          items,
+          partsOrdered: true,
+          partsOrderDate: current.partsOrderDate || date,
+          repairStatus: 'Part Ordered',
+          statusUpdate: 'Part Ordered',
+          statusUpdatedAt: now,
+          updatedAt: now,
+        };
+        try {
+          const saved = api.update ? await api.update('workOrders', updated) : await api.dbUpdate?.('workOrders', current.id, updated);
+          setWorkOrders((rows) => rows.map((row) => Number(row?.id) === Number(workOrderId) ? (saved || updated) : row));
+          updatedCount += selectedForWorkOrder.length;
+
+          const customer = customers.find((row) => Number(row?.id) === Number(current.customerId));
+          const email = String(current.customerEmail || customer?.email || '').trim();
+          if (email && api.emailSendReportHtml) {
+            const subject = `Part ordered for WO-${workOrderId}`;
+            const clientName = current.customerName || [customer?.firstName, customer?.lastName].filter(Boolean).join(' ').trim() || 'Client';
+            const result = await api.emailSendReportHtml({
+              to: email,
+              subject,
+              html: `<div style="font-family:Arial,sans-serif;color:#18181b"><h2 style="color:#7e22ce">GadgetBoy Repair Update</h2><p>Hi ${clientName},</p><p>The part for work order <strong>WO-${workOrderId}</strong> has been ordered. We will update you again when it arrives.</p><p>GadgetBoy Repair &amp; Retail</p></div>`,
+              text: `Hi ${clientName},\n\nThe part for work order WO-${workOrderId} has been ordered. We will update you again when it arrives.\n\nGadgetBoy Repair & Retail`,
+            });
+            if (result?.ok) emailCount += 1;
+            else if (result?.error && !String(result.error).includes('desktop-only')) failures.push(`WO #${workOrderId} email: ${result.error}`);
+          }
+        } catch (error: any) {
+          failures.push(`WO #${workOrderId}: ${error?.message || error}`);
+        }
+      }
+      setSelectedPurchaseRows(new Set());
+      setPurchaseUpdateMessage(`${updatedCount} part${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
+    } finally {
+      setPurchaseUpdateBusy(false);
+    }
+  }, [customers, partsPurchaseQueue, selectedPurchaseRows, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
@@ -2137,6 +2206,11 @@ const EODWindow: React.FC = () => {
                   <div><div className="text-zinc-500">Part margin</div><div className="font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div></div>
                 </div>
               </div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button type="button" disabled={!selectedPurchaseRows.size || purchaseUpdateBusy} onClick={() => void markSelectedPurchasesOrdered()} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : `Mark Selected Paid & Ordered (${selectedPurchaseRows.size})`}</button>
+                <span className="text-xs text-zinc-500">Updates each selected work order and sends email when a configured email service is available.</span>
+              </div>
+              {purchaseUpdateMessage ? <div className="mb-3 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">{purchaseUpdateMessage}</div> : null}
               {partsPurchaseTotals.missingCost > 0 ? (
                 <div className="mb-3 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">
                   {partsPurchaseTotals.missingCost} part{partsPurchaseTotals.missingCost === 1 ? '' : 's'} missing internal cost. They remain in the queue but are excluded from cost and margin totals.
@@ -2145,11 +2219,12 @@ const EODWindow: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead className="text-xs text-zinc-500 border-b border-zinc-800">
-                    <tr><th className="py-2 text-left">Distributor / Part</th><th className="py-2 text-left">WO / Client</th><th className="py-2 text-right">Cost</th><th className="py-2 text-right">Tax</th><th className="py-2 text-right">Charged</th><th className="py-2 text-center">Payment</th><th className="py-2 text-right">Order</th></tr>
+                    <tr><th className="w-10 py-2 text-center">Paid</th><th className="py-2 text-left">Distributor / Part</th><th className="py-2 text-left">WO / Client</th><th className="py-2 text-right">Cost</th><th className="py-2 text-right">Tax</th><th className="py-2 text-right">Charged</th><th className="py-2 text-center">Payment</th><th className="py-2 text-right">Order</th></tr>
                   </thead>
                   <tbody>
                     {partsPurchaseQueue.map((row, index) => (
                       <tr key={`${row.workOrderId}-${row.url}-${index}`} className="border-b border-zinc-900">
+                        <td className="py-2 text-center"><input type="checkbox" checked={selectedPurchaseRows.has(row.key)} onChange={(event) => setSelectedPurchaseRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Mark ${row.title} paid and ordered`} /></td>
                         <td className="py-2 pr-3"><div className="font-medium">{row.distributor}</div><div className="text-xs text-zinc-400">{row.title}</div></td>
                         <td className="py-2 pr-3"><div>WO #{row.workOrderId}</div><div className="text-xs text-zinc-400">{row.customer}</div></td>
                         <td className="py-2 text-right">{row.hasCost ? formatCurrency(row.totalCost) : 'Not entered'}</td>
@@ -2159,7 +2234,7 @@ const EODWindow: React.FC = () => {
                         <td className="py-2 text-right">{row.url ? <button type="button" className="px-3 py-1 rounded bg-amber-500 text-black font-semibold" onClick={() => { const api = (window as any).api; if (api?.openUrl) void api.openUrl(row.url); else if (api?.openExternal) void api.openExternal(row.url); else window.open(row.url, '_blank', 'noopener,noreferrer'); }}>Open URL</button> : <span className="text-red-300">Missing URL</span>}</td>
                       </tr>
                     ))}
-                    {!partsPurchaseQueue.length ? <tr><td colSpan={7} className="py-6 text-center text-zinc-500">No parts need purchasing in this report range.</td></tr> : null}
+                    {!partsPurchaseQueue.length ? <tr><td colSpan={8} className="py-6 text-center text-zinc-500">No parts need purchasing in this report range.</td></tr> : null}
                   </tbody>
                 </table>
               </div>

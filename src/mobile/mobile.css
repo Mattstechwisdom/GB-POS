@@ -2158,6 +2158,18 @@
     min-width: 720px;
   }
 
+  .gbpos-mobile .gb-customer-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  .gbpos-mobile .gb-inventory-mode-toggle,
+  .gbpos-mobile .gb-inventory-action-row,
+  .gbpos-mobile .gb-vendor-mode-toggle {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
   .gbpos-mobile .gb-repair-table {
     min-width: 0 !important;
   }

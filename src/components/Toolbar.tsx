@@ -104,6 +104,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
               {[
                 { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
                 { label: 'Inventory',       action: () => dispatchOpenModal('inventory') },
+                { label: 'Distributors/Vendors', action: () => dispatchOpenModal('vendors') },
                 { label: 'Reporting',       action: () => dispatchOpenModal('reporting') },
                 { label: 'Technicians',     action: () => setShowTechs(true) },
                 { label: 'Data Tools',      action: () => dispatchOpenModal('dataTools') },

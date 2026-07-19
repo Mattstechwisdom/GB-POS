@@ -27,6 +27,7 @@ const QuoteGeneratorWindow      = React.lazy(() => import('./components/QuoteGen
 const EODWindow                 = React.lazy(() => import('./components/EODWindow'));
 const ProductsWindow            = React.lazy(() => import('./components/ProductsWindow'));
 const InventoryWindow           = React.lazy(() => import('./components/InventoryWindow'));
+const VendorsWindow             = React.lazy(() => import('./components/VendorsWindow'));
 const WorkOrderRepairPickerWindow = React.lazy(() => import('./workorders/WorkOrderRepairPickerWindow'));
 const CustomerOverviewWindow    = React.lazy(() => import('./components/CustomerOverviewWindow'));
 const QuickSaleWindow           = React.lazy(() => import('./components/QuickSaleWindow'));
@@ -59,6 +60,7 @@ const API_TO_MODAL: Record<string, string> = {
   openEod:                   'eod',
   openProducts:              'products',
   openInventory:             'inventory',
+  openVendors:               'vendors',
   openWorkOrderRepairPicker: 'workOrderRepairPicker',
   openCustomerOverview:      'customerOverview',
   openQuickSale:             'quickSale',
@@ -142,8 +144,10 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'eod':                    return <EODWindow />;
     case 'products':               return <ProductsWindow />;
     case 'inventory':              return <InventoryWindow />;
+    case 'vendors':                return <VendorsWindow />;
     case 'workOrderRepairPicker':  return <WorkOrderRepairPickerWindow />;
     case 'customerOverview':       return <CustomerOverviewWindow onClose={onClose} />;
+    case 'customerSearch':         return <CustomerSearchWindow onClose={onClose} />;
     case 'quickSale':              return <QuickSaleWindow />;
     case 'consultation':           return <ConsultationBookingWindow />;
     case 'checkout':               return <CheckoutWindow />;

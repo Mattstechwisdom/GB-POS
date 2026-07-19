@@ -147,8 +147,8 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-8 overflow-auto">
-      <div className="w-full max-w-5xl bg-zinc-900 border border-zinc-700 rounded shadow-xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8">
+      <div className="flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]">
         <div className="p-4 border-b border-zinc-700 flex items-center justify-between gap-3">
           <h2 className="font-bold text-lg">Customer Search</h2>
           {!isModalShell && (
@@ -162,7 +162,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
             </button>
           )}
         </div>
-        <div className="p-4 space-y-4 overflow-auto">
+        <div className="min-w-0 space-y-4 overflow-auto p-2 sm:p-4">
           <CustomerSearchForm onSearch={handleSearch} />
           <CustomerTable
             customers={filtered}
