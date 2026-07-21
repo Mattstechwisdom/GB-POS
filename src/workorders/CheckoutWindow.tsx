@@ -55,11 +55,6 @@ const CheckoutWindow: React.FC = () => {
   const [printReceipt, setPrintReceipt] = useState(true);
   const [markClosed, setMarkClosed] = useState(false);
 
-  const [cloverEnabled, setCloverEnabled] = useState(false);
-  const [cloverMode, setCloverMode] = useState<'local' | 'cloud'>('local');
-  const [cloverLoading, setCloverLoading] = useState(false);
-  const [cloverStatus, setCloverStatus] = useState<{ ok: boolean; message: string } | null>(null);
-
   const payPartsChecked = !hasPayFor ? true : (payFor === 'both' || payFor === 'parts');
   const payLaborChecked = !hasPayFor ? true : (payFor === 'both' || payFor === 'labor');
   const payBothChecked = !hasPayFor ? true : (payFor === 'both');
@@ -198,12 +193,6 @@ const CheckoutWindow: React.FC = () => {
   function save() {
     if (!canSave) return;
     const result = buildCheckoutResult();
-    // Fire Clover cash sale in background (opens drawer, records in Clover)
-    if (isCashOnly && cloverEnabled) {
-      const amountCents = Math.round(appliedPaid * 100);
-      const tenderedCents = Math.round(numericCashReceived * 100);
-      (window as any).api?.cloverCashSale?.({ amountCents, tenderedCents, label: payload?.title || 'Service' }).catch(() => {});
-    }
     (window as any).api._emitCheckoutSave(result); // will be bridged via ipc send
   }
   function cancel() {
@@ -214,13 +203,6 @@ const CheckoutWindow: React.FC = () => {
     // ensure initial formatting
     setCashReceived(round2(originalAmountDue));
     setAmountToApply(round2(originalAmountDue));
-    // Check if Clover is configured
-    (window as any).api?.cloverGetConfig?.().then((cfg: any) => {
-      const hasLocal = !!(cfg?.deviceIp);
-      const hasCloud = !!(cfg?.hasToken && cfg?.merchantId);
-      if (hasLocal) { setCloverEnabled(true); setCloverMode('local'); }
-      else if (hasCloud) { setCloverEnabled(true); setCloverMode('cloud'); }
-    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -244,32 +226,6 @@ const CheckoutWindow: React.FC = () => {
       });
     }
   }, [paymentType, selectedDue, cashEdited, applyEdited, appliedPaid]);
-
-  async function handleCloverCharge() {
-    if (!canSave) return;
-    setCloverLoading(true);
-    setCloverStatus(null);
-    try {
-      const amountCents = Math.round(appliedPaid * 100);
-      const label = payload?.title || 'Service';
-      let res: any;
-      if (cloverMode === 'local') {
-        res = await (window as any).api.cloverLocalCharge({ amountCents, label });
-      } else {
-        res = await (window as any).api.cloverChargeCard({ amountCents, label });
-      }
-      if (res?.ok) {
-        (window as any).api._emitCheckoutSave(buildCheckoutResult());
-        setCloverStatus({ ok: true, message: cloverMode === 'local' ? 'Sent to Flex — customer can now pay on device' : 'Sent to Clover — awaiting payment on device' });
-      } else {
-        setCloverStatus({ ok: false, message: res?.error || 'Clover error' });
-      }
-    } catch (e: any) {
-      setCloverStatus({ ok: false, message: e?.message || 'Clover error' });
-    } finally {
-      setCloverLoading(false);
-    }
-  }
 
   function onRootKeyDownCapture(e: React.KeyboardEvent) {
     if (e.key !== 'Enter') return;
@@ -443,31 +399,6 @@ const CheckoutWindow: React.FC = () => {
           <label className="flex items-center gap-2 cursor-pointer"><input className="scale-90" type="checkbox" checked={printReceipt} onChange={e => setPrintReceipt(e.target.checked)} /> Print receipt</label>
           <label className="flex items-center gap-2 cursor-pointer col-span-2"><input className="scale-90" type="checkbox" checked={markClosed} onChange={e => setMarkClosed(e.target.checked)} /> Mark closed</label>
         </div>
-
-        {cloverEnabled && paymentType === 'Card' && (
-          <div className="flex flex-col gap-1">
-            <button
-              className={`w-full py-2 rounded text-[11px] font-semibold border transition-colors ${
-                cloverLoading
-                  ? 'bg-zinc-800 border-zinc-600 text-zinc-400 cursor-wait'
-                  : canSave
-                  ? 'bg-zinc-900 border-[#39FF14] text-[#39FF14] hover:bg-zinc-800'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 cursor-not-allowed'
-              }`}
-              disabled={!canSave || cloverLoading}
-              onClick={handleCloverCharge}
-            >
-              {cloverLoading ? 'Sending to Clover…' : '⬛ Charge on Clover Device'}
-            </button>
-            {cloverStatus && (
-              <div className={`text-[10px] px-2 py-1 rounded text-center ${
-                cloverStatus.ok ? 'text-[#39FF14] bg-green-950/40' : 'text-red-400 bg-red-950/40'
-              }`}>
-                {cloverStatus.message}
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="mt-auto flex justify-end gap-2">
           <button className="px-3 py-1.5 rounded bg-zinc-700 text-[11px]" onClick={cancel}>Cancel</button>

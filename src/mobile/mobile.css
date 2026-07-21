@@ -25,6 +25,10 @@
   min-height: 100dvh;
 }
 
+.gb-calendar-view-toggle {
+  display: none;
+}
+
 .mobile-shell {
   min-height: 100dvh;
   padding: calc(env(safe-area-inset-top) + 0.75rem) 0 calc(env(safe-area-inset-bottom) + 5.75rem);
@@ -764,6 +768,7 @@
 
 .mobile-action-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.42rem;
 }
 
@@ -778,6 +783,25 @@
   font-weight: 850;
   padding: 0.55rem 0.8rem;
   text-align: left;
+}
+
+.mobile-action-list > button {
+  grid-column: 1 / -1;
+}
+
+.mobile-action-list > button.contact {
+  grid-column: auto;
+  text-align: center;
+}
+
+.mobile-action-list > button.contact.call {
+  border-color: rgba(57, 255, 20, 0.65);
+  color: #86ff70;
+}
+
+.mobile-action-list > button.contact.text {
+  border-color: rgba(59, 130, 246, 0.72);
+  color: #93c5fd;
 }
 
 .mobile-action-list button small {
@@ -2122,6 +2146,275 @@
 }
 
 @media (max-width: 820px) {
+  .gbpos-mobile .gb-calendar-window {
+    height: 100% !important;
+    min-height: 0;
+    padding: 0.75rem !important;
+    overflow: hidden !important;
+  }
+
+  .gbpos-mobile .gb-calendar-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.6rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-header h2 {
+    font-size: 1.05rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-controls {
+    display: grid !important;
+    grid-template-columns: 2.5rem minmax(7.5rem, auto) 2.5rem !important;
+    gap: 0.35rem !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .gbpos-mobile .gb-calendar-controls > button {
+    min-height: 2.5rem;
+    padding: 0.35rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-period {
+    width: auto !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-daily-look {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-calendar-view-toggle {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+    padding: 0.25rem;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    background: #18181b;
+  }
+
+  .gbpos-mobile .gb-calendar-view-toggle button {
+    min-height: 2.65rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: #a1a1aa;
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-calendar-view-toggle button[aria-pressed="true"] {
+    border-color: #39ff14;
+    background: #39ff14;
+    color: #09090b;
+  }
+
+  .gbpos-mobile .gb-calendar-filters {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .gbpos-mobile .gb-calendar-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-calendar-filters > div {
+    display: flex !important;
+    width: max-content;
+    flex-wrap: nowrap !important;
+    gap: 0.75rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-filters label,
+  .gbpos-mobile .gb-calendar-filters label > div,
+  .gbpos-mobile .gb-calendar-filters .ml-3 {
+    flex-wrap: nowrap !important;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-month {
+    min-height: 0;
+  }
+
+  .gbpos-mobile .gb-calendar-month > .grid,
+  .gbpos-mobile .gb-calendar-month-grid {
+    display: grid !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 2px !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month > .grid:first-child > div {
+    padding: 0.4rem 0.05rem !important;
+    overflow: hidden;
+    font-size: 0 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month > .grid:first-child > div::first-letter {
+    font-size: 0.72rem;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid {
+    grid-template-rows: repeat(6, minmax(3.5rem, 1fr));
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid > div {
+    overflow: hidden;
+    border-radius: 4px !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid > div > div {
+    padding: 0.25rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid .text-sm {
+    margin-bottom: 0.1rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid .text-sm button,
+  .gbpos-mobile .gb-calendar-month-grid .space-y-1 {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid .flex-wrap {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 1px !important;
+    margin-top: auto !important;
+    padding-top: 0.1rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-month-grid .flex-wrap > div {
+    width: 0.86rem !important;
+    height: 0.86rem !important;
+    font-size: 0.55rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week,
+  .gbpos-mobile .gb-calendar-day {
+    min-height: 0;
+    padding-right: 0.15rem;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section,
+  .gbpos-mobile .gb-calendar-day-sections > section {
+    margin-bottom: 0.55rem;
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    background: #111114;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section.is-today {
+    border-color: #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-week section > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2.6rem;
+    align-items: stretch;
+    border-bottom: 1px solid #27272a;
+  }
+
+  .gbpos-mobile .gb-calendar-week header button:first-child {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.7rem;
+    text-align: left;
+  }
+
+  .gbpos-mobile .gb-calendar-week header button:last-child {
+    border-left: 1px solid #27272a;
+    color: #39ff14;
+    font-size: 1.35rem;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.55rem;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list button,
+  .gbpos-mobile .gb-calendar-day-sections section > button,
+  .gbpos-mobile .gb-calendar-day-sections section > div {
+    width: 100%;
+    padding: 0.6rem;
+    border-left: 3px solid #71717a;
+    border-radius: 4px;
+    background: #18181b;
+    text-align: left;
+    font-size: 0.82rem;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list .type-parts {
+    border-left-color: #3b82f6;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list .type-consultation {
+    border-left-color: #eab308;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list .type-schedule {
+    border-left-color: #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-day-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 0.45rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .gbpos-mobile .gb-calendar-day-actions input,
+  .gbpos-mobile .gb-calendar-day-actions select,
+  .gbpos-mobile .gb-calendar-day-actions button {
+    min-height: 2.75rem;
+    padding: 0.5rem;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    background: #18181b;
+  }
+
+  .gbpos-mobile .gb-calendar-day-actions button {
+    grid-column: 1 / -1;
+    border-color: #39ff14;
+    background: #39ff14;
+    color: #09090b;
+    font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-day-sections section {
+    padding: 0.6rem;
+  }
+
+  .gbpos-mobile .gb-calendar-day-sections h3 {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.45rem;
+    color: #f4f4f5;
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-calendar-day-sections h3 span {
+    color: #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-day-sections section > p,
+  .gbpos-mobile .gb-calendar-agenda-list > span {
+    padding: 0.55rem;
+    color: #71717a;
+    font-size: 0.8rem;
+  }
+
   .gbpos-mobile .min-w-\[1100px\],
   .gbpos-mobile .min-w-\[1000px\],
   .gbpos-mobile .min-w-\[900px\],
@@ -2269,5 +2562,185 @@
 @media (min-width: 1100px) {
   .mobile-record-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .gbpos-mobile .gb-customer-search-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-child-dialog {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1000 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    min-height: 100dvh !important;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) !important;
+    overflow-y: auto !important;
+    background: rgba(0, 0, 0, 0.78) !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-child-dialog .gb-customer-overview-panel {
+    min-height: 100dvh !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    padding: 0.75rem !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: #09090b !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.55rem;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-header > .text-lg {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-customer-overview-header > .flex {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+
+  .gbpos-mobile .gb-customer-overview-header > .flex > button {
+    width: 100%;
+    min-height: 2.8rem;
+  }
+
+  .gbpos-mobile .gb-customer-overview-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.8rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-form,
+  .gbpos-mobile .gb-customer-overview-history {
+    width: 100% !important;
+  }
+
+  .gbpos-mobile .gb-customer-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-form-grid input,
+  .gbpos-mobile .gb-customer-form-grid textarea {
+    width: 100%;
+    min-height: 2.75rem;
+  }
+
+  .gbpos-mobile .gb-customer-notes-field {
+    grid-column: 1 / -1 !important;
+  }
+
+  .gbpos-mobile .gb-customer-notes-field textarea {
+    min-height: 6.5rem;
+    height: 6.5rem;
+  }
+
+  .gbpos-mobile .gb-customer-primary-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.55rem !important;
+    margin: 0 !important;
+  }
+
+  .gbpos-mobile .gb-customer-primary-actions button {
+    min-height: 3rem;
+    padding: 0.55rem !important;
+    border-color: #39ff14 !important;
+    color: #39ff14 !important;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-customer-history-filters {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 0.3rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-history-filters button {
+    min-height: 2.5rem;
+    padding: 0.3rem !important;
+    white-space: normal;
+  }
+
+  .gbpos-mobile .gb-customer-overview-footer {
+    margin-top: 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-client-info-card {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .gbpos-mobile .gb-client-info-card h2 {
+    font-size: 1.15rem;
+  }
+
+  .gbpos-mobile .gb-client-contact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-client-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-customer-history-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 0.69rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-history-table th,
+  .gbpos-mobile .gb-customer-history-table td {
+    overflow: hidden;
+    padding: 0.35rem 0.25rem !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-customer-history-table th:nth-child(1) { width: 20%; }
+  .gbpos-mobile .gb-customer-history-table th:nth-child(2) { width: 19%; }
+  .gbpos-mobile .gb-customer-history-table th:nth-child(3) { width: 27%; }
+  .gbpos-mobile .gb-customer-history-table th:nth-child(4) { width: 17%; }
+  .gbpos-mobile .gb-customer-history-table th:nth-child(5) { width: 17%; }
+
+  .gbpos-mobile .gb-client-quote-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 0.45rem;
+  }
+
+  .gbpos-mobile .gb-client-quote-actions {
+    grid-column: 1 / -1;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-client-quote-actions button:only-child {
+    grid-column: 1 / -1;
   }
 }

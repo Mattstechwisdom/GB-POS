@@ -7447,6 +7447,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             <CustomerOverviewWindow
               customer={null}
               closeAfterSave
+              childDialog
               onClose={() => setAddingClientFor(null)}
               onSaved={(c) => {
                 applyQuoteClient(addingClientFor, {

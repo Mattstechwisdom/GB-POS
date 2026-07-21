@@ -3,16 +3,17 @@ import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import CustomerForm from './CustomerForm';
 import Button from './Button';
-import ClientSmsChat from './ClientSmsChat';
 import DuplicateCustomerDialog from './DuplicateCustomerDialog';
 import { Customer } from '../lib/types';
 import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
+import { formatPhone } from '../lib/format';
 
 interface Props {
   customer?: Customer | null;
   onClose: () => void;
   onSaved?: (c: Customer) => void;
   closeAfterSave?: boolean; // default: save closes the window
+  childDialog?: boolean;
 }
 
 function phoneDigits(value: any): string {
@@ -41,12 +42,12 @@ function cleanCustomerPayload(value: Partial<Customer>): Partial<Customer> {
   return next;
 }
 
-const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true }) => {
+const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true, childDialog = false }) => {
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
   const [local, setLocal] = useState<Partial<Customer>>(customer || {});
-  const [showChat, setShowChat] = useState(false);
+  const [detailsEditing, setDetailsEditing] = useState(!customer?.id);
   const [historyMode, setHistoryMode] = useState<'workorders'|'sales'|'consultations'|'all'>('all');
   const [errors, setErrors] = useState<string[]>([]);
   const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
@@ -76,6 +77,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         const list = await (window as any).api.findCustomers({ id });
         if (Array.isArray(list) && list.length) {
           setLocal(list[0]);
+          setDetailsEditing(false);
           setDirty(false);
           editSeqRef.current = 0;
         }
@@ -87,6 +89,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   useEffect(() => {
     setLocal(customer || {});
+    setDetailsEditing(!customer?.id);
     setDirty(false);
     editSeqRef.current = 0;
   }, [customer]);
@@ -186,8 +189,14 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   }
 
   async function handleSave() {
+    const wasExisting = !!(local as any)?.id;
     const saved = await ensureCustomerSaved();
-    if (saved && closeAfterSave) onClose();
+    if (!saved) return;
+    if (wasExisting) {
+      setDetailsEditing(false);
+      return;
+    }
+    if (closeAfterSave) onClose();
   }
 
   async function ensureCustomerSaved(): Promise<Customer | null> {
@@ -275,28 +284,38 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     };
   }
 
+  async function openNewWorkOrderForCustomer() {
+    const payload = await makePayloadForCustomer();
+    if (!payload.customerId) return;
+    await (window as any).api.openNewWorkOrder(payload);
+  }
+
+  async function openNewSaleForCustomer() {
+    const payload = await makePayloadForCustomer();
+    if (!payload.customerId) return;
+    await (window as any).api.openNewSale(payload);
+  }
+
   return (
     <>
-    <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6">
-      <div className="bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
+    <div className={`gb-customer-overview-overlay ${childDialog ? 'is-child-dialog' : ''} fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6`}>
+      <div className="gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
         {/* Top toolbar with actions */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="gb-customer-overview-header flex items-center justify-between mb-3">
           <div className="text-lg font-semibold text-zinc-200">Customer Overview</div>
           <div className="flex items-center gap-2">
-            <Button neon onClick={handleSave}>Save</Button>
-            {(local as any)?.phone && (
+            {detailsEditing ? <Button neon onClick={handleSave}>Save</Button> : null}
+            {childDialog ? (
               <button
                 type="button"
-                onClick={() => setShowChat(v => !v)}
-                className={`h-9 px-3 flex items-center gap-1.5 text-sm font-semibold rounded border ${
-                  showChat
-                    ? 'bg-[#39FF14] border-[#39FF14] text-black'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]'
-                }`}
+                aria-label="Close customer form"
+                title="Close customer form"
+                onClick={handleClose}
+                className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-red-500 hover:text-red-400"
               >
-                💬 Text Client
+                &#10005;
               </button>
-            )}
+            ) : null}
             {!isModalShell && (
               <button
                 type="button"
@@ -309,39 +328,41 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
             )}
           </div>
         </div>
-        <div className="flex gap-4">
-          <div className="w-5/12">
-            <CustomerForm
-              customer={local}
-              onChange={c => {
-                editSeqRef.current += 1;
-                setDirty(true);
-                setLocal(prev => ({ ...prev, ...c }));
-              }}
-            />
+        <div className={`gb-customer-overview-layout flex gap-4 ${!(local as any)?.id ? 'is-new-customer' : 'is-existing-customer'} ${detailsEditing ? 'is-editing' : 'is-viewing'}`}>
+          <div className="gb-customer-overview-form w-5/12">
+            {(local as any)?.id && !detailsEditing ? (
+              <ClientInfoCard
+                customer={local}
+                onEdit={() => setDetailsEditing(true)}
+                onNewWorkOrder={() => void openNewWorkOrderForCustomer()}
+                onNewSale={() => void openNewSaleForCustomer()}
+              />
+            ) : (
+              <CustomerForm
+                customer={local}
+                onChange={c => {
+                  editSeqRef.current += 1;
+                  setDirty(true);
+                  setLocal(prev => ({ ...prev, ...c }));
+                }}
+              />
+            )}
           </div>
-          <div className="w-7/12 flex flex-col gap-3">
+          <div className="gb-customer-overview-history w-7/12 flex flex-col gap-3">
             {/* Primary actions above filters */}
-            <div className="flex items-center gap-2 mb-1">
+            {(!(local as any)?.id || detailsEditing) ? <div className="gb-customer-primary-actions flex items-center gap-2 mb-1">
               <Button
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
-                onClick={async () => {
-                  const payload = await makePayloadForCustomer();
-                  if (!payload.customerId) return;
-                  await (window as any).api.openNewWorkOrder(payload);
-                }}
+                onClick={() => void openNewWorkOrderForCustomer()}
               >New Work Order</Button>
               <Button
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
-                onClick={async () => {
-                  const payload = await makePayloadForCustomer();
-                  if (!payload.customerId) return;
-                  await (window as any).api.openNewSale(payload);
-                }}
+                onClick={() => void openNewSaleForCustomer()}
               >New Sale</Button>
-            </div>
+            </div> : null}
+            {(local as any)?.id ? <>
             {/* Filter toggle (smaller) with hover-highlight / solid-when-selected */}
-            <div className="flex items-center gap-2 mb-1">
+            <div className="gb-customer-history-filters flex items-center gap-2 mb-1">
               <button
                 className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='workorders' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
                 onClick={() => setHistoryMode('workorders')}
@@ -369,10 +390,11 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
               mode={historyMode}
             />
             {/* Completed Quotes: signed-off PDFs linked to this customer */}
-            <CompletedQuotesPanel customer={local as any} />
+            <SavedQuotesPanel customer={local as any} />
+            </> : null}
           </div>
         </div>
-        <div className="flex items-center justify-between mt-4">
+        <div className="gb-customer-overview-footer flex items-center justify-between mt-4">
           <div className="flex flex-col gap-1">
             {!!errors.length && <div className="text-sm text-red-400">{errors.join(' · ')}</div>}
             {autoSaving && <div className="text-xs text-zinc-400 animate-pulse">Auto-saving…</div>}
@@ -382,14 +404,6 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         </div>
       </div>
     </div>
-    {showChat && (local as any)?.phone && (
-      <ClientSmsChat
-        customerId={Number((local as any).id) || 0}
-        customerName={[(local as any).firstName, (local as any).lastName].filter(Boolean).join(' ').trim() || 'Client'}
-        customerPhone={String((local as any).phone || '')}
-        onClose={() => setShowChat(false)}
-      />
-    )}
     {duplicateMatches.length > 0 && (
       <DuplicateCustomerDialog
         matches={duplicateMatches}
@@ -402,6 +416,42 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 };
 
 export default CustomerOverviewWindow;
+
+const ClientInfoCard: React.FC<{
+  customer: Partial<Customer>;
+  onEdit: () => void;
+  onNewWorkOrder: () => void;
+  onNewSale: () => void;
+}> = ({ customer, onEdit, onNewWorkOrder, onNewSale }) => {
+  const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim() || `Client #${customer.id}`;
+  const phone = formatPhone(customer.phone || '') || customer.phone || '';
+  const altPhone = formatPhone((customer as any).phoneAlt || '') || (customer as any).phoneAlt || '';
+
+  return (
+    <section className="gb-client-info-card">
+      <header>
+        <div>
+          <span>Client #{customer.id}</span>
+          <h2>{fullName}</h2>
+        </div>
+        <button type="button" onClick={onEdit} aria-label="Edit client information" title="Edit client information">
+          <span aria-hidden="true">&#9998;</span>
+        </button>
+      </header>
+      <div className="gb-client-contact-grid">
+        <div><span>Phone</span><strong>{phone || 'Not provided'}</strong></div>
+        <div><span>Email</span><strong>{customer.email || 'Not provided'}</strong></div>
+        <div><span>Alt. Phone</span><strong>{altPhone || 'Not provided'}</strong></div>
+        <div><span>ZIP</span><strong>{customer.zip || 'Not provided'}</strong></div>
+      </div>
+      {customer.notes ? <div className="gb-client-info-notes"><span>Notes</span><p>{customer.notes}</p></div> : null}
+      <div className="gb-client-card-actions">
+        <button type="button" onClick={onNewWorkOrder}>New Work Order</button>
+        <button type="button" onClick={onNewSale}>New Sale</button>
+      </div>
+    </section>
+  );
+};
 
 // Combined history (Work Orders + Sales) with pagination and filters
 const PAGE_SIZE = 6;
@@ -538,7 +588,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
     <div className="flex flex-col gap-2">
       <div className="border border-zinc-700 rounded overflow-hidden">
         <div className="min-h-[16rem] max-h-[24rem] overflow-y-auto">
-          <table className="w-full text-sm">
+          <table className="gb-customer-history-table w-full text-sm">
             <thead className="bg-zinc-800 text-zinc-400 sticky top-0">
               <tr>
                 <th className="text-left px-2 py-1">Date</th>
@@ -651,7 +701,91 @@ const PageBlockControls: React.FC<{ totalPages: number; currentPage: number; onC
   );
 };
 
-// Panel listing completed quote PDFs associated with this customer
+const SavedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({ customer }) => {
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [quoteFiles, setQuoteFiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [savedRows, fileRows] = await Promise.all([
+        (window as any).api.dbGet('quotes').catch(() => []),
+        (window as any).api.dbGet('quoteFiles').catch(() => []),
+      ]);
+      setQuotes(Array.isArray(savedRows) ? savedRows : []);
+      setQuoteFiles(Array.isArray(fileRows) ? fileRows : []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const off = (window as any).api.onQuotesChanged?.(() => void refresh());
+    return () => { try { off && off(); } catch {} };
+  }, [refresh]);
+
+  const matchesCustomer = useCallback((quote: any) => {
+    const customerId = Number(customer?.id || 0);
+    const quoteCustomerId = Number(quote?.customerId || 0);
+    if (customerId > 0 && quoteCustomerId > 0) return customerId === quoteCustomerId;
+    if (quoteCustomerId > 0) return false;
+    const customerName = normalizeCustomerName(customer?.name || `${customer?.firstName || ''} ${customer?.lastName || ''}`);
+    const quoteName = normalizeCustomerName(quote?.customerName);
+    const customerPhone = normalizeCustomerPhone(customer?.phone);
+    const quotePhone = normalizeCustomerPhone(quote?.customerPhone);
+    return !!customerName && !!customerPhone && customerName === quoteName && customerPhone === quotePhone;
+  }, [customer]);
+
+  const rows = useMemo(() => {
+    const saved = quotes.filter(matchesCustomer).map((quote) => ({ ...quote, rowKey: `quote-${quote.id}`, collection: 'quotes', isFile: false }));
+    const files = quoteFiles.filter(matchesCustomer).map((quote) => ({ ...quote, rowKey: `file-${quote.id || quote.filePath}`, collection: 'quoteFiles', isFile: true }));
+    return [...saved, ...files].sort((a, b) => new Date(b.contentUpdatedAt || b.updatedAt || b.createdAt || 0).getTime() - new Date(a.contentUpdatedAt || a.updatedAt || a.createdAt || 0).getTime());
+  }, [matchesCustomer, quoteFiles, quotes]);
+
+  const quoteTitle = (quote: any) => {
+    if (quote.title) return quote.title;
+    const firstItem = Array.isArray(quote.items) ? quote.items[0] : Array.isArray(quote.lines) ? quote.lines[0] : null;
+    return firstItem?.model || firstItem?.description || `${quote.type === 'repairs' ? 'Repair' : 'Sales'} Quote #${quote.id || ''}`.trim();
+  };
+
+  const removeQuote = async (quote: any) => {
+    if (quote?.id == null) return;
+    if (!window.confirm(`Delete ${quoteTitle(quote)}? This cannot be undone.`)) return;
+    await (window as any).api.dbDelete(quote.collection, quote.id);
+    await refresh();
+  };
+
+  return (
+    <details className="gb-client-quotes">
+      <summary>
+        <span>Quotes</span>
+        <strong>{loading ? '...' : rows.length}</strong>
+      </summary>
+      <div className="gb-client-quotes-list">
+        {rows.length ? rows.map((quote) => {
+          const total = Number(quote?.totals?.total ?? quote?.total);
+          return (
+            <article key={quote.rowKey}>
+              <div>
+                <strong>{quoteTitle(quote)}</strong>
+                <span>{new Date(quote.contentUpdatedAt || quote.updatedAt || quote.createdAt || 0).toLocaleString()}</span>
+              </div>
+              {Number.isFinite(total) ? <b>${total.toFixed(2)}</b> : null}
+              <div className="gb-client-quote-actions">
+                {quote.isFile && quote.filePath ? <button type="button" onClick={() => void (window as any).api.openFile(quote.filePath)}>Open</button> : null}
+                <button type="button" className="danger" onClick={() => void removeQuote(quote)}>Delete</button>
+              </div>
+            </article>
+          );
+        }) : <p>No saved quotes for this client.</p>}
+      </div>
+    </details>
+  );
+};
+
+// Legacy signed PDF records remain readable for older desktop-created quotes.
 const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({ customer }) => {
   const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

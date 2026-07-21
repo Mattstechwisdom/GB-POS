@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.16 (2026-07-21)
+- Work Orders: fixes populated mobile tickets opening as blank forms by preserving the modal payload through React's safety render.
+- Work Orders: repairs Add Product on desktop and Android with a product-only picker, complete inventory metadata, explicit item limits, accurate linked-sale totals, and immediate persistence of the Sale link back to the work order.
+- Parts Ordering: removes the manual Scrape action; pasting or committing an Order URL now reads the page automatically, fills available title/vendor/cost fields, applies the default 10% markup, and creates a pending part line when needed.
+- Parts Ordering: normalizes common phone and tablet part titles into consistent inventory-friendly names while retaining useful quality and compatibility details.
+- Clients: adds a compact client overview with editable contact card and grouped work-order, sale, consultation, and quote history; quotes and consultations can create searchable clients even without a completed sale.
+- Mobile: improves client search/add layouts, work-order phone actions, calendar views, and product selection sizing for touch screens.
+- Integrations: removes the unfinished Clover and Twilio settings, checkout, messaging, routes, and renderer bridges while preserving existing transaction and customer data.
+
 ## v0.5.15 (2026-07-19)
 - Inventory: separates Products and Repair Parts with a blue Products toggle, green Add Part action, vendor memory, device type/model fields, stock controls, and a red saved Order URL button.
 - Vendors: adds separate Product Vendor and Parts Distributor management, including wholesale/consignment settings, vendor share, tax exemption, and contact details.

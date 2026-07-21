@@ -31,6 +31,219 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   --neon-purple: #BC13FE;
 }
 
+.gb-client-info-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #111114;
+}
+
+.gb-client-info-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.gb-client-info-card > header span,
+.gb-client-contact-grid span,
+.gb-client-info-notes > span {
+  display: block;
+  color: #a1a1aa;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.gb-client-info-card h2 {
+  margin-top: 0.2rem;
+  color: #f4f4f5;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.gb-client-info-card > header button {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 2.5rem;
+  border: 1px solid #52525b;
+  border-radius: 6px;
+  background: #18181b;
+  color: #e4e4e7;
+  font-size: 1.15rem;
+}
+
+.gb-client-info-card > header button:hover {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.gb-client-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.gb-client-contact-grid > div,
+.gb-client-info-notes {
+  min-width: 0;
+  padding: 0.65rem;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  background: #18181b;
+}
+
+.gb-client-contact-grid strong {
+  display: block;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  color: #f4f4f5;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-client-info-notes p {
+  margin-top: 0.25rem;
+  color: #d4d4d8;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.gb-client-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.gb-client-card-actions button {
+  min-height: 2.75rem;
+  border: 1px solid var(--neon-green);
+  border-radius: 6px;
+  background: #18181b;
+  color: var(--neon-green);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.gb-client-card-actions button:last-child {
+  border-color: #3b82f6;
+  color: #60a5fa;
+}
+
+.gb-client-card-actions button:hover {
+  background: var(--neon-green);
+  color: #09090b;
+}
+
+.gb-client-card-actions button:last-child:hover {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.gb-client-quotes {
+  overflow: hidden;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #111114;
+}
+
+.gb-client-quotes > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.8rem;
+  color: #e4e4e7;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 800;
+  list-style: none;
+}
+
+.gb-client-quotes > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gb-client-quotes > summary::after {
+  content: '+';
+  color: var(--neon-green);
+  font-size: 1.1rem;
+}
+
+.gb-client-quotes[open] > summary::after {
+  content: '-';
+}
+
+.gb-client-quotes-list {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border-top: 1px solid #27272a;
+}
+
+.gb-client-quote-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem;
+  border-radius: 6px;
+  background: #18181b;
+}
+
+.gb-client-quote-row > div:first-child {
+  min-width: 0;
+}
+
+.gb-client-quote-row strong,
+.gb-client-quote-row span {
+  display: block;
+}
+
+.gb-client-quote-row strong {
+  overflow: hidden;
+  color: #f4f4f5;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-client-quote-row span {
+  margin-top: 0.15rem;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+}
+
+.gb-client-quote-row > b {
+  color: var(--neon-green);
+  font-size: 0.85rem;
+}
+
+.gb-client-quote-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.gb-client-quote-actions button {
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid #52525b;
+  border-radius: 5px;
+  background: #27272a;
+  color: #e4e4e7;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.gb-client-quote-actions button.danger {
+  border-color: #7f1d1d;
+  color: #fca5a5;
+}
+
 .gb-standalone-window-close,
 .gb-panel-x-button {
   width: 2.25rem;

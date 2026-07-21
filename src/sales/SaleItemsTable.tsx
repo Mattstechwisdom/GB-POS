@@ -5,6 +5,7 @@ import MoneyInput from '@/components/MoneyInput';
 
 export type SaleItemRow = {
   id: string;
+  inventoryProductId?: number;
   description: string;
   qty: number;
   price: number; // unit price
@@ -18,6 +19,8 @@ export type SaleItemRow = {
   vendorRelationship?: 'wholesale' | 'consignment';
   vendorSharePct?: number;
   vendorTaxExempt?: boolean;
+  trackStock?: boolean;
+  stockCountAtSelection?: number;
 };
 
 interface Props {

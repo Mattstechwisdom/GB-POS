@@ -159,6 +159,8 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) =
 
 const CalendarWindow: React.FC = () => {
   const [current, setCurrent] = useState<Date>(new Date());
+  const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
+  const [isMobileCalendar, setIsMobileCalendar] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
@@ -177,6 +179,13 @@ const CalendarWindow: React.FC = () => {
     events: true,
     consultation: true
   });
+
+  useEffect(() => {
+    const detect = () => setIsMobileCalendar(/mobile\.html$/i.test(window.location.pathname) || !!document.querySelector('.gbpos-mobile'));
+    detect();
+    window.addEventListener('resize', detect);
+    return () => window.removeEventListener('resize', detect);
+  }, []);
 
   async function resolveConsultationLinks(ev: CalendarEvent) {
     const api: any = (window as any).api;
@@ -301,6 +310,13 @@ const CalendarWindow: React.FC = () => {
     return days;
   }, [current]);
 
+  const calendarDays = useMemo(() => {
+    if (!isMobileCalendar || calendarView === 'month') return monthDays;
+    if (calendarView === 'day') return [new Date(current.getFullYear(), current.getMonth(), current.getDate())];
+    const start = addDays(current, -current.getDay());
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [calendarView, current, isMobileCalendar, monthDays]);
+
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     
@@ -324,7 +340,7 @@ const CalendarWindow: React.FC = () => {
     // Derive schedules live from technicians to avoid stale persisted schedule events
     if (filters.schedule && Array.isArray(techs) && techs.length) {
       const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
-      monthDays.forEach(day => {
+      calendarDays.forEach(day => {
         const k = fmtDate(day);
         for (const t of techs) {
           const schedule = t?.schedule || {};
@@ -349,7 +365,7 @@ const CalendarWindow: React.FC = () => {
     }
     
     return map;
-  }, [events, monthDays, filters, techs]);
+  }, [calendarDays, events, filters, techs]);
 
   // Build a simple grouping key for parts events to relate deliveries to an order
   function partsGroupKey(ev: CalendarEvent) {
@@ -359,11 +375,12 @@ const CalendarWindow: React.FC = () => {
     return `${wo}::${id2}`;
   }
 
-  function prevMonth() {
-    setCurrent(new Date(current.getFullYear(), current.getMonth() - 1, 1, 0, 0, 0, 0));
-  }
-  function nextMonth() {
-    setCurrent(new Date(current.getFullYear(), current.getMonth() + 1, 1, 0, 0, 0, 0));
+  function movePeriod(direction: -1 | 1) {
+    if (!isMobileCalendar || calendarView === 'month') {
+      setCurrent(new Date(current.getFullYear(), current.getMonth() + direction, 1, 0, 0, 0, 0));
+      return;
+    }
+    setCurrent(addDays(current, direction * (calendarView === 'week' ? 7 : 1)));
   }
 
   function onPick(day: Date) {
@@ -589,13 +606,40 @@ const CalendarWindow: React.FC = () => {
     return { ymd, assigned, schedules, consultations, eventItems, partsDelivery, partsOrdered };
   }, [dailyLookDate, dailyLookAssignedTo, events, techs]);
 
+  useEffect(() => {
+    if (isMobileCalendar && calendarView === 'day') setDailyLookDate(fmtDate(current));
+  }, [calendarView, current, isMobileCalendar]);
+
+  const periodLabel = useMemo(() => {
+    if (!isMobileCalendar || calendarView === 'month') return current.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    if (calendarView === 'day') return current.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    const start = addDays(current, -current.getDay());
+    const end = addDays(start, 6);
+    return `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  }, [calendarView, current, isMobileCalendar]);
+
+  function eventSummary(ev: CalendarEvent): string {
+    const time = formatTime12FromHHmm(ev.time || '');
+    if (ev.category === 'schedule') {
+      const keys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+      const schedule = ev.schedule?.[keys[new Date(`${ev.date}T12:00:00`).getDay()]];
+      return `${ev.technician || 'Technician'}${schedule?.off ? ' - Off' : schedule?.start && schedule?.end ? ` - ${formatTime12FromHHmm(schedule.start)} to ${formatTime12FromHHmm(schedule.end)}` : ''}`;
+    }
+    if (ev.category === 'parts') {
+      const action = ev.partsStatus === 'delivery' || !ev.partsStatus ? 'Expected' : 'Ordered';
+      return `${time ? `${time} - ` : ''}${action}: ${ev.partName || ev.title || 'Part'}${ev.workOrderId ? ` (WO #${ev.workOrderId})` : ev.saleId ? ` (Sale #${ev.saleId})` : ''}`;
+    }
+    if (ev.category === 'consultation') return `${time ? `${time} - ` : ''}${ev.customerName || 'Consultation'}${ev.title ? `: ${ev.title}` : ''}`;
+    return `${time ? `${time} - ` : ''}${ev.title || 'Event'}`;
+  }
+
   return (
-    <div className="p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between mb-3">
+    <div className="gb-calendar-window p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
+      <div className="gb-calendar-header flex items-center justify-between mb-3">
         <h2 className="text-2xl font-semibold">Calendar - Schedule Management</h2>
-        <div className="flex items-center gap-2">
+        <div className="gb-calendar-controls flex items-center gap-2">
           <button
-            className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+            className="gb-calendar-daily-look px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
             onClick={() => {
               setDailyLookDate(fmtDate(new Date()));
               setDailyLookAssignedTo('');
@@ -604,16 +648,32 @@ const CalendarWindow: React.FC = () => {
           >
             Daily Look
           </button>
-          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={prevMonth}>&lt;</button>
-          <div className="text-sm text-zinc-300 w-36 text-center">
-            {current.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
+          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
+          <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
+            {periodLabel}
           </div>
-          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={nextMonth}>&gt;</button>
+          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
         </div>
       </div>
 
+      <div className="gb-calendar-view-toggle" role="group" aria-label="Calendar view">
+        {(['day', 'week', 'month'] as const).map((view) => (
+          <button
+            key={view}
+            type="button"
+            aria-pressed={calendarView === view}
+            onClick={() => {
+              if (view === 'day') setCurrent(new Date());
+              setCalendarView(view);
+            }}
+          >
+            {view === 'day' ? 'Daily' : view === 'week' ? 'Weekly' : 'Monthly'}
+          </button>
+        ))}
+      </div>
+
       {/* Event Type Filters */}
-      <div className="mb-2 p-2 bg-zinc-800 rounded-lg">
+      <div className="gb-calendar-filters mb-2 p-2 bg-zinc-800 rounded-lg">
         <div className="flex items-center gap-3 text-sm">
           <span className="text-zinc-400 font-medium">Show:</span>
           
@@ -686,13 +746,13 @@ const CalendarWindow: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {!isMobileCalendar || calendarView === 'month' ? <div className="gb-calendar-month flex-1 flex flex-col overflow-hidden">
         <div className="grid grid-cols-7 gap-1.5 bg-zinc-800 rounded-lg overflow-hidden">
           {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
             <div key={d} className="text-sm font-medium text-zinc-300 bg-zinc-800 px-2.5 py-2.5 text-center">{d}</div>
           ))}
         </div>
-  <div className="grid grid-cols-7 gap-1.5 mt-1.5 flex-1 overflow-hidden" style={{ gridAutoRows: '1fr' }}>
+        <div className="gb-calendar-month-grid grid grid-cols-7 gap-1.5 mt-1.5 flex-1 overflow-hidden" style={{ gridAutoRows: '1fr' }}>
           {(() => { const todayStr = fmtDate(new Date()); return monthDays.map((day, idx) => {
             const key = fmtDate(day);
             const isCurrentMonth = day.getMonth() === current.getMonth();
@@ -709,7 +769,55 @@ const CalendarWindow: React.FC = () => {
             );
           }); })()}
         </div>
-      </div>
+      </div> : null}
+
+      {isMobileCalendar && calendarView === 'week' ? (
+        <div className="gb-calendar-week flex-1 overflow-y-auto">
+          {calendarDays.map((day) => {
+            const key = fmtDate(day);
+            const dayEvents = eventsByDay[key] || [];
+            return (
+              <section key={key} className={key === fmtDate(new Date()) ? 'is-today' : ''}>
+                <header>
+                  <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
+                    <strong>{day.toLocaleDateString(undefined, { weekday: 'long' })}</strong>
+                    <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  </button>
+                  <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
+                </header>
+                <div className="gb-calendar-agenda-list">
+                  {dayEvents.map((event, index) => (
+                    <button key={event.id || `${key}-${index}`} type="button" className={`type-${event.category || 'event'}`} onClick={() => event.category === 'schedule' ? undefined : onEdit(event)}>
+                      {eventSummary(event)}
+                    </button>
+                  ))}
+                  {!dayEvents.length ? <span>No scheduled activity</span> : null}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {isMobileCalendar && calendarView === 'day' ? (
+        <div className="gb-calendar-day flex-1 overflow-y-auto">
+          <div className="gb-calendar-day-actions">
+            <input type="date" value={dailyLookData.ymd} onChange={(event) => { setDailyLookDate(event.target.value); const next = new Date(`${event.target.value}T12:00:00`); if (!Number.isNaN(next.getTime())) setCurrent(next); }} />
+            <select value={dailyLookAssignedTo} onChange={(event) => setDailyLookAssignedTo(event.target.value)} aria-label="Filter daily calendar by technician">
+              <option value="">All technicians</option>
+              {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
+            </select>
+            <button type="button" onClick={() => onPick(current)}>+ Add</button>
+          </div>
+          <div className="gb-calendar-day-sections">
+            {filters.schedule ? <section><h3>Schedules <span>{dailyLookData.schedules.length}</span></h3>{dailyLookData.schedules.map((item) => <div key={item.name}><strong>{item.name}</strong><span>{item.off ? 'Off' : `${formatTime12FromHHmm(item.start || '')} - ${formatTime12FromHHmm(item.end || '')}`}</span></div>)}{!dailyLookData.schedules.length ? <p>No schedules.</p> : null}</section> : null}
+            {filters.consultation ? <section><h3>Consultations <span>{dailyLookData.consultations.length}</span></h3>{dailyLookData.consultations.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.consultations.length ? <p>No consultations.</p> : null}</section> : null}
+            {filters.parts ? <section><h3>Expected Deliveries <span>{dailyLookData.partsDelivery.length}</span></h3>{dailyLookData.partsDelivery.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsDelivery.length ? <p>No expected deliveries.</p> : null}</section> : null}
+            {filters.parts ? <section><h3>Parts Ordered <span>{dailyLookData.partsOrdered.length}</span></h3>{dailyLookData.partsOrdered.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsOrdered.length ? <p>No parts ordered.</p> : null}</section> : null}
+            {filters.events ? <section><h3>Events <span>{dailyLookData.eventItems.length}</span></h3>{dailyLookData.eventItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.eventItems.length ? <p>No events.</p> : null}</section> : null}
+          </div>
+        </div>
+      ) : null}
 
       {editing && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center">

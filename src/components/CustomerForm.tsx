@@ -54,7 +54,7 @@ const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="gb-customer-form-grid grid grid-cols-2 gap-3">
       <div>
         <label className="block text-[12px] text-zinc-400">First</label>
         <Input
@@ -117,7 +117,7 @@ const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
         <label className="block text-[12px] text-zinc-400">Zip</label>
         <Input value={local.zip || ''} onChange={e => update('zip', e.target.value)} inputMode="numeric" autoComplete="postal-code" />
       </div>
-      <div className="col-span-2">
+      <div className="gb-customer-notes-field col-span-2">
         <label className="block text-[12px] text-zinc-400">Notes</label>
         <textarea value={local.notes || ''} onChange={e => update('notes', e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-sm h-28" />
       </div>

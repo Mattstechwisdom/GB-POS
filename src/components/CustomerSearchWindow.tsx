@@ -2,7 +2,6 @@ import React, { useDeferredValue, useMemo, useState, useCallback, useEffect } fr
 import { Customer } from '../lib/types';
 import CustomerSearchForm, { CustomerSearchFilters } from './CustomerSearchForm';
 import CustomerTable from './CustomerTable';
-import Button from './Button';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
@@ -20,7 +19,6 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   const [filters, setFilters] = useState<CustomerSearchFilters>({ firstName: '', lastName: '', phone: '', email: '' });
   const [selected, setSelected] = useState<Customer | null>(null);
   const [customersList, setCustomersList] = useState<Customer[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
@@ -136,16 +134,6 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
     ];
   }, [ctxCustomer]);
 
-  async function handleAddCustomer(payload: Partial<Customer>) {
-    try {
-      const added = await window.api.addCustomer({ ...payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (added) setCustomersList(s => [...s, added]);
-      setShowAdd(false);
-    } catch (e) {
-      console.error('failed to add', e);
-    }
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8">
       <div className="flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]">
@@ -171,11 +159,6 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
             onActivate={handleActivate}
 				onContextMenu={openContextMenu}
           />
-        </div>
-        <div className="mt-auto p-3 border-t border-zinc-700 flex items-center justify-start gap-2 bg-zinc-800/60 sticky bottom-0">
-          <div className="flex gap-2">
-            <Button onClick={() => { setEditingCustomer(null); setShowOverview(true); }} className="bg-zinc-700 hover:bg-zinc-600">New Customer</Button>
-          </div>
         </div>
       </div>
       {showOverview && (

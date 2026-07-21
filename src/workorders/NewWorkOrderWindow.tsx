@@ -22,7 +22,7 @@ export type WorkOrderItemRow = {
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAutosave } from '../lib/useAutosave';
-import { consumeWindowPayload } from '../lib/windowPayload';
+import { consumeWindowPayload, peekWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
 import ItemsTable from './ItemsTable';
@@ -40,7 +40,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
-import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
+import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, normalizePartInventoryTitle, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -59,8 +59,9 @@ const REQUIRED_LABELS: Record<RequiredKey, string> = {
 
 function parsePayload() {
   try {
-    // Check the in-app modal payload store first (set when opened as internal modal).
-    const stored = consumeWindowPayload('newWorkOrder');
+    // Peek during render so React StrictMode cannot consume the payload on its
+    // discarded development render. The mounted component clears it below.
+    const stored = peekWindowPayload('newWorkOrder');
     if (stored !== null) return stored;
   } catch {}
   try {
@@ -513,12 +514,18 @@ const NewWorkOrderWindow: React.FC = () => {
   const [partsTrackingUrlEditing, setPartsTrackingUrlEditing] = useState(true);
   const [partsUrlScraping, setPartsUrlScraping] = useState(false);
   const [partsUrlMeta, setPartsUrlMeta] = useState<PartUrlMetadata | null>(null);
+  const lastPartsScrapeUrlRef = useRef('');
+  const partsScrapeSequenceRef = useRef(0);
   const [partsSaveBusy, setPartsSaveBusy] = useState<'part' | 'repair' | null>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
     close: false,
   });
+
+  useEffect(() => {
+    consumeWindowPayload('newWorkOrder');
+  }, []);
 
   // Load the attached retail sale (if any) so we can display quick context.
   useEffect(() => {
@@ -1203,16 +1210,44 @@ const NewWorkOrderWindow: React.FC = () => {
   const scrapeAndApplyPartsUrl = useCallback(async (value: string) => {
     const orderUrl = normalizeMaybeUrl(value);
     if (!orderUrl) return null;
+    if (lastPartsScrapeUrlRef.current === orderUrl) return partsUrlMeta;
+    const sequence = ++partsScrapeSequenceRef.current;
     setPartsUrlScraping(true);
     try {
-      const meta = await scrapePartUrl(orderUrl);
+      const scraped = await scrapePartUrl(orderUrl);
+      if (sequence !== partsScrapeSequenceRef.current) return null;
+      const meta = { ...scraped, title: normalizePartInventoryTitle(scraped.title) };
       const vendor = meta.vendor || derivePartVendorFromUrl(orderUrl);
+      lastPartsScrapeUrlRef.current = orderUrl;
       setPartsUrlMeta(meta);
       setWo(w => {
         const items = Array.isArray(w.items) ? [...w.items] : [];
         let idx = items.findIndex((item: any) => String(item?.orderSourceUrl || '').trim() === orderUrl);
         if (idx < 0) idx = items.findIndex((item: any) => Number(item?.parts || 0) > 0);
         if (idx < 0 && items.length) idx = 0;
+        if (idx < 0 && (meta.title || typeof meta.price === 'number')) {
+          const internalCost = typeof meta.price === 'number' ? meta.price : undefined;
+          items.push({
+            id: crypto.randomUUID(),
+            device: String((w as any).productCategory || 'Other'),
+            repairCategory: 'Repair',
+            repair: meta.title || 'Repair Part',
+            parts: internalCost == null ? 0 : (markedUpPartPrice(internalCost, DEFAULT_PART_MARKUP_PCT) || 0),
+            labor: 0,
+            status: 'pending',
+            note: '',
+            partSource: vendor,
+            distributor: vendor,
+            internalCost,
+            markupPct: DEFAULT_PART_MARKUP_PCT,
+            requiresOrder: true,
+            orderStatus: 'needed',
+            taxExempt: false,
+            supplierTaxRate: 8,
+            orderSourceUrl: orderUrl,
+          });
+          idx = items.length - 1;
+        }
         if (idx >= 0) {
           const current: any = items[idx];
           const nextParts = typeof meta.price === 'number' && Number(current.parts || 0) <= 0
@@ -1250,9 +1285,9 @@ const NewWorkOrderWindow: React.FC = () => {
       triggerWarningBanner('Could not scan part URL', error?.message || 'The URL was saved for ordering.');
       return null;
     } finally {
-      setPartsUrlScraping(false);
+      if (sequence === partsScrapeSequenceRef.current) setPartsUrlScraping(false);
     }
-  }, []);
+  }, [partsUrlMeta]);
 
   const commitPartsOrderUrl = useCallback((value: string) => {
     const orderUrl = normalizeMaybeUrl(value);
@@ -1295,6 +1330,10 @@ const NewWorkOrderWindow: React.FC = () => {
   }, [partsOrderUrlDraft, partsTrackingUrlDraft]);
 
   const handleClearPartsTracking = useCallback(() => {
+    lastPartsScrapeUrlRef.current = '';
+    partsScrapeSequenceRef.current += 1;
+    setPartsUrlMeta(null);
+    setPartsUrlScraping(false);
     setPartsOrderUrlDraft('');
     setPartsTrackingUrlDraft('');
     setPartsOrderUrlEditing(true);
@@ -1478,9 +1517,18 @@ const NewWorkOrderWindow: React.FC = () => {
 
       const picked = await api.pickSaleProduct();
       if (!picked) return; // cancelled
+      if (!picked.inventoryProductId || String(picked.itemType || 'Product') !== 'Product') {
+        triggerWarningBanner('Select a saved product', 'Choose a Product listing from Inventory before adding it.');
+        return;
+      }
+      if (!String(picked.itemDescription || '').trim()) {
+        triggerWarningBanner('Product name is missing', 'Choose a product with a saved item description.');
+        return;
+      }
 
       const row: SaleItemRow = {
         id: crypto.randomUUID(),
+        inventoryProductId: Number(picked.inventoryProductId),
         description: String(picked.itemDescription || picked.title || picked.name || 'Item'),
         qty: Number(picked.quantity ?? 1) || 1,
         price: Number(picked.price ?? 0) || 0,
@@ -1490,6 +1538,12 @@ const NewWorkOrderWindow: React.FC = () => {
         inStock: picked.inStock == null ? true : !!picked.inStock,
         productUrl: picked.productUrl || picked.url || picked.link || '',
         category: picked.category,
+        distributor: picked.distributor || '',
+        vendorRelationship: picked.vendorRelationship,
+        vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
+        vendorTaxExempt: !!picked.vendorTaxExempt,
+        trackStock: !!picked.trackStock,
+        stockCountAtSelection: typeof picked.stockCount === 'number' ? picked.stockCount : undefined,
       };
 
       // Resolve customer info for the Sale record.
@@ -1518,6 +1572,10 @@ const NewWorkOrderWindow: React.FC = () => {
       }
 
       const existingItems: SaleItemRow[] = Array.isArray(existingSale?.items) ? (existingSale.items as SaleItemRow[]) : [];
+      if (existingItems.length >= ADDON_SALE_MAX_ITEMS) {
+        triggerWarningBanner('Product limit reached', `This linked sale already has ${ADDON_SALE_MAX_ITEMS} items.`);
+        return;
+      }
       const nextItems = [...existingItems, row].slice(0, ADDON_SALE_MAX_ITEMS);
 
       const nowIso = new Date().toISOString();
@@ -1569,11 +1627,14 @@ const NewWorkOrderWindow: React.FC = () => {
       }
 
       const newSaleId = Number(savedSale?.id || existingSale?.id || 0) || 0;
-      if (newSaleId) {
-        setWo(w => ({ ...w, addonSaleId: newSaleId }));
-      }
+      if (!newSaleId) throw new Error('The linked sale did not return an invoice number.');
+      const linkedWorkOrder = { ...(woRef.current || wo), addonSaleId: newSaleId, updatedAt: nowIso };
+      let savedWorkOrder: any = null;
+      if (typeof api.update === 'function') savedWorkOrder = await api.update('workOrders', linkedWorkOrder);
+      else if (typeof api.dbUpdate === 'function') savedWorkOrder = await api.dbUpdate('workOrders', workOrderId, linkedWorkOrder);
+      applySavedCustomerSnapshot(savedWorkOrder || linkedWorkOrder);
       setAddonSale(savedSale || { ...baseRecord, id: newSaleId });
-      triggerWarningBanner('Product added', newSaleId ? `Attached to Sale #${newSaleId}.` : undefined);
+      triggerWarningBanner('Product added', `Attached to Sale #${newSaleId} and linked to this work order.`);
     } catch (e) {
       console.error('Add Product failed', e);
       triggerWarningBanner('Failed to add product', 'See console for details.');
@@ -2450,14 +2511,7 @@ const NewWorkOrderWindow: React.FC = () => {
                 >
                   Clear
                 </button>
-                <button
-                  type="button"
-                  className="gb-wo-parts-secondary-button"
-                  disabled={partsUrlScraping || !String((wo as any).partsOrderUrl || partsOrderUrlDraft || '').trim()}
-                  onClick={() => { void scrapeAndApplyPartsUrl(String((wo as any).partsOrderUrl || partsOrderUrlDraft || '')); }}
-                >
-                  {partsUrlScraping ? 'Scanning...' : 'Scrape'}
-                </button>
+                {partsUrlScraping ? <span className="gb-wo-parts-scan-status" role="status">Reading part details...</span> : null}
                 <button
                   type="button"
                   className="gb-wo-parts-secondary-button gb-wo-parts-save-part-button"

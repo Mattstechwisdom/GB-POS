@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
-import DuplicateCustomerDialog from './DuplicateCustomerDialog';
-import { CustomerDuplicateMatch, customerMatchesSearchText, findDuplicateCustomers } from '../lib/customerDuplicates';
+import CustomerOverviewWindow from './CustomerOverviewWindow';
+import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
 const CONSULTATION_BASE_RATE = 75;
@@ -127,9 +127,7 @@ export default function ConsultationBookingWindow() {
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showNewCustomer, setShowNewCustomer] = useState(false);
-  const [newCust, setNewCust] = useState({ firstName: '', lastName: '', phone: '', email: '' });
-  const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
+  const [showCustomerCreator, setShowCustomerCreator] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customerIndexRef = useRef<Customer[]>([]);
@@ -337,13 +335,10 @@ export default function ConsultationBookingWindow() {
     setSelectedCustomer(c);
     setCustomerQuery('');
     setCustomerResults([]);
-    setShowNewCustomer(false);
   };
 
   const clearCustomer = () => {
     setSelectedCustomer(null);
-    setShowNewCustomer(false);
-    setNewCust({ firstName: '', lastName: '', phone: '', email: '' });
   };
 
   // When start time changes, push end time by 1 hour
@@ -428,7 +423,7 @@ export default function ConsultationBookingWindow() {
     }
   };
 
-  const canBook = !saving && date && (selectedCustomer || (showNewCustomer && newCust.firstName.trim() && newCust.lastName.trim()));
+  const canBook = !saving && !!date && !!selectedCustomer;
 
   async function handleBook() {
     if (!canBook) return;
@@ -460,33 +455,9 @@ export default function ConsultationBookingWindow() {
       if (locationType === 'athome') {
         try { await upsertAddressHistory(fullAddress); } catch {}
       }
-      // 1. Resolve or create customer
-      let customer = selectedCustomer;
-      if (!customer) {
-        const now = new Date().toISOString();
-        const customerPayload = {
-          firstName: newCust.firstName.trim(),
-          lastName: newCust.lastName.trim(),
-          phone: newCust.phone.replace(/\D/g, '').slice(-10),
-          email: newCust.email.trim(),
-          createdAt: now,
-          updatedAt: now,
-        };
-        const duplicateList = findDuplicateCustomers(customerPayload, allCustomers);
-        if (duplicateList.length) {
-          setDuplicateMatches(duplicateList);
-          return;
-        }
-        customer = await api.dbAdd('customers', customerPayload);
-        if (customer?.id != null) {
-          const created = customer as Customer;
-          setAllCustomers((prev) => {
-            const list = Array.isArray(prev) ? prev : [];
-            if (list.some((c) => c?.id === created.id)) return list;
-            return [created, ...list];
-          });
-        }
-      }
+      // New clients are persisted by the shared Add Client window before booking.
+      const customer = selectedCustomer;
+      if (!customer?.id) throw new Error('Select or add a saved client before booking.');
 
       const customerName = customerDisplayName(customer!);
       const customerPhone = customer!.phone || '';
@@ -670,54 +641,6 @@ export default function ConsultationBookingWindow() {
               </div>
               <button onClick={clearCustomer} className="text-xs text-zinc-400 hover:text-red-400 ml-4">Change</button>
             </div>
-          ) : showNewCustomer ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-zinc-300">New Client</span>
-                <button onClick={() => setShowNewCustomer(false)} className="text-xs text-zinc-400 hover:text-zinc-200">← Back to search</button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">First Name <span className="text-red-400">*</span></label>
-                  <input
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                    value={newCust.firstName}
-                    onChange={e => setNewCust(p => ({ ...p, firstName: e.target.value }))}
-                    placeholder="First name"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Last Name <span className="text-red-400">*</span></label>
-                  <input
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                    value={newCust.lastName}
-                    onChange={e => setNewCust(p => ({ ...p, lastName: e.target.value }))}
-                    placeholder="Last name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                    value={newCust.phone}
-                    onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))}
-                    placeholder="555-555-5555"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Email</label>
-                  <input
-                    type="email"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                    value={newCust.email}
-                    onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))}
-                    placeholder="email@example.com"
-                  />
-                </div>
-              </div>
-            </div>
           ) : (
             <div className="relative">
               <input
@@ -731,7 +654,7 @@ export default function ConsultationBookingWindow() {
                 <span className="absolute right-16 top-1/2 -translate-y-1/2 text-xs text-zinc-500">…</span>
               )}
               <button
-                onClick={() => { setShowNewCustomer(true); setCustomerQuery(''); setCustomerResults([]); }}
+                onClick={() => { setShowCustomerCreator(true); setCustomerQuery(''); setCustomerResults([]); }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded"
               >
                 New
@@ -1022,7 +945,7 @@ export default function ConsultationBookingWindow() {
       <div className="shrink-0 px-5 py-3 border-t border-zinc-700 flex items-center justify-between bg-zinc-900">
         <div className="text-sm text-zinc-400">
           {canBook
-            ? `Booking for ${selectedCustomer ? customerDisplayName(selectedCustomer) : `${newCust.firstName} ${newCust.lastName}`.trim()} on ${date}`
+            ? `Booking for ${selectedCustomer ? customerDisplayName(selectedCustomer) : ''} on ${date}`
             : <span className="text-zinc-500">Select a client and date to book.</span>
           }
         </div>
@@ -1035,21 +958,20 @@ export default function ConsultationBookingWindow() {
         </button>
       </div>
     </div>
-    {duplicateMatches.length > 0 && (
-      <DuplicateCustomerDialog
-        matches={duplicateMatches}
-        onClose={() => setDuplicateMatches([])}
-        onOpenCustomer={async (customerId) => {
-          setDuplicateMatches([]);
-          const match = duplicateMatches.find((m) => Number(m.customer.id) === Number(customerId));
-          if (match?.customer) {
-            selectCustomer(match.customer as Customer);
-            setShowNewCustomer(false);
-          }
-          await api?.openCustomerOverview?.(customerId);
+    {showCustomerCreator ? (
+      <CustomerOverviewWindow
+        customer={null}
+        closeAfterSave
+        childDialog
+        onClose={() => setShowCustomerCreator(false)}
+        onSaved={(saved) => {
+          const created = saved as Customer;
+          setAllCustomers((current) => current.some((row) => row.id === created.id) ? current : [created, ...current]);
+          selectCustomer(created);
+          setShowCustomerCreator(false);
         }}
       />
-    )}
+    ) : null}
     </>
   );
 }

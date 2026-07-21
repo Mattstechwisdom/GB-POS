@@ -27,7 +27,7 @@ const CustomerSearchForm: React.FC<Props> = ({ onSearch }) => {
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="gb-customer-search-fields grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="block text-[10px] uppercase tracking-wide mb-1 text-zinc-400">First Name</label>
           <Input value={filters.firstName} onChange={e => update('firstName', e.target.value)} />

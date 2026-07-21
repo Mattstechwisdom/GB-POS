@@ -50,8 +50,6 @@ const NotificationSettingsWindow = lazy(() => import('./components/NotificationS
 const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
 const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
 const DataPathGate = lazy(() => import('./components/DataPathGate'));
-const CloverSettingsWindow = lazy(() => import('./components/CloverSettingsWindow'));
-const TwilioSettingsWindow = lazy(() => import('./components/TwilioSettingsWindow'));
 
 declare global {
 	interface Window {
@@ -224,8 +222,6 @@ const STANDALONE_WINDOW_QUERY_KEYS = [
 	'notifications',
 	'notificationSettings',
 	'customBuildItem',
-	'cloverSettings',
-	'twilioSettings',
 	'consultation',
 ];
 
@@ -392,8 +388,6 @@ try {
 		const showNotifications = params.get('notifications');
 		const showNotificationSettings = params.get('notificationSettings');
 		const showCustomBuildItem = params.get('customBuildItem');
-		const showCloverSettings = params.get('cloverSettings');
-		const showTwilioSettings = params.get('twilioSettings');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
@@ -433,10 +427,6 @@ try {
 			renderWithSuspense(root, <NotificationsWindow />);
 		} else if (showNotificationSettings) {
 			renderWithSuspense(root, <NotificationSettingsWindow />);
-		} else if (showCloverSettings) {
-			renderWithSuspense(root, <CloverSettingsWindow />);
-		} else if (showTwilioSettings) {
-			renderWithSuspense(root, <TwilioSettingsWindow />);
 		} else if (showCustomBuildItem) {
 			renderWithSuspense(root, <CustomBuildItemWindow />);
 	} else if (showQuote) {

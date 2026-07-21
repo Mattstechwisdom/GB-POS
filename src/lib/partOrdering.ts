@@ -78,6 +78,64 @@ function cleanTitle(value: unknown): string {
     .trim();
 }
 
+export function normalizePartInventoryTitle(value: unknown): string {
+  let title = cleanTitle(value)
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s*\|\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!title) return '';
+
+  title = title
+    .replace(/\biphone\b/gi, 'iPhone')
+    .replace(/\bipad\b/gi, 'iPad')
+    .replace(/\boled\b/gi, 'OLED')
+    .replace(/\blcd\b/gi, 'LCD')
+    .replace(/\bsku\b/gi, 'SKU')
+    .replace(/\bic\b/gi, 'IC');
+
+  const modelMatch = title.match(/\b(iPhone\s+(?:SE(?:\s+\d(?:st|nd|rd|th)\s+Gen)?|\d{1,2}(?:\s+(?:Pro\s+Max|Pro|Plus|Mini|Air|Max))?))\b/i)
+    || title.match(/\b(iPad(?:\s+(?:Pro|Air|Mini))?\s*(?:\d+(?:st|nd|rd|th)?\s+Gen|\d+(?:\.\d+)?(?:-inch)?|\d{4})?)\b/i)
+    || title.match(/\b((?:Samsung\s+)?Galaxy\s+[A-Z0-9]+(?:\s+(?:Ultra|Plus|FE))?)\b/i)
+    || title.match(/\b(Google\s+Pixel\s+\d+[A-Za-z]?(?:\s+Pro)?)\b/i);
+  if (!modelMatch) return title.replace(/\s*-\s*-+/g, ' - ').trim();
+
+  const model = modelMatch[1]
+    .replace(/^iphone/i, 'iPhone')
+    .replace(/^ipad/i, 'iPad')
+    .replace(/^google pixel/i, 'Google Pixel')
+    .replace(/^samsung galaxy/i, 'Samsung Galaxy')
+    .replace(/^galaxy/i, 'Galaxy');
+
+  const partPatterns: Array<[RegExp, string]> = [
+    [/\b(?:soft\s+)?OLED(?:\s+(?:display|screen))?\s+assembly\b/i, 'OLED Assembly'],
+    [/\bLCD(?:\s*\/\s*digitizer|\s+digitizer)?(?:\s+(?:display|screen))?\s+assembly\b/i, 'LCD/Digitizer Assembly'],
+    [/\bdigitizer(?:\s+(?:screen|glass))?\s+assembly\b/i, 'Digitizer Assembly'],
+    [/\bcharging\s+port(?:\s+(?:assembly|flex))?\b/i, 'Charging Port Assembly'],
+    [/\bbattery(?:\s+replacement)?\b/i, 'Battery'],
+    [/\bback\s+glass(?:\s+replacement)?\b/i, 'Back Glass'],
+    [/\bfront\s+camera(?:\s+assembly)?\b/i, 'Front Camera Assembly'],
+    [/\brear\s+camera(?:\s+assembly)?\b/i, 'Rear Camera Assembly'],
+    [/\bpower\s+supply(?:\s+unit)?\b/i, 'Power Supply'],
+    [/\b(?:display|screen)\s+assembly\b/i, 'Screen Assembly'],
+  ];
+  const part = partPatterns.find(([pattern]) => pattern.test(title));
+  if (!part) return title;
+
+  const [, partName] = part;
+  let details = title
+    .replace(modelMatch[0], ' ')
+    .replace(part[0], ' ')
+    .replace(/\b(?:replacement|replacement part)\b/gi, ' ')
+    .replace(/\bfor\b/gi, ' ')
+    .replace(/^[\s,;:/|\-()]+|[\s,;:/|\-()]+$/g, '')
+    .replace(/[\s,;:/|\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (details.toLowerCase() === partName.toLowerCase()) details = '';
+  return `${model} ${partName}${details ? ` - ${details}` : ''}`.trim();
+}
+
 function parseMoney(value: unknown): number | undefined {
   const raw = String(value || '').replace(/,/g, '').trim();
   const match = raw.match(/(?:[$\u20ac\u00a3]\s*)?(\d+(?:\.\d{1,2})?)/);
@@ -177,10 +235,11 @@ export function extractPartMetadataFromHtml(html: string, url: string): PartUrlM
     return String(Array.isArray(type) ? type.join(' ') : type || '').toLowerCase().includes('product');
   });
 
-  const title =
+  const title = normalizePartInventoryTitle(
     cleanTitle(product?.name) ||
     cleanTitle(findMetaContent(html, ['og:title', 'twitter:title'])) ||
-    cleanTitle(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+    cleanTitle(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])
+  );
 
   const offer = Array.isArray(product?.offers) ? product.offers[0] : product?.offers;
   const price =

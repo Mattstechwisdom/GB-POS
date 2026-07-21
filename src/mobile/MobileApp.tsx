@@ -43,8 +43,6 @@ const RepairCategoriesWindow = React.lazy(() => import('../repairs/RepairCategor
 const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCategoriesWindow'));
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
-const CloverSettingsWindow = React.lazy(() => import('../components/CloverSettingsWindow'));
-const TwilioSettingsWindow = React.lazy(() => import('../components/TwilioSettingsWindow'));
 
 type StaffProfile = {
   id: string;
@@ -81,6 +79,7 @@ type MobileRow = {
 type SheetAction = {
   label: string;
   detail?: string;
+  kind?: 'call' | 'text';
   danger?: boolean;
   disabled?: boolean;
   onPress: () => void | Promise<void>;
@@ -309,9 +308,14 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'quoteGenerator': return <QuoteGeneratorWindow />;
     case 'eod': return <EODWindow />;
     case 'products': return <ProductsWindow />;
+    case 'productPicker': return <ProductsWindow pickerMode onPick={(product) => {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-product-picked', { detail: product }));
+      onClose();
+    }} />;
     case 'inventory': return <InventoryWindow />;
     case 'vendors': return <VendorsWindow />;
     case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow />;
+    case 'addClient': return <CustomerOverviewWindow customer={null} onClose={onClose} />;
     case 'customerOverview': return <CustomerOverviewWindow onClose={onClose} />;
     case 'customerSearch': return <CustomerSearchWindow onClose={onClose} />;
     case 'diagnosticTools': return <DiagnosticToolsWindow />;
@@ -335,27 +339,32 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'deviceCategories': return <DeviceCategoriesWindow />;
     case 'customBuildItem': return <CustomBuildItemWindow />;
     case 'technicians': return <TechniciansWindow onClose={onClose} />;
-    case 'cloverSettings': return <CloverSettingsWindow />;
-    case 'twilioSettings': return <TwilioSettingsWindow />;
     default: return <div className="mobile-empty-state">Unknown window: {type}</div>;
   }
 }
 
 function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
+  const requestClose = useCallback(() => {
+    if (entry.type === 'productPicker') {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-product-picker-cancelled'));
+    }
+    onClose();
+  }, [entry.type, onClose]);
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', handler, { capture: true });
     return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [onClose]);
+  }, [requestClose]);
 
   const title = titleForModal(entry.type);
 
   return (
     <section className="mobile-modal-shell" style={{ zIndex }} data-modal-shell="1">
       <header className="mobile-modal-bar">
-        <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close window">
+        <button type="button" className="mobile-icon-button" onClick={requestClose} aria-label="Close window">
           <span aria-hidden="true">x</span>
         </button>
         <div>
@@ -388,9 +397,11 @@ function titleForModal(type: string) {
     quoteGenerator: 'Quote Generator',
     eod: 'Reports',
     products: 'Products',
+    productPicker: 'Select Product',
     inventory: 'Inventory',
     vendors: 'Distributors / Vendors',
     workOrderRepairPicker: 'Repair Selection',
+    addClient: 'Add Client',
     customerOverview: 'Client',
     customerSearch: 'Clients',
     diagnosticTools: 'Diagnostic Tools',
@@ -414,8 +425,6 @@ function titleForModal(type: string) {
     deviceCategories: 'Device Categories',
     customBuildItem: 'Custom Build',
     technicians: 'Technicians',
-    cloverSettings: 'Clover',
-    twilioSettings: 'SMS / Twilio',
   };
   return titles[type] || 'Window';
 }
@@ -474,17 +483,15 @@ function useMobileRecords(refreshKey: number) {
   return { workOrders, sales, customers, technicians, loading, error, reload: loadCore };
 }
 
-function isMobileDrawerPreview() {
-  const env = import.meta.env as ImportMetaEnv & { DEV?: boolean };
-  return !!env.DEV && new URLSearchParams(window.location.search).get('drawerPreview') === '1';
+function shouldOpenMobileDrawer() {
+  try {
+    return new URLSearchParams(window.location.search).get('drawerPreview') === '1';
+  } catch {
+    return false;
+  }
 }
 
 const MobileApp: React.FC = () => {
-  if (isMobileDrawerPreview()) {
-    removeInitialHtmlLoader();
-    return <MobileDrawerPreview />;
-  }
-
   return <MobileAppRuntime />;
 };
 
@@ -629,64 +636,6 @@ const MobileAppRuntime: React.FC = () => {
   );
 };
 
-function MobileDrawerPreview() {
-  const [drawerOpen, setDrawerOpen] = useState(true);
-  const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
-  const modalCounterRef = useRef(0);
-  const noop = () => undefined;
-  const openModal = (type: string) => {
-    setDrawerOpen(false);
-    const id = `${type}-${++modalCounterRef.current}`;
-    setModalStack((stack) => [...stack, { id, type }]);
-  };
-  const closeModal = (id: string) => {
-    setModalStack((stack) => stack.filter((entry) => entry.id !== id));
-  };
-
-  useEffect(() => {
-    registerOpenModal(openModal);
-    return () => unregisterOpenModal();
-  }, []);
-
-  return (
-    <main className="mobile-shell">
-      <header className="mobile-topbar">
-        <button type="button" className="mobile-icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
-          <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
-        </button>
-        <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
-        <MobileBrandTitle />
-        <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
-          <span aria-hidden="true">!</span>
-        </button>
-      </header>
-      <section className="mobile-search-panel">
-        <input value="" readOnly placeholder="Search invoice, client, phone, device..." aria-label="Search POS records" />
-        <button type="button" className="mobile-filter-button" aria-label="Open filters">
-          <span aria-hidden="true"><i /><i /><i /></span>
-        </button>
-      </section>
-      <MobileDrawer
-        open={drawerOpen}
-        profileName="GadgetBoy Preview"
-        role="mobile layout"
-        onClose={() => setDrawerOpen(false)}
-        onOpenModal={openModal}
-        onRefresh={noop}
-        onSignOut={noop}
-      />
-      {modalStack.map((entry, index) => (
-        <MobileModalShell
-          key={entry.id}
-          entry={entry}
-          zIndex={300 + index * 10}
-          onClose={() => closeModal(entry.id)}
-        />
-      ))}
-    </main>
-  );
-}
-
 function MobileBrandTitle() {
   return (
     <div className="mobile-brand-block" aria-label={`GadgetBoy POS version ${__APP_VERSION__}`}>
@@ -702,7 +651,7 @@ function MobileBrandTitle() {
 }
 
 function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(shouldOpenMobileDrawer);
   const [mode, setMode] = useState<MobileMode>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [technicianFilter, setTechnicianFilter] = useState('');
@@ -829,8 +778,6 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       openDeviceCategories: 'deviceCategories',
       openClearDatabase: 'clearDb',
       openCustomBuildItem: 'customBuildItem',
-      openCloverSettings: 'cloverSettings',
-      openTwilioSettings: 'twilioSettings',
     } as Record<string, string>;
     const originals = new Map<string, any>();
     Object.entries(methods).forEach(([method, type]) => {
@@ -841,11 +788,30 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         return { ok: true };
       };
     });
+    const originalProductPicker = api?.pickSaleProduct;
+    if (api) {
+      api.pickSaleProduct = () => new Promise((resolve) => {
+        let settled = false;
+        const finish = (value: any) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('gbpos:mobile-product-picked', onPicked as EventListener);
+          window.removeEventListener('gbpos:mobile-product-picker-cancelled', onCancelled);
+          resolve(value);
+        };
+        const onPicked = (event: Event) => finish((event as CustomEvent).detail || null);
+        const onCancelled = () => finish(null);
+        window.addEventListener('gbpos:mobile-product-picked', onPicked as EventListener, { once: true });
+        window.addEventListener('gbpos:mobile-product-picker-cancelled', onCancelled, { once: true });
+        openModal('productPicker');
+      });
+    }
     return () => {
       unregisterOpenModal();
       originals.forEach((fn, method) => {
         try { api[method] = fn; } catch {}
       });
+      if (api && originalProductPicker) api.pickSaleProduct = originalProductPicker;
     };
   }, [openModal]);
 
@@ -1204,7 +1170,7 @@ function MobileDrawer(props: {
   });
   const clientDatabase = [
     ['customerSearch', 'Search Client'],
-    ['customerSearch', 'Add Client'],
+    ['addClient', 'Add Client'],
   ] as const;
   const technicianTools = [
     ['technicians', 'Technicians'],
@@ -1335,7 +1301,7 @@ function ActionSheet({ row, actions, onClose }: { row: MobileRow; actions: Sheet
               key={action.label}
               type="button"
               disabled={action.disabled}
-              className={action.danger ? 'danger' : ''}
+              className={[action.kind ? `contact ${action.kind}` : '', action.danger ? 'danger' : ''].filter(Boolean).join(' ')}
               onClick={async () => {
                 if (action.disabled) return;
                 await action.onPress();
@@ -1364,6 +1330,8 @@ function openRecord(row: MobileRow) {
 function makeSheetActions(row: MobileRow, afterWrite: () => void): SheetAction[] {
   const hasCustomer = !!row.customerId;
   const formattedPhone = (formatPhone(String(row.phone || '')) || String(row.phone || '')).trim();
+  const phoneDigits = String(row.phone || '').replace(/\D+/g, '');
+  const contactPhone = phoneDigits.length >= 7 ? phoneDigits : '';
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -1378,7 +1346,20 @@ function makeSheetActions(row: MobileRow, afterWrite: () => void): SheetAction[]
       { label: 'Checkout', onPress: () => window.api.openCheckout?.({ workOrderId: row.id }) },
       { label: 'View Client', disabled: !hasCustomer, onPress: () => window.api.openCustomerOverview?.(row.customerId as number) },
       { label: 'Copy Invoice #', detail: invoiceNumber(row.id), onPress: () => copy(invoiceNumber(row.id)) },
-      { label: 'Copy Phone', detail: formattedPhone || undefined, disabled: !formattedPhone, onPress: () => copy(formattedPhone) },
+      {
+        label: 'Call Number',
+        detail: formattedPhone || undefined,
+        kind: 'call',
+        disabled: !contactPhone,
+        onPress: () => { window.location.href = `tel:${contactPhone}`; },
+      },
+      {
+        label: 'Text Number',
+        detail: formattedPhone || undefined,
+        kind: 'text',
+        disabled: !contactPhone,
+        onPress: () => { window.location.href = `sms:${contactPhone}`; },
+      },
       { label: 'Customer Receipt', onPress: () => window.api.openCustomerReceipt?.({ workOrderId: row.id }) },
       { label: 'Release Form', onPress: () => window.api.openReleaseForm?.({ workOrderId: row.id }) },
       {

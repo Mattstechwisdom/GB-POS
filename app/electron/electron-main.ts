@@ -1054,87 +1054,6 @@ function decryptAppPassword(cfg: any): string | null {
   }
 }
 
-// ─── Clover REST config helpers ───────────────────────────────────────────
-function cloverRestConfigPath(): string {
-  return path.join(resolveDataRoot(), 'clover-config.json');
-}
-
-function readCloverRestConfig(): any {
-  try {
-    const p = cloverRestConfigPath();
-    if (!fs.existsSync(p)) return {};
-    return JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
-
-function writeCloverRestConfig(cfg: any) {
-  try {
-    fs.writeFileSync(cloverRestConfigPath(), JSON.stringify(cfg || {}, null, 2), 'utf-8');
-  } catch {
-    // ignore
-  }
-}
-
-function decryptCloverToken(cfg: any): string | null {
-  try {
-    const enc = cfg?.accessTokenEnc;
-    if (!enc || typeof enc !== 'string') return null;
-    const buf = Buffer.from(enc, 'base64');
-    if (safeStorage && typeof safeStorage.decryptString === 'function') {
-      return safeStorage.decryptString(buf);
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function cloverApiRequest(opts: {
-  method: string;
-  urlPath: string;
-  accessToken: string;
-  body?: any;
-  baseUrl?: string;
-}): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const base = opts.baseUrl || 'https://api.clover.com';
-    const url = new URL(opts.urlPath, base);
-    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
-    const reqOpts: any = {
-      method: opts.method,
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname + url.search,
-      headers: {
-        'Authorization': `Bearer ${opts.accessToken}`,
-        'Accept': 'application/json',
-        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
-      },
-    };
-    const req = https.request(reqOpts, (res: any) => {
-      let data = '';
-      res.on('data', (chunk: any) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(parsed);
-          } else {
-            reject(new Error(`Clover API error ${res.statusCode}: ${parsed?.message || data}`));
-          }
-        } catch {
-          reject(new Error(`Clover API non-JSON response (${res.statusCode}): ${data.slice(0, 200)}`));
-        }
-      });
-    });
-    req.on('error', (e: any) => reject(e));
-    if (bodyStr) req.write(bodyStr);
-    req.end();
-  });
-}
-
 async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
@@ -1224,6 +1143,7 @@ let autoUpdateInitialized = false;
 let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
+let autoInstallAfterDownload = false;
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1430,6 +1350,13 @@ function updateUiHtml(initialState: any): string {
       box-shadow: 0 0 18px rgba(57,255,20,.2);
     }
     button.primary:hover { background: #6bff52; }
+    button.auto {
+      color: #fff;
+      background: #7e22ce;
+      border-color: #a855f7;
+      box-shadow: 0 0 18px rgba(168,85,247,.18);
+    }
+    button.auto:hover { background: #9333ea; }
     button:disabled {
       cursor: default;
       opacity: .62;
@@ -1475,6 +1402,7 @@ function updateUiHtml(initialState: any): string {
     </div>
     <div class="footer">
       <button id="secondaryBtn">Skip for Now</button>
+      <button id="autoBtn" class="auto">Auto Install &amp; Relaunch</button>
       <button id="primaryBtn" class="primary">Update Now</button>
     </div>
   </div>
@@ -1487,6 +1415,7 @@ function updateUiHtml(initialState: any): string {
     const percentEl = document.getElementById('percent');
     const primaryBtn = document.getElementById('primaryBtn');
     const secondaryBtn = document.getElementById('secondaryBtn');
+    const autoBtn = document.getElementById('autoBtn');
     const busyDots = '<span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
 
     function pct(value) {
@@ -1503,17 +1432,24 @@ function updateUiHtml(initialState: any): string {
       barWrap.style.display = 'none';
       primaryBtn.disabled = false;
       secondaryBtn.disabled = false;
+      autoBtn.disabled = false;
+      autoBtn.style.display = 'none';
 
       if (phase === 'available') {
         titleEl.textContent = 'Update Available';
-        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready to download. Choose Update Now to download the latest release; Skip for Now will remind you again next launch.';
+        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready. Update Now downloads and lets you choose when to install. Auto Install & Relaunch downloads, closes the POS, installs, and reopens automatically.';
         primaryBtn.textContent = 'Update Now';
         primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
+        autoBtn.style.display = 'inline-block';
+        autoBtn.textContent = 'Auto Install & Relaunch';
+        autoBtn.onclick = () => ipcRenderer.send('updater-window-action', 'auto');
         secondaryBtn.textContent = 'Skip for Now';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
       } else if (phase === 'downloading') {
         titleEl.textContent = 'Downloading Update';
-        messageEl.innerHTML = 'Downloading GadgetBoy POS ' + label + ' ' + busyDots;
+        messageEl.innerHTML = (state && state.autoInstall
+          ? 'Downloading GadgetBoy POS ' + label + '. The app will close, install, and relaunch automatically when ready '
+          : 'Downloading GadgetBoy POS ' + label + ' ') + busyDots;
         barWrap.style.display = 'flex';
         progressFill.style.width = percent.toFixed(0) + '%';
         percentEl.textContent = percent.toFixed(0) + '%';
@@ -1523,6 +1459,11 @@ function updateUiHtml(initialState: any): string {
         secondaryBtn.textContent = 'Keep Open';
         secondaryBtn.disabled = true;
         secondaryBtn.onclick = null;
+        if (state && state.autoInstall) {
+          autoBtn.style.display = 'inline-block';
+          autoBtn.textContent = 'Auto Relaunch On';
+          autoBtn.disabled = true;
+        }
       } else if (phase === 'downloaded') {
         titleEl.textContent = 'Update Ready';
         messageEl.textContent = 'GadgetBoy POS ' + label + ' has downloaded. The app will close, install the update, and relaunch when you choose Install and Relaunch.';
@@ -1568,12 +1509,17 @@ function ensureUpdateUiIpc() {
   ipcMain.on('updater-window-action', (_event: any, action: string) => {
     try {
       if (action === 'download') {
+        autoInstallAfterDownload = false;
+        void startUpdateDownload();
+      } else if (action === 'auto') {
+        autoInstallAfterDownload = true;
         void startUpdateDownload();
       } else if (action === 'install') {
         void installDownloadedUpdate();
       } else if (action === 'releases') {
         void shell.openExternal(getReleasesUrl());
       } else if (action === 'skip' || action === 'later') {
+        autoInstallAfterDownload = false;
         closeUpdateUi();
       }
     } catch (e: any) {
@@ -1585,7 +1531,7 @@ function ensureUpdateUiIpc() {
 function sendUpdateUiState(state: any) {
   try {
     if (!updateUiWindow || updateUiWindow.isDestroyed()) return;
-    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify(state || {})});`).catch(() => {});
+    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify({ ...(state || {}), autoInstall: autoInstallAfterDownload })});`).catch(() => {});
   } catch {
     // ignore
   }
@@ -1614,7 +1560,7 @@ function showUpdateUi(state: any) {
     }
 
     updateUiWindow = new BrowserWindow({
-      width: 560,
+      width: 690,
       height: 390,
       resizable: false,
       minimizable: false,
@@ -1639,7 +1585,7 @@ function showUpdateUi(state: any) {
     updateUiWindow.once('ready-to-show', () => {
       try { updateUiWindow.show(); } catch {}
     });
-    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml(state))}`);
+    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml({ ...(state || {}), autoInstall: autoInstallAfterDownload }))}`);
   } catch (e: any) {
     autoUpdatePromptOpen = false;
     try { console.error('[AutoUpdate] update window failed:', e?.message || e); } catch {}
@@ -1654,6 +1600,7 @@ async function startUpdateDownload() {
     await autoUpdater.downloadUpdate();
   } catch (e: any) {
     autoUpdateDownloading = false;
+    autoInstallAfterDownload = false;
     showUpdateUi({
       phase: 'error',
       detail: `GadgetBoy POS could not download the update. ${String(e?.message || e || 'Unknown update error.')}`,
@@ -1663,6 +1610,7 @@ async function startUpdateDownload() {
 
 async function installDownloadedUpdate() {
   if (!autoUpdater) return;
+  autoInstallAfterDownload = false;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
@@ -1680,6 +1628,7 @@ async function installDownloadedUpdate() {
 async function promptToDownloadUpdate(info: any) {
   if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
   updateUiInfo = info;
+  autoInstallAfterDownload = false;
   showUpdateUi({ phase: 'available', label: getUpdateLabel(info), percent: 0 });
 }
 
@@ -1687,6 +1636,10 @@ async function promptToInstallDownloadedUpdate(info: any) {
   if (!autoUpdater) return;
   updateUiInfo = info;
   autoUpdateDownloading = false;
+  if (autoInstallAfterDownload) {
+    void installDownloadedUpdate();
+    return;
+  }
   showUpdateUi({ phase: 'downloaded', label: getUpdateLabel(info), percent: 100 });
 }
 
@@ -1733,6 +1686,7 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('error', (err: any) => {
     autoUpdateDownloading = false;
+    autoInstallAfterDownload = false;
     try { console.error('[AutoUpdate] error:', err?.message || err); } catch {}
     showUpdateUi({
       phase: 'error',
@@ -2584,328 +2538,6 @@ ipcMain.handle('open-notification-settings', async (event: any) => {
   return { ok: true };
 });
 
-// ─── Clover IPC handlers ───────────────────────────────────────────────────
-
-ipcMain.handle('clover:rest:getConfig', async () => {
-  const cfg = readCloverRestConfig();
-  return {
-    merchantId: cfg.merchantId || '',
-    deviceSerial: cfg.deviceSerial || '',
-    environment: cfg.environment || 'production',
-    hasToken: !!cfg.accessTokenEnc,
-    deviceIp: cfg.deviceIp || '',
-    devicePort: cfg.devicePort || 12346,
-    hasLocalToken: !!cfg.localAuthTokenEnc,
-    remoteAppId: cfg.remoteAppId || '',
-  };
-});
-
-ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
-  try {
-    const cfg = readCloverRestConfig();
-    if (data.merchantId !== undefined) cfg.merchantId = String(data.merchantId).trim();
-    if (data.deviceSerial !== undefined) cfg.deviceSerial = String(data.deviceSerial).trim();
-    if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
-    if (data.deviceIp !== undefined) cfg.deviceIp = String(data.deviceIp).trim();
-    if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12346;
-    if (data.remoteAppId !== undefined) cfg.remoteAppId = String(data.remoteAppId).trim();
-    if (data.localAuthToken !== undefined) {
-      const tok = String(data.localAuthToken || '').trim();
-      if (!tok) {
-        delete cfg.localAuthTokenEnc;
-      } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
-        cfg.localAuthTokenEnc = safeStorage.encryptString(tok).toString('base64');
-      } else {
-        cfg.localAuthToken = tok;
-      }
-    }
-    writeCloverRestConfig(cfg);
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:setAccessToken', async (_e: any, token: string) => {
-  try {
-    const trimmed = String(token || '').trim();
-    const cfg = readCloverRestConfig();
-    if (!trimmed) {
-      delete cfg.accessTokenEnc;
-    } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
-      cfg.accessTokenEnc = safeStorage.encryptString(trimmed).toString('base64');
-    } else {
-      return { ok: false, error: 'safeStorage not available' };
-    }
-    writeCloverRestConfig(cfg);
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:testConnection', async () => {
-  try {
-    const cfg = readCloverRestConfig();
-    const token = decryptCloverToken(cfg);
-    if (!token) return { ok: false, error: 'No access token saved' };
-    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
-    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
-    const merchant = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${cfg.merchantId}`, accessToken: token, baseUrl: base });
-    return { ok: true, merchantName: merchant?.name || cfg.merchantId };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:chargeCard', async (_e: any, payload: any) => {
-  try {
-    const cfg = readCloverRestConfig();
-    const token = decryptCloverToken(cfg);
-    if (!token) return { ok: false, error: 'No access token saved' };
-    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
-    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
-    const mId = cfg.merchantId;
-    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
-    const label: string = String(payload?.label || 'Service');
-
-    // 1. Create order
-    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
-    const orderId: string = order?.id;
-    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
-
-    // 2. Add line item
-    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
-
-    // 3. Get device ID by serial
-    let deviceId: string | null = null;
-    if (cfg.deviceSerial) {
-      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices?filter=serial%3D${encodeURIComponent(cfg.deviceSerial)}`, accessToken: token, baseUrl: base });
-      deviceId = devResp?.elements?.[0]?.id || null;
-    }
-    if (!deviceId) {
-      // Fall back to first device
-      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices`, accessToken: token, baseUrl: base });
-      deviceId = devResp?.elements?.[0]?.id || null;
-    }
-    if (!deviceId) return { ok: false, error: 'No Clover device found on this account' };
-
-    // 4. Send order to Pay Display
-    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/devices/${deviceId}/pay_display`, accessToken: token, body: { action: 'SHOW_ORDER', order: { id: orderId } }, baseUrl: base });
-
-    return { ok: true, orderId };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-// ─── Clover Local Pay Display (LAN direct to Flex on port 12346) ───────────
-
-function decryptLocalCloverToken(cfg: any): string | null {
-  try {
-    const enc = cfg?.localAuthTokenEnc;
-    if (enc && typeof enc === 'string' && safeStorage && typeof safeStorage.decryptString === 'function') {
-      return safeStorage.decryptString(Buffer.from(enc, 'base64'));
-    }
-    if (typeof cfg?.localAuthToken === 'string' && cfg.localAuthToken.trim()) return cfg.localAuthToken.trim();
-    return null;
-  } catch { return null; }
-}
-
-function cloverLocalRequest(opts: {
-  deviceIp: string;
-  devicePort: number;
-  path: string;
-  method: string;
-  authToken?: string | null;
-  body?: any;
-  timeoutMs?: number;
-  forceHttps?: boolean;
-  bearerPrefix?: 'Bearer' | 'token';
-}): Promise<{ ok: boolean; status?: number; data?: any; error?: string }> {
-  return new Promise((resolve) => {
-    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
-    const mod = opts.forceHttps ? https : http;
-    const authHeaders: Record<string, string> = {};
-    if (opts.authToken) {
-      // Clover REST Pay API accepts either format depending on firmware version
-      if (opts.bearerPrefix === 'token') {
-        authHeaders['Authorization'] = `token ${opts.authToken}`;
-      } else {
-        authHeaders['Authorization'] = `Bearer ${opts.authToken}`;
-      }
-    }
-    const reqOpts: any = {
-      method: opts.method,
-      hostname: opts.deviceIp,
-      port: opts.devicePort,
-      path: opts.path,
-      headers: {
-        'Accept': 'application/json',
-        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
-        ...authHeaders,
-      },
-      ...(opts.forceHttps ? { rejectUnauthorized: false } : {}),
-      timeout: opts.timeoutMs || 30000,
-    };
-    try {
-      const req = mod.request(reqOpts, (res: any) => {
-        let data = '';
-        res.on('data', (c: any) => { data += String(c ?? ''); });
-        res.on('end', () => {
-          const status = Number(res?.statusCode || 0);
-          const ok = status >= 200 && status < 300;
-          try {
-            const json = data.trim() ? JSON.parse(data) : null;
-            resolve({ ok, status, data: json });
-          } catch {
-            resolve({ ok, status, data: data.trim() || null });
-          }
-        });
-      });
-      req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch {} });
-      req.on('error', (err: any) => { resolve({ ok: false, error: String(err?.message || err) }); });
-      if (bodyStr) req.write(bodyStr);
-      req.end();
-    } catch (e: any) {
-      resolve({ ok: false, error: String(e?.message || e) });
-    }
-  });
-}
-
-// Probe several path/protocol/auth combos; return first success or best error
-async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, remoteAppId?: string, timeoutMs = 6000) {
-  type Probe = { path: string; forceHttps: boolean; bearerPrefix?: 'Bearer' | 'token'; label: string };
-  const probes: Probe[] = [
-    { path: '/status', forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /status Bearer' },
-    { path: '/status', forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /status token'  },
-    { path: '/status', forceHttps: false,                          label: 'HTTP /status (no auth)' },
-    { path: '/ping',   forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /ping Bearer'   },
-    { path: '/ping',   forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /ping token'    },
-    { path: '/',       forceHttps: false,                          label: 'HTTP / (no auth)'    },
-    { path: '/status', forceHttps: true,  bearerPrefix: 'Bearer', label: 'HTTPS /status Bearer' },
-    { path: '/status', forceHttps: true,  bearerPrefix: 'token',  label: 'HTTPS /status token'  },
-    { path: '/',       forceHttps: true,                           label: 'HTTPS / (no auth)'   },
-  ];
-  const errors: string[] = [];
-  for (const p of probes) {
-    const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps, bearerPrefix: p.bearerPrefix });
-    if (res.ok || (res.status && res.status < 500)) {
-      return { ok: true, probe: p.label, status: res.status };
-    }
-    errors.push(`${p.label}: ${res.error || `HTTP ${res.status}`}`);
-  }
-  const uniqueErrors = [...new Set(errors.map(e => e.replace(/^[^:]+: /, '')))];
-  return { ok: false, error: `Device not reachable. Errors: ${uniqueErrors.join(', ')}. Check IP (${deviceIp}:${devicePort}), that Pay Display app is open, and enter the Auth Token shown in the Pay Display app settings on the Flex.` };
-}
-
-ipcMain.handle('clover:testLocalConnection', async () => {
-  try {
-    const cfg = readCloverRestConfig();
-    const deviceIp = String(cfg.deviceIp || '').trim();
-    const devicePort = Number(cfg.devicePort || 12346);
-    if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
-    if (!cfg.remoteAppId) return { ok: false, error: 'Remote App ID is required. Get it from developer.clover.com → your app → App ID.' };
-    const authToken = decryptLocalCloverToken(cfg);
-    const res = await cloverProbeDevice(deviceIp, devicePort, authToken, cfg.remoteAppId);
-    if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort} (${res.probe})` };
-    return { ok: false, error: res.error || 'Device not reachable. Check IP, port, and that the Pay Display app is open.' };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
-  try {
-    const cfg = readCloverRestConfig();
-    const deviceIp = String(cfg.deviceIp || '').trim();
-    const devicePort = Number(cfg.devicePort || 12346);
-    if (!deviceIp) return { ok: false, error: 'No device IP configured. Go to Admin → Integrations → Clover to set up.' };
-    const authToken = decryptLocalCloverToken(cfg);
-    const amountCents = Math.round(Number(payload?.amountCents) || 0);
-    if (amountCents <= 0) return { ok: false, error: 'Amount must be greater than zero.' };
-    const externalId = `GB-${Date.now()}`;
-    const body: any = { externalId, amount: amountCents, tipMode: 'NO_TIP' };
-    if (cfg.remoteAppId) body.appId = cfg.remoteAppId;
-    // Try HTTP first; fall back to HTTPS if ECONNRESET (some devices use HTTPS)
-    let res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: false });
-    if (!res.ok && (res.error || '').includes('ECONNRESET')) {
-      res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: true });
-    }
-    if (res.ok) return { ok: true, result: res.data, externalId };
-    return { ok: false, error: res.error || `Device returned HTTP ${res.status}. Check that Pay Display is open on the Flex.` };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:cashSale', async (_e: any, payload: any) => {
-  try {
-    const cfg = readCloverRestConfig();
-    const token = decryptCloverToken(cfg);
-    if (!token) return { ok: false, error: 'No access token saved' };
-    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
-    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
-    const mId = cfg.merchantId;
-    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
-    const tenderedCents: number = Math.round(Number(payload?.tenderedCents) || amountCents);
-    const label: string = String(payload?.label || 'Service');
-
-    // 1. Create order
-    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
-    const orderId: string = order?.id;
-    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
-
-    // 2. Add line item
-    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
-
-    // 3. Record cash payment (triggers drawer)
-    await cloverApiRequest({
-      method: 'POST',
-      urlPath: `/v3/merchants/${mId}/orders/${orderId}/payments`,
-      accessToken: token,
-      body: {
-        tender: { labelKey: 'com.clover.tender.cash' },
-        amount: amountCents,
-        cashTendered: tenderedCents,
-      },
-      baseUrl: base,
-    });
-
-    return { ok: true, orderId };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('open-clover-settings', async (event: any) => {
-  const parentFromSender = (() => {
-    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
-  })();
-  const child = new BrowserWindow({
-    width: 680,
-    height: 580,
-    resizable: false,
-    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
-    modal: false,
-    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
-    backgroundColor: '#18181b',
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
-    },
-    show: false,
-    title: windowTitle('Clover Settings'),
-  });
-  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
-  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const url = isDev ? `${DEV_SERVER_URL}/?cloverSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?cloverSettings=true`;
-  child.loadURL(url).catch((e: any) => console.error('[CloverSettings] loadURL failed', e));
-  return { ok: true };
-});
-
 // Open Backup (Data Management) window
 ipcMain.handle('open-backup', async () => {
   const child = new BrowserWindow({
@@ -3004,849 +2636,6 @@ ipcMain.handle('server-sync-backup-now', async (_e: any, label?: string) => {
 ipcMain.handle('server-sync-status', async () => {
   const cfg = readServerSyncConfig();
   return { ok: true, config: cfg };
-});
-
-// -------------------------------------------------------------
-// Clover Remote Pay (LAN)
-// -------------------------------------------------------------
-
-type CloverConnectionConfig = {
-  ipAddress?: string;
-  // Stored encrypted (base64) when safeStorage is available.
-  authTokenEnc?: string | null;
-  // Fallback when safeStorage is unavailable.
-  authToken?: string | null;
-  updatedAt?: string;
-};
-
-function cloverConfigPath(): string {
-  return path.join(resolveDataRoot(), 'clover-connection.json');
-}
-
-function encryptToBase64(value: string): string | null {
-  try {
-    const v = String(value || '').trim();
-    if (!v) return null;
-    if (safeStorage && typeof safeStorage.encryptString === 'function') {
-      const buf = safeStorage.encryptString(v);
-      return Buffer.from(buf).toString('base64');
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function decryptFromBase64(enc: string): string | null {
-  try {
-    const e = String(enc || '').trim();
-    if (!e) return null;
-    const buf = Buffer.from(e, 'base64');
-    if (safeStorage && typeof safeStorage.decryptString === 'function') {
-      return safeStorage.decryptString(buf);
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function readCloverConfig(): CloverConnectionConfig {
-  try {
-    const p = cloverConfigPath();
-    if (!fs.existsSync(p)) return { ipAddress: '', authTokenEnc: null, authToken: null };
-    const raw = fs.readFileSync(p, 'utf-8');
-    const json = JSON.parse(raw);
-    if (!json || typeof json !== 'object') return { ipAddress: '', authTokenEnc: null, authToken: null };
-    return {
-      ipAddress: typeof (json as any).ipAddress === 'string' ? String((json as any).ipAddress) : '',
-      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
-      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
-      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
-    };
-  } catch {
-    return { ipAddress: '', authTokenEnc: null, authToken: null };
-  }
-}
-
-function writeCloverConfig(patch: Partial<CloverConnectionConfig>) {
-  try {
-    const current = readCloverConfig();
-    const next: CloverConnectionConfig = {
-      ...current,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    };
-    ensureDir(path.dirname(cloverConfigPath()));
-    fs.writeFileSync(cloverConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
-  } catch {
-    // ignore
-  }
-}
-
-function getCloverAuthToken(cfg?: CloverConnectionConfig): string | null {
-  const c = cfg || readCloverConfig();
-  const dec = c?.authTokenEnc ? decryptFromBase64(c.authTokenEnc) : null;
-  if (dec && dec.trim()) return dec.trim();
-  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
-  if (plain && plain.trim()) return plain.trim();
-  return null;
-}
-
-function persistCloverAuthToken(token: string) {
-  const t = String(token || '').trim();
-  if (!t) return;
-  const enc = encryptToBase64(t);
-  if (enc) {
-    writeCloverConfig({ authTokenEnc: enc, authToken: null });
-  } else {
-    writeCloverConfig({ authToken: t, authTokenEnc: null });
-  }
-}
-
-type CloverStatus = {
-  ok: true;
-  state: 'disconnected' | 'connecting' | 'pairing' | 'connected' | 'ready' | 'error' | string;
-  endpoint?: string;
-  pairingCode?: string | null;
-  lastError?: string | null;
-  updatedAt?: string;
-};
-
-let cloverConnector: any | null = null;
-let cloverStatus: CloverStatus = {
-  ok: true,
-  state: 'disconnected',
-  endpoint: '',
-  pairingCode: null,
-  lastError: null,
-  updatedAt: new Date().toISOString(),
-};
-
-const pendingCloverSales = new Map<string, { resolve: (resp: any) => void; reject: (err: any) => void; timer: any }>();
-
-function emitToAllWindows(channel: string, payload: any) {
-  try {
-    const wins = BrowserWindow.getAllWindows();
-    for (const w of wins) {
-      try { w.webContents.send(channel, payload); } catch {}
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function setCloverStatus(patch: Partial<CloverStatus>) {
-  cloverStatus = {
-    ...cloverStatus,
-    ...patch,
-    ok: true,
-    updatedAt: new Date().toISOString(),
-  };
-  emitToAllWindows('clover:status', cloverStatus);
-}
-
-function rejectAllPendingCloverSales(message: string) {
-  try {
-    for (const [, p] of pendingCloverSales) {
-      try { clearTimeout(p.timer); } catch {}
-      try { p.reject(new Error(message)); } catch {}
-    }
-  } catch {
-    // ignore
-  }
-  pendingCloverSales.clear();
-}
-
-function disposeCloverConnector() {
-  try {
-    if (cloverConnector && typeof cloverConnector.dispose === 'function') {
-      cloverConnector.dispose();
-    }
-  } catch {
-    // ignore
-  }
-  cloverConnector = null;
-  rejectAllPendingCloverSales('Clover disconnected');
-}
-
-function buildCloverEndpoint(ipAddress: string): string {
-  const raw = String(ipAddress || '').trim();
-  if (!raw) return '';
-
-  // If a full ws/wss URL is provided, normalize path to /remote_pay.
-  if (/^wss?:\/\//i.test(raw)) {
-    try {
-      const u = new URL(raw);
-      if (!u.pathname || u.pathname === '/') u.pathname = '/remote_pay';
-      return u.toString();
-    } catch {
-      const noTrail = raw.replace(/\/+$/, '');
-      return /\/remote_pay$/i.test(noTrail) ? noTrail : `${noTrail}/remote_pay`;
-    }
-  }
-
-  const cleaned = raw.replace(/\/+$/, '');
-  let hostPort = cleaned;
-  let pathPart = '/remote_pay';
-  if (cleaned.includes('/')) {
-    const idx = cleaned.indexOf('/');
-    hostPort = cleaned.slice(0, idx);
-    const p = cleaned.slice(idx);
-    if (p && p !== '/') pathPart = p;
-  }
-  if (!hostPort) return '';
-  const withPort = hostPort.includes(':') ? hostPort : `${hostPort}:12346`;
-  const finalPath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
-  return `wss://${withPort}${finalPath}`;
-}
-
-function cloverSaleResponseToSummary(resp: any): any {
-  try {
-    const success = Boolean(resp?.getSuccess?.());
-    const result = resp?.getResult?.();
-    const reason = resp?.getReason?.();
-    const message = resp?.getMessage?.();
-    const payment = resp?.getPayment?.();
-    const paymentId = payment?.getId?.();
-    const externalPaymentId = payment?.getExternalPaymentId?.();
-    const amount = payment?.getAmount?.();
-    const tipAmount = payment?.getTipAmount?.();
-    return {
-      success,
-      result: typeof result !== 'undefined' ? String(result) : null,
-      reason: reason ? String(reason) : null,
-      message: message ? String(message) : null,
-      paymentId: paymentId ? String(paymentId) : null,
-      externalPaymentId: externalPaymentId ? String(externalPaymentId) : null,
-      amount: typeof amount === 'number' ? amount : null,
-      tipAmount: typeof tipAmount === 'number' ? tipAmount : null,
-    };
-  } catch {
-    return { success: false, result: null, reason: null, message: null };
-  }
-}
-
-function makeCloverListener(): any {
-  const noop = () => {};
-  return {
-    onDisconnected: () => {
-      setCloverStatus({ state: 'disconnected', pairingCode: null });
-      rejectAllPendingCloverSales('Clover disconnected');
-    },
-    onDeviceDisconnected: () => {
-      setCloverStatus({ state: 'disconnected', pairingCode: null });
-      rejectAllPendingCloverSales('Clover disconnected');
-    },
-    onDeviceConnected: () => {
-      setCloverStatus({ state: 'connected', lastError: null });
-    },
-    onReady: (_merchantInfo: any) => {
-      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
-    },
-    onDeviceReady: (_merchantInfo: any) => {
-      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
-    },
-    onDeviceActivityStart: noop,
-    onDeviceActivityEnd: noop,
-    onDeviceError: (deviceErrorEvent: any) => {
-      const msg = String(deviceErrorEvent?.getMessage?.() || deviceErrorEvent?.message || 'Clover device error');
-      setCloverStatus({ state: 'error', lastError: msg });
-    },
-    onAuthResponse: noop,
-    onTipAdjustAuthResponse: noop,
-    onCapturePreAuthResponse: noop,
-    onVerifySignatureRequest: noop,
-    onConfirmPaymentRequest: noop,
-    onCloseoutResponse: noop,
-    onSaleResponse: (response: any) => {
-      const summary = cloverSaleResponseToSummary(response);
-      emitToAllWindows('clover:saleResponse', summary);
-
-      const key = String(summary?.externalPaymentId || '').trim();
-      const pending = key ? pendingCloverSales.get(key) : null;
-      if (pending) {
-        try { clearTimeout(pending.timer); } catch {}
-        pendingCloverSales.delete(key);
-        try { pending.resolve(response); } catch {}
-        return;
-      }
-
-      // Fallback: if we couldn't correlate and there is exactly one pending sale, resolve it.
-      if (pendingCloverSales.size === 1) {
-        const [[onlyKey, onlyPending]] = Array.from(pendingCloverSales.entries());
-        try { clearTimeout(onlyPending.timer); } catch {}
-        pendingCloverSales.delete(onlyKey);
-        try { onlyPending.resolve(response); } catch {}
-      }
-    },
-    onManualRefundResponse: noop,
-    onRefundPaymentResponse: noop,
-    onTipAdded: noop,
-    onVoidPaymentResponse: noop,
-    onVoidPaymentRefundResponse: noop,
-    onVaultCardResponse: noop,
-    onPreAuthResponse: noop,
-    onRetrievePendingPaymentsResponse: noop,
-    onReadCardDataResponse: noop,
-    onMessageFromActivity: noop,
-    onCustomActivityResponse: noop,
-    onRetrieveDeviceStatusResponse: noop,
-    onInvalidStateTransitionResponse: noop,
-    onResetDeviceResponse: noop,
-    onRetrievePaymentResponse: noop,
-    onRetrievePrintersResponse: noop,
-    onPrintJobStatusResponse: noop,
-    onPrintManualRefundReceipt: noop,
-    onPrintManualRefundDeclineReceipt: noop,
-    onPrintPaymentReceipt: noop,
-    onPrintPaymentDeclineReceipt: noop,
-    onPrintPaymentMerchantCopyReceipt: noop,
-    onPrintRefundPaymentReceipt: noop,
-    onCustomerProvidedData: noop,
-    onDisplayReceiptOptionsResponse: noop,
-  };
-}
-
-function requireCloverReady(): { ok: true } | { ok: false; error: string } {
-  if (!cloverConnector) return { ok: false, error: 'Clover is not connected.' };
-  if (cloverConnector?.isReady !== true) return { ok: false, error: 'Clover is not ready yet. Finish pairing and wait for Ready.' };
-  return { ok: true };
-}
-
-// Best-effort cleanup on quit.
-try {
-  app.on('before-quit', () => {
-    try { disposeCloverConnector(); } catch {}
-  });
-} catch {}
-
-ipcMain.handle('clover:getConfig', async () => {
-  const cfg = readCloverConfig();
-  return {
-    ok: true,
-    ipAddress: String(cfg.ipAddress || ''),
-    hasAuthToken: Boolean(getCloverAuthToken(cfg)),
-  };
-});
-
-ipcMain.handle('clover:setConfig', async (_e: any, patch: any) => {
-  try {
-    const p = (patch && typeof patch === 'object') ? patch : {};
-    const next: Partial<CloverConnectionConfig> = {};
-    if (typeof p.ipAddress === 'string') next.ipAddress = String(p.ipAddress || '').trim();
-    if (p.clearAuthToken === true) {
-      next.authToken = null;
-      next.authTokenEnc = null;
-    }
-    if (Object.keys(next).length > 0) writeCloverConfig(next);
-    const cfg = readCloverConfig();
-    return {
-      ok: true,
-      ipAddress: String(cfg.ipAddress || ''),
-      hasAuthToken: Boolean(getCloverAuthToken(cfg)),
-    };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:getStatus', async () => {
-  return cloverStatus;
-});
-
-ipcMain.handle('clover:connect', async () => {
-  try {
-    const cfg = readCloverConfig();
-    const ip = String(cfg.ipAddress || '').trim();
-    if (!ip) return { ok: false, error: 'Clover IP address is not set.' };
-
-    const endpoint = buildCloverEndpoint(ip);
-    if (!endpoint) return { ok: false, error: 'Invalid Clover IP address.' };
-
-    // Dispose any prior connection.
-    disposeCloverConnector();
-
-    setCloverStatus({ state: 'connecting', endpoint, pairingCode: null, lastError: null });
-
-    const remotePayCloud = require('remote-pay-cloud');
-    const CloverWebSocketInterface = remotePayCloud.CloverWebSocketInterface;
-
-    class NodeWebSocketImpl extends CloverWebSocketInterface {
-      constructor(ep: string) { super(ep); }
-      public createWebSocket(ep: string): any {
-        const WS = require('ws');
-        // Clover devices frequently use self-signed certs on LAN.
-        return new WS(ep, { rejectUnauthorized: false });
-      }
-      public sendPong(): any {
-        try { (this as any).webSocket?.pong?.(); } catch {}
-        return this;
-      }
-      public sendPing(): any {
-        try { (this as any).webSocket?.ping?.(); } catch {}
-        return this;
-      }
-      public static createInstance(ep: string): any { return new NodeWebSocketImpl(ep); }
-    }
-
-    const appVersion = (() => { try { return app.getVersion(); } catch { return '0.0.0'; } })();
-    const applicationId = `com.gadgetboy.pos:${appVersion}`;
-    const posName = 'GadgetBoy POS';
-    const serialNumber = `GBPOS-${String(os.hostname?.() || 'POS')}`;
-    const authToken = getCloverAuthToken(cfg);
-
-    const onPairingCode = (code: string) => {
-      const c = String(code || '').trim();
-      if (!c) return;
-      setCloverStatus({ state: 'pairing', pairingCode: c });
-      emitToAllWindows('clover:pairingCode', c);
-    };
-
-    const onPairingSuccess = (token: string) => {
-      try { persistCloverAuthToken(token); } catch {}
-      setCloverStatus({ pairingCode: null });
-    };
-
-    const builder = new remotePayCloud.WebSocketPairedCloverDeviceConfigurationBuilder(
-      applicationId,
-      endpoint,
-      posName,
-      serialNumber,
-      authToken || null,
-      onPairingCode,
-      onPairingSuccess,
-    );
-    builder.setWebSocketFactoryFunction(NodeWebSocketImpl.createInstance);
-
-    const deviceConfig = builder.build();
-    cloverConnector = new remotePayCloud.CloverConnector(deviceConfig);
-    cloverConnector.addCloverConnectorListener(makeCloverListener());
-    cloverConnector.initializeConnection();
-
-    return { ok: true, endpoint };
-  } catch (e: any) {
-    const msg = e?.message || String(e);
-    setCloverStatus({ state: 'error', lastError: msg });
-    return { ok: false, error: msg };
-  }
-});
-
-ipcMain.handle('clover:disconnect', async () => {
-  try {
-    disposeCloverConnector();
-    setCloverStatus({ state: 'disconnected', pairingCode: null });
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:sale', async (_e: any, amountCents: any) => {
-  try {
-    const ready = requireCloverReady();
-    if (!ready.ok) return { ok: false, error: ready.error };
-
-    const amt = Number(amountCents);
-    if (!Number.isFinite(amt) || amt <= 0) return { ok: false, error: 'Invalid amount.' };
-    if (pendingCloverSales.size > 0) return { ok: false, error: 'Another Clover sale is already in progress.' };
-
-    const remotePayCloud = require('remote-pay-cloud');
-    const req = new remotePayCloud.remotepay.SaleRequest();
-    req.setAmount(Math.round(amt));
-    const externalId = `GBPOS-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    req.setExternalId(externalId);
-
-    const response = await new Promise<any>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pendingCloverSales.delete(externalId);
-        reject(new Error('Timed out waiting for Clover sale response.'));
-      }, 120000);
-      pendingCloverSales.set(externalId, { resolve, reject, timer });
-      cloverConnector.sale(req);
-    });
-
-    return { ok: true, response: cloverSaleResponseToSummary(response) };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('clover:openCashDrawer', async (_e: any, payload: any) => {
-  try {
-    const ready = requireCloverReady();
-    if (!ready.ok) return { ok: false, error: ready.error };
-
-    const remotePayCloud = require('remote-pay-cloud');
-    const reason = String(payload?.reason || 'GadgetBoy POS').trim() || 'GadgetBoy POS';
-    const deviceId = String(payload?.deviceId || '').trim();
-    if (deviceId) {
-      const req = new remotePayCloud.remotepay.OpenCashDrawerRequest();
-      req.setReason(reason);
-      req.setDeviceId(deviceId);
-      cloverConnector.openCashDrawer(req);
-    } else {
-      cloverConnector.openCashDrawer(reason);
-    }
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-// -------------------------------------------------------------
-// Twilio SMS
-// -------------------------------------------------------------
-
-type TwilioSmsConfig = {
-  accountSid?: string;
-  // Optional: when using Twilio API Keys, this can be the API Key SID (SK...).
-  // When omitted, accountSid is used as the HTTP Basic auth username.
-  authSid?: string;
-  fromNumber?: string;
-  // Stored encrypted (base64) when safeStorage is available.
-  authTokenEnc?: string | null;
-  // Fallback when safeStorage is unavailable.
-  authToken?: string | null;
-  updatedAt?: string;
-};
-
-function twilioConfigPath(): string {
-  return path.join(resolveDataRoot(), 'twilio-config.json');
-}
-
-function readTwilioConfig(): TwilioSmsConfig {
-  try {
-    const p = twilioConfigPath();
-    if (!fs.existsSync(p)) return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
-    const raw = fs.readFileSync(p, 'utf-8');
-    const json = JSON.parse(raw);
-    if (!json || typeof json !== 'object') return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
-    return {
-      accountSid: typeof (json as any).accountSid === 'string' ? String((json as any).accountSid) : '',
-      authSid: typeof (json as any).authSid === 'string' ? String((json as any).authSid) : '',
-      fromNumber: typeof (json as any).fromNumber === 'string' ? String((json as any).fromNumber) : '',
-      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
-      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
-      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
-    };
-  } catch {
-    return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
-  }
-}
-
-function writeTwilioConfig(patch: Partial<TwilioSmsConfig>) {
-  try {
-    const current = readTwilioConfig();
-    const next: TwilioSmsConfig = {
-      ...current,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    };
-    ensureDir(path.dirname(twilioConfigPath()));
-    fs.writeFileSync(twilioConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
-  } catch {
-    // ignore
-  }
-}
-
-function getTwilioAuthToken(cfg?: TwilioSmsConfig): string | null {
-  const c = cfg || readTwilioConfig();
-  const dec = c?.authTokenEnc ? decryptFromBase64(String(c.authTokenEnc)) : null;
-  if (dec && dec.trim()) return dec.trim();
-  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
-  if (plain && plain.trim()) return plain.trim();
-  return null;
-}
-
-function normalizePhoneE164(raw: any): string | null {
-  try {
-    const s = String(raw || '').trim();
-    if (!s) return null;
-    if (s.startsWith('+')) {
-      const digits = s.replace(/[^0-9]/g, '');
-      if (digits.length < 10) return null;
-      return `+${digits}`;
-    }
-    const digits = s.replace(/\D+/g, '');
-    if (digits.length === 10) return `+1${digits}`;
-    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function twilioSendSms(toRaw: any, bodyRaw: any): Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }> {
-  try {
-    const cfg = readTwilioConfig();
-    const accountSid = String(cfg.accountSid || '').trim();
-    const authSid = String((cfg as any).authSid || accountSid).trim();
-    const authToken = String(getTwilioAuthToken(cfg) || '').trim();
-    const fromNumberRaw = String(cfg.fromNumber || '').trim();
-
-    if (!accountSid) return { ok: false, error: 'Twilio not configured: missing Account SID.' };
-    if (!authSid) return { ok: false, error: 'Twilio not configured: missing Auth SID (API Key SID) / Account SID.' };
-    if (!authToken) return { ok: false, error: 'Twilio not configured: missing Auth Token.' };
-    if (!fromNumberRaw) return { ok: false, error: 'Twilio not configured: missing From Number.' };
-
-    const to = normalizePhoneE164(toRaw);
-    if (!to) return { ok: false, error: 'Invalid recipient phone number.' };
-
-    const from = normalizePhoneE164(fromNumberRaw);
-    if (!from) return { ok: false, error: 'Invalid From phone number. Use +E.164 or a 10-digit US number.' };
-
-    const body = String(bodyRaw || '').trim();
-    if (!body) return { ok: false, error: 'Message body is empty.' };
-
-    const postData = new URLSearchParams({ To: to, From: from, Body: body }).toString();
-    const auth = Buffer.from(`${authSid}:${authToken}`).toString('base64');
-
-    const result = await new Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }>((resolve) => {
-      try {
-        const req = https.request({
-          method: 'POST',
-          hostname: 'api.twilio.com',
-          path: `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
-          headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(postData),
-          },
-          timeout: 15000,
-        }, (res: any) => {
-          let data = '';
-          res.on('data', (chunk: any) => { data += String(chunk ?? ''); });
-          res.on('end', () => {
-            const status = Number(res?.statusCode || 0);
-            const ok = status >= 200 && status < 300;
-            if (ok) {
-              try {
-                const json = JSON.parse(data || '{}');
-                resolve({ ok: true, sid: json?.sid || null });
-              } catch {
-                resolve({ ok: true, sid: null });
-              }
-              return;
-            }
-
-            try {
-              const json = JSON.parse(data || '{}');
-              const msg = String(json?.message || '').trim();
-              resolve({ ok: false, error: msg || `Twilio error (${status || 'unknown'})` });
-            } catch {
-              resolve({ ok: false, error: `Twilio error (${status || 'unknown'})` });
-            }
-          });
-        });
-
-        req.on('timeout', () => {
-          try { req.destroy(new Error('Request timed out')); } catch {}
-        });
-        req.on('error', (err: any) => {
-          resolve({ ok: false, error: String(err?.message || err) });
-        });
-        req.write(postData);
-        req.end();
-      } catch (e: any) {
-        resolve({ ok: false, error: String(e?.message || e) });
-      }
-    });
-
-    return result;
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) };
-  }
-}
-
-function normalizeStatusForCompare(raw: any): string {
-  try {
-    return String(raw || '').trim().toLowerCase();
-  } catch {
-    return '';
-  }
-}
-
-function maybeAutoTextOnStatusChange(key: string, previousItem: any, updatedItem: any, db: any) {
-  try {
-    const k = String(key || '').trim();
-    if (k !== 'workOrders' && k !== 'sales') return;
-
-    const cfg = readTwilioConfig();
-    const hasConfig = Boolean(String(cfg?.accountSid || '').trim())
-      && Boolean(String(cfg?.fromNumber || '').trim())
-      && Boolean(getTwilioAuthToken(cfg));
-    if (!hasConfig) return;
-
-    const prevStatus = normalizeStatusForCompare(previousItem?.status);
-    const nextStatus = normalizeStatusForCompare(updatedItem?.status);
-    if (!prevStatus || !nextStatus || prevStatus === nextStatus) return;
-
-    const statusDisplay = String(updatedItem?.status || '').trim();
-    if (!statusDisplay) return;
-
-    let phoneRaw = String(updatedItem?.customerPhone || updatedItem?.phone || '').trim();
-    const cid = Number(updatedItem?.customerId || 0);
-    if (Number.isFinite(cid) && cid > 0) {
-      try {
-        const customers: any[] = Array.isArray(db?.customers) ? db.customers : [];
-        const c = customers.find((x: any) => Number(x?.id || 0) === cid);
-        if (c) {
-          const p1 = String((c as any)?.phone || '').trim();
-          const p2 = String((c as any)?.phoneAlt || '').trim();
-          phoneRaw = p1 || p2 || phoneRaw;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    if (!normalizePhoneE164(phoneRaw)) return;
-
-    const idNum = Number(updatedItem?.id || 0);
-    const invoice = (Number.isFinite(idNum) && idNum > 0) ? `GB${String(idNum).padStart(7, '0')}` : '';
-    const label = invoice || (Number.isFinite(idNum) && idNum > 0 ? `#${idNum}` : 'ticket');
-    const typeLabel = k === 'sales' ? 'sale' : 'ticket';
-    const body = `GadgetBoy Update: Your ${typeLabel} ${label} status is now ${statusDisplay}.`;
-
-    // Fire-and-forget: never block DB writes.
-    void twilioSendSms(phoneRaw, body).then((res) => {
-      if (!res?.ok) {
-        console.warn('[Twilio] auto status SMS failed:', res?.error || 'unknown error');
-      }
-    });
-  } catch {
-    // ignore
-  }
-}
-
-ipcMain.handle('twilio:getConfig', async () => {
-  const cfg = readTwilioConfig();
-  return {
-    ok: true,
-    accountSid: String(cfg.accountSid || ''),
-    authSid: String((cfg as any).authSid || ''),
-    fromNumber: String(cfg.fromNumber || ''),
-    hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
-  };
-});
-
-ipcMain.handle('twilio:setConfig', async (_e: any, patch: any) => {
-  try {
-    const p = (patch && typeof patch === 'object') ? patch : {};
-    const next: Partial<TwilioSmsConfig> = {};
-
-    if (typeof p.accountSid === 'string') next.accountSid = String(p.accountSid || '').trim();
-    if (typeof p.authSid === 'string') (next as any).authSid = String(p.authSid || '').trim();
-    if (typeof p.fromNumber === 'string') next.fromNumber = String(p.fromNumber || '').trim();
-
-    if (p.clearAuthToken === true) {
-      next.authToken = null;
-      next.authTokenEnc = null;
-    }
-
-    if (typeof p.authToken === 'string') {
-      const token = String(p.authToken || '').trim();
-      if (token) {
-        const enc = encryptToBase64(token);
-        if (enc) {
-          next.authTokenEnc = enc;
-          next.authToken = null;
-        } else {
-          next.authToken = token;
-          next.authTokenEnc = null;
-        }
-      }
-    }
-
-    if (Object.keys(next).length > 0) writeTwilioConfig(next);
-    const cfg = readTwilioConfig();
-    return {
-      ok: true,
-      accountSid: String(cfg.accountSid || ''),
-      authSid: String((cfg as any).authSid || ''),
-      fromNumber: String(cfg.fromNumber || ''),
-      hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
-    };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('twilio:sendSms', async (_e: any, payload: any) => {
-  try {
-    const to = payload?.to;
-    const body = payload?.body;
-    return await twilioSendSms(to, body);
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('twilio:getMessages', async (_e: any, customerId: any) => {
-  try {
-    const cid = Number(customerId || 0);
-    if (!cid) return { ok: true, messages: [] };
-    const db = readDb();
-    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
-    const result = msgs
-      .filter((m: any) => Number(m?.customerId || 0) === cid)
-      .sort((a: any, b: any) => new Date(String(a.sentAt || 0)).getTime() - new Date(String(b.sentAt || 0)).getTime());
-    return { ok: true, messages: result };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e), messages: [] };
-  }
-});
-
-ipcMain.handle('twilio:logMessage', async (_e: any, msg: any) => {
-  try {
-    const m = (msg && typeof msg === 'object') ? msg : {};
-    const db = readDb();
-    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
-    const maxId = msgs.reduce((acc: number, x: any) => Math.max(acc, Number(x?.id || 0)), 0);
-    const entry = {
-      id: maxId + 1,
-      customerId: Number(m.customerId || 0),
-      to: String(m.to || '').trim(),
-      body: String(m.body || '').trim(),
-      sentAt: m.sentAt || new Date().toISOString(),
-      direction: m.direction || 'out',
-      twilioSid: m.twilioSid || null,
-    };
-    msgs.push(entry);
-    db['smsMessages'] = msgs;
-    writeDb(db);
-    return { ok: true, message: entry };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle('open-twilio-settings', async (event: any) => {
-  const parentFromSender = (() => {
-    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
-  })();
-  const child = new BrowserWindow({
-    width: 580,
-    height: 640,
-    resizable: false,
-    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
-    modal: false,
-    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
-    backgroundColor: '#18181b',
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
-    },
-    show: false,
-    title: windowTitle('SMS / Twilio Settings'),
-  });
-  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
-  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const url = isDev ? `${DEV_SERVER_URL}/?twilioSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?twilioSettings=true`;
-  child.loadURL(url).catch((e: any) => console.error('[TwilioSettings] loadURL failed', e));
-  return { ok: true };
 });
 
 // Open Clock In window
@@ -5841,7 +4630,6 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   if (ok) {
     scheduleCollectionChanged(key);
     void syncCloudWriteOrQueue('upsert', key, updatedItem);
-    try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
   return null;

@@ -26,7 +26,13 @@ type Product = {
   lowStockThreshold?: number;
 };
 
-const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
+type ProductsWindowProps = {
+  onClose?: () => void;
+  pickerMode?: boolean;
+  onPick?: (product: Record<string, any>) => void;
+};
+
+const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = false, onPick }) => {
   const [list, setList] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<number|undefined>(undefined);
   const blank: Product = {
@@ -100,21 +106,62 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     ];
   }, [ctxRow, api, blank, selectedId]);
   const isPicker = useMemo(() => {
+    if (pickerMode) return true;
     const params = new URLSearchParams(window.location.search);
     return params.get('picker') === 'sale';
-  }, []);
+  }, [pickerMode]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return list.filter(p => {
       const type = (p.itemType || 'Product');
       const matchesQ = q ? (p.itemDescription || '').toLowerCase().includes(q) : true;
-      const matchesType = typeFilter ? (typeFilter === 'product' ? type === 'Product' : type === 'Part') : true;
+      const matchesType = isPicker
+        ? type === 'Product'
+        : (typeFilter ? (typeFilter === 'product' ? type === 'Product' : type === 'Part') : true);
       const devices = Array.isArray(p.associatedDevices) ? p.associatedDevices : [];
       const matchesCat = categoryFilter ? (p.category === categoryFilter || devices.includes(categoryFilter)) : true;
       return matchesQ && matchesType && matchesCat;
     });
-  }, [list, search, typeFilter, categoryFilter]);
+  }, [list, search, typeFilter, categoryFilter, isPicker]);
+
+  const emitPickedProduct = () => {
+    if (!selectedId || !editing?.itemDescription?.trim()) return;
+    const stockCount = Number(editing.stockCount);
+    const payload = {
+      inventoryProductId: editing.id,
+      itemDescription: editing.itemDescription.trim(),
+      price: Number(editing.price || 0),
+      quantity: 1,
+      condition: editing.condition || 'New',
+      internalCost: typeof editing.internalCost === 'number' ? editing.internalCost : undefined,
+      category: editing.category,
+      itemType: editing.itemType || 'Product',
+      distributor: editing.distributor || '',
+      distributorSku: editing.distributorSku || '',
+      productUrl: editing.reorderUrlTemplate || '',
+      vendorRelationship: (editing as any).vendorRelationship,
+      vendorSharePct: (editing as any).vendorSharePct,
+      vendorTaxExempt: !!(editing as any).vendorTaxExempt,
+      trackStock: !!editing.trackStock,
+      stockCount: Number.isFinite(stockCount) ? stockCount : undefined,
+      inStock: !editing.trackStock || (Number.isFinite(stockCount) && stockCount > 0),
+    };
+    if (onPick) {
+      onPick(payload);
+      return;
+    }
+    try {
+      if ((window as any).api?._emitSaleProductSelected) {
+        (window as any).api._emitSaleProductSelected(payload);
+      } else {
+        const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : { ipcRenderer: null };
+        ipcRenderer?.send('sale-product-selected', payload);
+      }
+      try { window.opener?.postMessage({ type: 'sale-product-selected', product: payload }, '*'); } catch {}
+    } catch {}
+    window.close();
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -231,6 +278,45 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       setSelectedId(undefined);
       setEditing(blank);
     } catch (e) { console.error('delete product failed', e); }
+  }
+
+  if (pickerMode) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100">
+        <input
+          type="search"
+          placeholder="Search saved products"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="mb-3 w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-3 text-base outline-none focus:border-[#39FF14]"
+          autoFocus
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-700 bg-zinc-950">
+          {filtered.length ? filtered.map((product) => (
+            <button
+              type="button"
+              key={product.id}
+              onClick={() => setSelectedId(product.id)}
+              className={`flex w-full items-center justify-between gap-3 border-b border-zinc-800 px-3 py-3 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 ring-1 ring-inset ring-[#BC13FE]' : 'bg-zinc-950 active:bg-zinc-800'}`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{product.itemDescription}</span>
+                <span className="block truncate text-xs text-zinc-400">{product.category || 'Other'} · {product.condition || 'New'}{product.trackStock ? ` · ${product.stockCount ?? 0} in stock` : ''}</span>
+              </span>
+              <strong className="shrink-0 tabular-nums">${Number(product.price || 0).toFixed(2)}</strong>
+            </button>
+          )) : <div className="p-4 text-sm text-zinc-400">No saved products match this search.</div>}
+        </div>
+        <button
+          type="button"
+          className="mt-3 w-full rounded bg-[#39FF14] px-4 py-3 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={emitPickedProduct}
+          disabled={!selectedId || !editing.itemDescription?.trim()}
+        >
+          Add Selected Product
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -534,29 +620,10 @@ const ProductsWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
               {isPicker && (
                 <button
                   className="px-3 py-1.5 bg-neon-green text-black rounded font-semibold"
-                  onClick={() => {
-                    const payload = {
-                      itemDescription: editing.itemDescription || '',
-                      price: editing.price || 0,
-                      quantity: 1,
-                      condition: editing.condition || 'New',
-                      internalCost: editing.internalCost,
-                      category: editing.category,
-                    };
-                    try {
-                      if ((window as any).api?._emitSaleProductSelected) {
-                        (window as any).api._emitSaleProductSelected(payload);
-                      } else {
-                        const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : { ipcRenderer: null };
-                        ipcRenderer?.send('sale-product-selected', payload);
-                      }
-                      // Always try to notify the opener via postMessage for fallback flows
-                      try { window.opener?.postMessage({ type: 'sale-product-selected', product: payload }, '*'); } catch {}
-                    } catch {}
-                    window.close();
-                  }}
+                  onClick={emitPickedProduct}
+                  disabled={!selectedId || !editing.itemDescription?.trim()}
                 >
-                  Add to Sale Form
+                  Add Selected Product
                 </button>
               )}
             </div>
