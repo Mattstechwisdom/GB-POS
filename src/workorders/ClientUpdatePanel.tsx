@@ -10,6 +10,18 @@ type StatusOption = {
   detail?: 'date' | 'notes';
 };
 
+type UpdateHistoryRow = {
+  id: string;
+  status_key: string;
+  status_label: string;
+  message?: string | null;
+  estimated_date?: string | null;
+  recipient_email?: string | null;
+  delivery_status: 'sent' | 'failed' | 'not_requested';
+  delivery_error?: string | null;
+  created_at: string;
+};
+
 type Props = {
   token?: string;
   recordType?: UpdateType;
@@ -154,28 +166,6 @@ function saleStatusLabel(key: string): string {
   return map[key] || '';
 }
 
-function cloudPatch(type: UpdateType, option: StatusOption, extra: { estimatedDate?: string; notes?: string }) {
-  const now = new Date().toISOString();
-  const isManual = option.key === 'manual_update';
-  const base: any = {
-    status_update: isManual ? undefined : option.label,
-    status_updated_at: now,
-    estimated_date: extra.estimatedDate || null,
-    tech_notes: extra.notes || '',
-    last_update_note: isManual ? (extra.notes || option.label) : undefined,
-    last_update_at: isManual ? now : undefined,
-  };
-  Object.keys(base).forEach((key) => typeof base[key] === 'undefined' && delete base[key]);
-  if (type === 'repair') {
-    const repairStatus = repairStatusLabel(option.key);
-    if (repairStatus && !isManual) base.repair_status = repairStatus;
-  } else if (type === 'sale') {
-    const saleStatus = saleStatusLabel(option.key);
-    if (saleStatus && !isManual) base.status = saleStatus;
-  }
-  return base;
-}
-
 function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDate?: string; notes?: string }) {
   const now = new Date().toISOString();
   const isManual = option.key === 'manual_update';
@@ -200,6 +190,20 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
   return patch;
 }
 
+function clientUpdateApiUrl() {
+  const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').trim();
+  if (configured) return `${configured.replace(/\/+$/, '')}/api/client-updates/send`;
+  try {
+    const origin = String(window.location.origin || '').trim();
+    if (/^https:\/\//i.test(origin) && !/localhost|127\.0\.0\.1/i.test(origin)) {
+      return `${origin.replace(/\/+$/, '')}/api/client-updates/send`;
+    }
+  } catch {
+    // Desktop file URLs and local previews use the hosted delivery endpoint.
+  }
+  return 'https://gb-pos-production.up.railway.app/api/client-updates/send';
+}
+
 const ClientUpdatePanel: React.FC<Props> = ({
   token,
   recordType = 'repair',
@@ -220,6 +224,11 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [notes, setNotes] = useState('');
   const [savingKey, setSavingKey] = useState('');
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [historyRows, setHistoryRows] = useState<UpdateHistoryRow[]>([]);
+  const [historyShopId, setHistoryShopId] = useState('');
 
   const options = type === 'sale' ? SALE_STATUSES : REPAIR_STATUSES;
   const quickOptions = options.filter((o) => o.key === 'pickup_reminder' || o.key === 'manual_update');
@@ -280,6 +289,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
             setType(normalizeType(res.type));
             setRecord(res.record || null);
             setCustomer(res.customer || null);
+            setHistoryShopId(String(res.token?.shop_id || ''));
             return;
           }
           const resolved = await loadFromDirectSupabase(token);
@@ -287,6 +297,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
           setType(resolved.type);
           setRecord(resolved.record);
           setCustomer(resolved.customer);
+          setHistoryShopId(String(resolved.tokenRow?.shop_id || ''));
           return;
         }
 
@@ -322,6 +333,31 @@ const ClientUpdatePanel: React.FC<Props> = ({
     return () => { alive = false; };
   }, [initialCustomer, initialRecord, loadFromDirectSupabase, recordId, recordType, token]);
 
+  const loadHistory = useCallback(async () => {
+    const legacyRecordId = Number(record?.id || recordId || 0) || 0;
+    if (!legacyRecordId || type === 'consult') {
+      setHistoryRows([]);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      let query = supabase
+        .from('client_update_history')
+        .select('id,status_key,status_label,message,estimated_date,recipient_email,delivery_status,delivery_error,created_at')
+        .eq('record_type', type)
+        .eq('legacy_record_id', legacyRecordId);
+      if (historyShopId) query = query.eq('shop_id', historyShopId);
+      const response = await query.order('created_at', { ascending: false }).limit(100);
+      if (response.error) throw new Error(response.error.message);
+      setHistoryRows((response.data || []) as UpdateHistoryRow[]);
+    } catch (e: any) {
+      setHistoryError(e?.message || String(e));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyShopId, record?.id, recordId, type]);
+
   const saveStatus = useCallback(async (option: StatusOption) => {
     if (!record) return;
     const extra = { estimatedDate, notes };
@@ -329,48 +365,53 @@ const ClientUpdatePanel: React.FC<Props> = ({
     setResult(null);
     try {
       const api: any = (window as any).api;
-      if (api?.dbUpdate) {
+      const sessionResult = await supabase.auth.getSession();
+      const accessToken = sessionResult.data.session?.access_token || '';
+      if (!accessToken) throw new Error('Your login session expired. Sign in again before sending an update.');
+      const response = await fetch(clientUpdateApiUrl(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: token || undefined,
+          recordType: type,
+          recordId: Number(record?.id || recordId || 0) || undefined,
+          statusKey: option.key,
+          estimatedDate: extra.estimatedDate || undefined,
+          notes: extra.notes || undefined,
+        }),
+      });
+      const delivery = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(delivery?.error || `Client update request failed (${response.status}).`);
+
+      if (delivery?.statusSaved && api?.dbUpdate) {
         const key = type === 'sale' ? 'sales' : 'workOrders';
         const patch = localPatch(type, option, extra);
         const saved = await api.dbUpdate(key, record.id, { ...record, ...patch });
         setRecord(saved || { ...record, ...patch });
         onUpdated?.(saved || { ...record, ...patch });
-      } else if (token) {
-        const tokenRes = await supabase
-          .from('qr_status_tokens')
-          .select('shop_id,record_type,legacy_record_id')
-          .eq('token', token)
-          .is('revoked_at', null)
-          .maybeSingle();
-        if (tokenRes.error) throw new Error(tokenRes.error.message);
-        if (!tokenRes.data) throw new Error('QR token could not be resolved for update.');
-        const nextType = normalizeType(tokenRes.data.record_type);
-        const table = nextType === 'sale' ? 'sales' : 'work_orders';
-        if (nextType === 'consult') throw new Error('Consultation QR updates are view-only in this panel.');
-        const res = await supabase
-          .from(table)
-          .update(cloudPatch(nextType, option, extra))
-          .eq('shop_id', tokenRes.data.shop_id)
-          .eq('legacy_id', Number(tokenRes.data.legacy_record_id))
-          .select('*')
-          .maybeSingle();
-        if (res.error) throw new Error(res.error.message);
-        const saved = mapCloudRow(nextType, res.data);
+      } else if (delivery?.record) {
+        const saved = mapCloudRow(type, delivery.record);
         setRecord(saved);
         onUpdated?.(saved);
-      } else {
-        throw new Error('No update API is available.');
       }
-      setResult({ ok: true, message: 'Status update saved and synced.' });
+
+      setResult({
+        ok: !!delivery?.ok,
+        message: delivery?.message || delivery?.error || 'Status update processed.',
+      });
       setOpenKey('');
       setEstimatedDate('');
       setNotes('');
+      await loadHistory();
     } catch (e: any) {
       setResult({ ok: false, message: e?.message || String(e) });
     } finally {
       setSavingKey('');
     }
-  }, [estimatedDate, notes, onUpdated, record, token, type]);
+  }, [estimatedDate, loadHistory, notes, onUpdated, record, recordId, token, type]);
 
   const renderOption = (option: StatusOption) => {
     const open = openKey === option.key;
@@ -428,11 +469,26 @@ const ClientUpdatePanel: React.FC<Props> = ({
             <div className="gb-client-update-kicker">GadgetBoy POS</div>
             <h2>Update Client</h2>
           </div>
-          {onClose ? (
-            <button type="button" className="gb-client-update-close" onClick={onClose} aria-label="Close update client">
-              x
-            </button>
-          ) : null}
+          <div className="gb-client-update-header-actions">
+            {type !== 'consult' ? (
+              <button
+                type="button"
+                className={historyOpen ? 'gb-client-update-history-toggle active' : 'gb-client-update-history-toggle'}
+                onClick={() => {
+                  const next = !historyOpen;
+                  setHistoryOpen(next);
+                  if (next) void loadHistory();
+                }}
+              >
+                History
+              </button>
+            ) : null}
+            {onClose ? (
+              <button type="button" className="gb-client-update-close" onClick={onClose} aria-label="Close update client">
+                x
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {loading ? (
@@ -452,6 +508,35 @@ const ClientUpdatePanel: React.FC<Props> = ({
                 <div className="gb-client-update-row"><span>Current</span><strong>{record?.statusUpdate || record?.repairStatus || record?.status}</strong></div>
               ) : null}
             </section>
+
+            {historyOpen ? (
+              <section className="gb-client-update-history" aria-label="Client update history">
+                <div className="gb-client-update-history-heading">
+                  <h3>Update History</h3>
+                  <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>Refresh</button>
+                </div>
+                {historyLoading ? <div className="gb-client-update-history-empty">Loading history...</div> : null}
+                {!historyLoading && historyError ? <div className="gb-client-update-error">{historyError}</div> : null}
+                {!historyLoading && !historyError && historyRows.length === 0 ? (
+                  <div className="gb-client-update-history-empty">No updates have been sent for this ticket.</div>
+                ) : null}
+                {!historyLoading && !historyError ? historyRows.map((entry) => (
+                  <article className="gb-client-update-history-item" key={entry.id}>
+                    <div className="gb-client-update-history-item-top">
+                      <strong>{entry.status_label}</strong>
+                      <span className={`delivery-${entry.delivery_status}`}>
+                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : 'Saved only'}
+                      </span>
+                    </div>
+                    <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
+                    {entry.recipient_email ? <div className="gb-client-update-history-recipient">To: {entry.recipient_email}</div> : null}
+                    {entry.estimated_date ? <div>Estimated date: {entry.estimated_date}</div> : null}
+                    {entry.message ? <p>{entry.message}</p> : null}
+                    {entry.delivery_error ? <div className="gb-client-update-history-error">{entry.delivery_error}</div> : null}
+                  </article>
+                )) : null}
+              </section>
+            ) : null}
 
             <section className="gb-client-update-section">
               <h3>Quick Actions</h3>

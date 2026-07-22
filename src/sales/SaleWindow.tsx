@@ -702,27 +702,24 @@ const SaleWindow: React.FC = () => {
     try { window.close(); } catch {}
   }
 
+  async function persistSaleRecord() {
+    const record = buildSaleRecordBase();
+    const saved = (sale as any).id
+      ? await window.api.dbUpdate('sales', (sale as any).id, { ...record, id: (sale as any).id })
+      : await window.api.dbAdd('sales', record);
+    if (!saved) throw new Error('The sale did not return a saved record.');
+    setSale(saved);
+    setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+    try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
+    try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
+    return saved as SaleRecord;
+  }
+
   async function handleSave() {
     if (!validate('saving this sale')) return;
-    const record = buildSaleRecordBase();
     try {
-      let saved;
-      if ((sale as any).id) {
-        saved = await window.api.dbUpdate('sales', (sale as any).id, { ...record, id: (sale as any).id });
-      } else {
-        saved = await window.api.dbAdd('sales', record);
-      }
-      if (saved) {
-        setSale(saved);
-        setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
-        // Reflect in Calendar: add parts/events based on dates present
-        try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
-        // Nudge any opener window (e.g., Customer Overview) to reload sales in fallback scenarios
-        try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
-
-        // After saving, return the user to the main/customer screen.
-        await closeThisWindow({ focusMain: true });
-      }
+      await persistSaleRecord();
+      await closeThisWindow({ focusMain: true });
     } catch (e) {
       console.error('Save failed', e);
       triggerWarningBanner('Failed to save sale', 'See console for details.');
@@ -931,19 +928,21 @@ const SaleWindow: React.FC = () => {
           className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-1"
           onClick={async () => {
             try {
-              const rows = (sale.items || []) as SaleItemRow[];
+              if (!validate('printing this sales form')) return;
+              const printableSale = (sale as any).id ? sale : await persistSaleRecord();
+              const rows = (printableSale.items || []) as SaleItemRow[];
               const saleItems = (rows.length
                 ? rows
-                : [{ description: sale.itemDescription || 'Sale', qty: (sale as any).quantity || 1, price: sale.price || 0 }]
+                : [{ description: printableSale.itemDescription || 'Sale', qty: (printableSale as any).quantity || 1, price: printableSale.price || 0 }]
               ).map(r => ({
                 description: r.description || '',
                 qty: itemUnits(r) || 1,
                 price: Number(r.price) || 0,
               }));
               let customerPhoneAlt = '';
-              let customerEmail = String((sale as any).customerEmail || '').trim();
+              let customerEmail = String((printableSale as any).customerEmail || '').trim();
               try {
-                const cid = sale.customerId;
+                const cid = printableSale.customerId;
                 if (cid && (window as any).api?.findCustomers) {
                   const list = await (window as any).api.findCustomers({ id: cid });
                   const c = Array.isArray(list) && list.length ? list[0] : null;
@@ -951,23 +950,26 @@ const SaleWindow: React.FC = () => {
                 }
               } catch {}
               const payload: SaleOrderPrint = {
-                invoiceId: String((sale as any).invoiceId || (sale as any).id || ''),
-                id: Number((sale as any).id) || 0,
-                dateTimeISO: sale.checkInAt || new Date().toISOString(),
-                clientName: sale.customerName || '',
-                phone: sale.customerPhone || '',
+                invoiceId: String((printableSale as any).invoiceId || (printableSale as any).id || ''),
+                id: Number((printableSale as any).id) || 0,
+                dateTimeISO: printableSale.checkInAt || new Date().toISOString(),
+                clientName: printableSale.customerName || '',
+                phone: printableSale.customerPhone || '',
                 phoneAlt: customerPhoneAlt,
                 email: customerEmail,
                 items: saleItems,
-                subTotal: sale.totals?.subTotal ?? 0,
-                discount: sale.discount || 0,
-                taxRate: sale.taxRate || 0,
-                taxes: sale.totals?.tax ?? 0,
-                amountPaid: sale.amountPaid || 0,
-                notes: (sale as any).notes || '',
+                subTotal: printableSale.totals?.subTotal ?? 0,
+                discount: printableSale.discount || 0,
+                taxRate: printableSale.taxRate || 0,
+                taxes: printableSale.totals?.tax ?? 0,
+                amountPaid: printableSale.amountPaid || 0,
+                notes: (printableSale as any).notes || '',
               };
               await printSaleReleaseForm(payload);
-            } catch (e) { console.error('Print Sales Form failed', e); }
+            } catch (e: any) {
+              console.error('Print Sales Form failed', e);
+              triggerWarningBanner('Sales form could not be printed', e?.message || 'The sale QR code could not be generated.');
+            }
           }}
         >
           Print Sales Form

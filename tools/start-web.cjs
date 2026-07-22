@@ -1,24 +1,44 @@
 const path = require('path');
-const { spawn } = require('child_process');
+const http = require('http');
+const serveHandler = require('serve-handler');
+const { handleClientUpdateApi } = require('./client-update-api.cjs');
 
 require('./write-runtime-config.cjs');
 if (process.exitCode) process.exit(process.exitCode);
 
 const rawPort = String(process.env.PORT || '3000').trim();
 const port = /^\d+$/.test(rawPort) ? rawPort : '3000';
-const serveBin = path.join(process.cwd(), 'node_modules', 'serve', 'build', 'main.js');
+const publicDir = path.join(process.cwd(), 'dist');
 
 console.log(`Starting GadgetBoy POS web server on 0.0.0.0:${port}`);
-const child = spawn(process.execPath, [serveBin, 'dist', '-l', `tcp://0.0.0.0:${port}`], {
-  stdio: 'inherit',
-  env: process.env,
+const server = http.createServer(async (req, res) => {
+  try {
+    if (await handleClientUpdateApi(req, res)) return;
+    await serveHandler(req, res, {
+      public: publicDir,
+      cleanUrls: true,
+    });
+  } catch (error) {
+    console.error('Web request failed:', error?.message || error);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    if (!res.writableEnded) res.end('Internal Server Error');
+  }
 });
 
-child.on('error', (error) => {
-  console.error('Web server failed to start:', error.message || error);
+server.on('error', (error) => {
+  console.error('Web server failed to start:', error?.message || error);
   process.exit(1);
 });
-child.on('exit', (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
-  else process.exit(code == null ? 1 : code);
-});
+
+server.listen(Number(port), '0.0.0.0');
+
+function shutdown(signal) {
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+  console.log(`Received ${signal}; stopping web server.`);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -144,6 +144,43 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: #ffffff;
 }
 
+.gb-customer-primary-actions.is-unsaved-client {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 0.75rem;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button {
+  min-height: 3.75rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--neon-green);
+  border-radius: 8px;
+  background: rgba(57, 255, 20, 0.08);
+  color: var(--neon-green);
+  font-size: 1rem;
+  font-weight: 800;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button:last-child {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button:hover,
+.gb-customer-primary-actions.is-unsaved-client button:focus-visible {
+  background: var(--neon-green);
+  color: #09090b;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button:last-child:hover,
+.gb-customer-primary-actions.is-unsaved-client button:last-child:focus-visible {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
 .gb-client-quotes {
   overflow: hidden;
   border: 1px solid #3f3f46;
@@ -429,6 +466,28 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   font-weight: 900;
 }
 
+.gb-client-update-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gb-client-update-history-toggle {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  background: #27272a;
+  color: #e4e4e7;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.gb-client-update-history-toggle.active {
+  border-color: var(--neon-purple);
+  color: #f5d0fe;
+}
+
 .gb-client-update-card,
 .gb-client-update-section {
   border: 1px solid #3f3f46;
@@ -591,6 +650,102 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   border: 1px solid #3f3f46;
   background: #27272a;
   color: #d4d4d8;
+}
+
+.gb-client-update-history {
+  margin-bottom: 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  background: #111114;
+}
+
+.gb-client-update-history-heading,
+.gb-client-update-history-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.gb-client-update-history-heading {
+  margin-bottom: 0.65rem;
+}
+
+.gb-client-update-history-heading h3 {
+  margin: 0;
+  color: #f4f4f5;
+  font-size: 0.85rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gb-client-update-history-heading button {
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #52525b;
+  border-radius: 6px;
+  background: #27272a;
+  color: #d4d4d8;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.gb-client-update-history-item {
+  margin-top: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid #3f3f46;
+  border-left: 4px solid var(--neon-purple);
+  border-radius: 8px;
+  background: #18181b;
+  color: #d4d4d8;
+  font-size: 0.8rem;
+}
+
+.gb-client-update-history-item-top strong {
+  color: #f4f4f5;
+  font-size: 0.86rem;
+}
+
+.gb-client-update-history-item-top span {
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gb-client-update-history-item-top .delivery-sent { color: var(--neon-green); }
+.gb-client-update-history-item-top .delivery-failed { color: #f87171; }
+.gb-client-update-history-item-top .delivery-not_requested { color: #fbbf24; }
+
+.gb-client-update-history-item time,
+.gb-client-update-history-recipient {
+  display: block;
+  margin-top: 0.3rem;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+}
+
+.gb-client-update-history-item p {
+  margin: 0.55rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid #3f3f46;
+  color: #e4e4e7;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.gb-client-update-history-error {
+  margin-top: 0.5rem;
+  color: #fca5a5;
+  font-size: 0.75rem;
+}
+
+.gb-client-update-history-empty {
+  padding: 0.8rem;
+  color: #a1a1aa;
+  text-align: center;
+  font-size: 0.82rem;
 }
 
 .gb-wo-update-client-button {

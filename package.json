@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.16",
+  "version": "0.5.17",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -34,6 +34,7 @@
     "postdist": "node -e \"const fs=require('fs'),p=require('path'),pkg=require('./package.json'),v=pkg.version,src=p.join('release','GadgetBoy-POS-Setup-'+v+'.exe'),dst=p.join('release','GadgetBoy-POS-Update-'+v+'.exe');if(fs.existsSync(src)){fs.copyFileSync(src,dst);console.log('Created '+dst);}else{console.warn('Setup exe not found:',src);}\"",
     "changelog": "node tools/generate-patch-notes.js",
     "verify:update-feed": "node tools/verify-update-feed.cjs",
+    "test:client-update-api": "node tools/test-client-update-api.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {
@@ -50,7 +51,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-select": "^5.10.2",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "serve-handler": "^6.1.7"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",

@@ -350,7 +350,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
           </div>
           <div className="gb-customer-overview-history w-7/12 flex flex-col gap-3">
             {/* Primary actions above filters */}
-            {(!(local as any)?.id || detailsEditing) ? <div className="gb-customer-primary-actions flex items-center gap-2 mb-1">
+            {(!(local as any)?.id || detailsEditing) ? <div className={`gb-customer-primary-actions flex items-center gap-2 mb-1 ${!(local as any)?.id ? 'is-unsaved-client' : ''}`}>
               <Button
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={() => void openNewWorkOrderForCustomer()}

@@ -13,6 +13,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY tools/start-web.cjs tools/write-runtime-config.cjs ./tools/
+COPY tools/start-web.cjs tools/write-runtime-config.cjs tools/client-update-api.cjs ./tools/
 
 CMD ["npm", "run", "start:web"]

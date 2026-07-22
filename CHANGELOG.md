@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.17 (2026-07-21)
+- QR / Client Updates: sends authenticated repair and sale status emails through Railway to the customer's saved email address and reports delivery failures instead of claiming success.
+- QR / Client Updates: adds a protected per-ticket History view with timestamps, recipients, technician messages, estimated dates, and sent or failed delivery status.
+- Sales: restores sales-form QR codes, saves new sales before printing, and provides sale-specific Pickup Reminder, Product Ordered, Product In Shop, and custom update actions.
+- Cloud Security: stores update history behind Supabase row-level security and keeps Gmail credentials exclusively in Railway server variables.
+- Mobile / Desktop: supports authenticated cross-origin update delivery from installed apps and improves unsaved-client New Work Order and New Sale actions without changing saved-client layouts.
+
 ## v0.5.16 (2026-07-21)
 - Work Orders: fixes populated mobile tickets opening as blank forms by preserving the modal payload through React's safety render.
 - Work Orders: repairs Add Product on desktop and Android with a product-only picker, complete inventory metadata, explicit item limits, accurate linked-sale totals, and immediate persistence of the Sale link back to the work order.

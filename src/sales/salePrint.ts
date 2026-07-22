@@ -300,32 +300,31 @@ export async function printSaleReleaseForm(
   // Generate technician QR code pointing to the sale status page
   let qrSrc = '';
   const recordId = Number(sale.id || sale.invoiceId || 0) || 0;
-  if (recordId > 0) {
+  if (recordId <= 0) throw new Error('Save the sale before printing its QR form.');
+  let qrUrl = '';
+  try {
+    const result = await window.api?.qrGetStatusUrl?.('sale', recordId);
+    if (result?.ok && result.url) qrUrl = result.url;
+  } catch { /* use the local status server fallback */ }
+  if (!qrUrl) {
     try {
-      let qrUrl = '';
-      try {
-        const result = await window.api?.qrGetStatusUrl?.('sale', recordId);
-        if (result?.ok && result.url) qrUrl = result.url;
-      } catch { /* QR helper unavailable */ }
-      if (!qrUrl) {
-        const ipRes = await fetch('http://localhost:7777/ip');
-        if (ipRes.ok) {
-          const json = await ipRes.json();
-          const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
-          if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/sale/${recordId}`;
-        }
+      const ipRes = await fetch('http://localhost:7777/ip');
+      if (ipRes.ok) {
+        const json = await ipRes.json();
+        const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
+        if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/sale/${recordId}`;
       }
-      if (qrUrl) {
-        const QRCode = (await import('qrcode')).default;
-        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-          width: 176, margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
-      }
-    } catch { /* print without QR */ }
+    } catch { /* handled below */ }
   }
+  if (!qrUrl) throw new Error('The sale update QR link could not be created. Check the cloud connection and try again.');
+  const QRCode = (await import('qrcode')).default;
+  const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+    width: 176, margin: 1,
+    color: { dark: '#000000', light: '#ffffff' },
+    errorCorrectionLevel: 'M',
+  });
+  if (!dataUrl || !dataUrl.startsWith('data:')) throw new Error('The sale QR image could not be generated.');
+  qrSrc = dataUrl;
 
   const html = buildSaleHtml(sale, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });
   const ok = openPopupAndPrint(html);

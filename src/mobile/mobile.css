@@ -2675,6 +2675,23 @@
     font-weight: 800;
   }
 
+  .gbpos-mobile .gb-customer-primary-actions.is-unsaved-client {
+    gap: 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-primary-actions.is-unsaved-client button {
+    min-height: 4rem;
+    padding: 0.75rem !important;
+    background: rgba(57, 255, 20, 0.08) !important;
+    font-size: 1rem;
+  }
+
+  .gbpos-mobile .gb-customer-primary-actions.is-unsaved-client button:last-child {
+    border-color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+    color: #60a5fa !important;
+  }
+
   .gbpos-mobile .gb-customer-history-filters {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
