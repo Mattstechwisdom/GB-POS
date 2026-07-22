@@ -174,6 +174,22 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
     window.open(url, '_blank', 'width=1280,height=800');
   }
 
+  function newCustomItem() {
+    if (items.length >= MAX_ITEMS) return;
+    const row: SaleItemRow = {
+      id: crypto.randomUUID(),
+      description: '',
+      qty: 1,
+      price: 0,
+      condition: 'New',
+      inStock: true,
+    };
+    onChange([...items, row].slice(0, MAX_ITEMS));
+    setSelected(row.id);
+    // Open the editor immediately so the tech can type a custom description/price.
+    setEditing(row);
+  }
+
   return (
     <div className={`bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
       <div className="flex items-center justify-between mb-2">
@@ -243,7 +259,8 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       </div>
 
       <div className="flex gap-2 mt-2">
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Add item</button>
+        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Pick product…</button>
+        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
         <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
