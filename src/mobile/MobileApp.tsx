@@ -10,6 +10,7 @@ import { storeWindowPayload } from '../lib/windowPayload';
 import { technicianDisplayName } from '../lib/admin';
 import { syncNotificationsFromCalendar, syncNotificationsFromRecords } from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
+import GidgetChat from '../components/GidgetChat';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -665,6 +666,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
   const [mobileUpdate, setMobileUpdate] = useState<MobileUpdate | null>(null);
   const [mobileUpdateOpening, setMobileUpdateOpening] = useState(false);
+  const [gidgetOpen, setGidgetOpen] = useState(false);
   const modalCounterRef = useRef(0);
   const deferredQuery = useDeferredValue(query);
   const { workOrders, sales, customers, technicians, loading, error, reload } = useMobileRecords(refreshKey);
@@ -949,7 +951,9 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         <button type="button" className="mobile-icon-button" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
           <span className="mobile-hamburger" aria-hidden="true"><i /><i /><i /></span>
         </button>
-        <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy POS" />
+        <button type="button" className="mobile-logo-button" onClick={() => setGidgetOpen(true)} aria-label="Open Gidget assistant" title="Gidget">
+          <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy logo" />
+        </button>
         <MobileBrandTitle />
         <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
           <span aria-hidden="true">!</span>
@@ -1099,6 +1103,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
           onClose={() => closeModal(entry.id)}
         />
       ))}
+      <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
     </main>
   );
 }

@@ -32,6 +32,11 @@ declare global {
   interface Window {
     api: {
     getAppInfo: () => Promise<{ version: string; platform: string; arch: string; error?: string }>;
+    gidgetLocalStatus?: () => Promise<any>;
+    gidgetLocalSetup?: () => Promise<any>;
+    gidgetLocalGenerate?: (payload: any) => Promise<any>;
+    gidgetLocalCancel?: () => Promise<any>;
+    onGidgetModelProgress?: (cb: (progress: any) => void) => () => void;
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
     storageEnsure: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string; isFirstRun?: boolean; migration?: any; error?: string }>;
     runDiagnostics: () => Promise<{ ok: boolean; dataRoot?: string; results?: any[]; error?: string }>;

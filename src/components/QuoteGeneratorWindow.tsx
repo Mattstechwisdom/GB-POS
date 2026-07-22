@@ -10,7 +10,22 @@ import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
-import { DEFAULT_PART_MARKUP_PCT, markedUpPartPrice, scrapePartUrl } from '../lib/partOrdering';
+import { markedUpPartPrice, scrapePartUrl } from '../lib/partOrdering';
+import { buildQuoteAutofillDraft } from '../lib/quoteAutofill';
+import { generateWithGidget, gidgetLocalStatus } from '../lib/gidgetLocalEngine';
+
+const QUOTE_AUTOFILL_MARKUP_PCT = 15;
+const QUOTE_AUTOFILL_TIMEOUT_MS = 35_000;
+
+function withQuoteAutofillTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
 
@@ -3978,42 +3993,81 @@ function QuoteGeneratorWindow(): JSX.Element {
     setScrapingItem(idx);
     setScrapeMessages((current) => ({ ...current, [idx]: 'Reading product page...' }));
     try {
-      const metadata = await scrapePartUrl(url);
+      const metadata = await withQuoteAutofillTimeout(
+        scrapePartUrl(url),
+        QUOTE_AUTOFILL_TIMEOUT_MS,
+        'This product page took too long to respond. Please try Auto Fill again.',
+      );
       if (!metadata.ok) throw new Error(metadata.error || 'This website did not expose readable product details.');
+      const existing = sales.items[idx] || item;
+      const inferred = buildQuoteAutofillDraft(metadata, { condition: existing.condition });
+      const markupPct = String(QUOTE_AUTOFILL_MARKUP_PCT);
+      const existingConditionPrice = (metadata.conditionOptions || []).find((option) =>
+        String(option.condition || '').toLowerCase() === String(existing.condition || '').toLowerCase())?.price;
+      const sourceCost = existingConditionPrice ?? metadata.price;
+      const internalCost = sourceCost ?? existing.internalCost;
+      const price = sourceCost === undefined
+        ? existing.price
+        : markedUpPartPrice(sourceCost, QUOTE_AUTOFILL_MARKUP_PCT);
+      // A new source URL represents a new product. Never retain photos from the
+      // previously scraped item when this page has no usable product gallery.
+      const images = (metadata.images || [])
+        .filter((image, imageIdx, all) => image && all.indexOf(image) === imageIdx)
+        .slice(0, 3);
+      const autofilledItem: SaleItem = {
+        ...existing,
+        expanded: true,
+        url: metadata.url || existing.url,
+        deviceType: inferred.deviceType,
+        brand: inferred.brand || existing.brand,
+        model: inferred.model || existing.model,
+        condition: existing.condition || (metadata.conditionOptions && metadata.conditionOptions.length > 1 ? undefined : inferred.condition),
+        description: inferred.description,
+        prompt: inferred.description,
+        images,
+        internalCost,
+        markupPct,
+        price,
+        dynamic: {
+          ...inferred.dynamic,
+          sourceVendor: metadata.vendor || existing.dynamic?.sourceVendor,
+        },
+      };
       setSales((current) => ({
         ...current,
-        items: current.items.map((existing, itemIdx) => {
-          if (itemIdx !== idx) return existing;
-          const markupPct = String(existing.markupPct || DEFAULT_PART_MARKUP_PCT);
-          const internalCost = metadata.price ?? existing.internalCost;
-          const price = metadata.price === undefined
-            ? existing.price
-            : markedUpPartPrice(metadata.price, markupPct);
-          const scrapedSpecs = (metadata.specs || []).map((spec) => ({ desc: spec.name, value: spec.value }));
-          const existingSpecs = Array.isArray(existing.dynamic?.otherSpecs) ? existing.dynamic.otherSpecs : [];
-          const images = [...(metadata.images || []), ...(existing.images || [])]
-            .filter((image, imageIdx, all) => image && all.indexOf(image) === imageIdx)
-            .slice(0, 3);
-          return {
-            ...existing,
-            url: metadata.url || existing.url,
-            model: metadata.title || existing.model,
-            description: metadata.description || existing.description,
-            prompt: metadata.description || existing.prompt,
-            images,
-            internalCost,
-            markupPct,
-            price,
-            dynamic: {
-              ...(existing.dynamic || {}),
-              otherSpecs: scrapedSpecs.length ? scrapedSpecs : existingSpecs,
-              sourceVendor: metadata.vendor || existing.dynamic?.sourceVendor,
-            },
-          };
-        }),
+        items: current.items.map((currentItem, itemIdx) => itemIdx === idx ? autofilledItem : currentItem),
       }));
       const found = [metadata.title && 'title', metadata.price !== undefined && 'cost', metadata.images?.length && `${metadata.images.length} image${metadata.images.length === 1 ? '' : 's'}`, metadata.description && 'summary', metadata.specs?.length && 'specs'].filter(Boolean);
-      setScrapeMessages((current) => ({ ...current, [idx]: `Added ${found.join(', ') || 'available details'}. Review before saving.` }));
+      const needsConditionConfirmation = !!metadata.conditionOptions && metadata.conditionOptions.length > 1 && !existing.condition;
+      setScrapeMessages((current) => ({ ...current, [idx]: needsConditionConfirmation
+        ? `Added ${found.join(', ') || 'available details'} and selected ${inferred.deviceType}. Confirm Condition below; this copied URL does not preserve the grade selected in your browser.`
+        : `Added ${found.join(', ') || 'available details'}, selected ${inferred.deviceType}, and set 15% markup. All fields remain editable.` }));
+      setScrapingItem(null);
+
+      void (async () => {
+        let generatedSummary = inferred.description;
+        try {
+          const status = await withQuoteAutofillTimeout(gidgetLocalStatus(), 3_000, 'Gidget status timed out.');
+          if (status.ready) {
+            const prompt = buildAIPrompt(autofilledItem);
+            const response = await withQuoteAutofillTimeout(generateWithGidget({
+              instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
+              messages: [{ role: 'user', content: prompt }],
+            }), 12_000, 'Gidget summary timed out.');
+            if (response?.ok && String(response.answer || '').trim()) generatedSummary = String(response.answer).trim();
+          }
+        } catch {
+          // The factual page-based summary remains available when Gidget is unavailable or busy.
+        }
+        setSales((current) => ({
+          ...current,
+          items: current.items.map((currentItem, itemIdx) => {
+            if (itemIdx !== idx || String(currentItem.url || '').trim() !== String(autofilledItem.url || '').trim()) return currentItem;
+            if (currentItem.prompt !== inferred.description) return currentItem;
+            return { ...currentItem, prompt: generatedSummary, description: generatedSummary };
+          }),
+        }));
+      })();
     } catch (error: any) {
       setScrapeMessages((current) => ({ ...current, [idx]: error?.message || 'Could not read this product page.' }));
     } finally {
@@ -4743,12 +4797,17 @@ function QuoteGeneratorWindow(): JSX.Element {
     if (it.dynamic) {
       Object.entries(it.dynamic).forEach(([k, v]) => {
         if (k === 'device') return;
+        if (k.startsWith('_')) return;
+        if (k === 'otherSpecs' || k === 'sourceVendor') return;
         if (/image/i.test(k)) return;
         if (/price/i.test(k)) return;
         if (isImageLike(v)) return;
         if (isPriceLike(v)) return;
         addSpec(k, v);
       });
+      if (Array.isArray(it.dynamic.otherSpecs)) {
+        it.dynamic.otherSpecs.forEach((spec: any) => addSpec(spec?.desc || spec?.name, spec?.value));
+      }
     }
     if (it.accessories) addSpec('Accessories', it.accessories);
 
@@ -5487,10 +5546,9 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Detect MacBook/iMac/Mac mini contexts across any device type (brand/model or Apple Devices family)
     const isMacBookContext = (() => {
       const family = String(((it.dynamic || ({} as any)).device || '')).toLowerCase();
-      const brand = String(it.brand || '').toLowerCase();
       const model = String(it.model || '').toLowerCase();
       const macFamily = family.includes('macbook');
-      const macBrandModel = brand === 'apple' && (model.includes('macbook') || model.includes('air') || model.includes('pro'));
+      const macBrandModel = model.includes('macbook');
       return macFamily || macBrandModel;
     })();
     const isIMacContext = (() => {
@@ -5680,7 +5738,11 @@ function QuoteGeneratorWindow(): JSX.Element {
       );
       return (
         <div key={f.key} className={colClass}>
-          <label className="block text-xs text-zinc-400 mb-1">{f.label || titleCase(f.key)}</label>
+          <label className="block text-xs text-zinc-400 mb-1">
+            {isAppleDevicesSelection && String((it.dynamic || ({} as any)).device || '').toLowerCase() === 'iphone' && f.key === 'carrier'
+              ? 'Cellular'
+              : (f.label || titleCase(f.key))}
+          </label>
           {control}
         </div>
       );
@@ -6071,6 +6133,52 @@ function QuoteGeneratorWindow(): JSX.Element {
                     </div>
                     {it.expanded && (
                       <div className="gb-quote-item-fields mt-2 grid grid-cols-16 gap-2">
+                        {it.deviceType !== 'Custom Build' && it.deviceType !== 'Custom PC' && (
+                          <div className="col-span-16">
+                            <label className="block text-xs text-zinc-400 mb-1">Source URL</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="url"
+                                className="min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                value={it.url || ''}
+                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
+                                placeholder="https://example.com/product"
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void scrapeQuoteItem(idx);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
+                                onClick={() => void scrapeQuoteItem(idx)}
+                                disabled={!it.url || scrapingItem !== null}
+                                title="Fill this quote item from the product page"
+                              >{scrapingItem === idx ? 'Reading...' : 'Auto Fill'}</button>
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
+                                onClick={async () => {
+                                  try {
+                                    const u = (it.url || '').trim();
+                                    if (!u) return;
+                                    if ((window as any).api?.openUrl) await (window as any).api.openUrl(u);
+                                    else window.open(u, '_blank');
+                                  } catch {
+                                    try { window.open((it.url || ''), '_blank'); } catch {}
+                                  }
+                                }}
+                                disabled={!it.url}
+                                title="Open in default browser"
+                              >Open</button>
+                            </div>
+                            <div className={`text-[10px] mt-0.5 ${scrapeMessages[idx]?.startsWith('Added') ? 'text-[#39FF14]' : 'text-zinc-400'}`}>
+                              {scrapeMessages[idx] || 'Paste a product link, then choose Auto Fill. All imported details remain editable.'}
+                            </div>
+                          </div>
+                        )}
                         {/* Images at the top */}
                         {it.deviceType !== 'Custom PC' && (
                         <div className="col-span-16">
@@ -6193,7 +6301,23 @@ function QuoteGeneratorWindow(): JSX.Element {
                               <label className="block text-xs text-zinc-400 mb-1">Condition</label>
                               <ComboInput
                                 value={it.condition || ''}
-                                onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, condition: v } : x)) }))}
+                                onChange={(v) => setSales((s) => ({
+                                  ...s,
+                                  items: s.items.map((x, i) => {
+                                    if (i !== idx) return x;
+                                    const option = Array.isArray(x.dynamic?._conditionOptions)
+                                      ? x.dynamic._conditionOptions.find((entry: any) => String(entry?.condition || '').toLowerCase() === String(v || '').toLowerCase())
+                                      : undefined;
+                                    const optionCost = Number(option?.price);
+                                    if (!Number.isFinite(optionCost)) return { ...x, condition: v };
+                                    return {
+                                      ...x,
+                                      condition: v,
+                                      internalCost: optionCost,
+                                      price: markedUpPartPrice(optionCost, x.markupPct || QUOTE_AUTOFILL_MARKUP_PCT),
+                                    };
+                                  }),
+                                }))}
                                 options={['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor', 'For Parts']}
                                 placeholder="Type or select..."
                               />
@@ -6235,56 +6359,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                         </div>
                         )}
                         {it.deviceType !== 'Custom Build' && it.deviceType !== 'Custom PC' && (
-                        <div className="col-span-8 grid grid-cols-8 gap-2 items-start">
-                          <div className="col-span-4">
-                            <label className="block text-xs text-zinc-400 mb-1">Source URL</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="url"
-                                className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                value={it.url || ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
-                                placeholder="https://example.com/product"
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    void scrapeQuoteItem(idx);
-                                  }
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
-                                onClick={() => void scrapeQuoteItem(idx)}
-                                disabled={!it.url || scrapingItem !== null}
-                                title="Fill this quote item from the product page"
-                              >{scrapingItem === idx ? 'Reading...' : 'Auto Fill'}</button>
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
-                                onClick={async () => {
-                                  try {
-                                    const u = (it.url || '').trim();
-                                    if (!u) return;
-                                    // Try to open via preload API; fallback to window.open
-                                    if ((window as any).api?.openUrl) {
-                                      await (window as any).api.openUrl(u);
-                                    } else {
-                                      window.open(u, '_blank');
-                                    }
-                                  } catch (_) {
-                                    try { window.open((it.url || ''), '_blank'); } catch {}
-                                  }
-                                }}
-                                disabled={!it.url}
-                                title="Open in default browser"
-                              >Open</button>
-                            </div>
-                            <div className={`text-[10px] mt-0.5 ${scrapeMessages[idx]?.startsWith('Added') ? 'text-[#39FF14]' : 'text-zinc-400'}`}>
-                              {scrapeMessages[idx] || 'Paste a product link, then choose Auto Fill. All imported details remain editable.'}
-                            </div>
-                          </div>
-                          <div className="col-span-4 mt-2">
+                        <div className="col-span-16">
+                          <div className="mt-2 max-w-md">
                             <div className="flex gap-2 items-end">
                               <div className="flex-1">
                                 <label className="block text-xs text-zinc-400 mb-1">Cost (pre-markup)</label>

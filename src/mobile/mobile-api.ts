@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { dispatchOpenModal } from '../lib/modalBus';
 import { storeWindowPayload } from '../lib/windowPayload';
-import { extractPartMetadataFromHtml, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
-import { CapacitorHttp } from '@capacitor/core';
+import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
 type CloudSession = {
@@ -1636,6 +1636,27 @@ function makeApi() {
     scrapePartUrl: async (rawUrl: string) => {
       const url = normalizePartOrderUrl(rawUrl);
       if (!url) return { ok: false, error: 'Missing URL.' };
+      if (Capacitor.getPlatform() !== 'android') return null;
+      const readFallback = async () => {
+        if (!CapacitorHttp?.get) return null;
+        const parsed = new URL(url);
+        const suffix = `${parsed.host}${parsed.pathname}${parsed.search}`;
+        const source = await Promise.any([
+          `https://r.jina.ai/https://${suffix}`,
+          `https://r.jina.ai/http://${suffix}`,
+        ].map(async (readerUrl) => {
+          const readerRes = await CapacitorHttp.get({
+            url: readerUrl,
+            responseType: 'text',
+            connectTimeout: 25000,
+            readTimeout: 25000,
+            headers: { Accept: 'text/plain', 'User-Agent': 'GadgetBoy-POS/1.0 product metadata reader' },
+          });
+          if (readerRes.status < 200 || readerRes.status >= 300) throw new Error(`Product reader failed (${readerRes.status}).`);
+          return typeof readerRes.data === 'string' ? readerRes.data : JSON.stringify(readerRes.data || '');
+        }));
+        return extractPartMetadataFromReader(source, url);
+      };
       try {
         if (CapacitorHttp?.get) {
           const nativeRes = await CapacitorHttp.get({
@@ -1649,17 +1670,22 @@ function makeApi() {
             },
           });
           if (nativeRes.status < 200 || nativeRes.status >= 300) {
-            return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${nativeRes.status}` };
+            return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${nativeRes.status}` };
           }
           const html = typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data || '');
-          return extractPartMetadataFromHtml(html, url);
+          const metadata = extractPartMetadataFromHtml(html, url);
+          return metadata.ok ? metadata : await readFallback() || metadata;
         }
         const res = await fetch(url, { credentials: 'omit' });
         if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
         const html = await res.text();
         return extractPartMetadataFromHtml(html, url);
       } catch (error: any) {
-        return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+        try {
+          return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+        } catch {
+          return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+        }
       }
     },
     openExternal: async (url: string) => {

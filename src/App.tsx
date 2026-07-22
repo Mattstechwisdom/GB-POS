@@ -9,6 +9,7 @@ import ItemsDescriptionHoverCard from './components/ItemsDescriptionHoverCard';
 import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
+import GidgetChat from './components/GidgetChat';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
@@ -456,6 +457,7 @@ const AppInner: React.FC<{
   const { setPage } = usePagination();
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
+  const [gidgetOpen, setGidgetOpen] = useState(false);
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -602,6 +604,7 @@ const AppInner: React.FC<{
             onClear={handleClear}
             onRefresh={() => setRefreshKey(refreshKey + 1)}
             onSignOut={onSignOut}
+            onOpenGidget={() => setGidgetOpen(true)}
           />
           <div>
             <RecentCustomers />
@@ -638,6 +641,7 @@ const AppInner: React.FC<{
           onClose={() => closeModal(entry.id)}
         />
       ))}
+      <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
     </div>
   );
 };

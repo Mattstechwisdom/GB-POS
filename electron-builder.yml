@@ -10,6 +10,12 @@ files:
   - dist/**
   - dist-main/**
   - app/electron-main.js
+  - '!node_modules/@node-llama-cpp/win-arm64/**'
+  - '!node_modules/@node-llama-cpp/win-x64-cuda/**'
+  - '!node_modules/@node-llama-cpp/win-x64-cuda-ext/**'
+  - '!node_modules/@node-llama-cpp/win-x64-vulkan/**'
+asarUnpack:
+  - node_modules/@node-llama-cpp/win-x64/bins/**/*
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico

@@ -9,6 +9,9 @@ const os = require('os');
 const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
+const { registerGidgetLocalIpc } = require('./gidget-local');
+
+registerGidgetLocalIpc({ ipcMain, app });
 
 let autoUpdater: any = null;
 try {
@@ -84,6 +87,9 @@ function derivePartVendorFromUrl(value: any): string {
 
 function decodeScrapedHtml(value: string): string {
   return String(value || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number.parseInt(code, 10)))
+    .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
@@ -174,12 +180,19 @@ function extractPartMetadataFromHtml(html: string, url: string) {
   const description = decodeScrapedHtml(
     product?.description || findScrapedMeta(html, ['og:description', 'twitter:description', 'description'])
   );
-  const imageValues = [product?.image, findScrapedMeta(html, ['og:image', 'twitter:image'])].flat(Infinity);
+  const pageImageValues: string[] = [];
+  const imagePattern = /<img\b[^>]*(?:data-zoom-image|data-large-image|data-src|src)=["']([^"']+)["'][^>]*>/gi;
+  let imageMatch: RegExpExecArray | null;
+  while ((imageMatch = imagePattern.exec(html)) && pageImageValues.length < 24) {
+    if (/logo|icon|sprite|badge|payment|avatar|placeholder|spinner/i.test(`${imageMatch[0]} ${imageMatch[1]}`)) continue;
+    if (/product|catalog|media|gallery|image|cdn/i.test(`${imageMatch[0]} ${imageMatch[1]}`)) pageImageValues.push(imageMatch[1]);
+  }
+  const imageValues = [product?.image, findScrapedMeta(html, ['og:image', 'twitter:image']), pageImageValues].flat(Infinity);
   const images: string[] = [];
   for (const value of imageValues) {
     const imageUrl = absoluteScrapedUrl(value, url);
     if (imageUrl && !images.includes(imageUrl)) images.push(imageUrl);
-    if (images.length === 2) break;
+    if (images.length === 3) break;
   }
   const structuredSpecs = (Array.isArray(product?.additionalProperty) ? product.additionalProperty : [])
     .map((entry: any) => ({
@@ -212,6 +225,173 @@ function extractPartMetadataFromHtml(html: string, url: string) {
     images,
     specs,
   };
+}
+
+function extractPartMetadataFromReader(markdown: string, url: string) {
+  const lines = String(markdown || '').split(/\r?\n/).slice(0, 12_000);
+  let title = '';
+  let price: number | undefined;
+  let currency = 'USD';
+  let titleLine = -1;
+  const imageCandidates: Array<{ url: string; alt: string }> = [];
+  const conditionPrices: Array<{ condition: string; price?: number }> = [];
+  const storagePrices: Array<{ value: string; price?: number }> = [];
+  const colorPrices: Array<{ value: string; price?: number }> = [];
+  const batteryPrices: Array<{ value: string; price?: number }> = [];
+  const processorPrices: Array<{ value: string; price?: number }> = [];
+  const memoryPrices: Array<{ value: string; price?: number }> = [];
+  const pageSpecs = new Map<string, string>();
+  const imageAltText: string[] = [];
+  let optionSection: 'condition' | 'battery' | 'storage' | 'color' | 'processor' | 'memory' | '' = '';
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const trimmed = line.trim();
+    if (!title && /^Title:\s*/i.test(trimmed)) { title = decodeScrapedHtml(trimmed.replace(/^Title:\s*/i, '')).replace(/\s*\|\s*[^|]+$/g, '').replace(/\s+Refurbished$/i, '').trim(); titleLine = lineIndex; }
+    if (!title && /^#\s+/.test(trimmed)) { title = decodeScrapedHtml(trimmed.replace(/^#\s+/, '')).trim(); titleLine = lineIndex; }
+    if (price === undefined) {
+      const priceMatch = trimmed.match(/\$([\d,]+(?:\.\d{1,2})?)\s+before trade-in/i)
+        || trimmed.match(/(?:Refurbished price|Current price|Sale price|Our price|Price|Now)\s*:?\s*([$€£]\s*[\d,]+(?:\.\d{1,2})?)/i)
+        || (titleLine >= 0 && lineIndex - titleLine <= 220 && !/~~|\b(?:new|list|retail|was|save|shipping|delivery|trade-in|per month)\b|\/mo\b/i.test(trimmed)
+          ? trimmed.match(/^\s*(?:[-*]\s*)?([$€£]\s*[\d,]+(?:\.\d{1,2})?)\s*$/i)
+          : null);
+      if (priceMatch?.[1]) {
+        price = parseScrapedMoney(priceMatch[1]);
+        const symbol = priceMatch[1].trim()[0];
+        if (symbol === '€') currency = 'EUR';
+        else if (symbol === '£') currency = 'GBP';
+      }
+    }
+    if (imageCandidates.length < 240 && trimmed.includes('![')) {
+      const open = trimmed.indexOf('](');
+      const close = open >= 0 ? trimmed.indexOf(')', open + 2) : -1;
+      const imageUrl = close > open ? decodeScrapedHtml(trimmed.slice(open + 2, close)) : '';
+      const altClose = trimmed.indexOf(']');
+      const alt = altClose > 2 ? trimmed.slice(trimmed.indexOf('![') + 2, altClose).trim() : '';
+      if (alt) imageAltText.push(alt);
+      if (/^https?:\/\//i.test(imageUrl) && !/\.svg(?:\?|$)/i.test(imageUrl)
+        && !/logo|icon|flag|payment|review-attachment|trade-in|picker|placeholder|used-vs-verified/i.test(`${imageUrl} ${alt}`)) imageCandidates.push({ url: imageUrl, alt });
+    }
+    if (/Compare conditions/i.test(trimmed)) optionSection = 'condition';
+    else if (/Select a battery option/i.test(trimmed)) optionSection = 'battery';
+    else if (/Select (?:the )?processor/i.test(trimmed)) optionSection = 'processor';
+    else if (/Select storage/i.test(trimmed)) optionSection = 'storage';
+    else if (/Select memory/i.test(trimmed)) optionSection = 'memory';
+    else if (/Select (?:the )?color/i.test(trimmed)) optionSection = 'color';
+    const pricedOption = trimmed.match(/^\*\s+([^$!][^$]*?)\s+\$([\d,]+(?:\.\d{1,2})?)/);
+    if (pricedOption) {
+      const value = pricedOption[1].trim();
+      const optionPrice = parseScrapedMoney(pricedOption[2]);
+      if (optionSection === 'storage') storagePrices.push({ value, price: optionPrice });
+      else if (optionSection === 'color') colorPrices.push({ value, price: optionPrice });
+      else if (optionSection === 'battery') batteryPrices.push({ value, price: optionPrice });
+      else if (optionSection === 'processor') processorPrices.push({ value, price: optionPrice });
+      else if (optionSection === 'memory') memoryPrices.push({ value, price: optionPrice });
+    }
+    if (optionSection === 'condition') {
+      const match = trimmed.match(/\b(Fair|Good|Excellent|Premium|Like New|New)\s+\$([\d,]+(?:\.\d{1,2})?)/i);
+      if (match) conditionPrices.push({ condition: match[1].trim(), price: parseScrapedMoney(match[2]) });
+    }
+    const specPatterns: Array<[RegExp, string]> = [
+      [/^Processor\s+(?!Core\s+\d+\s*$)(.+)$/i, 'Processor'], [/^Processor generation\s+(.+)$/i, 'Processor Generation'],
+      [/^Memory \(GB\)\s*(.+)$/i, 'Memory'], [/^(?:SSD )?Storage (?:Capacity )?\(GB\)\s*(.+)$/i, 'Storage'],
+      [/^Storage \(GB\)\s*(.+)$/i, 'Storage'], [/^(?:Screen|Display) size\s+(.+)$/i, 'Screen Size'],
+      [/^Resolution\s+(.+)$/i, 'Resolution'], [/^Refresh rate\s+(.+)$/i, 'Refresh Rate'],
+      [/^(?:Display|Panel|Screen) (?:technology|type)\s+(.+)$/i, 'Display Technology'], [/^(?:HDR|High Dynamic Range)\s+(.+)$/i, 'HDR'],
+      [/^(?:OS|Operating system)\s+(.+)$/i, 'Operating System'],
+      [/^Graphic(?:s| card)(?: Card Type)?\s+(.+)$/i, 'Graphics'], [/^Color\s+(.+)$/i, 'Color'],
+      [/^Carrier\s+(.+)$/i, 'Carrier'], [/^(?:Network|Connectivity|Wireless)\s+(.+)$/i, 'Connectivity'],
+      [/^(?:Ports|Inputs|Ports \/ Inputs)\s+(.+)$/i, 'Ports'], [/^(?:Included accessories|Accessories included|Accessories)\s+(.+)$/i, 'Accessories'],
+      [/^Camera type\s+(.+)$/i, 'Camera Type'], [/^(?:Sensor|Sensor type)\s+(.+)$/i, 'Sensor'],
+      [/^(?:Lens mount|Mount type)\s+(.+)$/i, 'Lens Mount'], [/^(?:Video|Video recording|Video resolution)\s+(.+)$/i, 'Video'],
+      [/^Flight time\s+(.+)$/i, 'Flight Time'], [/^(?:Maximum range|Max range)\s+(.+)$/i, 'Maximum Range'],
+      [/^(?:Maximum speed|Max speed)\s+(.+)$/i, 'Maximum Speed'], [/^Weight\s+(.+)$/i, 'Weight'],
+      [/^Battery capacity\s+(.+)$/i, 'Battery Capacity'], [/^Battery cycles?\s+(.+)$/i, 'Battery Cycles'],
+      [/^(?:Controller|Remote control)\s+(.+)$/i, 'Controller'], [/^Obstacle avoidance\s+(.+)$/i, 'Obstacle Avoidance'], [/^GPS\s+(.+)$/i, 'GPS'],
+    ];
+    for (const [pattern, name] of specPatterns) {
+      const match = trimmed.match(pattern);
+      if (match?.[1] && !pageSpecs.has(name)) pageSpecs.set(name, match[1].trim());
+    }
+    const markdownTableSpec = trimmed.match(/^\|\s*([^|]{1,60}?)\s*\|\s*([^|]{1,240}?)\s*\|?$/);
+    const markdownLabelSpec = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?([A-Za-z][A-Za-z0-9 /()+&.-]{1,58}?)(?:\*\*)?\s*:\s*(.{1,240})$/);
+    const genericSpec = markdownTableSpec || markdownLabelSpec;
+    if (genericSpec?.[1] && genericSpec?.[2]) {
+      const name = decodeScrapedHtml(genericSpec[1]).trim();
+      const value = decodeScrapedHtml(genericSpec[2].replace(/\*\*/g, '')).trim();
+      if (!/^[-:]+$/.test(value) && !/^(?:price|sale price|our price|quantity)$/i.test(name) && !pageSpecs.has(name)) pageSpecs.set(name, value);
+    }
+  }
+  const titleTokens = title.toLowerCase().match(/[a-z]+\d+[a-z]*|[a-z]{4,}|\d{1,3}/g)?.filter((token) => !['refurbished', 'backmarket', 'market'].includes(token)) || [];
+  const distinctiveTitleTokens = titleTokens.filter((token) => token.length >= 5 && !['series', 'edition', 'unlocked'].includes(token));
+  const rankedImages = imageCandidates.map((candidate) => ({ ...candidate, score: titleTokens.filter((token) => candidate.alt.toLowerCase().includes(token)).length }))
+    .filter((candidate) => candidate.score >= 2 || (candidate.score >= 1 && (
+      titleTokens.some((token) => /\d/.test(token) && candidate.alt.toLowerCase().includes(token))
+      || distinctiveTitleTokens.some((token) => candidate.alt.toLowerCase().includes(token))
+    )))
+    .sort((a, b) => b.score - a.score);
+  const images = [...new Set((rankedImages.length ? rankedImages : imageCandidates).map((candidate) => candidate.url))].slice(0, 3);
+  let values: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const amount = parseScrapedMoney(lines[index].match(/\$([\d,]+(?:\.\d{1,2})?)\s+before trade-in/i)?.[1]);
+    if (amount === undefined || (price !== undefined && Math.abs(amount - price) >= 0.005)) continue;
+    const candidate: string[] = [];
+    let blanks = 0;
+    for (let cursor = index - 1; cursor >= 0 && cursor >= index - 12; cursor -= 1) {
+      const previous = lines[cursor].trim();
+      if (!previous) { blanks += 1; if (blanks > 2 && candidate.length) break; continue; }
+      if (!/^\*\s+/.test(previous)) { if (candidate.length) break; continue; }
+      candidate.unshift(previous.replace(/^\*\s+/, '').trim());
+    }
+    if (candidate.length >= 2) { values = candidate; break; }
+  }
+  const pricedCondition = typeof price === 'number'
+    ? conditionPrices.find((option) => typeof option.price === 'number' && Math.abs(option.price - price) < 0.005)?.condition
+    : '';
+  const condition = pricedCondition || values.find((value) => /^(?:Fair|Good|Excellent|Premium|Like New|New)$/i.test(value)) || '';
+  const samePrice = (option: { price?: number }) => typeof price === 'number' && typeof option.price === 'number' && Math.abs(option.price - price) < 0.005;
+  const storageFromPrice = storagePrices.find(samePrice)?.value || '';
+  const processor = processorPrices.find(samePrice)?.value || values.find((value) => /\b(?:Core|Ryzen|Celeron|Pentium|Apple M\d)\b/i.test(value)) || pageSpecs.get('Processor') || '';
+  const memory = memoryPrices.find(samePrice)?.value || [...values].reverse().find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value) && value !== storageFromPrice) || pageSpecs.get('Memory') || '';
+  const matchingColors = colorPrices.filter(samePrice);
+  const imageText = imageAltText.slice(0, 12).join(' ');
+  const colorFromPrice = matchingColors.find((option) => imageText.toLowerCase().includes(option.value.toLowerCase()))?.value || matchingColors[0]?.value || '';
+  const storage = values.find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value)) || storageFromPrice;
+  const color = values.find((value) => /\b(?:Black|Blue|Natural|White|Gold|Silver|Gray|Grey|Green|Red|Purple|Pink|Titanium)\b/i.test(value)) || colorFromPrice;
+  const carrier = /\bunlocked\b/i.test(`${title} ${lines.slice(0, 600).join(' ')}`) ? 'Unlocked' : '';
+  const connectivity = values.find((value) => /wi[-\u2010-\u2015 ]?fi|\b5g\b|\blte\b/i.test(value)) || pageSpecs.get('Connectivity') || '';
+  const battery = values.find((value) => /battery/i.test(value)) || batteryPrices.find(samePrice)?.value || '';
+  const specs = [
+    processor && { name: 'Processor', value: processor }, memory && { name: 'Memory', value: memory },
+    storage && { name: 'Storage', value: storage }, color && { name: 'Color', value: color },
+    carrier && { name: 'Carrier', value: carrier }, connectivity && { name: 'Connectivity', value: connectivity }, condition && { name: 'Condition', value: condition },
+    battery && { name: 'Battery', value: battery },
+    ...[...pageSpecs.entries()].filter(([name]) => !['Processor', 'Memory', 'Storage', 'Color'].includes(name)).map(([name, value]) => ({ name, value })),
+  ].filter(Boolean);
+  const description = [title, condition && `${condition} refurbished condition`, storage, color, carrier, battery].filter(Boolean).join(', ');
+  return {
+    ok: Boolean(title || price || images.length || specs.length),
+    url: normalizePartOrderUrl(url), title, price, currency, vendor: derivePartVendorFromUrl(url),
+    description: description ? `${description}. Product-page values can change by selected configuration; review all editable quote fields before saving.` : undefined,
+    images, specs,
+    conditionOptions: conditionPrices,
+  };
+}
+
+async function scrapeReaderFallback(url: string) {
+  const parsed = new URL(url);
+  const suffix = `${parsed.host}${parsed.pathname}${parsed.search}`;
+  const source = await Promise.any([
+    `https://r.jina.ai/https://${suffix}`,
+    `https://r.jina.ai/http://${suffix}`,
+  ].map(async (readerUrl) => {
+    const response = await fetch(readerUrl, {
+      headers: { Accept: 'text/plain', 'User-Agent': 'GadgetBoy-POS/1.0 product metadata reader' },
+      signal: AbortSignal.timeout(25_000),
+    } as any);
+    if (!response.ok) throw new Error(`Product reader failed (${response.status}).`);
+    return response.text();
+  }));
+  return extractPartMetadataFromReader(source, url);
 }
 
 // Prevent random blank popup windows (often caused by window.open or target=_blank)
@@ -2068,12 +2248,17 @@ ipcMain.handle('parts:scrapeUrl', async (_e: any, rawUrl: string) => {
       },
     } as any);
     if (timer) clearTimeout(timer);
-    if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
+    if (!res.ok) return await scrapeReaderFallback(url) || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
     const html = await res.text();
-    return extractPartMetadataFromHtml(html, url);
+    const metadata = extractPartMetadataFromHtml(html, url);
+    return metadata.ok ? metadata : await scrapeReaderFallback(url) || metadata;
   } catch (e: any) {
     if (timer) clearTimeout(timer);
-    return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
+    try {
+      return await scrapeReaderFallback(url) || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
+    } catch {
+      return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
+    }
   }
 });
 

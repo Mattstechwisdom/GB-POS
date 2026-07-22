@@ -22,9 +22,10 @@ interface Props {
   onClear?: () => void;
   onRefresh?: () => void;
   onSignOut?: () => void;
+  onOpenGidget?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenGidget }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -65,9 +66,17 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           <div className="text-xs text-zinc-500 mt-0.5">v{appVersion}</div>
         )}
       </div>
-      {/* Logo: smaller, centered, no border/background */}
+      {/* The logo is the intentionally quiet entry point for Gidget. */}
       <div className="w-full mb-2 flex items-center justify-center">
-        <img src={publicAsset('logo.png')} alt="Logo" className="w-1/2 max-w-[140px] h-auto object-contain" />
+        <button
+          type="button"
+          onClick={onOpenGidget}
+          className="w-1/2 max-w-[140px] border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BC13FE] rounded"
+          aria-label="Open Gidget assistant"
+          title="Gidget"
+        >
+          <img src={publicAsset('logo.png')} alt="GadgetBoy logo" className="w-full h-auto object-contain" />
+        </button>
       </div>
       <div>
         <label className="block text-xs mb-1 leading-none">Status</label>

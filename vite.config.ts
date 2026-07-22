@@ -4,6 +4,7 @@ import path from 'path';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pkg = require('./package.json');
+const { createProductSourceHandler } = require('./tools/product-source-api.cjs');
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -51,7 +52,21 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_SHOP_LOGIN_USERNAME': JSON.stringify(env.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz'),
       'import.meta.env.VITE_SHOP_LOGIN_EMAIL': JSON.stringify(env.VITE_SHOP_LOGIN_EMAIL || ''),
     },
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'gbpos-product-source-api',
+        configureServer(server: any) {
+          const handler = createProductSourceHandler({
+            supabaseUrl: env.VITE_SUPABASE_URL || '',
+            publishableKey: env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          });
+          server.middlewares.use((req: any, res: any, next: any) => {
+            void handler(req, res).then((handled: boolean) => { if (!handled) next(); }).catch(next);
+          });
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

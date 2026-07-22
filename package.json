@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.17",
+  "version": "0.5.18",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -35,16 +35,23 @@
     "changelog": "node tools/generate-patch-notes.js",
     "verify:update-feed": "node tools/verify-update-feed.cjs",
     "test:client-update-api": "node tools/test-client-update-api.cjs",
+    "test:gidget-api": "node tools/test-gidget-api.cjs",
+    "test:gidget-desktop": "electron tools/test-gidget-desktop-runtime.cjs",
+    "test:quote-autofill": "node tools/test-quote-autofill.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/android": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/local-notifications": "^8.2.0",
+    "@capgo/capacitor-speech-recognition": "^8.1.10",
     "@supabase/supabase-js": "^2.110.1",
     "asar": "^3.2.0",
     "electron-updater": "^6.6.2",
     "html2pdf.js": "^0.12.1",
+    "llama-cpp-pro": "^0.2.3",
+    "node-llama-cpp": "^3.5.0",
     "nodemailer": "^7.0.12",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
@@ -52,7 +59,8 @@
     "react-dom": "^18.3.1",
     "react-select": "^5.10.2",
     "serve": "^14.2.6",
-    "serve-handler": "^6.1.7"
+    "serve-handler": "^6.1.7",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",
@@ -60,6 +68,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
+    "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
     "concurrently": "^8.2.2",

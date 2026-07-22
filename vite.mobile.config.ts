@@ -6,6 +6,7 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const pkg = require('./package.json');
+const { createProductSourceHandler } = require('./tools/product-source-api.cjs');
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -41,6 +42,18 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      {
+        name: 'gbpos-product-source-api',
+        configureServer(server: any) {
+          const handler = createProductSourceHandler({
+            supabaseUrl: env.VITE_SUPABASE_URL || '',
+            publishableKey: env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          });
+          server.middlewares.use((req: any, res: any, next: any) => {
+            void handler(req, res).then((handled: boolean) => { if (!handled) next(); }).catch(next);
+          });
+        },
+      },
       {
         name: 'gbpos-mobile-index-html',
         closeBundle() {

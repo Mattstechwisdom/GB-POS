@@ -9,7 +9,7 @@ const cors = require('cors');
 const backend = express();
 backend.use(cors());
 
-const OPENAI_API_KEY = "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";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
 async function fetchDuckDuckGoImage(model) {
   try {

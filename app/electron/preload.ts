@@ -37,6 +37,15 @@ try {
 
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
+  gidgetLocalStatus: (): Promise<any> => ipcRenderer.invoke('gidget:localStatus'),
+  gidgetLocalSetup: (): Promise<any> => ipcRenderer.invoke('gidget:localSetup'),
+  gidgetLocalGenerate: (payload: any): Promise<any> => ipcRenderer.invoke('gidget:localGenerate', payload),
+  gidgetLocalCancel: (): Promise<any> => ipcRenderer.invoke('gidget:localCancel'),
+  onGidgetModelProgress: (cb: (progress: any) => void) => {
+    const handler = (_event: any, progress: any) => cb(progress);
+    ipcRenderer.on('gidget:model-progress', handler);
+    return () => ipcRenderer.removeListener('gidget:model-progress', handler);
+  },
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('os:openUrl', url),
   // Storage / diagnostics
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),

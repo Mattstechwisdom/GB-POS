@@ -18,10 +18,16 @@ import com.getcapacitor.BridgeActivity;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.security.MessageDigest;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
     private File pendingUpdateApk;
+    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -121,6 +127,40 @@ public class MainActivity extends BridgeActivity {
                 } catch (Exception ignored) {
                     openExternalUrl(rawUrl);
                 }
+            });
+        }
+
+        @JavascriptInterface
+        public void verifyModelSha256(String rawPath, String expectedHash, String callbackId) {
+            backgroundExecutor.execute(() -> {
+                String filePath = rawPath == null ? "" : rawPath.replaceFirst("^file://", "");
+                File file = new File(filePath);
+                boolean valid = false;
+                String error = "";
+                try (FileInputStream input = new FileInputStream(file)) {
+                    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                    byte[] buffer = new byte[1024 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) > 0) digest.update(buffer, 0, count);
+                    StringBuilder actual = new StringBuilder();
+                    for (byte value : digest.digest()) actual.append(String.format(Locale.US, "%02x", value));
+                    valid = actual.toString().equalsIgnoreCase(expectedHash == null ? "" : expectedHash.trim());
+                    if (!valid) {
+                        error = "The downloaded model failed its security check.";
+                        //noinspection ResultOfMethodCallIgnored
+                        file.delete();
+                    }
+                } catch (Exception exception) {
+                    error = exception.getMessage() == null ? "Model verification failed." : exception.getMessage();
+                }
+                final String script = "window.dispatchEvent(new CustomEvent('gbpos-gidget-model-verified',{detail:{id:"
+                    + JSONObject.quote(callbackId == null ? "" : callbackId) + ",valid:" + valid + ",error:"
+                    + JSONObject.quote(error) + "}}));";
+                MainActivity.this.runOnUiThread(() -> {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().evaluateJavascript(script, null);
+                    }
+                });
             });
         }
     }
