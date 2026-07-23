@@ -4039,22 +4039,28 @@ function QuoteGeneratorWindow(): JSX.Element {
       }));
       const found = [metadata.title && 'title', metadata.price !== undefined && 'cost', metadata.images?.length && `${metadata.images.length} image${metadata.images.length === 1 ? '' : 's'}`, metadata.description && 'summary', metadata.specs?.length && 'specs'].filter(Boolean);
       const needsConditionConfirmation = !!metadata.conditionOptions && metadata.conditionOptions.length > 1 && !existing.condition;
-      setScrapeMessages((current) => ({ ...current, [idx]: needsConditionConfirmation
+      const baseMsg = needsConditionConfirmation
         ? `Added ${found.join(', ') || 'available details'} and selected ${inferred.deviceType}. Confirm Condition below; this copied URL does not preserve the grade selected in your browser.`
-        : `Added ${found.join(', ') || 'available details'}, selected ${inferred.deviceType}, and set 15% markup. All fields remain editable.` }));
+        : `Added ${found.join(', ') || 'available details'}, selected ${inferred.deviceType}, and set 15% markup. All fields remain editable.`;
+      setScrapeMessages((current) => ({ ...current, [idx]: `${baseMsg} Writing AI summary...` }));
       setScrapingItem(null);
 
       void (async () => {
         let generatedSummary = inferred.description;
+        let aiApplied = false;
         try {
           const status = await withQuoteAutofillTimeout(gidgetLocalStatus(), 3_000, 'Gidget status timed out.');
           if (status.ready) {
             const prompt = buildAIPrompt(autofilledItem);
             const response = await withQuoteAutofillTimeout(generateWithGidget({
-              instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
+              instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Output ONLY the summary paragraph itself with no preamble, no meta-commentary such as "Sure, here is..." or "Certainly!", no headings, no quotation marks wrapping the response, and no closing remarks. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
               messages: [{ role: 'user', content: prompt }],
             }), 12_000, 'Gidget summary timed out.');
-            if (response?.ok && String(response.answer || '').trim()) generatedSummary = String(response.answer).trim();
+            const cleaned = sanitizeAiSummary(response?.answer);
+            if (response?.ok && cleaned) {
+              generatedSummary = cleaned;
+              aiApplied = true;
+            }
           }
         } catch {
           // The factual page-based summary remains available when Gidget is unavailable or busy.
@@ -4067,6 +4073,15 @@ function QuoteGeneratorWindow(): JSX.Element {
             return { ...currentItem, prompt: generatedSummary, description: generatedSummary };
           }),
         }));
+        setScrapeMessages((current) => {
+          if (current[idx] !== `${baseMsg} Writing AI summary...`) return current;
+          return {
+            ...current,
+            [idx]: aiApplied
+              ? `${baseMsg} AI summary written.`
+              : `${baseMsg} AI summary unavailable, using the factual description. Open Gidget in the sidebar to finish its one-time setup for AI-written summaries.`,
+          };
+        });
       })();
     } catch (error: any) {
       setScrapeMessages((current) => ({ ...current, [idx]: error?.message || 'Could not read this product page.' }));
@@ -4716,6 +4731,36 @@ function QuoteGeneratorWindow(): JSX.Element {
       setTimeout(() => setSaveMsg(null), 1500);
     } catch {}
   }, { debounceMs: 1000, enabled: true, equals: (a, b) => a === b });
+
+  function sanitizeAiSummary(raw: any): string {
+    let text = String(raw || '').trim();
+    if (!text) return '';
+    // Strip a full-response wrapper of matching quotes ("..." or '...').
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+      text = text.slice(1, -1).trim();
+    }
+    // Strip common leading conversational preamble some small models add despite
+    // instructions, e.g. "Sure, here is a summary:" or "Certainly! ...".
+    const preamblePatterns = [
+      /^(sure|certainly|okay|ok|absolutely|of course)[!,.:]?\s*/i,
+      /^here(?:'s| is)[^\n:]{0,80}:\s*/i,
+      /^this is[^\n:]{0,80}:\s*/i,
+    ];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const pattern of preamblePatterns) {
+        const next = text.replace(pattern, '');
+        if (next !== text) {
+          text = next.trim();
+          changed = true;
+        }
+      }
+    }
+    // Drop a leading markdown heading if the model added one anyway.
+    text = text.replace(/^#{1,6}\s+.*\n+/, '').trim();
+    return text;
+  }
 
   function buildAIPrompt(it: SaleItem) {
     const lines: string[] = [];
