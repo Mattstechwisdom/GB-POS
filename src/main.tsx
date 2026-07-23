@@ -225,18 +225,10 @@ const STANDALONE_WINDOW_QUERY_KEYS = [
 	'consultation',
 ];
 
-const STANDALONE_WINDOW_CLOSE_EXCLUDED_QUERY_KEYS = new Set([
-	'checkout',
-	'releaseForm',
-	'customerReceipt',
-]);
-
-function shouldShowStandaloneWindowCloseButton() {
+function isStandaloneWindowRoute() {
 	try {
 		const params = new URLSearchParams(window.location.search);
-		return STANDALONE_WINDOW_QUERY_KEYS.some((key) => (
-			params.has(key) && !STANDALONE_WINDOW_CLOSE_EXCLUDED_QUERY_KEYS.has(key)
-		));
+		return STANDALONE_WINDOW_QUERY_KEYS.some((key) => params.has(key));
 	} catch {
 		return false;
 	}
@@ -284,7 +276,7 @@ function StandaloneWindowCloseButton() {
 
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
 	removeInitialHtmlLoader();
-	const content = shouldShowStandaloneWindowCloseButton()
+	const content = isStandaloneWindowRoute()
 		? (
 			<>
 				<StandaloneWindowCloseButton />

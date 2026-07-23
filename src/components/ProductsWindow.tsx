@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
 import MoneyInput from './MoneyInput';
+import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
 
 type Product = {
   id?: number;
@@ -55,6 +56,9 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
   const [editing, setEditing] = useState<Product>(blank);
   const [search, setSearch] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
+  const [scrapingUrl, setScrapingUrl] = useState(false);
+  const scrapeSequenceRef = useRef(0);
+  const lastScrapedUrlRef = useRef('');
   const CATEGORY_OPTIONS = ['Phone', 'Tablet', 'Laptop', 'Desktop', 'Game Console', 'TV', 'Audio', 'Drone', 'Accessory', 'Other'];
   const [categoryFilter, setCategoryFilter] = useState<Product['category'] | ''>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -163,6 +167,32 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
     window.close();
   };
 
+  const autofillFromOrderUrl = async (url: string) => {
+    if (!url || url.includes('{{') || lastScrapedUrlRef.current === url) return;
+    const sequence = ++scrapeSequenceRef.current;
+    lastScrapedUrlRef.current = url;
+    setScrapingUrl(true);
+    try {
+      const meta = await scrapePartUrl(url);
+      if (sequence !== scrapeSequenceRef.current) return;
+      if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
+      const title = normalizePartInventoryTitle(meta.title);
+      const vendor = meta.vendor || derivePartVendorFromUrl(url);
+      setEditing((ed) => {
+        if (!ed) return ed;
+        const next = { ...ed };
+        if (title && !String(ed.itemDescription || '').trim()) next.itemDescription = title;
+        if (vendor && !String(ed.distributor || '').trim()) next.distributor = vendor;
+        if (typeof meta.price === 'number' && ed.internalCost == null) next.internalCost = meta.price;
+        return next;
+      });
+    } catch (e) {
+      console.error('Product URL autofill failed', e);
+    } finally {
+      if (sequence === scrapeSequenceRef.current) setScrapingUrl(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -180,12 +210,13 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
   const prevSelectedIdRef = React.useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; return; }
+    if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; lastScrapedUrlRef.current = ''; return; }
     const found = list.find(p => p.id === selectedId);
     setEditing(found ? { ...blank, ...found } : blank);
     // Only reset the manual-edit flag when the user picks a *different* item,
     // not when the list refreshes after saving the currently-selected item.
     if (prevSelectedIdRef.current !== selectedId) {
+      lastScrapedUrlRef.current = String(found?.reorderUrlTemplate || '');
       // Treat any price already stored in the DB as manually confirmed — prevent
       // auto-calc from overwriting it when the item is (re-)loaded.
       const hasStoredPrice = !!(found?.id) && typeof found?.price === 'number';
@@ -560,10 +591,12 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-zinc-400 mb-1">Add-to-cart URL template</label>
+                  <label className="block text-xs text-zinc-400 mb-1">Add-to-cart URL template {scrapingUrl && <span className="text-[#39FF14]">· Looking up details…</span>}</label>
                   <input
                     value={editing.reorderUrlTemplate || ''}
                     onChange={e => setEditing(ed => ({ ...ed, reorderUrlTemplate: e.target.value }))}
+                    onBlur={e => { void autofillFromOrderUrl(e.target.value.trim()); }}
+                    onKeyDown={e => { if (e.key !== 'Enter') return; e.preventDefault(); void autofillFromOrderUrl((e.target as HTMLInputElement).value.trim()); }}
                     className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
                     placeholder="https://vendor.example/cart/add?sku={{sku}}&qty={{qty}}"
                   />

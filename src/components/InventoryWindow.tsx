@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import type { VendorRecord } from './VendorsWindow';
+import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -107,6 +108,9 @@ export default function InventoryWindow() {
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scrapingUrl, setScrapingUrl] = useState(false);
+  const scrapeSequenceRef = useRef(0);
+  const lastScrapedUrlRef = useRef('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,18 +200,21 @@ export default function InventoryWindow() {
     setSelectedId(item.id);
     setEditing({ ...blankItem(mode), ...item, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
     setEditingOrderUrl(!item.reorderUrlTemplate);
+    lastScrapedUrlRef.current = String(item.reorderUrlTemplate || '');
   };
 
   const startNew = () => {
     setSelectedId(undefined);
     setEditing(blankItem(mode));
     setEditingOrderUrl(false);
+    lastScrapedUrlRef.current = '';
   };
 
   const clearFields = () => {
     setSelectedId(undefined);
     setEditing(blankItem(mode));
     setEditingOrderUrl(false);
+    lastScrapedUrlRef.current = '';
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -331,6 +338,35 @@ export default function InventoryWindow() {
     const url = fillUrlTemplate(template, { sku: item.distributorSku, qty: Number(item.reorderQty || 1) });
     try { await api?.openUrl?.(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); }
   };
+
+  const autofillFromOrderUrl = useCallback(async (url: string) => {
+    if (!url || lastScrapedUrlRef.current === url) return;
+    const sequence = ++scrapeSequenceRef.current;
+    lastScrapedUrlRef.current = url;
+    setScrapingUrl(true);
+    try {
+      const meta = await scrapePartUrl(url);
+      if (sequence !== scrapeSequenceRef.current) return;
+      if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
+      const title = normalizePartInventoryTitle(meta.title);
+      const vendor = meta.vendor || derivePartVendorFromUrl(url);
+      setEditing((current) => {
+        const next = { ...current };
+        if (title && !String(current.itemDescription || '').trim()) next.itemDescription = title;
+        if (vendor && !String(current.distributor || '').trim()) next.distributor = vendor;
+        if (typeof meta.price === 'number' && current.internalCost == null) {
+          next.internalCost = meta.price;
+          const price = markedUpPrice(meta.price, current.markupPct ?? DEFAULT_MARKUP_PCT);
+          if (price != null) next.price = price;
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error('Inventory URL autofill failed', err);
+    } finally {
+      if (sequence === scrapeSequenceRef.current) setScrapingUrl(false);
+    }
+  }, []);
 
   const modeLabel = mode === 'parts' ? 'Repair Parts' : 'Products';
   const categoryOptions = DEVICE_CATEGORY_OPTIONS;
@@ -484,20 +520,20 @@ export default function InventoryWindow() {
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="block md:col-span-2">
-                <span className="mb-1 block text-xs text-zinc-400">Order URL</span>
+                <span className="mb-1 block text-xs text-zinc-400">Order URL {scrapingUrl && <span className="text-[#39FF14]">· Looking up details…</span>}</span>
                 {editing.reorderUrlTemplate && !editingOrderUrl ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => openReorder(editing)} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">Order URL</button>
                     <button type="button" onClick={() => setEditingOrderUrl(true)} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">Edit</button>
-                    <button type="button" onClick={() => { setEditing((current) => ({ ...current, reorderUrlTemplate: '' })); setEditingOrderUrl(true); }} className="rounded border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-100">Clear URL</button>
+                    <button type="button" onClick={() => { setEditing((current) => ({ ...current, reorderUrlTemplate: '' })); setEditingOrderUrl(true); lastScrapedUrlRef.current = ''; }} className="rounded border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-100">Clear URL</button>
                     <span className="min-w-0 flex-1 truncate text-xs text-zinc-500" title={editing.reorderUrlTemplate}>{editing.reorderUrlTemplate}</span>
                   </div>
                 ) : (
                   <input
                     value={editing.reorderUrlTemplate || ''}
                     onChange={(event) => setEditing((current) => ({ ...current, reorderUrlTemplate: event.target.value }))}
-                    onBlur={() => { const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (url) { setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); } }}
-                    onKeyDown={(event) => { if (event.key !== 'Enter') return; const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (!url) return; event.preventDefault(); setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); }}
+                    onBlur={() => { const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (url) { setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); void autofillFromOrderUrl(url); } }}
+                    onKeyDown={(event) => { if (event.key !== 'Enter') return; const url = normalizeOrderUrl(editing.reorderUrlTemplate); if (!url) return; event.preventDefault(); setEditing((current) => ({ ...current, reorderUrlTemplate: url })); setEditingOrderUrl(false); void autofillFromOrderUrl(url); }}
                     className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                     placeholder="Paste the distributor product URL"
                   />
