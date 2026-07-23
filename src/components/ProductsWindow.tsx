@@ -178,11 +178,13 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
       if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
       const title = normalizePartInventoryTitle(meta.title);
       const vendor = meta.vendor || derivePartVendorFromUrl(url);
+      const description = String(meta.description || '').trim();
       setEditing((ed) => {
         if (!ed) return ed;
         const next = { ...ed };
         if (title && !String(ed.itemDescription || '').trim()) next.itemDescription = title;
         if (vendor && !String(ed.distributor || '').trim()) next.distributor = vendor;
+        if (description && !String(ed.notes || '').trim()) next.notes = description;
         if (typeof meta.price === 'number' && ed.internalCost == null) next.internalCost = meta.price;
         return next;
       });

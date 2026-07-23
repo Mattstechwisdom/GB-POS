@@ -350,10 +350,12 @@ export default function InventoryWindow() {
       if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
       const title = normalizePartInventoryTitle(meta.title);
       const vendor = meta.vendor || derivePartVendorFromUrl(url);
+      const description = String(meta.description || '').trim();
       setEditing((current) => {
         const next = { ...current };
         if (title && !String(current.itemDescription || '').trim()) next.itemDescription = title;
         if (vendor && !String(current.distributor || '').trim()) next.distributor = vendor;
+        if (description && !String(current.notes || '').trim()) next.notes = description;
         if (typeof meta.price === 'number' && current.internalCost == null) {
           next.internalCost = meta.price;
           const price = markedUpPrice(meta.price, current.markupPct ?? DEFAULT_MARKUP_PCT);
