@@ -175,6 +175,27 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
     }
   }
 
+  // Adds a blank, one-off line item that lives ONLY on this work order.
+  // It is never written to the repair/parts catalog — good for a single
+  // part that was ordered/paid for just this once.
+  function newCustomItem() {
+    if (items.length >= MAX_ITEMS) return;
+    const row: WorkOrderItemRow = {
+      id: crypto.randomUUID(),
+      device: '',
+      repairCategory: '',
+      repair: '',
+      parts: 0,
+      labor: 0,
+      status: 'pending',
+      orderStatus: 'in_stock',
+    };
+    onChange([...items, row].slice(0, MAX_ITEMS));
+    setSelected(row.id);
+    // Open the editor immediately so the tech can type a custom description/cost.
+    setEditing(row);
+  }
+
   // Listen for repair selection from picker window via Electron IPC
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -262,7 +283,8 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
       </div>
 
       <div className="gb-wo-items-actions flex gap-2 mt-2 items-center">
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>New item</button>
+        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Pick from catalog…</button>
+        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
         {onAddProduct ? (
           <button
             className="px-3 py-1 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -272,7 +294,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
             Add Product
           </button>
         ) : null}
-        <div className="flex-1 self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
+        <div className="flex-1 self-center text-[11px] text-zinc-400">Custom items are one-off and won't be saved to the parts/repair catalog.</div>
       </div>
 
       {editing && (
