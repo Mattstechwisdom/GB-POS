@@ -1029,7 +1029,7 @@ const ReportingWindow: React.FC = () => {
         <QuickRange onPick={setQuickRange} />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Grand Total</div>
           <div className="mt-2 text-3xl font-bold text-neon-green">${summary.revenue.toFixed(2)}</div>
@@ -1055,7 +1055,7 @@ const ReportingWindow: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Revenue & Orders</div>
           <div className="mt-2 space-y-1">

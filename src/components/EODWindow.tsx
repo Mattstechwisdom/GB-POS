@@ -2067,8 +2067,8 @@ const EODWindow: React.FC = () => {
 
         {viewMode === 'reports' ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Today</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? 'Loading…' : rangeLabel(range, start, end)}</span>
@@ -2078,7 +2078,7 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Batch totals</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : rangeLabel(range, start, end)}</span>
@@ -2137,7 +2137,7 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
@@ -2845,7 +2845,7 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+            <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
               <h3 className="text-lg font-semibold mb-3">Busiest days</h3>
               <div className="space-y-2">
                 {busiestDays.map(item => {
@@ -2864,7 +2864,7 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+            <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
               <h3 className="text-lg font-semibold mb-3">Popular devices</h3>
               <div className="space-y-2">
                 {topDevices.map(item => {
@@ -2883,7 +2883,7 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+            <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
               <h3 className="text-lg font-semibold mb-3">Popular repairs</h3>
               <div className="space-y-2">
                 {topRepairs.map(item => {

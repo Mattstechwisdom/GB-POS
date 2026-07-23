@@ -353,8 +353,8 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
   }
 
   return (
-    <div className="flex h-screen bg-zinc-900 text-gray-100">
-      <div className="grid grid-cols-[620px_1fr] gap-4 h-full p-4 w-full">
+    <div className="flex h-screen bg-zinc-900 text-gray-100 overflow-y-auto lg:overflow-hidden">
+      <div className="grid grid-cols-1 gap-4 h-full p-4 w-full lg:grid-cols-[620px_1fr]">
         {/* Left pane: filters + list */}
         <div className="flex flex-col min-w-0">
           <div className="relative flex gap-2 mb-4 p-3 bg-zinc-800 rounded border border-zinc-700">
