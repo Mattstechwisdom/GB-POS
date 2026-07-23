@@ -84,6 +84,18 @@ export default function GidgetChat({ open, onClose }: Props) {
     return () => { cancelled = true; unsubscribe(); };
   }, [open]);
 
+  const recheckModelStatus = useCallback(async () => {
+    setSettingUpModel(true);
+    try {
+      const status = await gidgetLocalStatus();
+      setModelState(status);
+    } catch (error: any) {
+      setModelState((current) => ({ ...current, status: 'error', error: friendlyError(error), supported: false, ready: false }));
+    } finally {
+      setSettingUpModel(false);
+    }
+  }, []);
+
   const installModel = useCallback(async () => {
     setSettingUpModel(true);
     setModelState((current) => ({ ...current, status: 'downloading', error: undefined }));
@@ -433,7 +445,14 @@ export default function GidgetChat({ open, onClose }: Props) {
               <div className="gidget-model-progress"><div><span style={{ width: `${Math.max(2, modelState.progress || 0)}%` }} /></div><p>{modelState.status === 'verifying' ? 'Verifying download...' : modelState.status === 'loading' ? 'Starting Gidget...' : `Downloading... ${modelState.progress || 0}%`}</p></div>
             ) : null}
             {modelState.error ? <p className="gidget-model-error">{modelState.error}</p> : null}
-            {modelState.supported === false ? <p className="gidget-model-note">Open the installed Windows or Android app to run Gidget locally.</p> : <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry setup' : 'Download and set up Gidget'}</button>}
+            {modelState.supported === false ? (
+              <>
+                <p className="gidget-model-note">Gidget could not detect the local AI bridge for this window. This usually clears up after a retry or a restart of the app.</p>
+                <button type="button" className="gidget-model-install" onClick={() => void recheckModelStatus()} disabled={settingUpModel}>Check again</button>
+              </>
+            ) : (
+              <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry setup' : 'Download and set up Gidget'}</button>
+            )}
           </div>
         ) : historyOpen ? (
           <div className="gidget-history" aria-label="Gidget conversation history">
