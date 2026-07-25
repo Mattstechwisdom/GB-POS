@@ -117,13 +117,15 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
             Inventory
           </button>
         )}
-        <button
-          onClick={onClose}
-          title="Close window (Esc)"
-          className="w-8 h-8 rounded-full bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white flex items-center justify-center text-lg font-bold leading-none shadow-lg transition-colors select-none"
-        >
-          ✕
-        </button>
+        {entry.type !== 'checkout' && (
+          <button
+            onClick={onClose}
+            title="Close window (Esc)"
+            className="w-8 h-8 rounded-full bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white flex items-center justify-center text-lg font-bold leading-none shadow-lg transition-colors select-none"
+          >
+            ✕
+          </button>
+        )}
       </div>
       <React.Suspense fallback={
         <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
