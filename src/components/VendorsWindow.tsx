@@ -45,6 +45,7 @@ export default function VendorsWindow() {
   const [editing, setEditing] = useState<VendorRecord>(() => blankVendor());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,11 +82,13 @@ export default function VendorsWindow() {
   const clear = () => {
     setSelectedId(undefined);
     setEditing(blankVendor(mode));
+    setSavedMessage(null);
   };
 
   const select = (row: VendorRecord) => {
     setSelectedId(row.id);
     setEditing({ ...blankVendor(mode), ...row, inventoryMode: mode });
+    setSavedMessage(null);
   };
 
   const save = async () => {
@@ -131,6 +134,8 @@ export default function VendorsWindow() {
       });
       setSelectedId(merged.id);
       setEditing(merged);
+      setSavedMessage(`Saved "${merged.name}".`);
+      window.setTimeout(() => setSavedMessage((current) => (current === `Saved "${merged.name}".` ? null : current)), 4000);
     } catch (error) {
       console.error('Vendor save failed', error);
       alert('Vendor or distributor could not be saved.');
@@ -168,7 +173,7 @@ export default function VendorsWindow() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {loading ? <div className="p-4 text-sm text-zinc-400">Loading...</div> : visible.length === 0 ? <div className="p-4 text-sm text-zinc-500">No entries found.</div> : visible.map((row) => (
-                <button key={row.id} type="button" onClick={() => select(row)} className={`w-full border-b border-l-4 border-zinc-800 px-3 py-3 text-left ${selectedId === row.id ? 'border-l-[#39FF14] bg-zinc-800' : 'border-l-transparent hover:bg-zinc-900'}`}>
+                <button key={row.id} type="button" onClick={() => select(row)} className={`w-full border-b border-l-4 border-zinc-800 px-3 py-3 text-left ${selectedId != null && row.id != null && String(selectedId) === String(row.id) ? 'border-l-[#39FF14] bg-zinc-800' : 'border-l-transparent hover:bg-zinc-900'}`}>
                   <div className="font-semibold">{row.name || '(unnamed)'}</div>
                   <div className="mt-1 text-xs text-zinc-400">{row.relationship === 'consignment' ? `Consignment - ${Number(row.vendorSharePct || 0)}% vendor share` : 'Wholesale / direct purchase'}{row.taxExempt ? ' - Tax exempt' : ''}</div>
                 </button>
@@ -178,7 +183,7 @@ export default function VendorsWindow() {
 
           <section className="min-w-0 rounded border border-zinc-700 bg-zinc-950 p-4 lg:overflow-y-auto">
             <div className="mb-4 flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div><h2 className="text-lg font-semibold">{selectedId ? 'Edit Entry' : 'Add New Entry'}</h2><p className="text-xs text-zinc-500">Settings apply only to this inventory section.</p></div>
+              <div><h2 className="text-lg font-semibold">{selectedId ? 'Edit Entry' : 'Add New Entry'}</h2><p className="text-xs text-zinc-500">{savedMessage || 'Select an entry on the left to edit it, then hit Save Entry.'}</p></div>
               <div className="gb-vendor-mode-toggle grid w-full grid-cols-2 rounded border border-zinc-700 bg-zinc-900 p-1 sm:w-[280px]" role="group" aria-label="Vendor inventory section">
                 <button type="button" onClick={() => setMode('Product')} aria-pressed={mode === 'Product'} className={`rounded px-3 py-2 text-sm font-semibold ${mode === 'Product' ? 'bg-[#39FF14] text-black' : 'text-zinc-400'}`}>Products ({counts.Product})</button>
                 <button type="button" onClick={() => setMode('Part')} aria-pressed={mode === 'Part'} className={`rounded px-3 py-2 text-sm font-semibold ${mode === 'Part' ? 'bg-[#BC13FE] text-white' : 'text-zinc-400'}`}>Parts ({counts.Part})</button>
