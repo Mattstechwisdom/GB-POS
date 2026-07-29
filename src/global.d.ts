@@ -127,6 +127,10 @@ declare global {
   openCharts: () => Promise<any>;
     openNotifications: () => Promise<any>;
     openNotificationSettings: () => Promise<any>;
+    notificationGetNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string }>;
+    notificationRequestNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string; error?: string }>;
+    notificationSendNative: (payload: { title?: string; body?: string; key?: string }) => Promise<{ ok: boolean; error?: string }>;
+    notificationOpenSystemSettings: () => Promise<{ ok: boolean; error?: string }>;
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyCustomerReceiptReady: () => void;
@@ -156,6 +160,16 @@ declare global {
 
   _emitCustomBuildItemSave: (result: any) => void;
   _emitCustomBuildItemCancel: () => void;
+    };
+  }
+
+  interface Window {
+    GBPosAndroid?: {
+      openExternalUrl?: (url: string) => void;
+      openNotificationSettings?: () => void;
+      requestNotificationPermission?: () => void;
+      downloadAndInstallApk?: (url: string, fileName?: string) => void;
+      downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
     };
   }
   declare module '*?raw' {

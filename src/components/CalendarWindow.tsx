@@ -956,7 +956,7 @@ const CalendarWindow: React.FC = () => {
 
       {contentScheduleOpen && (
         <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
-          <div className="gb-content-schedule bg-zinc-900 border border-zinc-700 rounded w-full max-w-[760px] max-h-[92vh] overflow-hidden flex flex-col">
+          <div className="gb-content-schedule bg-zinc-900 border border-zinc-700 rounded w-full max-w-[1180px] max-h-[92vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between gap-3 p-4 border-b border-zinc-800">
               <div>
                 <h3 className="font-semibold text-xl">Streaming/Content Schedule</h3>

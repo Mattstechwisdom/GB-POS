@@ -1,10 +1,12 @@
 package com.gadgetboy.pos;
 
+import android.Manifest;
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,6 +17,8 @@ import android.widget.Toast;
 
 import com.getcapacitor.BridgeActivity;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
@@ -26,6 +30,7 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 4501;
     private File pendingUpdateApk;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
@@ -48,6 +53,22 @@ public class MainActivity extends BridgeActivity {
     }
 
     public class GBPosAndroidBridge {
+        @JavascriptInterface
+        public void requestNotificationPermission() {
+            MainActivity.this.runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+                if (ContextCompat.checkSelfPermission(
+                    MainActivity.this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED) return;
+                ActivityCompat.requestPermissions(
+                    MainActivity.this,
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                );
+            });
+        }
+
         @JavascriptInterface
         public void openExternalUrl(String rawUrl) {
             MainActivity.this.runOnUiThread(() -> {

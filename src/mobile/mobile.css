@@ -2830,6 +2830,9 @@
   }
 
   .gbpos-mobile .gb-content-week-list {
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
     padding: 0.45rem !important;
   }
 

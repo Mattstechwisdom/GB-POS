@@ -242,6 +242,22 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  const desktopApi = api();
+  if (typeof desktopApi?.notificationGetNativePermission === 'function') {
+    try {
+      const status = await desktopApi.notificationGetNativePermission();
+      const permission = String(status?.permission || '').toLowerCase();
+      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
+        if (permission === 'granted') {
+          const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
+          return stored.enabled ? 'granted' : 'prompt';
+        }
+        return permission as DeviceNotificationSettings['permission'];
+      }
+    } catch {
+      // Fall through to native mobile or browser permission checks.
+    }
+  }
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
@@ -285,6 +301,16 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
   const title = String(rec.title || 'GadgetBoy POS').trim();
   const body = String(rec.message || '').trim();
   const id = notificationIdForKey(rec.key || `${rec.kind}:${title}:${rec.eventAt || rec.createdAt}`);
+
+  const desktopApi = api();
+  if (typeof desktopApi?.notificationSendNative === 'function') {
+    try {
+      const result = await desktopApi.notificationSendNative({ title, body, key: rec.key });
+      if (result?.ok) return;
+    } catch {
+      // Fall through to mobile or browser notification delivery.
+    }
+  }
 
   const native = await getLocalNotificationsPlugin();
   if (native?.schedule) {
@@ -603,8 +629,35 @@ export async function saveDeviceNotificationSettings(next: DeviceNotificationSet
 
 export async function requestDeviceNotificationPermission(): Promise<DeviceNotificationSettings> {
   let permission = await getDeviceNotificationPermission();
+  const desktopApi = api();
+  if (typeof desktopApi?.notificationRequestNativePermission === 'function' && permission !== 'unsupported') {
+    try {
+      const status = await desktopApi.notificationRequestNativePermission();
+      const next = String(status?.permission || '').toLowerCase();
+      permission = next === 'granted' ? 'granted' : (next === 'denied' ? 'denied' : (next === 'unsupported' ? 'unsupported' : 'prompt'));
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  }
   const native = await getLocalNotificationsPlugin();
-  if (native?.requestPermissions && permission !== 'granted' && permission !== 'unsupported') {
+  const androidBridge = window.GBPosAndroid;
+  if (
+    Capacitor.getPlatform() === 'android'
+    && typeof androidBridge?.requestNotificationPermission === 'function'
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      androidBridge.requestNotificationPermission();
+      const deadline = Date.now() + 60_000;
+      do {
+        await new Promise(resolve => window.setTimeout(resolve, 350));
+        permission = await getDeviceNotificationPermission();
+      } while (permission === 'prompt' && Date.now() < deadline);
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (native?.requestPermissions && permission !== 'granted' && permission !== 'unsupported') {
     try {
       const status: any = await withTimeout(native.requestPermissions(), 60000, 'The operating-system permission request timed out.');
       const display = String(status?.display || '').toLowerCase();

@@ -1,15 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-declare global {
-  interface Window {
-    GBPosAndroid?: {
-      openExternalUrl?: (url: string) => void;
-      downloadAndInstallApk?: (url: string, fileName?: string) => void;
-      downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
-    };
-  }
-}
-
 type ReleaseAsset = {
   name?: string;
   browser_download_url?: string;

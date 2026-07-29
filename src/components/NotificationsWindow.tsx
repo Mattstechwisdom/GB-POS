@@ -80,7 +80,6 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
   }, []);
 
   useEffect(() => {
-    if (!isMobileSurface) return;
     let active = true;
     setPermissionChecking(true);
     setPermissionError('');
@@ -93,8 +92,16 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           current = await requestDeviceNotificationPermission();
           if (!active) return;
           setDevicePermission(current.permission);
+        } else if (
+          !isMobileSurface
+          && current.permission === 'prompt'
+          && typeof (window as any).api?.notificationRequestNativePermission === 'function'
+        ) {
+          current = await requestDeviceNotificationPermission();
+          if (!active) return;
+          setDevicePermission(current.permission);
         }
-        if (current.permission === 'granted') setMobileView('settings');
+        if (isMobileSurface && current.permission === 'granted') setMobileView('settings');
       } catch (error: any) {
         if (active) setPermissionError(error?.message || 'Notification permission could not be checked.');
       } finally {

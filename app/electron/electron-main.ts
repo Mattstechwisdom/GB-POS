@@ -1,5 +1,5 @@
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage, Notification, session } = electron;
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -7129,6 +7129,46 @@ ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => 
   }
 });
 
+ipcMain.handle('notifications:get-native-permission', async () => ({
+  permission: Notification?.isSupported?.() ? 'granted' : 'unsupported',
+  platform: process.platform,
+}));
+
+ipcMain.handle('notifications:request-native-permission', async () => {
+  if (!Notification?.isSupported?.()) {
+    return { permission: 'unsupported', platform: process.platform, error: 'System notifications are not supported on this computer.' };
+  }
+  const notice = new Notification({
+    title: 'GadgetBoy POS',
+    body: 'Notifications are enabled on this computer.',
+    silent: false,
+  });
+  notice.show();
+  return { permission: 'granted', platform: process.platform };
+});
+
+ipcMain.handle('notifications:send-native', async (_event: any, payload: any) => {
+  if (!Notification?.isSupported?.()) return { ok: false, error: 'System notifications are not supported on this computer.' };
+  const notice = new Notification({
+    title: String(payload?.title || 'GadgetBoy POS'),
+    body: String(payload?.body || ''),
+    silent: false,
+  });
+  notice.show();
+  return { ok: true };
+});
+
+ipcMain.handle('notifications:open-system-settings', async () => {
+  try {
+    if (process.platform === 'win32') await shell.openExternal('ms-settings:notifications');
+    else if (process.platform === 'darwin') await shell.openExternal('x-apple.systempreferences:com.apple.preference.notifications');
+    else return { ok: false, error: 'Open notification settings from your operating system settings.' };
+    return { ok: true };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+
 ipcMain.handle('qr:resolveStatusToken', async (_event: any, token: string) => {
   try {
     const resolved = await resolveCloudQrStatusToken(token);
@@ -7150,6 +7190,10 @@ ipcMain.handle('qr:getServerInfo', async () => {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
+    session.defaultSession.setPermissionCheckHandler((_webContents: any, permission: string) => permission === 'notifications');
+    session.defaultSession.setPermissionRequestHandler((_webContents: any, permission: string, callback: (allowed: boolean) => void) => {
+      callback(permission === 'notifications');
+    });
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     ensureBatchOutScheduler();

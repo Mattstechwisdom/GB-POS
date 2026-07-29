@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.29 (2026-07-29)
+- Notifications / Android: requests Android 13+ notification permission through the native activity and waits for the operating-system response before revealing device alert preferences.
+- Notifications / Windows: routes authorization and delivery through Electron's native notification service, remembers device authorization, and displays a confirmation toast when notifications are enabled.
+- Notifications: configures Electron notification permission handlers, keeps browser fallback delivery, and adds a repeatable Windows native-toast release check.
+- Calendar Desktop: replaces the compact mobile-style Streaming / Content Schedule with a wide seven-column weekly production planner.
+- Calendar Mobile: preserves the compact vertical seven-day schedule and prevents horizontal overflow on phone-sized screens.
+
 ## v0.5.28 (2026-07-29)
 - Instructions: adds a comprehensive versioned operating manual covering Windows and Android workflows, client and work-order handling, parts, inventory, checkout, reporting, backups, updates, security, and troubleshooting.
 - Windows Installer: adds an optional Instructions selection that places the current manual in Documents and creates a desktop shortcut.
