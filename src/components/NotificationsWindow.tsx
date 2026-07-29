@@ -83,6 +83,11 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
     let active = true;
     setPermissionChecking(true);
     setPermissionError('');
+    const stopChecking = window.setTimeout(() => {
+      if (!active) return;
+      setPermissionChecking(false);
+      setPermissionError('Notification access could not be confirmed. Tap Settings to try again.');
+    }, 12_000);
     void (async () => {
       try {
         let current = await loadDeviceNotificationSettings();
@@ -105,10 +110,14 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
       } catch (error: any) {
         if (active) setPermissionError(error?.message || 'Notification permission could not be checked.');
       } finally {
+        window.clearTimeout(stopChecking);
         if (active) setPermissionChecking(false);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      window.clearTimeout(stopChecking);
+    };
   }, [isMobileSurface]);
 
   useEffect(() => {
@@ -221,13 +230,21 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
                 } else if (Capacitor.isNativePlatform() && (devicePermission === 'default' || devicePermission === 'prompt')) {
                   setPermissionChecking(true);
                   setPermissionError('');
+                  const stopChecking = window.setTimeout(() => {
+                    setPermissionChecking(false);
+                    setPermissionError('Android did not finish the permission request. Tap Settings to retry.');
+                  }, 22_000);
                   try {
                     const next = await requestDeviceNotificationPermission();
                     setDevicePermission(next.permission);
                     if (next.permission === 'granted') setMobileView('settings');
+                    else if (next.permission === 'prompt') {
+                      setPermissionError('Android did not show the permission request. Tap Settings to try again.');
+                    }
                   } catch (error: any) {
                     setPermissionError(error?.message || 'Notification permission could not be requested.');
                   } finally {
+                    window.clearTimeout(stopChecking);
                     setPermissionChecking(false);
                   }
                 } else if (Capacitor.isNativePlatform() && devicePermission === 'denied') {

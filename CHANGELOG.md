@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.30 (2026-07-29)
+- Notifications / Android: uses Capacitor Local Notifications as the primary Android 13+ permission request so the operating-system prompt returns directly to the app.
+- Notifications: removes the minute-long permission polling path and adds bounded checks, retry guidance, and a native bridge fallback that cannot leave Settings stuck on "Checking...".
+- Notifications / Windows: keeps native Electron authorization independent from the technician's alert toggle and revalidates native Windows toast delivery.
+
 ## v0.5.29 (2026-07-29)
 - Notifications / Android: requests Android 13+ notification permission through the native activity and waits for the operating-system response before revealing device alert preferences.
 - Notifications / Windows: routes authorization and delivery through Electron's native notification service, remembers device authorization, and displays a confirmation toast when notifications are enabled.

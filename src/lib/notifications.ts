@@ -248,10 +248,6 @@ async function getDeviceNotificationPermission(): Promise<DeviceNotificationSett
       const status = await desktopApi.notificationGetNativePermission();
       const permission = String(status?.permission || '').toLowerCase();
       if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
-        if (permission === 'granted') {
-          const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
-          return stored.enabled ? 'granted' : 'prompt';
-        }
         return permission as DeviceNotificationSettings['permission'];
       }
     } catch {
@@ -630,38 +626,51 @@ export async function saveDeviceNotificationSettings(next: DeviceNotificationSet
 export async function requestDeviceNotificationPermission(): Promise<DeviceNotificationSettings> {
   let permission = await getDeviceNotificationPermission();
   const desktopApi = api();
-  if (typeof desktopApi?.notificationRequestNativePermission === 'function' && permission !== 'unsupported') {
-    try {
-      const status = await desktopApi.notificationRequestNativePermission();
-      const next = String(status?.permission || '').toLowerCase();
-      permission = next === 'granted' ? 'granted' : (next === 'denied' ? 'denied' : (next === 'unsupported' ? 'unsupported' : 'prompt'));
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  }
   const native = await getLocalNotificationsPlugin();
-  const androidBridge = window.GBPosAndroid;
+  const isNativeAndroid = Capacitor.getPlatform() === 'android';
+
   if (
-    Capacitor.getPlatform() === 'android'
-    && typeof androidBridge?.requestNotificationPermission === 'function'
+    isNativeAndroid
+    && native?.requestPermissions
     && permission !== 'granted'
     && permission !== 'unsupported'
   ) {
     try {
-      androidBridge.requestNotificationPermission();
-      const deadline = Date.now() + 60_000;
+      const status: any = await withTimeout(
+        native.requestPermissions(),
+        20_000,
+        'Android did not finish the notification permission request. Try again or open the app notification settings.',
+      );
+      const display = String(status?.display || '').toLowerCase();
+      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (
+    isNativeAndroid
+    && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      window.GBPosAndroid.requestNotificationPermission();
+      const deadline = Date.now() + 8_000;
       do {
-        await new Promise(resolve => window.setTimeout(resolve, 350));
+        await new Promise(resolve => window.setTimeout(resolve, 250));
         permission = await getDeviceNotificationPermission();
       } while (permission === 'prompt' && Date.now() < deadline);
     } catch {
       permission = await getDeviceNotificationPermission();
     }
-  } else if (native?.requestPermissions && permission !== 'granted' && permission !== 'unsupported') {
+  } else if (typeof desktopApi?.notificationRequestNativePermission === 'function' && permission !== 'unsupported') {
     try {
-      const status: any = await withTimeout(native.requestPermissions(), 60000, 'The operating-system permission request timed out.');
-      const display = String(status?.display || '').toLowerCase();
-      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+      const status: any = await withTimeout(
+        desktopApi.notificationRequestNativePermission(),
+        8_000,
+        'Windows did not finish the notification permission request.',
+      );
+      const next = String(status?.permission || '').toLowerCase();
+      permission = next === 'granted' ? 'granted' : (next === 'denied' ? 'denied' : (next === 'unsupported' ? 'unsupported' : 'prompt'));
     } catch {
       permission = await getDeviceNotificationPermission();
     }
