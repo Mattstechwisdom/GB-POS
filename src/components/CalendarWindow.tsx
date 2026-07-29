@@ -10,11 +10,11 @@ type CalendarEvent = {
   time?: string;      // HH:mm
   endTime?: string;   // HH:mm (optional)
   title: string;      // Display title
-  category?: 'parts' | 'event' | 'consultation' | 'schedule';
+  category?: 'parts' | 'event' | 'consultation' | 'schedule' | 'content';
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content';
   saleId?: number;
   notes?: string;
   // Optional linkage
@@ -39,6 +39,25 @@ type CalendarEvent = {
     sun?: { start?: string; end?: string; off?: boolean };
   };
 };
+
+function calendarEventVisual(ev: CalendarEvent) {
+  if (ev.category === 'content') {
+    const streaming = ev.source === 'streaming';
+    return {
+      short: streaming ? 'LIVE' : 'REC',
+      letter: streaming ? 'V' : 'R',
+      color: streaming ? 'bg-fuchsia-500' : 'bg-cyan-400',
+      label: streaming ? 'Streaming' : 'Content recording',
+    };
+  }
+  if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: 'bg-yellow-500', label: 'Consultation' };
+  if (ev.category === 'parts') {
+    const delivery = ev.partsStatus === 'delivery' || !ev.partsStatus;
+    return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? 'bg-green-500' : 'bg-blue-500', label: delivery ? 'Expected delivery' : 'Part ordered' };
+  }
+  if (ev.category === 'schedule') return { short: 'SHIFT', letter: 'S', color: 'bg-[#39FF14]', label: 'Technician schedule' };
+  return { short: 'EVENT', letter: 'E', color: 'bg-red-500', label: 'Event' };
+}
 
 function fmtDate(d: Date) {
   // Format YYYY-MM-DD in LOCAL time to avoid UTC shifting around DST/timezones
@@ -76,6 +95,10 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) =
       return { letter: 'O', color: colorOrdered, title: `${formatTime12FromHHmm(ev.time || '')} Ordered ${ev.partName || ev.title || ''}`.trim() };
     }
     if (ev.category === 'consultation') return { letter: 'C', color: 'bg-yellow-500', title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
+    if (ev.category === 'content') {
+      const visual = calendarEventVisual(ev);
+      return { letter: visual.letter, color: visual.color, title: `${formatTime12FromHHmm(ev.time || '')} ${visual.label}: ${ev.title || ''}`.trim() };
+    }
     if (ev.category === 'schedule') {
       // Show technician schedule for the current day
       const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -163,6 +186,9 @@ const CalendarWindow: React.FC = () => {
   const [isMobileCalendar, setIsMobileCalendar] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const [contentEditorLocked, setContentEditorLocked] = useState(false);
+  const [viewing, setViewing] = useState<CalendarEvent | null>(null);
+  const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
   const [dailyLookAssignedTo, setDailyLookAssignedTo] = useState<string>('');
@@ -177,11 +203,16 @@ const CalendarWindow: React.FC = () => {
     schedule: true,
     parts: true,
     events: true,
-    consultation: true
+    consultation: true,
+    content: true,
   });
 
   useEffect(() => {
-    const detect = () => setIsMobileCalendar(/mobile\.html$/i.test(window.location.pathname) || !!document.querySelector('.gbpos-mobile'));
+    const detect = () => {
+      const mobile = /mobile\.html$/i.test(window.location.pathname) || !!document.querySelector('.gbpos-mobile');
+      setIsMobileCalendar(mobile);
+      if (mobile) setCalendarView((view) => view === 'month' ? 'week' : view);
+    };
     detect();
     window.addEventListener('resize', detect);
     return () => window.removeEventListener('resize', detect);
@@ -262,17 +293,29 @@ const CalendarWindow: React.FC = () => {
 
   // Load events on open
   useEffect(() => {
-    (async () => {
+    let alive = true;
+    const refreshEvents = async () => {
       try {
         const list = await (window as any).api.dbGet('calendarEvents');
-        if (Array.isArray(list)) setEvents(list);
+        if (alive && Array.isArray(list)) setEvents(list);
       } catch (e) { console.error('load calendar events failed', e); }
-    })();
+    };
+    void refreshEvents();
     // Live updates
-    const off = (window as any).api.onCalendarEventsChanged?.(async () => {
-      try { const list = await (window as any).api.dbGet('calendarEvents'); if (Array.isArray(list)) setEvents(list); } catch {}
-    });
-    return () => { if (off) off(); };
+    const off = (window as any).api.onCalendarEventsChanged?.(() => { void refreshEvents(); });
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshEvents();
+    }, 30_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshEvents();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      if (off) off();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   // Load technicians for live schedule derivation
@@ -327,7 +370,8 @@ const CalendarWindow: React.FC = () => {
         const shouldShow = 
           (ev.category === 'parts' && filters.parts) ||
           (ev.category === 'event' && filters.events) ||
-          (ev.category === 'consultation' && filters.consultation);
+          (ev.category === 'consultation' && filters.consultation) ||
+          (ev.category === 'content' && filters.content);
           
         if (shouldShow) {
           const k = ev.date;
@@ -384,11 +428,14 @@ const CalendarWindow: React.FC = () => {
   }
 
   function onPick(day: Date) {
+    setContentEditorLocked(false);
     setEditing({ date: fmtDate(day), title: '', time: '', category: 'event' });
     setDeliveryDates([]);
     setDeliveryDateInput('');
   }
   function onEdit(ev: CalendarEvent) {
+    setContentEditorLocked(false);
+    setViewing(null);
     setEditing(ev);
     setDeliveryDateInput('');
     if (ev.category === 'parts') {
@@ -410,6 +457,7 @@ const CalendarWindow: React.FC = () => {
       if (payload.category === 'parts' && (!payload.title || !payload.title.trim())) {
         payload.title = payload.partName || 'Part/Product';
       }
+      if (payload.category === 'content' && !payload.source) payload.source = 'streaming';
       // If user typed a date but didn't click Add, include it
       if (payload.category === 'parts' && deliveryDateInput && /^\d{4}-\d{2}-\d{2}$/.test(deliveryDateInput)) {
         if (!deliveryDates.includes(deliveryDateInput)) deliveryDates.push(deliveryDateInput);
@@ -449,6 +497,7 @@ const CalendarWindow: React.FC = () => {
         }
       }
       setEditing(null);
+      setContentEditorLocked(false);
       setDeliveryDates([]);
       setDeliveryDateInput('');
     } catch (e) { console.error('save event failed', e); }
@@ -462,6 +511,7 @@ const CalendarWindow: React.FC = () => {
       if (payload.category === 'parts' && (!payload.title || !payload.title.trim())) {
         payload.title = payload.partName || 'Part/Product';
       }
+      if (payload.category === 'content' && !payload.source) payload.source = 'streaming';
       if (ev.id) {
         const updated = await (window as any).api.dbUpdate('calendarEvents', ev.id, payload);
         if (updated) setEvents(list => list.map(x => x.id === updated.id ? updated : x));
@@ -502,6 +552,7 @@ const CalendarWindow: React.FC = () => {
     if (!ev.id) { 
       console.log('No ID found, closing modal');
       setEditing(null); 
+      setContentEditorLocked(false);
       return; 
     }
     
@@ -541,6 +592,7 @@ const CalendarWindow: React.FC = () => {
         console.log('Delete failed - database returned false');
       }
       setEditing(null);
+      setContentEditorLocked(false);
     } catch (e) { 
       console.error('delete event failed', e); 
     }
@@ -554,6 +606,7 @@ const CalendarWindow: React.FC = () => {
     if (ev.category === 'parts') return !!(ev.partName || ev.title);
     if (ev.category === 'event') return !!(ev.title || ev.location || ev.time);
     if (ev.category === 'consultation') return !!(ev.customerName || ev.title);
+    if (ev.category === 'content') return !!(ev.title && ev.technician);
     return true;
   }
 
@@ -596,6 +649,10 @@ const CalendarWindow: React.FC = () => {
     const eventItems = todays
       .filter(e => e.category === 'event')
       .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+    const contentItems = todays
+      .filter(e => e.category === 'content')
+      .filter(e => (!assigned ? true : String(e.technician || '').trim() === assigned))
+      .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
     const partsAll = todays
       .filter(e => e.category === 'parts')
       .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
@@ -603,7 +660,7 @@ const CalendarWindow: React.FC = () => {
     const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
 
-    return { ymd, assigned, schedules, consultations, eventItems, partsDelivery, partsOrdered };
+    return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered };
   }, [dailyLookDate, dailyLookAssignedTo, events, techs]);
 
   useEffect(() => {
@@ -630,14 +687,30 @@ const CalendarWindow: React.FC = () => {
       return `${time ? `${time} - ` : ''}${action}: ${ev.partName || ev.title || 'Part'}${ev.workOrderId ? ` (WO #${ev.workOrderId})` : ev.saleId ? ` (Sale #${ev.saleId})` : ''}`;
     }
     if (ev.category === 'consultation') return `${time ? `${time} - ` : ''}${ev.customerName || 'Consultation'}${ev.title ? `: ${ev.title}` : ''}`;
+    if (ev.category === 'content') {
+      const kind = ev.source === 'streaming' ? 'Stream' : 'Record';
+      const end = formatTime12FromHHmm(ev.endTime || '');
+      return `${time ? `${time}${end ? ` - ${end}` : ''} - ` : ''}${kind}: ${ev.title || 'Content session'}${ev.technician ? ` with ${ev.technician}` : ''}`;
+    }
     return `${time ? `${time} - ` : ''}${ev.title || 'Event'}`;
   }
+
+  const contentWeekDays = useMemo(() => {
+    const start = addDays(current, -current.getDay());
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [current]);
 
   return (
     <div className="gb-calendar-window p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
       <div className="gb-calendar-header flex items-center justify-between mb-3">
         <h2 className="text-2xl font-semibold">Calendar - Schedule Management</h2>
         <div className="gb-calendar-controls flex items-center gap-2">
+          <button
+            className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
+            onClick={() => setContentScheduleOpen(true)}
+          >
+            Streaming/Content Schedule
+          </button>
           <button
             className="gb-calendar-daily-look px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
             onClick={() => {
@@ -729,16 +802,29 @@ const CalendarWindow: React.FC = () => {
             </div>
           </label>
 
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-fuchsia-500"
+              checked={filters.content}
+              onChange={(e) => setFilters(prev => ({ ...prev, content: e.target.checked }))}
+            />
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-fuchsia-500 rounded text-white text-[9px] flex items-center justify-center font-bold">V</div>
+              <span className="text-sm text-zinc-300">Content</span>
+            </div>
+          </label>
+
           <div className="ml-3 flex gap-2">
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true })}
+              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true })}
             >
               Select All
             </button>
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false })}
+              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false })}
             >
               Clear All
             </button>
@@ -776,22 +862,37 @@ const CalendarWindow: React.FC = () => {
           {calendarDays.map((day) => {
             const key = fmtDate(day);
             const dayEvents = eventsByDay[key] || [];
+            const isToday = key === fmtDate(new Date());
             return (
-              <section key={key} className={key === fmtDate(new Date()) ? 'is-today' : ''}>
+              <section key={key} className={isToday ? 'is-today' : ''}>
                 <header>
                   <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
-                    <strong>{day.toLocaleDateString(undefined, { weekday: 'long' })}</strong>
+                    <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
                     <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    {isToday ? <em>Today</em> : null}
                   </button>
                   <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
                 </header>
                 <div className="gb-calendar-agenda-list">
-                  {dayEvents.map((event, index) => (
-                    <button key={event.id || `${key}-${index}`} type="button" className={`type-${event.category || 'event'}`} onClick={() => event.category === 'schedule' ? undefined : onEdit(event)}>
-                      {eventSummary(event)}
-                    </button>
-                  ))}
-                  {!dayEvents.length ? <span>No scheduled activity</span> : null}
+                  {dayEvents.map((event, index) => {
+                    const visual = calendarEventVisual(event);
+                    return (
+                      <button
+                        key={event.id || `${key}-${index}`}
+                        type="button"
+                        className={`gb-calendar-week-event type-${event.category || 'event'}`}
+                        aria-label={`${visual.label}: ${eventSummary(event)}`}
+                        onClick={() => setViewing(event)}
+                      >
+                        <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                        <span className="gb-calendar-event-copy">
+                          <strong>{eventSummary(event)}</strong>
+                          <small>{visual.label}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {!dayEvents.length ? <span aria-label="No scheduled activity">—</span> : null}
                 </div>
               </section>
             );
@@ -815,20 +916,132 @@ const CalendarWindow: React.FC = () => {
             {filters.parts ? <section><h3>Expected Deliveries <span>{dailyLookData.partsDelivery.length}</span></h3>{dailyLookData.partsDelivery.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsDelivery.length ? <p>No expected deliveries.</p> : null}</section> : null}
             {filters.parts ? <section><h3>Parts Ordered <span>{dailyLookData.partsOrdered.length}</span></h3>{dailyLookData.partsOrdered.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsOrdered.length ? <p>No parts ordered.</p> : null}</section> : null}
             {filters.events ? <section><h3>Events <span>{dailyLookData.eventItems.length}</span></h3>{dailyLookData.eventItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.eventItems.length ? <p>No events.</p> : null}</section> : null}
+            {filters.content ? <section><h3>Streaming/Content <span>{dailyLookData.contentItems.length}</span></h3>{dailyLookData.contentItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => setViewing(item)}>{eventSummary(item)}</button>)}{!dailyLookData.contentItems.length ? <p>No content sessions.</p> : null}</section> : null}
           </div>
         </div>
       ) : null}
 
+      {viewing && (
+        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
+          <div className="gb-calendar-event-detail bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`gb-calendar-event-icon ${calendarEventVisual(viewing).color}`}>{calendarEventVisual(viewing).short}</span>
+                <div className="min-w-0">
+                  <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing).label}</div>
+                  <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing).label}</h3>
+                </div>
+              </div>
+              <button type="button" className="gb-icon-button" aria-label="Close event details" onClick={() => setViewing(null)}>X</button>
+            </div>
+            <div className="gb-calendar-detail-grid p-4">
+              <div><span>Date</span><strong>{new Date(`${viewing.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong></div>
+              <div><span>Time</span><strong>{formatTime12FromHHmm(viewing.time || '') || 'Not specified'}{viewing.endTime ? ` - ${formatTime12FromHHmm(viewing.endTime)}` : ''}</strong></div>
+              {viewing.technician ? <div><span>Assigned</span><strong>{viewing.technician}</strong></div> : null}
+              {viewing.customerName ? <div><span>Client</span><strong>{viewing.customerName}</strong></div> : null}
+              {viewing.customerPhone ? <div><span>Phone</span><strong>{formatPhone(viewing.customerPhone)}</strong></div> : null}
+              {viewing.location ? <div><span>Platform / location</span><strong>{viewing.location}</strong></div> : null}
+              {viewing.partName ? <div><span>Part / product</span><strong>{viewing.partName}</strong></div> : null}
+              {viewing.workOrderId ? <div><span>Work order</span><strong>#{viewing.workOrderId}</strong></div> : null}
+              {viewing.notes ? <div className="detail-wide"><span>Notes</span><strong>{viewing.notes}</strong></div> : null}
+            </div>
+            {viewing.category !== 'schedule' ? (
+              <div className="flex justify-end gap-2 p-4 border-t border-zinc-800">
+                <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => onEdit(viewing)}>Edit</button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {contentScheduleOpen && (
+        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
+          <div className="gb-content-schedule bg-zinc-900 border border-zinc-700 rounded w-full max-w-[760px] max-h-[92vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-zinc-800">
+              <div>
+                <h3 className="font-semibold text-xl">Streaming/Content Schedule</h3>
+                <p className="text-xs text-zinc-400">Plan streams, filming, and production work for the selected week.</p>
+              </div>
+              <button type="button" className="gb-icon-button" aria-label="Close streaming and content schedule" onClick={() => setContentScheduleOpen(false)}>X</button>
+            </div>
+            <div className="gb-content-week-nav">
+              <button type="button" aria-label="Previous content week" onClick={() => setCurrent(addDays(current, -7))}>&lt;</button>
+              <strong>{contentWeekDays[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {contentWeekDays[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+              <button type="button" aria-label="Next content week" onClick={() => setCurrent(addDays(current, 7))}>&gt;</button>
+            </div>
+            <div className="gb-content-week-list">
+              {contentWeekDays.map((day) => {
+                const date = fmtDate(day);
+                const isToday = date === fmtDate(new Date());
+                const entries = events
+                  .filter((event) => event.category === 'content' && event.date === date)
+                  .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+                return (
+                  <section key={date} className={isToday ? 'is-today' : ''}>
+                    <header>
+                      <button
+                        type="button"
+                        className="gb-content-day-button"
+                        onClick={() => {
+                          setCurrent(day);
+                          setCalendarView('day');
+                          setContentScheduleOpen(false);
+                        }}
+                      >
+                        <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
+                        <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                        {isToday ? <em>Today</em> : null}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Add streaming or content entry for ${date}`}
+                        onClick={() => {
+                          setContentEditorLocked(true);
+                          setEditing({ date, title: '', time: '', endTime: '', category: 'content', source: 'streaming', technician: '' });
+                          setContentScheduleOpen(false);
+                        }}
+                      >
+                        +
+                      </button>
+                    </header>
+                    <div className="gb-content-day-events">
+                      {entries.map((entry, index) => {
+                        const visual = calendarEventVisual(entry);
+                        return (
+                          <button
+                            key={entry.id || `${date}-${index}`}
+                            type="button"
+                            aria-label={`${visual.label}: ${eventSummary(entry)}`}
+                            onClick={() => { setContentScheduleOpen(false); setViewing(entry); }}
+                          >
+                            <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                            <span><strong>{eventSummary(entry)}</strong>{entry.location ? <small>{entry.location}</small> : null}</span>
+                          </button>
+                        );
+                      })}
+                      {!entries.length ? <p aria-label="No streaming or content scheduled">—</p> : null}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {editing && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-4 w-[520px]">
-            <h3 className="font-semibold mb-2">{editing.id ? 'Edit' : 'Add'} calendar entry</h3>
+          <div className="gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 w-[520px]">
+            <h3 className="font-semibold mb-2">
+              {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
+            </h3>
             {/* Category selector */}
-            <div className="flex gap-2 mb-3">
+            {!contentEditorLocked ? <div className="flex gap-2 mb-3">
               {([
                 { key: 'parts', label: 'Parts/Products' },
                 { key: 'event', label: 'Events' },
                 { key: 'consultation', label: 'Consultation' },
+                { key: 'content', label: 'Streaming/Content' },
               ] as const).map(opt => (
                 <button
                   key={opt.key}
@@ -836,7 +1049,7 @@ const CalendarWindow: React.FC = () => {
                   onClick={() => setEditing({ ...editing, category: opt.key as any })}
                 >{opt.label}</button>
               ))}
-            </div>
+            </div> : null}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-zinc-400">Date</label>
@@ -846,6 +1059,12 @@ const CalendarWindow: React.FC = () => {
                 <label className="block text-xs text-zinc-400">Time</label>
                 <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.time || ''} onChange={e => setEditing({ ...editing, time: e.target.value })} />
               </div>
+              {editing.category === 'content' && (
+                <div>
+                  <label className="block text-xs text-zinc-400">End time</label>
+                  <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.endTime || ''} onChange={e => setEditing({ ...editing, endTime: e.target.value })} />
+                </div>
+              )}
               {/* Dynamic fields per category */}
               {editing.category === 'parts' && (
                 <>
@@ -956,6 +1175,63 @@ const CalendarWindow: React.FC = () => {
                   </div>
                 </>
               )}
+              {editing.category === 'content' && (
+                <>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Session type</label>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <button
+                        type="button"
+                        className={`px-3 py-2 border rounded text-sm ${editing.source === 'streaming' ? 'bg-fuchsia-600 border-fuchsia-400 text-white' : 'bg-zinc-800 border-zinc-700'}`}
+                        onClick={() => setEditing({ ...editing, source: 'streaming' })}
+                      >
+                        Streaming
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-3 py-2 border rounded text-sm ${editing.source === 'content' ? 'bg-cyan-500 border-cyan-300 text-black' : 'bg-zinc-800 border-zinc-700'}`}
+                        onClick={() => setEditing({ ...editing, source: 'content' })}
+                      >
+                        Record Content
+                      </button>
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Who is involved</label>
+                    <input
+                      list="calendar-content-names"
+                      className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                      value={editing.technician || ''}
+                      onChange={e => setEditing({ ...editing, technician: e.target.value })}
+                      placeholder="Name or names"
+                    />
+                    <datalist id="calendar-content-names">
+                      {techs.map((tech: any) => {
+                        const name = technicianDisplayName(tech);
+                        return <option key={tech.id || name} value={name} />;
+                      })}
+                    </datalist>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">What is being streamed or recorded</label>
+                    <input
+                      className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                      value={editing.title || ''}
+                      onChange={e => setEditing({ ...editing, title: e.target.value })}
+                      placeholder="Game, stream type, video topic, or production task"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Platform or location (optional)</label>
+                    <input
+                      className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                      value={editing.location || ''}
+                      onChange={e => setEditing({ ...editing, location: e.target.value })}
+                      placeholder="Twitch, YouTube, studio, shop floor..."
+                    />
+                  </div>
+                </>
+              )}
               {/* Schedule entries are managed in Admin → Technicians and are not editable here */}
               <div className="col-span-2">
                 <label className="block text-xs text-zinc-400">Notes</label>
@@ -964,7 +1240,7 @@ const CalendarWindow: React.FC = () => {
             </div>
             <div className="flex justify-end gap-2 mt-3">
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
-              <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Cancel</button>
+              <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setContentEditorLocked(false); }}>Cancel</button>
               <button className="px-3 py-1 bg-[#39FF14] text-black rounded" onClick={() => saveEvent(editing)}>Save</button>
             </div>
           </div>
@@ -1121,6 +1397,30 @@ const CalendarWindow: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-zinc-800 rounded p-3 col-span-2">
+                <div className="font-semibold mb-2">Streaming/Content</div>
+                {dailyLookData.contentItems.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No streaming or content sessions.</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {dailyLookData.contentItems.map((entry, idx) => {
+                      const visual = calendarEventVisual(entry);
+                      return (
+                        <button key={(entry.id ?? idx) as any} type="button" className="text-left border border-zinc-800 rounded p-2 bg-zinc-900/50" onClick={() => setViewing(entry)}>
+                          <div className="flex items-center gap-2">
+                            <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                            <span className="min-w-0">
+                              <strong className="block text-sm truncate">{entry.title || visual.label}</strong>
+                              <small className="block text-zinc-400">{eventSummary(entry)}</small>
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

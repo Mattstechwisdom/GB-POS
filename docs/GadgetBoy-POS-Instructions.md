@@ -1,0 +1,580 @@
+# GadgetBoy POS Instructions
+
+This manual is the operating guide for GadgetBoy POS on Windows and Android. It is regenerated for every release so the version number and release date stay aligned with the installers.
+
+> Data safety rule: never clear, overwrite, restore, merge, or import production data unless you understand the effect and have a verified current backup. Normal POS use syncs records through Supabase; local backups are an additional recovery layer, not a replacement for cloud sync.
+
+## 1. Quick Start
+
+1. Install GadgetBoy POS using the Windows installer or Android APK from the matching GitHub release.
+2. Open the app and sign in with the shop login. The shop login grants access to the shared database; it is not a technician identity.
+3. Wait for the initial sync to finish before judging whether records are missing.
+4. Confirm the main screen shows recent work orders and sales.
+5. Open Technicians and select or clock in the technician who is actually doing the work.
+6. Use Search Client before creating a client to reduce duplicate records.
+7. Create a local backup before any restore, import, bulk repair, or database maintenance.
+
+## 2. Platforms and Navigation
+
+### Windows
+
+- The top toolbar contains Admin, Generate Quote, Quick Sale, Consultation, End of Day Report, Notifications, Calendar, and search.
+- Admin contains Devices / Repairs, Inventory, Distributors / Vendors, Reporting, Technicians, Data Tools, and Dev Menu.
+- Daughter windows use their in-app close control when provided. Standard Windows controls remain available on true native windows.
+- Full screen can be toggled from the toolbar.
+
+### Android
+
+- Tap the three-line menu to open the main drawer.
+- Priority actions appear first: Generate Quote, Consultation, Quick Sale, and End of Day Report.
+- Client Database contains Search Client and Add Client.
+- Technician Tools contains Technicians, Calendar, and Diagnostic Tools.
+- Admin contains Devices / Repairs, Inventory, Distributors / Vendors, Reporting, and Data Tools.
+- Sync Now refreshes shared records. Update appears when a newer compatible APK is available.
+- Long-press an item where the desktop app would normally offer a right-click menu.
+- Phone-only actions can open the default dialer or messaging app with the client number already filled in.
+
+## 3. Login, Sessions, and Technician Identity
+
+- The shop username and PIN/password are only for opening the POS and accessing Supabase.
+- The login profile must not be used as a technician, salesperson, or commission identity.
+- Technician assignment comes from the Technicians records inside the POS.
+- A valid saved session normally keeps the device signed in between launches.
+- Sign Out ends the saved session on that device. Closing an ordinary daughter window must not ask for login again.
+- Never place the Supabase service-role key in the app, installer, APK, source control, or a technician-facing settings screen.
+
+## 4. Cloud Sync and Offline Work
+
+- Supabase is the shared source for customers, work orders, sales, technicians, time entries, calendar records, device and repair catalogs, inventory, vendors, quotes, settings, and other supported collections.
+- A saved record should become available to other signed-in devices after sync.
+- The app may retain local records while offline and send queued changes when connectivity returns.
+- Do not uninstall, clear app storage, or restore an older backup while offline work is waiting to sync.
+- After reconnecting, use Sync Now and verify the newest customer, work order, and sale from another device.
+- Pagination only changes what is visible. Records beyond the current page remain stored and synced.
+
+## 5. Client Workflow
+
+### Search Before Adding
+
+1. Open Search Client.
+2. Search by first name, last name, phone, or email.
+3. Open the matching client profile and confirm contact information.
+4. Use New Work Order, New Sale, or the saved history from that profile.
+
+### Add a Client
+
+1. Open Add Client.
+2. Enter the client name and at least one reliable contact method.
+3. Review phone and email carefully because update messages use these fields.
+4. Save the client, or continue directly to New Work Order or New Sale.
+5. If the duplicate warning appears, open the existing record and compare it before creating another.
+
+### Duplicate Protection
+
+- A duplicate warning can be triggered by matching first and last name together, primary phone, or email.
+- An alternate phone on a different client should not be treated as a primary-phone match.
+- If a warning appears but search finds nothing, broaden the search, clear filters, and search the exact phone digits or email.
+- Use Data Tools duplicate review only after creating a current backup. Merging permanently repoints related records to the selected client.
+
+### Client Profile
+
+- The profile card shows contact information and provides New Work Order and New Sale.
+- Use the pencil icon to edit client information, then save.
+- History can include work orders, sales, consultations, and saved quotes.
+- Editing a client updates the shared client record; it must not create a new technician or login profile.
+
+## 6. Work Order Check-In
+
+### Standard Drop-Off
+
+1. Search for the client or add a new client.
+2. Choose New Work Order.
+3. Verify the client information shown at the top of the work order.
+4. Select the assigned technician.
+5. Choose the work order type and enter the device, serial/IMEI when available, reported issue, accessories, condition, and intake source.
+6. For most unknown faults, add the appropriate diagnostic fee. Obvious repairs such as a visibly damaged screen may use the known repair instead.
+7. Add intake notes and any customer-visible details.
+8. Save the work order before printing.
+9. Print the work order form. Ask the client to verify the contact information and sign the terms.
+10. Confirm the saved work order shows the client name rather than only a client number.
+
+### Diagnostic-First Process
+
+1. Record the initial symptom without claiming an unverified diagnosis.
+2. Collect the diagnostic payment when shop policy requires it.
+3. Save the payment to the work order.
+4. Start the diagnostic update from the client update panel or QR workflow.
+5. Add findings to Internal Notes or Repair Journal.
+6. Add the confirmed repair and required part only after diagnosis supports it.
+7. Apply the diagnostic fee against final labor when required by shop policy.
+
+### Work Order Items
+
+- Add Repair opens Repair Selection and uses the permanent Devices / Repairs catalog.
+- Add Product uses the product inventory picker.
+- One-off custom entries can be entered for a work order without changing the permanent catalog.
+- Verify quantity, part charge, labor charge, tax treatment, discounts, and total before checkout.
+- Internal part cost is never the client-facing part price.
+
+### Internal Notes and Repair Journal
+
+- Internal Notes are for technician observations not intended for the customer printout.
+- Repair Journal keeps saved notes tied to the specific work order.
+- Record the date, technician, test performed, result, and next action.
+- Journal entries are part of the work-order data and should be included in full backups and cloud sync.
+
+## 7. Client Updates and QR Codes
+
+- Work-order QR codes open the client update page for that ticket.
+- The Update Client button inside the POS opens the same workflow without scanning.
+- Each update must save to the ticket history before or while the customer message is sent.
+- Desktop sends customer updates by email.
+- Android can send email or open the phone messaging app with a prepared message and recipient. The technician still presses Send in the messaging app.
+- History shows previously recorded updates for the ticket.
+
+### Typical Update Stages
+
+1. Diagnostic started.
+2. Diagnostic completed or estimate ready.
+3. Part required.
+4. Part ordered.
+5. Part received.
+6. Repair in progress.
+7. Repair completed and ready for pickup.
+8. Pickup or closed.
+
+### If Update Buttons Do Not Work
+
+1. Confirm the QR page loaded from the production Railway URL.
+2. Confirm runtime Supabase values are present.
+3. Confirm the client has a valid email or phone.
+4. Retry from Update Client inside the POS.
+5. Check ticket History to determine whether the status saved even if delivery failed.
+6. Report the exact work-order number and error; do not repeatedly create replacement work orders.
+
+## 8. Parts Ordering on a Work Order
+
+### Part Already in Stock
+
+1. Select the saved repair or part from inventory.
+2. Confirm the inventory quantity and internal cost.
+3. Add the client-facing part price and labor to the work order.
+4. Complete the repair and decrement the used inventory quantity.
+5. Reporting treats internal cost as cost and the client-facing part amount as parts revenue.
+
+### Part Must Be Ordered
+
+1. Find the correct part on the distributor website.
+2. Paste the HTTPS order URL into Parts Tracking.
+3. Allow URL reading to fill supported title, distributor, and cost fields.
+4. Verify every scraped value against the source page before saving.
+5. Use the default 10 percent markup or choose/enter the approved markup.
+6. Confirm the resulting sold price. The customer sees the sold price, not internal cost.
+7. Enter order date and estimated delivery when known.
+8. Mark Tax Exempt only when that distributor/order is actually tax exempt.
+9. Save. The URL becomes an Order URL button.
+10. Take the part payment according to shop policy and record it on the work order.
+
+### What Order Part Does
+
+- The Order URL button opens the distributor product page.
+- It does not guarantee the item is added to a cart and does not place or pay for an order.
+- The technician must confirm model, variant, condition, quantity, shipping, tax, and final price on the distributor site.
+- At End of Day, use the parts-to-order list to open each distributor cart and mark only genuinely paid orders as ordered.
+
+### Saving Parts and Repairs
+
+- Save Part adds verified part information to the permanent Parts inventory/catalog.
+- Save Repair saves a reusable repair definition and includes the selected saved part when supported.
+- Use permanent save only for standardized entries worth reusing. One-off work-order details should remain on that ticket.
+
+## 9. Devices / Repairs
+
+- Devices define models used by reusable repair records.
+- Repair categories organize services. Diagnostic must appear first, Additional Fees second, and remaining categories alphabetically.
+- Service and repair lists can be searched and filtered by category/device.
+- Repair Selection shows device, category, repair title, part price, labor, and total.
+- On mobile, long values are shortened visually; opening the row shows the complete record.
+- Use Select Part to pull from Parts inventory rather than duplicating ordering data in multiple places.
+- Catalog edits affect future selections. Existing completed tickets should retain their recorded historical values.
+
+## 10. Inventory
+
+### Parts
+
+- Parts are repair components organized by device type and device model.
+- Store condition, SKU, quantity, internal cost, markup, sold price, distributor, order URL, and tax status where available.
+- Used and new parts must be distinguishable.
+- A saved order URL becomes a button after save.
+- When a part is used, verify inventory quantity decreases and reporting receives both cost and sold amount.
+
+### Products
+
+- Products are devices or merchandise sold to customers.
+- Organize products by device type and product category.
+- Record condition, SKU, quantity, internal cost, sold price, and vendor.
+- A product that works with multiple device models can retain those associations when supported by the entry form.
+- Adding a product to a sale or work order must preserve the selected product title, quantity, cost, and client price.
+
+### Adding an Inventory Entry
+
+1. Select Parts or Products.
+2. Choose Add New.
+3. Paste and verify the order URL when available.
+4. Select device type/model or product category.
+5. Enter the normalized title, condition, SKU, and quantity.
+6. Select or add the Vendor / Distributor.
+7. Enter internal cost.
+8. Select or enter markup and verify sold price.
+9. Save, then search for the new record to confirm it exists.
+
+## 11. Distributors and Vendors
+
+- Parts distributors and product vendors are separate records even when the company name is the same.
+- Record contact and ordering information, tax-exempt status, and notes.
+- Vendor consignment/percentage settings are for products sold on behalf of another party.
+- Reporting can use the vendor percentage to separate vendor amount owed from shop profit.
+- Never infer tax exemption or commission percentage; use the verified agreement and entered values.
+
+## 12. Sales and Quick Sale
+
+### New Sale
+
+1. Open a client and choose New Sale.
+2. Add one or more products/items.
+3. Confirm quantities, prices, discounts, taxes, and totals.
+4. Open Checkout.
+5. Record the actual payment method and amount received.
+6. Print or save the customer receipt.
+7. Confirm the sale appears in the client history and reporting.
+
+### Quick Sale
+
+1. Open Quick Sale.
+2. Add each item with Add Item.
+3. Review the item list and totals.
+4. Open the standard Checkout window.
+5. Complete payment and receipt handling.
+
+- Quick Sale supports multiple items in one checkout.
+- Do not complete payment until every item and price matches what is physically being sold.
+
+## 13. Checkout and Payments
+
+- Checkout uses the same payment window for work orders, sales, and Quick Sale where supported.
+- Record only money actually received.
+- For split/deposit workflows, verify the remaining balance after each payment.
+- Diagnostic fees and part deposits must remain attached to the correct work order.
+- On pickup, charge the remaining approved labor and other balance.
+- Print Customer Receipt and, when applicable, Print Release Form.
+- If a part fails or is unsuitable, follow the printed terms and management approval for part/labor refund handling.
+
+## 14. Quote Generator
+
+1. Open Generate Quote.
+2. Search for an existing client or add a client. Saving valid new contact information creates a searchable client even if no sale is completed.
+3. Choose Products or Repairs.
+4. Add quote items.
+5. For product autofill, paste the product URL and choose Autofill.
+6. Verify detected device type, model-specific fields, condition, pictures, cost, and summary.
+7. Autofilled product quotes default to 15 percent markup; adjust if approved.
+8. Edit any field as needed. Autofill is assistance, not authoritative source data.
+9. Save the quote so it appears in the client quote history and syncs.
+10. Create Sale and select the quote items to carry into the sale.
+
+### Autofill Rules
+
+- The tool attempts to read structured product metadata, visible page data, and product images.
+- It should choose only fields that belong to the detected device type.
+- Selected condition and live page variants may not be visible to every website reader. Always compare against the browser page.
+- Images must depict the quoted item; remove unrelated images.
+- The generated description should be one enthusiastic paragraph based only on confirmed compatible specifications.
+
+## 15. Consultations
+
+1. Search or add the client.
+2. Enter the date, start/end time or billable duration, purpose, assigned technician, and notes.
+3. Save the consultation.
+4. Confirm it appears on Calendar and under the client.
+5. At checkout, record the consultation sale/payment when applicable.
+
+- Consultation commission is technician-specific.
+- Current reporting policy values logged consultation time at $25 per hour for technician commission.
+- Incorrect technician assignment produces incorrect commission, so verify it before saving.
+
+## 16. Calendar and Content Schedule
+
+- Mobile defaults to a compact vertical week; the current day is highlighted.
+- Use previous/next controls to change weeks.
+- Day, Week, and Month views are available where shown.
+- Filter colors identify events, consultations, parts orders/deliveries, and technician schedules.
+- Tapping an entry opens its details.
+- Part order and expected delivery dates can create calendar entries from work-order data.
+- Streaming / Content Schedule is a separate weekly schedule for names, times, stream type/game, filming, and content work.
+- Content schedule Add contains only content/streaming fields, not repair or consultation categories.
+
+## 17. Technicians and Time
+
+- Create one technician record per actual technician.
+- Use the short shop display name intended for assignment lists.
+- Technician passcodes are separate from the Supabase shop login.
+- Clock in/out and work schedules feed time and reporting tools.
+- Audit open shifts before payroll/commission reporting.
+- Do not assign records to the Supabase login display name.
+
+## 18. Notifications
+
+### Android
+
+1. Open Notifications for the first time.
+2. Approve the Android notification permission prompt.
+3. Open Settings to choose notification types and reminder timing.
+4. If permission was denied, open the phone's App Info > Notifications and enable GadgetBoy POS.
+
+### Windows
+
+1. Open Notifications > Settings.
+2. Choose Allow Notifications when prompted.
+3. Enable the desired work-order, sale, consultation, parts, and reminder options.
+4. Check Windows Settings > System > Notifications if alerts are blocked.
+
+- Notification settings are device-specific.
+- Consultation reminder timing can be set in hours before the event.
+- Disabling system permission prevents delivery even if a POS checkbox is enabled.
+
+## 19. End of Day Report
+
+- End of Day is a concise overview of the current local shop day only.
+- It resets to the next day after midnight; it is not the monthly accounting report.
+- Review labor collected, part cost, parts charged, product cost, products sold, consultations, sales count, and parts awaiting purchase.
+- Parts charged and parts cost must remain separate.
+- Mark a cart/order paid only after checkout on the distributor site succeeds.
+- Marking an order paid can update the linked work order and client update workflow.
+- EOD Report Email stores recipients and can send the completed daily summary.
+- Monthly totals belong in Reporting, not EOD.
+
+## 20. Reporting and Money Rules
+
+- Reports must use saved factual transactions and entered costs. Never estimate missing money values.
+- Labor is treated as full gross profit before overhead unless an explicit cost is entered elsewhere.
+- Parts profit equals client part charge minus verified internal part cost.
+- Product profit equals product sold amount minus verified internal product cost and any vendor amount owed.
+- Sales commission is currently 5 percent of qualifying physical product sales and is split according to the configured shop policy.
+- Repair labor is not sales commission.
+- Consultation commission is based on technician-specific logged hours at the configured rate.
+- Day, week, month, and year filters change the reporting period; there is no all-time total view.
+- End-of-month exports should list dates, item titles, sold totals, internal costs, and commission using the saved source records.
+- If historical test or incomplete entries exist, use date filters and verified accounting periods rather than deleting valuable records.
+
+## 21. Local Backup and Restore
+
+### Create a Backup
+
+1. Open Admin > Data Tools > Local Backup.
+2. Select Full Backup or specific collections.
+3. Create the backup and confirm the file path.
+4. Store a second copy in a secure location.
+5. Use encrypted .gbpos backup for sensitive portable copies when available.
+
+### Daily Schedule
+
+- Enable Daily Backup Schedule and choose a time after normal shop activity.
+- The scheduled backup is local protection; live Supabase sync continues during normal saves.
+- Verify the last backup path and periodically test a copy in a non-production environment.
+
+### Restore Safely
+
+1. Stop entering new records on every device.
+2. Create a current backup first.
+3. Use Preview Backup / Dry Run and review record counts.
+4. Confirm the chosen file is the intended newest source.
+5. Restore only with management approval.
+6. Reopen the app, sync, and verify customers, work orders, sales, technicians, and catalog counts.
+
+> A restore can replace current data with the contents of the selected file. Never restore an older file simply because one screen looks empty.
+
+## 22. Data Tools and Dev Menu
+
+- App Health Scan checks readable collections and duplicate identifiers.
+- Find Orphans and Duplicates identifies work orders without clients and possible duplicate customers.
+- Cloud Sync Check compares local/cloud availability where supported.
+- Repair Search Index rebuilds search support without deleting source records.
+- Rebuild Repair Lookups refreshes derived repair data.
+- Safe UI Reset clears transient window/layout state, not production records.
+- Dev Menu offers dry-run validators, duplicate review, orphan checks, totals validation, environment information, and logs.
+- Run dry-run/validation tools before any auto-fix.
+- Create a backup before Merge, Auto-fix, Purge, Clear Database, or any other write operation.
+- Clear Database is destructive and must never be used as routine troubleshooting.
+
+## 23. Gidget
+
+- Click the GadgetBoy logo to open Gidget.
+- Gidget can help search POS information, organize diagnostics, and use locally supplied repair knowledge.
+- Voice mode depends on microphone permission and supported device speech services.
+- Chat history keeps a limited list of recent conversations.
+- Gidget must not expose customer data outside authorized shop use.
+- Treat repair suggestions as assistance. Verify measurements, model-specific procedures, safety requirements, and source quality before acting.
+- Do not give Gidget passwords, API keys, payment-card data, or unnecessary private client information.
+
+## 24. Updating GadgetBoy POS
+
+### Windows
+
+1. When Update Available appears, optionally leave Download Instructions checked.
+2. Choose Update Now to download and install later, or Auto Install & Relaunch.
+3. Keep the app open while the progress bar completes.
+4. The app closes, runs the installer, and relaunches.
+5. Confirm the version shown in the app.
+
+### Android
+
+1. When Update Available appears, optionally leave Download Instructions checked.
+2. Choose Update Now.
+3. Allow GadgetBoy POS to install unknown apps if Android asks.
+4. Install the APK over the existing app. Do not uninstall first.
+5. If Android says App not installed, confirm the APK uses the same signing certificate and has a higher version.
+6. Reopen the app and verify the version and synced data.
+
+- The Windows updater selects Windows assets only.
+- The Android updater selects Android APK assets only.
+- Instructions uses the PDF from the same versioned GitHub release.
+
+## 25. Troubleshooting
+
+### App Opens Blank or Stays Loading
+
+1. Confirm internet access.
+2. Close and reopen the app once.
+3. On Windows, open the production web URL to confirm Railway responds.
+4. Confirm runtime environment values exist in Railway.
+5. Check Dev Menu > Environment Info and App Health Scan.
+6. Do not restore or clear data merely to fix a loading screen.
+
+### Missing Supabase Environment Values
+
+- Local development requires the expected VITE_SUPABASE values in .env.local.
+- Railway requires production variables and runtime-env.js generation.
+- GitHub Actions requires matching repository secrets/variables for packaged builds.
+- Never use the service-role secret as a publishable client key.
+
+### Records Missing on One Device
+
+1. Use Sync Now.
+2. Clear filters/search and check additional pages.
+3. Confirm the device is signed into the same shop.
+4. Compare the newest record by ID/date on another device.
+5. Check whether the client exists but the work order has an orphaned customer link.
+6. Run read-only health checks before any repair.
+
+### Client Shows as a Number
+
+- The work order exists but the linked client may not have loaded or may have an invalid customer ID.
+- Search the phone/email, then use orphan detection.
+- Do not create another client/work order until the relationship is understood.
+
+### Update Does Not Appear
+
+- Confirm the installed version is older than the latest GitHub release.
+- Android checks for `Android-APK-universal-VERSION.apk`.
+- Windows checks `latest.yml` and the matching Windows installer/blockmap.
+- Verify the release is marked latest and assets finished uploading.
+
+### Android Says App Not Installed
+
+- Do not uninstall because that can remove unsynced local state.
+- Confirm Install unknown apps is enabled for GadgetBoy POS.
+- Confirm the APK is newer and signed with the same certificate as the installed app.
+- Re-download the APK from the official release if the file is incomplete.
+
+### Notifications Keep Loading
+
+- Confirm system notification permission.
+- On Android, open App Info > Notifications and enable permission.
+- Reopen Notification Settings.
+- Confirm the native Capacitor notification plugin is present in the APK build.
+
+### QR Page Opens but Buttons Fail
+
+- Verify Railway production is healthy and runtime-env.js contains non-empty public Supabase values.
+- Confirm the ticket ID exists in the shared database.
+- Try Update Client inside the app.
+- Check update History before retrying.
+
+### Autofill Keeps Reading
+
+- Wait for the timeout/error message rather than closing the whole POS.
+- Open the URL in a normal browser and confirm it is public.
+- Some sites block automated reading or hide selected variants.
+- Enter values manually and verify cost/condition; never accept an incorrect image or price.
+
+### Printing Wraps or Uses Extra Pages
+
+- Use the print preview.
+- Confirm printer paper size and margins.
+- Shorten unusually long notes/items when appropriate.
+- QR codes and client information should remain on the first page; report the affected form and printer settings if they do not.
+
+## 26. Daily Technician Checklist
+
+### Opening
+
+1. Open the app and confirm sync.
+2. Check Notifications and Calendar.
+3. Clock in/select the correct technician.
+4. Review parts expected today and open work orders.
+
+### Every Check-In
+
+1. Search client first.
+2. Verify contact information.
+3. Record device identity, condition, accessories, issue, and assigned technician.
+4. Add diagnostic or known repair.
+5. Save, verify the client link, print, and obtain signature.
+
+### During Repair
+
+1. Record updates in Repair Journal.
+2. Send client updates at meaningful stages.
+3. Verify parts, cost, markup, tax status, and order dates.
+4. Save after each material change.
+
+### Pickup
+
+1. Confirm repair outcome and customer approval.
+2. Apply deposit/diagnostic payment correctly.
+3. Collect the actual remaining balance.
+4. Print receipt/release form.
+5. Mark the ticket complete and send final update.
+
+### Closing
+
+1. Open End of Day Report.
+2. Verify payments, labor, parts/products cost and sold totals.
+3. Purchase required parts and mark only paid carts.
+4. Send the EOD email.
+5. Confirm local daily backup completed.
+
+## 27. Data and Security Rules
+
+- Access customer information only for authorized shop work.
+- Use unique device locks and do not share shop credentials outside approved staff.
+- Never commit .env files, API secrets, service-role keys, email app passwords, or signing keys.
+- Do not send full customer exports through ordinary email or chat.
+- Prefer encrypted backups for portable media.
+- Log out of retired/lost devices and revoke access promptly.
+- Never alter production datasets for testing. Use a separate test environment or disposable test records clearly marked as tests.
+
+## 28. Support Information to Collect
+
+When reporting a problem, include:
+
+- GadgetBoy POS version and platform.
+- The exact screen and action.
+- Work-order/sale/client ID when relevant, without posting unnecessary private details.
+- Exact error text.
+- Whether another device shows the same problem.
+- Whether Sync Now changes the result.
+- Railway deployment status for web/QR failures.
+- A screenshot with private information obscured.
+
+Do not send passwords, PINs, Supabase keys, signing keys, payment-card information, or entire customer backups in a support message.

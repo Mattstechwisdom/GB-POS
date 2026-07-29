@@ -4,11 +4,14 @@ const nodemailer = require('nodemailer');
 
 process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_PUBLISHABLE_KEY = 'test-publishable-key';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 process.env.GBPOS_GMAIL_APP_PASSWORD = 'test-app-password';
 
 let mailShouldFail = false;
+let mailSendCount = 0;
 nodemailer.createTransport = () => ({
   sendMail: async (message) => {
+    mailSendCount += 1;
     assert.equal(message.to, 'client@example.com');
     if (mailShouldFail) throw new Error('Simulated provider rejection');
     return { messageId: 'test-message-id' };
@@ -54,6 +57,7 @@ global.fetch = async (url, options = {}) => {
       first_name: 'Test',
       last_name: 'Client',
       email: 'client@example.com',
+      phone: '8035550100',
     }];
   } else if (value.includes('/rest/v1/client_update_history') && method === 'POST') {
     const row = JSON.parse(String(options.body || '{}'));
@@ -121,6 +125,32 @@ async function invoke(statusKey) {
   return JSON.parse(raw);
 }
 
+async function invokeTextWithoutSession(statusKey) {
+  const payload = JSON.stringify({ token: 'test-token', statusKey, deliveryMode: 'text' });
+  const req = Readable.from([payload]);
+  req.url = '/api/client-updates/send';
+  req.method = 'POST';
+  req.headers = {};
+  let status = 0;
+  let raw = '';
+  const res = {
+    headersSent: false,
+    writableEnded: false,
+    writeHead(nextStatus) {
+      status = nextStatus;
+      this.headersSent = true;
+    },
+    end(value) {
+      raw = String(value || '');
+      this.writableEnded = true;
+    },
+  };
+  const handled = await handleClientUpdateApi(req, res);
+  assert.equal(handled, true);
+  assert.equal(status, 200);
+  return JSON.parse(raw);
+}
+
 (async () => {
   await testCorsPreflight();
   const sent = await invoke('diagnosis');
@@ -138,7 +168,21 @@ async function invoke(statusKey) {
   assert.equal(historyWrites[1].delivery_status, 'failed');
   assert.match(historyWrites[1].delivery_error, /Simulated provider rejection/);
 
-  console.log('Client update API tests passed (sent and failed delivery history).');
+  const sentBeforeText = mailSendCount;
+  const text = await invokeTextWithoutSession('repair_complete');
+  assert.equal(text.ok, true);
+  assert.equal(text.statusSaved, true);
+  assert.equal(text.deliveryStatus, 'text_prepared');
+  assert.equal(text.recipientPhone, '8035550100');
+  assert.match(text.textMessage, /GADGETBOY UPDATE/);
+  assert.match(text.textMessage, /Great news! Your repair is complete/);
+  assert.match(text.textMessage, /Call us at \(803\) 708-0101 or email gadgetboysc@gmail\.com/);
+  assert.doesNotMatch(text.textMessage, /reply to this email/i);
+  assert.equal(mailSendCount, sentBeforeText);
+  assert.equal(historyWrites[2].delivery_status, 'not_requested');
+  assert.equal(historyWrites[2].message, text.textMessage);
+
+  console.log('Client update API tests passed (email, failure history, and secure QR text preparation).');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

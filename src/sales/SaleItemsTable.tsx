@@ -191,16 +191,16 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
   }
 
   return (
-    <div className={`bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
-      <div className="flex items-center justify-between mb-2">
+    <div className={`gb-sale-items bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
+      <div className="gb-sale-items-header flex items-center justify-between mb-2">
         <h4 className="text-sm font-semibold text-zinc-200">
           Items
           {showRequiredIndicator && <span className="ml-1 text-red-500">*</span>}
         </h4>
         <div className="text-xs text-zinc-400">Add products (max {MAX_ITEMS})</div>
       </div>
-      <div className="overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '12rem' }}>
-        <table className="w-full text-sm">
+      <div className="gb-sale-items-table-wrap overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '12rem' }}>
+        <table className="gb-sale-items-table w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
               <th className="px-2 py-1">Item</th>
@@ -226,11 +226,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
                   }}
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
-                  <td className="px-2 py-1 font-medium truncate" title={it.description}>{it.description}</td>
-                  <td className="px-2 py-1">{Number.isFinite(units) ? units : ''}</td>
-                  <td className="px-2 py-1">{typeof it.price === 'number' ? `$${it.price.toFixed(2)}` : ''}</td>
-                  <td className="px-2 py-1" style={{ textAlign: 'right' }}>{`$${lineTotal.toFixed(2)}`}</td>
-                  <td className="px-2 py-1" style={{ textAlign: 'center' }}>
+                  <td data-label="Item" className="px-2 py-1 font-medium truncate" title={it.description}>{it.description}</td>
+                  <td data-label="Qty / Hrs" className="px-2 py-1">{Number.isFinite(units) ? units : ''}</td>
+                  <td data-label="Price" className="px-2 py-1">{typeof it.price === 'number' ? `$${it.price.toFixed(2)}` : ''}</td>
+                  <td data-label="Total" className="px-2 py-1" style={{ textAlign: 'right' }}>{`$${lineTotal.toFixed(2)}`}</td>
+                  <td data-label="In stock" className="px-2 py-1" style={{ textAlign: 'center' }}>
                     <input
                       type="checkbox"
                       className="h-4 w-4 align-middle"
@@ -246,7 +246,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               );
             })}
             {Array.from({ length: Math.max(0, MAX_ITEMS - items.length) }).map((_, idx) => (
-              <tr key={`filler-${idx}`} className="opacity-60">
+              <tr key={`filler-${idx}`} className="gb-sale-items-filler opacity-60">
                 <td className="px-2 py-1">&nbsp;</td>
                 <td className="px-2 py-1">&nbsp;</td>
                 <td className="px-2 py-1">&nbsp;</td>
@@ -258,14 +258,14 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         </table>
       </div>
 
-      <div className="flex gap-2 mt-2">
+      <div className="gb-sale-items-actions flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Pick product…</button>
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
         <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
 
       {editing && (
-        <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
+        <div className="gb-sale-item-editor mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="flex items-center gap-2 max-w-[75%]">

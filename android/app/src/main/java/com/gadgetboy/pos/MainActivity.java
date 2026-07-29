@@ -63,6 +63,27 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void openNotificationSettings() {
+            MainActivity.this.runOnUiThread(() -> {
+                try {
+                    Intent intent;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                        intent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    } else {
+                        intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                    }
+                    startActivity(intent);
+                } catch (Exception ignored) {
+                    Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    fallback.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(fallback);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void downloadAndInstallApk(String rawUrl, String rawFileName) {
             MainActivity.this.runOnUiThread(() -> {
                 try {
@@ -131,6 +152,35 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void downloadFile(String rawUrl, String rawFileName, String rawMimeType) {
+            MainActivity.this.runOnUiThread(() -> {
+                try {
+                    String safeUrl = rawUrl == null ? "" : rawUrl.trim();
+                    if (!safeUrl.toLowerCase(Locale.US).startsWith("https://")) return;
+                    String fileName = sanitizeDownloadFileName(rawFileName);
+                    String mimeType = rawMimeType == null || rawMimeType.trim().isEmpty()
+                        ? "application/octet-stream"
+                        : rawMimeType.trim();
+                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(safeUrl));
+                    request.setTitle("GadgetBoy POS Instructions");
+                    request.setDescription(fileName);
+                    request.setMimeType(mimeType);
+                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+                    DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (manager == null) {
+                        openExternalUrl(safeUrl);
+                        return;
+                    }
+                    manager.enqueue(request);
+                    Toast.makeText(MainActivity.this, "Downloading GadgetBoy POS Instructions...", Toast.LENGTH_SHORT).show();
+                } catch (Exception ignored) {
+                    openExternalUrl(rawUrl);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void verifyModelSha256(String rawPath, String expectedHash, String callbackId) {
             backgroundExecutor.execute(() -> {
                 String filePath = rawPath == null ? "" : rawPath.replaceFirst("^file://", "");
@@ -189,6 +239,16 @@ public class MainActivity extends BridgeActivity {
             value = fallback;
         }
         return value.isEmpty() ? fallback : value;
+    }
+
+    private String sanitizeDownloadFileName(String rawFileName) {
+        String fallback = "GadgetBoy-POS-Instructions.pdf";
+        String value = rawFileName == null ? fallback : rawFileName.trim();
+        value = value.replaceAll("[^A-Za-z0-9._-]", "-");
+        if (value.isEmpty() || !value.toLowerCase(Locale.US).endsWith(".pdf")) {
+            return fallback;
+        }
+        return value;
     }
 
     private void installDownloadedApk(File apkFile) {

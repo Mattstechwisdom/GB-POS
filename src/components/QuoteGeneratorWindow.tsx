@@ -4057,7 +4057,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               messages: [{ role: 'user', content: prompt }],
             }), 12_000, 'Gidget summary timed out.');
             const cleaned = sanitizeAiSummary(response?.answer);
-            if (response?.ok && cleaned) {
+            if (response?.ok && isValidAiSalesSummary(cleaned)) {
               generatedSummary = cleaned;
               aiApplied = true;
             }
@@ -4759,7 +4759,38 @@ function QuoteGeneratorWindow(): JSX.Element {
     }
     // Drop a leading markdown heading if the model added one anyway.
     text = text.replace(/^#{1,6}\s+.*\n+/, '').trim();
-    return text;
+    // The quote description is intentionally one paragraph. Flatten accidental
+    // markdown lists/newlines without changing the model's wording.
+    return text
+      .replace(/^\s*[-*]\s+/gm, '')
+      .replace(/\s*\n+\s*/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  function isValidAiSalesSummary(text: string): boolean {
+    if (!text || /[\r\n]/.test(text)) return false;
+    const sentences = text.match(/[^.!?]+[.!?]+(?:["')\]]+)?/g) || [];
+    return sentences.length >= 5 && sentences.length <= 7;
+  }
+
+  function quoteDisplayTitle(brand: any, model: any, fallback: any): string {
+    const cleanBrand = String(brand || '').trim();
+    const cleanModel = String(model || '').trim();
+    if (!cleanModel) return cleanBrand || String(fallback || 'Device').trim();
+    if (!cleanBrand || cleanModel.toLowerCase().startsWith(`${cleanBrand.toLowerCase()} `)) return cleanModel;
+    return `${cleanBrand} ${cleanModel}`;
+  }
+
+  function friendlyDynamicLabel(key: string): string {
+    for (const definition of DEVICE_TYPE_DEFS) {
+      const field = definition.fields.find((candidate) => candidate.key === key);
+      if (field?.label) return field.label;
+    }
+    return key
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
   function buildAIPrompt(it: SaleItem) {
@@ -4823,9 +4854,11 @@ function QuoteGeneratorWindow(): JSX.Element {
       lines.push('Output: exactly one paragraph (5-7 sentences), no bullets or lists.');
       return lines.join('\n');
     }
-    const titleParts = [it.brand, it.model].filter(Boolean);
-    const title = titleParts.join(' ') || (it.deviceType || 'Device');
-    const appleFamily = it.dynamic?.device ? `Apple ${it.dynamic.device}` : '';
+    const title = quoteDisplayTitle(it.brand, it.model, it.deviceType);
+    const rawAppleFamily = String(it.dynamic?.device || '').trim();
+    const appleFamily = rawAppleFamily
+      ? (/^apple\b/i.test(rawAppleFamily) ? rawAppleFamily : `Apple ${rawAppleFamily}`)
+      : '';
     const deviceLabel = appleFamily || it.deviceType || 'Device';
 
     // Collect confirmed specs
@@ -4848,7 +4881,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (/price/i.test(k)) return;
         if (isImageLike(v)) return;
         if (isPriceLike(v)) return;
-        addSpec(k, v);
+        addSpec(friendlyDynamicLabel(k), v);
       });
       if (Array.isArray(it.dynamic.otherSpecs)) {
         it.dynamic.otherSpecs.forEach((spec: any) => addSpec(spec?.desc || spec?.name, spec?.value));

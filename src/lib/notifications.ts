@@ -2,6 +2,7 @@ export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'te
 
 import { publicAsset } from './publicAsset';
 import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 export type NotificationRecord = {
   id?: number;
@@ -237,12 +238,7 @@ function channelEnabledForKind(settings: DeviceNotificationSettings, kind: Notif
 
 async function getLocalNotificationsPlugin(): Promise<any | null> {
   if (!Capacitor.isNativePlatform()) return null;
-  try {
-    const mod = await withTimeout(import('@capacitor/local-notifications'), 4000, 'Android notification service did not respond.');
-    return (mod as any).LocalNotifications || null;
-  } catch {
-    return null;
-  }
+  return LocalNotifications;
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { consumeWindowPayload } from '../lib/windowPayload';
+import { consumeWindowPayload, peekWindowPayload } from '../lib/windowPayload';
 import { printSaleReleaseForm, SaleOrderPrint } from './salePrint';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
@@ -161,7 +161,9 @@ const SALE_REQUIRED_LABELS: Record<SaleRequiredKey, string> = {
 
 function readPayload(): SalePayload | null {
   try {
-    const stored = consumeWindowPayload('newSale');
+    // Keep the payload available through React Strict Mode's discarded
+    // development render. The mounted component clears it below.
+    const stored = peekWindowPayload('newSale');
     if (stored !== null) return stored as SalePayload;
   } catch {}
   try {
@@ -222,6 +224,9 @@ function buildNormalizedCheckoutPayments(record: any) {
 
 const SaleWindow: React.FC = () => {
   const payload = useMemo(() => readPayload() || {}, []);
+  useEffect(() => {
+    consumeWindowPayload('newSale');
+  }, []);
   const [sale, setSale] = useState<Partial<SaleRecord>>({
     customerId: payload.customerId,
     customerName: payload.customerName,
@@ -1119,6 +1124,15 @@ const SaleWindow: React.FC = () => {
       >
         {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'Print Consult Sheet' : 'Print Customer Receipt'}
       </button>
+      <button
+        type="button"
+        className="gb-sale-mobile-checkout w-full px-3 py-2 bg-neon-green text-zinc-900 font-semibold rounded"
+        onClick={() => {
+          void handleCheckoutRef.current();
+        }}
+      >
+        Checkout
+      </button>
     </>
   ), [sale]);
 
@@ -1457,7 +1471,7 @@ const SaleWindow: React.FC = () => {
   }, []);
 
   return (
-    <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
+    <div className="gb-sale-window h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
@@ -1466,7 +1480,7 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
+      <div className="gb-sale-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
     <WorkOrderSidebar
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
@@ -1476,8 +1490,19 @@ const SaleWindow: React.FC = () => {
       validationFlags={sidebarValidationFlags}
       renderActions={renderSidebarActions}
     />
-  <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
-          <h1 className="text-xl font-semibold mb-2">New Sale</h1>
+  <div className="gb-sale-main flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
+          <section className="gb-sale-mobile-title-card" aria-label="Sale client summary">
+            <div>
+              <span>Sale</span>
+              <strong>{(sale as any).id ? `#${(sale as any).id}` : 'New sale'}</strong>
+            </div>
+            <div>
+              <span>Client</span>
+              <strong>{sale.customerName || 'Client not selected'}</strong>
+              {sale.customerPhone ? <small>{sale.customerPhone}</small> : null}
+            </div>
+          </section>
+          <h1 className="gb-sale-desktop-title text-xl font-semibold mb-2">New Sale</h1>
 
           {/* ── Consultation Details Panel ──────────────────────── */}
           {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
@@ -1729,7 +1754,7 @@ const SaleWindow: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
+          <div className="gb-sale-details-card grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
             <SaleItemsTable
               items={(sale.items || []) as SaleItemRow[]}
               onChange={handleSaleItemsChange}
@@ -1738,7 +1763,7 @@ const SaleWindow: React.FC = () => {
 
 
             {/* Ordered and ETA date inputs side-by-side */}
-            <div className="col-span-2 grid grid-cols-2 gap-4">
+            <div className="gb-sale-date-grid col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
                 <input
@@ -1762,7 +1787,7 @@ const SaleWindow: React.FC = () => {
             </div>
 
             {/* Parts URLs */}
-            <div className="col-span-2 grid grid-cols-2 gap-4">
+            <div className="gb-sale-url-grid col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
                 <input
@@ -1784,7 +1809,7 @@ const SaleWindow: React.FC = () => {
                 />
               </div>
             </div>
-          <div className="col-span-2">
+          <div className="gb-sale-notes col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px]"
@@ -1806,12 +1831,12 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
         </div>
-        <div className="flex flex-col gap-3 min-h-0 overflow-auto">
+        <div className="gb-sale-payment flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
           <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>
-      <div className="fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
+      <div className="gb-sale-action-bar fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
         <div className="text-xs text-zinc-500 min-h-[1.2rem]">Auto-save enabled</div>
         <div className="flex items-center gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>

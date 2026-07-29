@@ -22,6 +22,8 @@ type UpdateHistoryRow = {
   created_at: string;
 };
 
+type DeliveryMode = 'email' | 'text';
+
 type Props = {
   token?: string;
   recordType?: UpdateType;
@@ -229,6 +231,17 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [historyError, setHistoryError] = useState('');
   const [historyRows, setHistoryRows] = useState<UpdateHistoryRow[]>([]);
   const [historyShopId, setHistoryShopId] = useState('');
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('email');
+
+  const isMobileApp = useMemo(() => {
+    try {
+      return /mobile\.html$/i.test(window.location.pathname)
+        || !!document.querySelector('.gbpos-mobile')
+        || !!(window as any).GBPosAndroid;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const options = type === 'sale' ? SALE_STATUSES : REPAIR_STATUSES;
   const quickOptions = options.filter((o) => o.key === 'pickup_reminder' || o.key === 'manual_update');
@@ -358,6 +371,25 @@ const ClientUpdatePanel: React.FC<Props> = ({
     }
   }, [historyShopId, record?.id, recordId, type]);
 
+  const name = clientName(record, customer);
+  const phoneRaw = customer?.phone || record?.customerPhone || '';
+  const phoneAltRaw = customer?.phoneAlt || record?.customerPhoneAlt || '';
+  const email = customer?.email || record?.customerEmail || '';
+  const orderLabel = type === 'sale' ? `INV-${record?.id || recordId || ''}` : type === 'consult' ? `CONS-${record?.id || recordId || ''}` : `WO-${record?.id || recordId || ''}`;
+
+  const openTextMessage = useCallback((phone: string, message: string) => {
+    const digits = String(phone || '').replace(/[^\d+]/g, '');
+    if (!digits) throw new Error('The client does not have a valid phone number on file.');
+    const separator = /iPad|iPhone|iPod/i.test(navigator.userAgent) ? '&' : '?';
+    const smsUrl = `sms:${digits}${separator}body=${encodeURIComponent(message)}`;
+    const androidBridge = (window as any).GBPosAndroid;
+    if (androidBridge?.openExternalUrl) {
+      androidBridge.openExternalUrl(smsUrl);
+      return;
+    }
+    window.location.href = smsUrl;
+  }, []);
+
   const saveStatus = useCallback(async (option: StatusOption) => {
     if (!record) return;
     const extra = { estimatedDate, notes };
@@ -367,11 +399,12 @@ const ClientUpdatePanel: React.FC<Props> = ({
       const api: any = (window as any).api;
       const sessionResult = await supabase.auth.getSession();
       const accessToken = sessionResult.data.session?.access_token || '';
-      if (!accessToken) throw new Error('Your login session expired. Sign in again before sending an update.');
+      if (!accessToken && !token) throw new Error('Your login session expired. Sign in again before sending an update.');
+      const selectedDelivery: DeliveryMode = isMobileApp ? deliveryMode : 'email';
       const response = await fetch(clientUpdateApiUrl(), {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -381,6 +414,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
           statusKey: option.key,
           estimatedDate: extra.estimatedDate || undefined,
           notes: extra.notes || undefined,
+          deliveryMode: selectedDelivery,
         }),
       });
       const delivery = await response.json().catch(() => null);
@@ -398,6 +432,10 @@ const ClientUpdatePanel: React.FC<Props> = ({
         onUpdated?.(saved);
       }
 
+      if (selectedDelivery === 'text' && delivery?.textMessage) {
+        openTextMessage(delivery?.recipientPhone || phoneRaw, delivery.textMessage);
+      }
+
       setResult({
         ok: !!delivery?.ok,
         message: delivery?.message || delivery?.error || 'Status update processed.',
@@ -411,7 +449,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
     } finally {
       setSavingKey('');
     }
-  }, [estimatedDate, loadHistory, notes, onUpdated, record, recordId, token, type]);
+  }, [deliveryMode, estimatedDate, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);
 
   const renderOption = (option: StatusOption) => {
     const open = openKey === option.key;
@@ -454,12 +492,6 @@ const ClientUpdatePanel: React.FC<Props> = ({
       </div>
     );
   };
-
-  const name = clientName(record, customer);
-  const phoneRaw = customer?.phone || record?.customerPhone || '';
-  const phoneAltRaw = customer?.phoneAlt || record?.customerPhoneAlt || '';
-  const email = customer?.email || record?.customerEmail || '';
-  const orderLabel = type === 'sale' ? `INV-${record?.id || recordId || ''}` : type === 'consult' ? `CONS-${record?.id || recordId || ''}` : `WO-${record?.id || recordId || ''}`;
 
   return (
     <div className={embedded ? 'gb-client-update-shell embedded' : 'gb-client-update-shell'}>
@@ -509,6 +541,25 @@ const ClientUpdatePanel: React.FC<Props> = ({
               ) : null}
             </section>
 
+            {isMobileApp ? (
+              <section className="gb-client-update-delivery" aria-label="Send update by">
+                <span>Send update by</span>
+                <div role="group" aria-label="Delivery method">
+                  <button type="button" className={deliveryMode === 'email' ? 'active email' : ''} onClick={() => setDeliveryMode('email')} disabled={!email}>
+                    Email
+                  </button>
+                  <button type="button" className={deliveryMode === 'text' ? 'active text' : ''} onClick={() => setDeliveryMode('text')} disabled={!phoneRaw}>
+                    Text
+                  </button>
+                </div>
+                <small>
+                  {deliveryMode === 'text'
+                    ? 'The update is saved first, then your phone opens the message for you to review and send.'
+                    : email ? `Email will be sent to ${email}.` : 'This client has no email address on file.'}
+                </small>
+              </section>
+            ) : null}
+
             {historyOpen ? (
               <section className="gb-client-update-history" aria-label="Client update history">
                 <div className="gb-client-update-history-heading">
@@ -525,7 +576,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
                     <div className="gb-client-update-history-item-top">
                       <strong>{entry.status_label}</strong>
                       <span className={`delivery-${entry.delivery_status}`}>
-                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : 'Saved only'}
+                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : entry.recipient_email ? 'Saved only' : 'Text prepared'}
                       </span>
                     </div>
                     <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>

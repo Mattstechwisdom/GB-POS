@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { canDispatchOpenModal, dispatchOpenModal } from '@/lib/modalBus';
 import {
+  DeviceNotificationSettings,
   listNotifications,
+  loadDeviceNotificationSettings,
   markAllNotificationsRead,
   markNotificationRead,
   purgeReadNotifications,
   NotificationRecord,
+  requestDeviceNotificationPermission,
 } from '@/lib/notifications';
+import NotificationSettingsWindow from './NotificationSettingsWindow';
 
 function fmtWhen(iso?: string) {
   if (!iso) return '';
@@ -46,6 +51,13 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
   const [list, setList] = useState<NotificationRecord[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [mobileView, setMobileView] = useState<'notifications' | 'settings'>('notifications');
+  const [devicePermission, setDevicePermission] = useState<DeviceNotificationSettings['permission']>('default');
+  const [permissionChecking, setPermissionChecking] = useState(false);
+  const [permissionError, setPermissionError] = useState('');
+  const isMobileSurface = Capacitor.isNativePlatform()
+    || /mobile\.html$/i.test(window.location.pathname)
+    || !!document.querySelector('.gbpos-mobile');
 
   const load = async () => {
     setLoading(true);
@@ -67,6 +79,54 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isMobileSurface) return;
+    let active = true;
+    setPermissionChecking(true);
+    setPermissionError('');
+    void (async () => {
+      try {
+        let current = await loadDeviceNotificationSettings();
+        if (!active) return;
+        setDevicePermission(current.permission);
+        if (Capacitor.isNativePlatform() && (current.permission === 'default' || current.permission === 'prompt')) {
+          current = await requestDeviceNotificationPermission();
+          if (!active) return;
+          setDevicePermission(current.permission);
+        }
+        if (current.permission === 'granted') setMobileView('settings');
+      } catch (error: any) {
+        if (active) setPermissionError(error?.message || 'Notification permission could not be checked.');
+      } finally {
+        if (active) setPermissionChecking(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [isMobileSurface]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let active = true;
+    const refreshPermission = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const current = await loadDeviceNotificationSettings();
+        if (!active) return;
+        setDevicePermission(current.permission);
+        setMobileView(current.permission === 'granted' ? 'settings' : 'notifications');
+      } catch {
+        // Keep the current screen; the next open will perform another full check.
+      }
+    };
+    window.addEventListener('focus', refreshPermission);
+    document.addEventListener('visibilitychange', refreshPermission);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshPermission);
+      document.removeEventListener('visibilitychange', refreshPermission);
+    };
+  }, []);
+
   const unreadCount = useMemo(() => list.filter(n => !n.readAt).length, [list]);
 
   const filtered = useMemo(() => {
@@ -77,6 +137,40 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
       return tb - ta;
     });
   }, [list, showUnreadOnly]);
+
+  const openMobileNotificationSettings = () => {
+    try {
+      const bridge = (window as any).GBPosAndroid;
+      if (typeof bridge?.openNotificationSettings === 'function') {
+        bridge.openNotificationSettings();
+      }
+    } catch {
+      // Android settings remain available from the operating system.
+    }
+  };
+
+  if (isMobileSurface && mobileView === 'settings' && devicePermission === 'granted') {
+    return (
+      <div className="h-screen bg-zinc-900 text-zinc-100 overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between gap-3 p-3 border-b border-zinc-800">
+          <div>
+            <div className="text-lg font-semibold">Notification Preferences</div>
+            <div className="text-xs text-[#39FF14]">Allowed on this device</div>
+          </div>
+          <button
+            type="button"
+            className="px-3 py-1.5 rounded border text-sm bg-zinc-800 border-zinc-700 text-zinc-200"
+            onClick={() => setMobileView('notifications')}
+          >
+            View alerts
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <NotificationSettingsWindow embedded hideCloseButton />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-zinc-900 text-zinc-100 p-4 overflow-hidden flex flex-col">
@@ -114,6 +208,28 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           <button
             className="px-3 py-1.5 rounded border text-sm bg-zinc-800 border-zinc-700 text-zinc-200"
             onClick={async () => {
+              if (isMobileSurface) {
+                if (devicePermission === 'granted') {
+                  setMobileView('settings');
+                } else if (Capacitor.isNativePlatform() && (devicePermission === 'default' || devicePermission === 'prompt')) {
+                  setPermissionChecking(true);
+                  setPermissionError('');
+                  try {
+                    const next = await requestDeviceNotificationPermission();
+                    setDevicePermission(next.permission);
+                    if (next.permission === 'granted') setMobileView('settings');
+                  } catch (error: any) {
+                    setPermissionError(error?.message || 'Notification permission could not be requested.');
+                  } finally {
+                    setPermissionChecking(false);
+                  }
+                } else if (Capacitor.isNativePlatform() && devicePermission === 'denied') {
+                  openMobileNotificationSettings();
+                } else {
+                  dispatchOpenModal('notificationSettings');
+                }
+                return;
+              }
               if (canDispatchOpenModal()) {
                 dispatchOpenModal('notificationSettings');
                 return;
@@ -126,7 +242,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
               dispatchOpenModal('notificationSettings');
             }}
           >
-            Settings
+            {permissionChecking ? 'Checking...' : 'Settings'}
           </button>
           {!hideCloseButton ? (
             <button
@@ -146,6 +262,19 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           ) : null}
         </div>
       </div>
+
+      {isMobileSurface && devicePermission === 'denied' ? (
+        <div className="mb-3 rounded border border-red-500/50 bg-red-950/30 p-3 text-sm">
+          <div className="font-semibold text-red-200">Notifications are disabled for GadgetBoy POS.</div>
+          <div className="mt-1 text-xs text-zinc-300">Turn them back on in Android settings to restore notification preferences.</div>
+          {Capacitor.isNativePlatform() ? (
+            <button type="button" className="mt-2 px-3 py-1.5 rounded bg-[#BC13FE] text-white font-semibold" onClick={openMobileNotificationSettings}>
+              Open phone settings
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {permissionError ? <div className="mb-3 rounded border border-amber-500/50 bg-amber-950/20 p-2 text-xs text-amber-100">{permissionError}</div> : null}
 
       <div className="flex-1 overflow-auto border border-zinc-800 rounded">
         {loading && (

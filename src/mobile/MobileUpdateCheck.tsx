@@ -5,6 +5,7 @@ declare global {
     GBPosAndroid?: {
       openExternalUrl?: (url: string) => void;
       downloadAndInstallApk?: (url: string, fileName?: string) => void;
+      downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
     };
   }
 }
@@ -27,6 +28,8 @@ export type MobileUpdate = {
   apkName: string;
   apkUrl: string;
   releaseUrl: string;
+  instructionsName?: string;
+  instructionsUrl?: string;
 };
 
 const repoLatestUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases/latest';
@@ -92,12 +95,19 @@ function releaseToMobileUpdate(release: GitHubRelease): MobileUpdate | null {
   const apkUrl = String(asset?.browser_download_url || '');
   if (!apkUrl) return null;
 
+  const instructionsAsset = (release.assets || []).find((item) => {
+    const name = String(item.name || '');
+    return /^GadgetBoy-POS-Instructions-.+\.pdf$/i.test(name);
+  });
+
   return {
     version,
     releaseName: release.name || `GadgetBoy POS ${version}`,
     apkName: String(asset?.name || `Android-APK-universal-${version}.apk`),
     apkUrl,
     releaseUrl: release.html_url || apkUrl,
+    instructionsName: String(instructionsAsset?.name || ''),
+    instructionsUrl: String(instructionsAsset?.browser_download_url || ''),
   };
 }
 
@@ -121,11 +131,19 @@ export async function getLatestMobileUpdate(): Promise<MobileUpdate | null> {
   return null;
 }
 
-export function openMobileUpdateDownload(update: MobileUpdate, setOpening?: (opening: boolean) => void) {
+export function openMobileUpdateDownload(update: MobileUpdate, includeInstructions = true, setOpening?: (opening: boolean) => void) {
   const safeUrl = String(update?.apkUrl || '').trim();
   if (!/^https:\/\//i.test(safeUrl)) return;
   setOpening?.(true);
   try {
+    const instructionsUrl = String(update?.instructionsUrl || '').trim();
+    if (includeInstructions && /^https:\/\//i.test(instructionsUrl)) {
+      if (window.GBPosAndroid?.downloadFile) {
+        window.GBPosAndroid.downloadFile(instructionsUrl, update.instructionsName || `GadgetBoy-POS-Instructions-${update.version}.pdf`, 'application/pdf');
+      } else if (window.GBPosAndroid?.openExternalUrl) {
+        window.GBPosAndroid.openExternalUrl(instructionsUrl);
+      }
+    }
     if (window.GBPosAndroid?.downloadAndInstallApk) {
       window.GBPosAndroid.downloadAndInstallApk(safeUrl, update.apkName);
       return;
@@ -145,6 +163,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   const [update, setUpdate] = useState<MobileUpdate | null>(null);
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [includeInstructions, setIncludeInstructions] = useState(true);
   const skippedVersionRef = useRef<string | null>(null);
   const attemptedVersionRef = useRef<string | null>(null);
 
@@ -201,7 +220,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   const download = () => {
     attemptedVersionRef.current = `${checkKey}:${update.version}`;
     setUpdate(null);
-    openMobileUpdateDownload(update, setOpening);
+    openMobileUpdateDownload(update, includeInstructions, setOpening);
   };
 
   const skip = () => {
@@ -231,6 +250,15 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
           <p className="text-xs text-zinc-500">
             Android will download the APK and open the installer. The first update may ask you to allow GadgetBoy POS to install unknown apps; enable it, return here, and Android will continue the update.
           </p>
+          <label className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+            <input
+              type="checkbox"
+              checked={includeInstructions}
+              onChange={(event) => setIncludeInstructions(event.target.checked)}
+              className="h-4 w-4 accent-[#39FF14]"
+            />
+            Download the matching Instructions PDF
+          </label>
         </div>
         <div className="flex gap-2 border-t border-zinc-800 px-4 py-3">
           <button

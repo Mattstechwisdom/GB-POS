@@ -17,6 +17,10 @@ dist-mobile/
 release/
 out/
 
+# Generated document outputs
+output/
+build/GadgetBoy-POS-Instructions.pdf
+
 # Temporary release artifacts
 release-v023-test/
 

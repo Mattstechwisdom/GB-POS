@@ -1612,6 +1612,243 @@
   background: #09090b !important;
 }
 
+.gbpos-mobile .gb-sale-window {
+  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 100%;
+  overflow: visible !important;
+  padding: 0.75rem !important;
+  background: #09090b !important;
+}
+
+.gbpos-mobile .gb-sale-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  gap: 0.75rem !important;
+}
+
+.gbpos-mobile .gb-sale-main {
+  order: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible !important;
+  padding-bottom: 0 !important;
+}
+
+.gbpos-mobile .gb-sale-payment {
+  order: 2;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible !important;
+}
+
+.gbpos-mobile .gb-sale-layout > .gb-wo-side-actions {
+  order: 3;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card {
+  display: grid;
+  grid-template-columns: minmax(5.8rem, 0.65fr) minmax(0, 1.35fr);
+  gap: 0.8rem;
+  width: 100%;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+  padding: 0.85rem;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card > div {
+  display: grid;
+  align-content: start;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card span {
+  color: #a1a1aa;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f4f4f5;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card > div:first-child strong {
+  color: #39ff14;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.gbpos-mobile .gb-sale-mobile-title-card small {
+  overflow: hidden;
+  color: #d4d4d8;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gbpos-mobile .gb-sale-desktop-title {
+  display: none;
+}
+
+.gbpos-mobile .gb-sale-details-card,
+.gbpos-mobile .gb-sale-items,
+.gbpos-mobile .gb-sale-item-editor {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 8px !important;
+}
+
+.gbpos-mobile .gb-sale-date-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.65rem !important;
+}
+
+.gbpos-mobile .gb-sale-url-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0.65rem !important;
+}
+
+.gbpos-mobile .gb-sale-window input,
+.gbpos-mobile .gb-sale-window select,
+.gbpos-mobile .gb-sale-window textarea,
+.gbpos-mobile .gb-sale-window button {
+  max-width: 100%;
+  min-height: 2.75rem;
+  font-size: 1rem;
+}
+
+.gbpos-mobile .gb-sale-items-header {
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.gbpos-mobile .gb-sale-items-header > div {
+  max-width: 48%;
+  text-align: right;
+}
+
+.gbpos-mobile .gb-sale-items-table-wrap {
+  max-height: none !important;
+  overflow: visible !important;
+  border: 0 !important;
+}
+
+.gbpos-mobile .gb-sale-items-table,
+.gbpos-mobile .gb-sale-items-table thead,
+.gbpos-mobile .gb-sale-items-table tbody,
+.gbpos-mobile .gb-sale-items-table tr,
+.gbpos-mobile .gb-sale-items-table td {
+  display: block;
+  width: 100%;
+}
+
+.gbpos-mobile .gb-sale-items-table thead,
+.gbpos-mobile .gb-sale-items-filler {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-sale-items-table tbody {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.gbpos-mobile .gb-sale-items-table tr:not(.gb-sale-items-filler) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem 0.65rem;
+  overflow: hidden;
+  border: 1px solid #3f3f46;
+  border-left: 4px solid #39ff14;
+  border-radius: 8px;
+  background: #18181b;
+  padding: 0.7rem;
+}
+
+.gbpos-mobile .gb-sale-items-table td {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0 !important;
+  text-align: left !important;
+}
+
+.gbpos-mobile .gb-sale-items-table td::before {
+  content: attr(data-label);
+  color: #a1a1aa;
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gbpos-mobile .gb-sale-items-table td[data-label="Item"] {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gbpos-mobile .gb-sale-items-table td[data-label="In stock"] {
+  grid-column: 1 / -1;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.gbpos-mobile .gb-sale-items-table td[data-label="In stock"]::before {
+  margin-right: 0.5rem;
+}
+
+.gbpos-mobile .gb-sale-items-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gbpos-mobile .gb-sale-items-actions > div {
+  display: none;
+}
+
+.gbpos-mobile .gb-sale-item-editor .flex {
+  flex-wrap: wrap;
+}
+
+.gbpos-mobile .gb-sale-mobile-checkout {
+  display: block;
+  margin-top: 0.55rem;
+}
+
+.gbpos-mobile .gb-sale-payment .gb-wo-intake-panel,
+.gbpos-mobile .gb-sale-payment .gb-wo-payment-panel {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-sale-action-bar {
+  position: sticky !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: 0 !important;
+  z-index: 25;
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 0 0;
+  background: linear-gradient(180deg, rgba(9, 9, 11, 0), #09090b 28%);
+}
+
 .gbpos-mobile .gb-wo-layout {
   width: 100% !important;
   max-width: 100% !important;
@@ -2172,7 +2409,7 @@
 
   .gbpos-mobile .gb-calendar-header {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.6rem !important;
@@ -2193,6 +2430,12 @@
   .gbpos-mobile .gb-calendar-controls > button {
     min-height: 2.5rem;
     padding: 0.35rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-content-schedule {
+    grid-column: 1 / -1;
+    min-height: 2.75rem !important;
+    font-weight: 800;
   }
 
   .gbpos-mobile .gb-calendar-period {
@@ -2235,6 +2478,7 @@
   .gbpos-mobile .gb-calendar-filters {
     overflow-x: auto;
     scrollbar-width: none;
+    padding: 0.3rem !important;
   }
 
   .gbpos-mobile .gb-calendar-filters::-webkit-scrollbar {
@@ -2242,16 +2486,49 @@
   }
 
   .gbpos-mobile .gb-calendar-filters > div {
-    display: flex !important;
-    width: max-content;
-    flex-wrap: nowrap !important;
-    gap: 0.75rem !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 0.28rem 0.4rem !important;
   }
 
   .gbpos-mobile .gb-calendar-filters label,
   .gbpos-mobile .gb-calendar-filters label > div,
   .gbpos-mobile .gb-calendar-filters .ml-3 {
     flex-wrap: nowrap !important;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-filters > div > span,
+  .gbpos-mobile .gb-calendar-filters .ml-3 {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-calendar-filters label {
+    gap: 0.2rem !important;
+    min-width: 0;
+  }
+
+  .gbpos-mobile .gb-calendar-filters label input {
+    width: 0.9rem !important;
+    height: 0.9rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-filters label > div > div {
+    width: 1.2rem !important;
+    height: 1.2rem !important;
+    border-radius: 4px !important;
+    font-size: 0.55rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-filters label span {
+    display: inline !important;
+    overflow: hidden;
+    color: #d4d4d8 !important;
+    font-size: 0.61rem !important;
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -2320,43 +2597,85 @@
 
   .gbpos-mobile .gb-calendar-week > section,
   .gbpos-mobile .gb-calendar-day-sections > section {
-    margin-bottom: 0.55rem;
+    margin-bottom: 0.28rem;
     overflow: hidden;
     border: 1px solid #3f3f46;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #111114;
   }
 
   .gbpos-mobile .gb-calendar-week > section.is-today {
     border-color: #39ff14;
+    background: rgba(57, 255, 20, 0.07);
+    box-shadow: inset 3px 0 0 #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 34%) minmax(0, 1fr);
+    min-height: 3.25rem;
   }
 
   .gbpos-mobile .gb-calendar-week section > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2.6rem;
+    grid-template-columns: minmax(0, 1fr) 2rem;
     align-items: stretch;
-    border-bottom: 1px solid #27272a;
+    border-right: 1px solid #27272a;
   }
 
   .gbpos-mobile .gb-calendar-week header button:first-child {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.7rem;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-content: center;
+    gap: 0.05rem 0.35rem;
+    min-width: 0;
+    padding: 0.35rem 0.4rem;
     text-align: left;
+  }
+
+  .gbpos-mobile .gb-calendar-week header button:first-child strong {
+    color: #f4f4f5;
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .gbpos-mobile .gb-calendar-week header button:first-child span {
+    overflow: hidden;
+    color: #a1a1aa;
+    font-size: 0.66rem;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-week header button:first-child em {
+    grid-column: 1 / -1;
+    color: #39ff14;
+    font-size: 0.58rem;
+    font-style: normal;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
   }
 
   .gbpos-mobile .gb-calendar-week header button:last-child {
     border-left: 1px solid #27272a;
     color: #39ff14;
-    font-size: 1.35rem;
+    font-size: 1.1rem;
   }
 
   .gbpos-mobile .gb-calendar-agenda-list {
-    display: grid;
-    gap: 0.35rem;
-    padding: 0.55rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0.35rem;
+    scrollbar-width: none;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list::-webkit-scrollbar {
+    display: none;
   }
 
   .gbpos-mobile .gb-calendar-agenda-list button,
@@ -2371,6 +2690,47 @@
     font-size: 0.82rem;
   }
 
+  .gbpos-mobile .gb-calendar-week-event {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    width: auto !important;
+    min-width: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week .gb-calendar-event-icon {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #09090b;
+    font-size: 0.62rem;
+    font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-week .gb-calendar-event-copy {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-calendar-event-copy strong,
+  .gbpos-mobile .gb-calendar-event-copy small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-event-copy small {
+    margin-top: 0.15rem;
+    color: #a1a1aa;
+    font-size: 0.68rem;
+  }
+
   .gbpos-mobile .gb-calendar-agenda-list .type-parts {
     border-left-color: #3b82f6;
   }
@@ -2381,6 +2741,21 @@
 
   .gbpos-mobile .gb-calendar-agenda-list .type-schedule {
     border-left-color: #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-agenda-list .type-content {
+    border-left-color: #d946ef;
+  }
+
+  .gbpos-mobile .gb-calendar-editor {
+    width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem);
+    overflow-y: auto;
+    padding: 0.8rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-editor > .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   .gbpos-mobile .gb-calendar-day-actions {
@@ -2427,9 +2802,147 @@
 
   .gbpos-mobile .gb-calendar-day-sections section > p,
   .gbpos-mobile .gb-calendar-agenda-list > span {
-    padding: 0.55rem;
+    padding: 0.2rem;
     color: #71717a;
+    font-size: 0.72rem;
+  }
+
+  .gbpos-mobile .gb-content-schedule {
+    width: calc(100vw - 1rem) !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 1rem) !important;
+  }
+
+  .gbpos-mobile .gb-content-schedule > div:first-child {
+    padding: 0.7rem !important;
+  }
+
+  .gbpos-mobile .gb-content-schedule > div:first-child h3 {
+    font-size: 1rem !important;
+  }
+
+  .gbpos-mobile .gb-content-schedule > div:first-child p {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-content-week-nav {
+    padding: 0.45rem 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-content-week-list {
+    padding: 0.45rem !important;
+  }
+
+  .gbpos-mobile .gb-content-week-list > section {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 34%) minmax(0, 1fr);
+    min-height: 3.25rem;
+    margin-bottom: 0.28rem;
+    border-radius: 6px;
+  }
+
+  .gbpos-mobile .gb-content-week-list > section.is-today {
+    border-color: #d946ef;
+    background: rgba(217, 70, 239, 0.08);
+    box-shadow: inset 3px 0 0 #d946ef;
+  }
+
+  .gbpos-mobile .gb-content-week-list section > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2rem;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    border-right: 1px solid #27272a;
+    border-bottom: 0;
+  }
+
+  .gbpos-mobile .gb-content-week-list .gb-content-day-button {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-content: center;
+    gap: 0.05rem 0.35rem;
+    min-width: 0;
+    padding: 0.35rem 0.4rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+
+  .gbpos-mobile .gb-content-week-list .gb-content-day-button strong {
+    color: #f4f4f5;
     font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .gbpos-mobile .gb-content-week-list .gb-content-day-button span {
+    overflow: hidden;
+    color: #a1a1aa;
+    font-size: 0.66rem;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-content-week-list .gb-content-day-button em {
+    grid-column: 1 / -1;
+    color: #f0abfc;
+    font-size: 0.58rem;
+    font-style: normal;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .gbpos-mobile .gb-content-week-list section > header > button:last-child {
+    padding: 0;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+    color: #f0abfc;
+    font-size: 1.1rem;
+  }
+
+  .gbpos-mobile .gb-content-day-events {
+    display: flex !important;
+    align-items: center;
+    gap: 0.25rem !important;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0.35rem !important;
+    scrollbar-width: none;
+  }
+
+  .gbpos-mobile .gb-content-day-events::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-content-day-events > button {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    width: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-content-day-events > button > .gb-calendar-event-icon {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    border-radius: 6px;
+    font-size: 0.58rem;
+  }
+
+  .gbpos-mobile .gb-content-day-events > button > span:last-child {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-content-day-events > p {
+    padding: 0.2rem;
+    color: #71717a;
+    font-size: 0.72rem;
   }
 
   .gbpos-mobile .min-w-\[1100px\],
@@ -2466,6 +2979,16 @@
 
   .gbpos-mobile table:not(.gb-repair-table) {
     min-width: 720px;
+  }
+
+  .gbpos-mobile .gb-sale-items-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  .gbpos-mobile .gb-sale-date-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   .gbpos-mobile .gb-customer-table {

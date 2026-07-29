@@ -352,6 +352,21 @@ export function buildQuoteFallbackSummary(metadata: PartUrlMetadata, context?: {
 }): string {
   const title = clean(metadata.title) || 'This item';
   const dynamic = context?.dynamic || {};
+  const finishSummary = (input: string[], modelName: string, deviceType?: string) => {
+    const safeModel = clean(modelName) || title;
+    const safeType = clean(deviceType) || 'device';
+    const sentences = input.map((sentence) => clean(sentence)).filter(Boolean);
+    const padding = [
+      `Its confirmed configuration is presented clearly so the quoted ${safeType.toLowerCase()} matches the customer's needs.`,
+      `The selected details highlight the practical strengths of this ${safeModel} without adding unconfirmed specifications.`,
+      `Every imported field remains editable so the final description can accurately reflect the exact unit being offered.`,
+    ];
+    for (const sentence of padding) {
+      if (sentences.length >= 5) break;
+      if (!sentences.includes(sentence)) sentences.push(sentence);
+    }
+    return sentences.slice(0, 7).join(' ');
+  };
   if (context?.deviceType === 'Apple Devices' && context.appleFamily === 'iPhone') {
     const model = clean(context.model) || title;
     const storage = clean(dynamic.storage);
@@ -369,7 +384,7 @@ export function buildQuoteFallbackSummary(metadata: PartUrlMetadata, context?: {
       'The included iOS experience keeps everyday communication, apps, photos, and device management working together in one familiar interface.',
       `All configuration details remain editable so the final quote can match the exact ${model} being offered.`,
     ].filter(Boolean);
-    return sentences.slice(0, 7).join(' ');
+    return finishSummary(sentences, model, 'iPhone');
   }
   if (context?.deviceType === 'Laptop') {
     const model = clean(context.model) || title;
@@ -379,7 +394,7 @@ export function buildQuoteFallbackSummary(metadata: PartUrlMetadata, context?: {
     const screen = clean(dynamic.screenSize);
     const os = clean(dynamic.os);
     const condition = clean(context.condition);
-    return [
+    return finishSummary([
       `${model} is a portable computer configured for dependable everyday productivity.`,
       cpu || ram ? `Its ${[cpu && `${cpu} processor`, ram && `${ram} of memory`].filter(Boolean).join(' and ')} provide a responsive foundation for office work, web browsing, communication, and multitasking.` : '',
       storage ? `The ${storage} storage configuration provides practical room for applications, documents, and daily files.` : '',
@@ -387,7 +402,7 @@ export function buildQuoteFallbackSummary(metadata: PartUrlMetadata, context?: {
       os ? `${os} is the confirmed operating system for this configuration.` : '',
       condition ? `This unit is listed in ${condition} condition, matching the cosmetic grade selected for the quote.` : '',
       `Together, these confirmed specifications make the ${model} a well-rounded option for work, school, and general use.`,
-    ].filter(Boolean).slice(0, 7).join(' ');
+    ], model, 'laptop');
   }
   if (context?.deviceType && context.deviceType !== 'Other') {
     const model = clean(context.model) || title;
@@ -429,11 +444,12 @@ export function buildQuoteFallbackSummary(metadata: PartUrlMetadata, context?: {
     if (facts.length > 3) sentences.push(`It also includes ${facts.slice(3, 6).join(', ').replace(/, ([^,]+)$/, ', and $1')}, rounding out the selected setup.`);
     if (condition) sentences.push(`This unit is listed in ${condition} condition, matching the cosmetic grade confirmed for the quote.`);
     sentences.push(`These details are drawn from the linked listing and remain editable so the final quote accurately reflects the exact ${model} being offered.`);
-    return sentences.slice(0, 6).join(' ');
+    return finishSummary(sentences, model, type);
   }
-  const sourceDescription = clean(metadata.description).replace(/\s*(?:read more|learn more)\s*$/i, '');
-  if (sourceDescription.length >= 120 && !/Product-page values can change/i.test(sourceDescription)) return sourceDescription.slice(0, 1200);
   const specs = (metadata.specs || []).slice(0, 5).map((spec) => `${clean(spec.name)}: ${clean(spec.value)}`).filter((value) => !value.endsWith(': '));
-  const details = specs.length ? ` Its confirmed configuration includes ${specs.join(', ')}.` : '';
-  return `${title} is presented using the confirmed information supplied by the product page.${details} The selected details are organized into the matching quote fields for a clear customer-facing overview. Every imported value remains editable before the quote is finalized.`;
+  return finishSummary([
+    `${title} is presented using the confirmed information supplied by the product page.`,
+    specs.length ? `Its confirmed configuration includes ${specs.join(', ')}.` : '',
+    'The selected details are organized into the matching quote fields for a clear customer-facing overview.',
+  ], title, context?.deviceType);
 }

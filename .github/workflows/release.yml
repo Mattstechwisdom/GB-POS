@@ -57,6 +57,9 @@ jobs:
       - name: Generate icon
         run: node tools/generate-icon.cjs
 
+      - name: Generate Instructions PDF
+        run: node tools/generate-instructions-pdf.cjs
+
       - name: Typecheck renderer
         run: npx tsc -p tsconfig.json --noEmit
 
@@ -158,6 +161,7 @@ jobs:
             release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
             release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/Android-APK-universal-${{ env.RELEASE_VERSION }}.apk
+            release/GadgetBoy-POS-Instructions-${{ env.RELEASE_VERSION }}.pdf
             release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

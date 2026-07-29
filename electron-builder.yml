@@ -19,11 +19,14 @@ asarUnpack:
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico
+  - from: build/GadgetBoy-POS-Instructions.pdf
+    to: GadgetBoy-POS-Instructions.pdf
 win:
   target:
     - nsis
   icon: build/icon.ico
 nsis:
+  include: build/installer-options.nsh
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

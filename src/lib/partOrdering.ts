@@ -450,9 +450,12 @@ export function extractPartMetadataFromReader(markdown: string, url: string): Pa
   const imageText = imageAltText.slice(0, 12).join(' ');
   const colorFromPrice = matchingColors.find((option) => imageText.toLowerCase().includes(option.value.toLowerCase()))?.value
     || matchingColors[0]?.value || '';
-  const storage = configValues.find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value)) || storageFromPrice;
-  const color = configValues.find((value) => /\b(?:Black|Blue|Natural|White|Gold|Silver|Gray|Grey|Green|Red|Purple|Pink|Titanium)\b/i.test(value)) || colorFromPrice;
-  const carrier = /\bunlocked\b/i.test(`${title} ${lines.slice(0, 600).join(' ')}`) ? 'Unlocked' : '';
+  const storage = configValues.find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value)) || storageFromPrice || pageSpecs.get('Storage');
+  const color = configValues.find((value) => /\b(?:Black|Blue|Natural|White|Gold|Silver|Gray|Grey|Green|Red|Purple|Pink|Titanium)\b/i.test(value))
+    || colorFromPrice
+    || pageSpecs.get('Color');
+  const carrier = (/\bunlocked\b/i.test(`${title} ${lines.slice(0, 600).join(' ')}`) ? 'Unlocked' : '')
+    || pageSpecs.get('Carrier');
   const connectivity = configValues.find((value) => /wi[-\u2010-\u2015 ]?fi|\b5g\b|\blte\b/i.test(value))
     || pageSpecs.get('Connectivity') || '';
   const battery = configValues.find((value) => /battery/i.test(value)) || batteryPrices.find(samePrice)?.value || '';

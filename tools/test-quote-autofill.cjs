@@ -126,7 +126,8 @@ for (const testCase of schemaCases) {
   assert.equal(draft.deviceType, testCase.type, testCase.title);
   for (const [key, value] of Object.entries(testCase.expected)) assert.equal(draft.dynamic[key], value, `${testCase.title}: ${key}`);
   for (const key of testCase.forbidden) assert.equal(draft.dynamic[key], undefined, `${testCase.title}: unexpected ${key}`);
-  assert.ok(draft.description.split(/[.!?]+/).filter(Boolean).length >= 2, `${testCase.title}: summary`);
+  const summarySentences = draft.description.split(/[.!?]+/).filter((sentence) => sentence.trim());
+  assert.ok(summarySentences.length >= 5 && summarySentences.length <= 7, `${testCase.title}: summary must contain 5-7 sentences`);
 }
 
 const backMarketUrl = 'https://www.backmarket.com/en-us/p/iphone-15-pro';

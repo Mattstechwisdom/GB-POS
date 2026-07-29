@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.28 (2026-07-29)
+- Instructions: adds a comprehensive versioned operating manual covering Windows and Android workflows, client and work-order handling, parts, inventory, checkout, reporting, backups, updates, security, and troubleshooting.
+- Windows Installer: adds an optional Instructions selection that places the current manual in Documents and creates a desktop shortcut.
+- Windows / Android Updates: adds a Download Instructions checkbox and retrieves the PDF from the same versioned GitHub release as the platform installer.
+- Calendar: syncs calendar entries through Supabase across devices, enables Realtime delivery, preserves tracking URLs, and adds a 30-second visible-screen refresh fallback.
+- Calendar Mobile: adds a compact weekly layout, current-day emphasis, week navigation, and a dedicated Streaming / Content Schedule.
+- Notifications: repairs native permission and settings loading across Windows and Android and exposes device-specific notification choices after authorization.
+- QR / Client Updates: records ticket update history, sends configured customer email updates, and provides Android text-message handoff without changing client data.
+- Quote Autofill: improves device-type detection, model-specific fields, image selection, variant/condition handling, timeout recovery, and editable generated summaries.
+- Sales Mobile: restructures the sale editor for touch screens with a client summary, responsive item cards, paired order dates, sale-specific print and checkout actions, and reliable loading of existing sale data.
+
 ## v0.5.17 (2026-07-21)
 - QR / Client Updates: sends authenticated repair and sale status emails through Railway to the customer's saved email address and reports delivery failures instead of claiming success.
 - QR / Client Updates: adds a protected per-ticket History view with timestamps, recipients, technician messages, estimated dates, and sent or failed delivery status.

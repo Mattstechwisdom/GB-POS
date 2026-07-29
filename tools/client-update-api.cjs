@@ -87,6 +87,7 @@ function serverConfig() {
       || process.env.SUPABASE_ANON_KEY
       || '',
     ),
+    serviceRoleKey: String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
     gmailUser: String(process.env.GBPOS_EMAIL_FROM || 'gadgetboysc@gmail.com').trim(),
     gmailAppPassword: String(process.env.GBPOS_GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
     fromName: String(process.env.GBPOS_EMAIL_FROM_NAME || 'GadgetBoy Repair & Retail').trim(),
@@ -151,9 +152,12 @@ async function resolveTicket(config, token, body) {
     const tokenRows = await selectRows(config, token, 'qr_status_tokens', {
       token: `eq.${String(body.token).trim()}`,
       revoked_at: 'is.null',
-    }, 'id,shop_id,record_type,legacy_record_id');
+    }, 'id,shop_id,record_type,legacy_record_id,expires_at');
     tokenRow = tokenRows[0] || null;
     if (!tokenRow) throw Object.assign(new Error('QR token was not found or is no longer active.'), { status: 404 });
+    if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) {
+      throw Object.assign(new Error('This QR token is expired.'), { status: 410 });
+    }
     type = normalizeType(tokenRow.record_type);
     legacyRecordId = Number(tokenRow.legacy_record_id || 0) || 0;
     shopId = String(tokenRow.shop_id || '');
@@ -193,11 +197,12 @@ function customerDetails(context) {
     || record.customer_name
     || 'Client';
   const email = String(customer.email || record.customer_email || '').trim();
+  const phone = String(customer.phone || record.customer_phone || '').trim();
   const item = context.type === 'sale'
     ? (record.item_description || record.category || 'order')
     : ([record.product_description, record.model].filter(Boolean).join(' - ') || record.product_category || 'device');
   const order = context.type === 'sale' ? `INV-${context.legacyRecordId}` : `WO-${context.legacyRecordId}`;
-  return { name, email, item, order };
+  return { name, email, phone, item, order };
 }
 
 function buildPatch(type, statusKey, statusLabel, estimatedDate, notes) {
@@ -231,6 +236,31 @@ function emailCopy(context, statusKey, statusLabel, estimatedDate, notes) {
   const text = `Hi ${details.name},\n\nHere is an update for ${details.item} (${details.order}):\n\n${updateText}${dateText}${noteText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`;
   const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b"><div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #d4d4d8"><div style="padding:18px 22px;background:#18181b;border-bottom:4px solid #39ff14;color:#fff"><div style="font-size:18px;font-weight:800">GADGETBOY Repair &amp; Retail</div><div style="margin-top:4px;font-size:12px;color:#d4d4d8">2822 Devine Street, Columbia, SC 29205 | (803) 708-0101</div></div><div style="padding:24px"><p style="margin-top:0">Hi <strong>${esc(details.name)}</strong>,</p><p>Here is an update for <strong>${esc(details.item)}</strong> (${esc(details.order)}).</p><div style="margin:20px 0;padding:16px;border:1px solid #a1a1aa;border-left:5px solid #8b5cf6;background:#fafafa"><div style="font-size:12px;font-weight:800;text-transform:uppercase;color:#52525b">Current update</div><div style="margin-top:6px;font-size:18px;font-weight:800">${esc(updateText)}</div>${estimatedDate ? `<div style="margin-top:10px"><strong>Estimated date:</strong> ${esc(estimatedDate)}</div>` : ''}${!manual && notes ? `<div style="margin-top:10px"><strong>Technician note:</strong> ${esc(notes)}</div>` : ''}</div><p style="font-size:13px;color:#52525b">Questions? Call (803) 708-0101 or reply to this email.</p></div></div></body></html>`;
   return { ...details, subject, text, html };
+}
+
+function smsCopy(context, statusKey, statusLabel, estimatedDate, notes) {
+  const details = customerDetails(context);
+  const statusMessages = {
+    pickup_reminder: `\u{1F44B} Friendly reminder: Your ${details.item} is ready for pickup whenever it is convenient for you.`,
+    diagnosis: '\u{1F50D} Diagnosis is underway. Our technicians are carefully checking your device and will keep you posted.',
+    waiting_device: '\u{1F4F1} We are ready for the next step and are currently waiting for your device to be dropped off.',
+    part_ordered: '\u{1F4E6} Your repair part has been ordered. We will let you know as soon as it arrives.',
+    waiting_part: '\u{1F69A} Your repair is waiting on the ordered part to arrive. We are tracking it and will keep you updated.',
+    part_delivered: '\u{2705} Your part has arrived, and your repair is moving into the next stage.',
+    repair_complete: '\u{1F389} Great news! Your repair is complete and your device is ready for pickup.',
+    not_possible: '\u{2139}\u{FE0F} We completed our assessment, but unfortunately the repair could not be completed.',
+    product_ordered: '\u{1F4E6} Your product has been ordered. We will let you know as soon as it arrives.',
+    product_in_shop: '\u{1F389} Great news! Your product has arrived and is ready for pickup.',
+  };
+  const updateText = statusKey === 'manual_update'
+    ? `\u{1F4AC} ${notes || statusLabel}`
+    : (statusMessages[statusKey] || statusLabel);
+  const dateText = estimatedDate ? `\n\u{1F4C5} Estimated date: ${estimatedDate}` : '';
+  const noteText = statusKey !== 'manual_update' && notes
+    ? `\n\u{1F4DD} Technician note: ${notes}`
+    : '';
+  const text = `GADGETBOY UPDATE\n\nHi ${details.name}! Here is the latest on your ${details.item}:\n\n${updateText}${dateText}${noteText}\n\nTicket: ${details.order}\nQuestions? Call us at (803) 708-0101 or email gadgetboysc@gmail.com.\n\nGadgetBoy Repair & Retail`;
+  return { ...details, text };
 }
 
 let mailTransport = null;
@@ -283,16 +313,21 @@ async function handleSend(req, res) {
     json(res, 503, { ok: false, error: 'The server Supabase configuration is incomplete.' });
     return;
   }
-  const token = bearerToken(req);
-  if (!token) {
-    json(res, 401, { ok: false, error: 'Sign in before sending a client update.' });
-    return;
-  }
-
   try {
-    await verifyUser(config, token);
     const body = await readBody(req);
-    const context = await resolveTicket(config, token, body);
+    const userToken = bearerToken(req);
+    const qrToken = String(body.token || '').trim();
+    if (userToken) {
+      await verifyUser(config, userToken);
+    } else if (!qrToken) {
+      throw Object.assign(new Error('Sign in before sending a client update.'), { status: 401 });
+    } else if (!config.serviceRoleKey) {
+      throw Object.assign(new Error('Secure QR updates are not configured on the server.'), { status: 503 });
+    }
+    // The service key never leaves Railway. It is used only after the request
+    // presents an active, unexpired QR capability token.
+    const dataToken = userToken || config.serviceRoleKey;
+    const context = await resolveTicket(config, dataToken, body);
     const statusKey = String(body.statusKey || '').trim();
     const statusLabel = STATUS_OPTIONS[context.type]?.[statusKey];
     if (!statusLabel) throw Object.assign(new Error('That status update is not supported for this ticket.'), { status: 400 });
@@ -302,13 +337,44 @@ async function handleSend(req, res) {
       throw Object.assign(new Error('Enter the message you want to send to the client.'), { status: 400 });
     }
 
+    const deliveryMode = String(body.deliveryMode || 'email').toLowerCase() === 'text' ? 'text' : 'email';
     const savedRecord = await updateTicket(
       config,
-      token,
+      dataToken,
       context,
       buildPatch(context.type, statusKey, statusLabel, estimatedDate, notes),
     );
     const message = emailCopy(context, statusKey, statusLabel, estimatedDate, notes);
+    if (deliveryMode === 'text') {
+      const sms = smsCopy(context, statusKey, statusLabel, estimatedDate, notes);
+      if (!sms.phone) throw Object.assign(new Error('The client does not have a phone number on file.'), { status: 400 });
+      const history = await insertHistory(config, dataToken, {
+        shop_id: context.shopId,
+        qr_token_id: context.tokenRow?.id || null,
+        record_type: context.type,
+        legacy_record_id: context.legacyRecordId,
+        status_key: statusKey,
+        status_label: statusLabel,
+        message: sms.text,
+        estimated_date: estimatedDate || null,
+        recipient_email: null,
+        email_subject: null,
+        delivery_status: 'not_requested',
+        delivery_error: null,
+        provider_message_id: null,
+      });
+      json(res, 200, {
+        ok: true,
+        statusSaved: true,
+        deliveryStatus: 'text_prepared',
+        message: 'Status saved. Your messaging app is ready with the client and update filled in.',
+        recipientPhone: sms.phone,
+        textMessage: sms.text,
+        record: savedRecord,
+        history,
+      });
+      return;
+    }
     let deliveryStatus = 'sent';
     let deliveryError = '';
     let providerMessageId = '';
@@ -319,7 +385,7 @@ async function handleSend(req, res) {
       deliveryError = String(error?.message || error);
     }
 
-    const history = await insertHistory(config, token, {
+    const history = await insertHistory(config, dataToken, {
       shop_id: context.shopId,
       qr_token_id: context.tokenRow?.id || null,
       record_type: context.type,

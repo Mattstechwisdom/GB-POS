@@ -1082,7 +1082,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         updateOpening={mobileUpdateOpening}
         onUpdate={() => {
           if (!mobileUpdate) return;
-          openMobileUpdateDownload(mobileUpdate, setMobileUpdateOpening);
+          openMobileUpdateDownload(mobileUpdate, true, setMobileUpdateOpening);
         }}
         onSignOut={onSignOut}
       />

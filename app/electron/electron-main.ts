@@ -1324,6 +1324,8 @@ let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
 let autoInstallAfterDownload = false;
+let downloadInstructionsWithUpdate = true;
+let instructionsDownloadPromise: Promise<string> = Promise.resolve('');
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1357,6 +1359,63 @@ function getUpdateLabel(info: any): string {
   const version = String(info?.version || '').trim();
   const releaseName = String(info?.releaseName || '').trim();
   return releaseName || (version ? `v${version}` : 'a newer version');
+}
+
+function updateInstructionsUrl(info: any): { url: string; fileName: string } | null {
+  const version = String(info?.version || '').trim().replace(/^v/i, '');
+  if (!/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(version)) return null;
+  const fileName = `GadgetBoy-POS-Instructions-${version}.pdf`;
+  return {
+    fileName,
+    url: `https://github.com/Mattstechwisdom/GB-POS/releases/download/v${encodeURIComponent(version)}/${encodeURIComponent(fileName)}`,
+  };
+}
+
+function downloadHttpsFile(url: string, destination: string, redirectsLeft = 6): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, { headers: { 'User-Agent': 'GadgetBoy-POS-Updater' } }, (response: any) => {
+      const status = Number(response.statusCode || 0);
+      if (status >= 300 && status < 400 && response.headers.location && redirectsLeft > 0) {
+        response.resume();
+        const redirected = new URL(String(response.headers.location), url).toString();
+        downloadHttpsFile(redirected, destination, redirectsLeft - 1).then(resolve, reject);
+        return;
+      }
+      if (status !== 200) {
+        response.resume();
+        reject(new Error(`Instructions download returned HTTP ${status || 'unknown'}.`));
+        return;
+      }
+      const temporary = `${destination}.download`;
+      const output = fs.createWriteStream(temporary);
+      response.pipe(output);
+      output.on('finish', () => {
+        output.close(() => {
+          try {
+            fs.renameSync(temporary, destination);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      output.on('error', (error: any) => {
+        try { output.close(); } catch {}
+        try { fs.unlinkSync(temporary); } catch {}
+        reject(error);
+      });
+    });
+    request.setTimeout(30000, () => request.destroy(new Error('Instructions download timed out.')));
+    request.on('error', reject);
+  });
+}
+
+async function downloadUpdateInstructions(info: any): Promise<string> {
+  const asset = updateInstructionsUrl(info);
+  if (!asset) return '';
+  const destination = path.join(app.getPath('downloads'), asset.fileName);
+  await downloadHttpsFile(asset.url, destination);
+  return destination;
 }
 
 function updateUiHtml(initialState: any): string {
@@ -1536,6 +1595,29 @@ function updateUiHtml(initialState: any): string {
       border-color: #a855f7;
       box-shadow: 0 0 18px rgba(168,85,247,.18);
     }
+    .options {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255,255,255,.035);
+    }
+    .options label {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .options input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--green);
+    }
     button.auto:hover { background: #9333ea; }
     button:disabled {
       cursor: default;
@@ -1579,6 +1661,9 @@ function updateUiHtml(initialState: any): string {
         <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
         <div id="percent" class="percent">0%</div>
       </div>
+      <div id="options" class="options">
+        <label><input id="instructionsCheck" type="checkbox" checked /> Download the matching Instructions PDF</label>
+      </div>
     </div>
     <div class="footer">
       <button id="secondaryBtn">Skip for Now</button>
@@ -1596,6 +1681,8 @@ function updateUiHtml(initialState: any): string {
     const primaryBtn = document.getElementById('primaryBtn');
     const secondaryBtn = document.getElementById('secondaryBtn');
     const autoBtn = document.getElementById('autoBtn');
+    const optionsEl = document.getElementById('options');
+    const instructionsCheck = document.getElementById('instructionsCheck');
     const busyDots = '<span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
 
     function pct(value) {
@@ -1614,17 +1701,20 @@ function updateUiHtml(initialState: any): string {
       secondaryBtn.disabled = false;
       autoBtn.disabled = false;
       autoBtn.style.display = 'none';
+      optionsEl.style.display = 'flex';
+      if (typeof state.instructions === 'boolean') instructionsCheck.checked = state.instructions;
+      instructionsCheck.disabled = phase !== 'available';
 
       if (phase === 'available') {
         titleEl.textContent = 'Update Available';
         messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready. Update Now downloads and lets you choose when to install. Auto Install & Relaunch downloads, closes the POS, installs, and reopens automatically.';
         primaryBtn.textContent = 'Update Now';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'download', instructions: instructionsCheck.checked });
         autoBtn.style.display = 'inline-block';
         autoBtn.textContent = 'Auto Install & Relaunch';
-        autoBtn.onclick = () => ipcRenderer.send('updater-window-action', 'auto');
+        autoBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'auto', instructions: instructionsCheck.checked });
         secondaryBtn.textContent = 'Skip for Now';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'skip' });
       } else if (phase === 'downloading') {
         titleEl.textContent = 'Downloading Update';
         messageEl.innerHTML = (state && state.autoInstall
@@ -1651,9 +1741,9 @@ function updateUiHtml(initialState: any): string {
         progressFill.style.width = '100%';
         percentEl.textContent = '100%';
         primaryBtn.textContent = 'Install and Relaunch';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'install');
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'install' });
         secondaryBtn.textContent = 'Later';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'later');
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'later' });
       } else if (phase === 'applying') {
         titleEl.textContent = 'Applying Update';
         messageEl.innerHTML = 'Closing GadgetBoy POS and applying the update ' + busyDots;
@@ -1671,9 +1761,9 @@ function updateUiHtml(initialState: any): string {
         messageEl.classList.add('error');
         messageEl.textContent = state && state.detail ? state.detail : 'The update could not be completed. You can try again the next time you open the app.';
         primaryBtn.textContent = 'Close';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'skip' });
         secondaryBtn.textContent = 'Releases';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'releases' });
       }
     };
 
@@ -1686,8 +1776,12 @@ function updateUiHtml(initialState: any): string {
 function ensureUpdateUiIpc() {
   if (updateUiIpcRegistered) return;
   updateUiIpcRegistered = true;
-  ipcMain.on('updater-window-action', (_event: any, action: string) => {
+  ipcMain.on('updater-window-action', (_event: any, payload: any) => {
     try {
+      const action = typeof payload === 'string' ? payload : String(payload?.action || '');
+      if (action === 'download' || action === 'auto') {
+        downloadInstructionsWithUpdate = payload?.instructions !== false;
+      }
       if (action === 'download') {
         autoInstallAfterDownload = false;
         void startUpdateDownload();
@@ -1711,7 +1805,7 @@ function ensureUpdateUiIpc() {
 function sendUpdateUiState(state: any) {
   try {
     if (!updateUiWindow || updateUiWindow.isDestroyed()) return;
-    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify({ ...(state || {}), autoInstall: autoInstallAfterDownload })});`).catch(() => {});
+    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify({ ...(state || {}), autoInstall: autoInstallAfterDownload, instructions: downloadInstructionsWithUpdate })});`).catch(() => {});
   } catch {
     // ignore
   }
@@ -1741,7 +1835,7 @@ function showUpdateUi(state: any) {
 
     updateUiWindow = new BrowserWindow({
       width: 690,
-      height: 390,
+      height: 440,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -1765,7 +1859,7 @@ function showUpdateUi(state: any) {
     updateUiWindow.once('ready-to-show', () => {
       try { updateUiWindow.show(); } catch {}
     });
-    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml({ ...(state || {}), autoInstall: autoInstallAfterDownload }))}`);
+    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml({ ...(state || {}), autoInstall: autoInstallAfterDownload, instructions: downloadInstructionsWithUpdate }))}`);
   } catch (e: any) {
     autoUpdatePromptOpen = false;
     try { console.error('[AutoUpdate] update window failed:', e?.message || e); } catch {}
@@ -1777,7 +1871,13 @@ async function startUpdateDownload() {
   autoUpdateDownloading = true;
   showUpdateUi({ phase: 'downloading', label: getUpdateLabel(updateUiInfo), percent: 0 });
   try {
-    await autoUpdater.downloadUpdate();
+    instructionsDownloadPromise = downloadInstructionsWithUpdate
+      ? downloadUpdateInstructions(updateUiInfo).catch((error: any) => {
+          try { console.warn('[AutoUpdate] Instructions download failed:', error?.message || error); } catch {}
+          return '';
+        })
+      : Promise.resolve('');
+    await Promise.all([autoUpdater.downloadUpdate(), instructionsDownloadPromise]);
   } catch (e: any) {
     autoUpdateDownloading = false;
     autoInstallAfterDownload = false;
@@ -1809,6 +1909,8 @@ async function promptToDownloadUpdate(info: any) {
   if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
   updateUiInfo = info;
   autoInstallAfterDownload = false;
+  downloadInstructionsWithUpdate = true;
+  instructionsDownloadPromise = Promise.resolve('');
   showUpdateUi({ phase: 'available', label: getUpdateLabel(info), percent: 0 });
 }
 
@@ -1816,6 +1918,7 @@ async function promptToInstallDownloadedUpdate(info: any) {
   if (!autoUpdater) return;
   updateUiInfo = info;
   autoUpdateDownloading = false;
+  await instructionsDownloadPromise;
   if (autoInstallAfterDownload) {
     void installDownloadedUpdate();
     return;
@@ -3645,6 +3748,7 @@ function fromCloudRow(key: string, row: any): any {
       partName: row.part_name || '',
       source: row.source || '',
       orderUrl: row.order_url || '',
+      trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
@@ -3906,6 +4010,7 @@ function toCloudRow(key: string, item: any): any | null {
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
       order_url: toCloudString(item.orderUrl),
+      tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
       legacy_created_at: toCloudIso(item.createdAt),
