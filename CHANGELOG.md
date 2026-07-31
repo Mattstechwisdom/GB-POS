@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.31 (2026-07-31)
+- Client Updates: adds bounded Railway/Gmail delivery timeouts, always unlocks update actions after failures, keeps retries available, and refreshes local/cloud status without blocking the update window.
+- Client Updates: preserves delivery history and clearly distinguishes a saved ticket status from an email delivery failure.
+- Technicians: restores permanent Supabase creation, editing, passcode storage, and deletion through admin/manager-scoped profile policies and admin-scoped credential policies.
+- Technicians: uses the stable technician legacy ID for cloud upserts so changing an email cannot create a duplicate or make a technician disappear on another installation.
+- Technician Analytics: adds per-technician performance views based on saved work orders, sales, and consultations without changing source records.
+- Mobile Technicians: restructures technician cards and editing controls for phone-sized screens while retaining the established desktop layout.
+- Notifications / Android: adds a native Android 13+ permission request/result handshake, remembers denied state, reveals in-app notification preferences only after approval, and rechecks permission after returning from system settings.
+- Notifications: prevents the notification panel from remaining on "Checking..." and keeps the settings screen available across Android, mobile preview, and desktop.
+- Instructions: expands and restyles the bundled POS manual with the current technician, notification, update, and troubleshooting workflows.
+
 ## v0.5.30 (2026-07-29)
 - Notifications / Android: uses Capacitor Local Notifications as the primary Android 13+ permission request so the operating-system prompt returns directly to the app.
 - Notifications: removes the minute-long permission polling path and adds bounded checks, retry guidance, and a native bridge fallback that cannot leave Settings stuck on "Checking...".

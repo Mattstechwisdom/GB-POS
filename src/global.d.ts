@@ -167,6 +167,7 @@ declare global {
     GBPosAndroid?: {
       openExternalUrl?: (url: string) => void;
       openNotificationSettings?: () => void;
+      getNotificationPermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
       requestNotificationPermission?: () => void;
       downloadAndInstallApk?: (url: string, fileName?: string) => void;
       downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;

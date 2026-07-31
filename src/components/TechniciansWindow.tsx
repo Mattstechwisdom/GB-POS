@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, addTechnician, removeTechnician, updateTechnician } from '../lib/admin';
 import { formatPhone } from '../lib/format';
+import TechnicianAnalyticsWindow from './TechnicianAnalyticsWindow';
 
 const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void }> = ({ onClose, onSaved }) => {
   const [local, setLocal] = useState<any>({ firstName: '', lastName: '', nickname: '', phone: '', email: '', passcode: '' });
@@ -58,6 +59,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [saveMessages, setSaveMessages] = useState<Record<number, string>>({});
   const [verifyTech, setVerifyTech] = useState<any | null>(null);
   const [passcodeTech, setPasscodeTech] = useState<any | null>(null);
+  const [analyticsTech, setAnalyticsTech] = useState<any | null>(null);
   const [clockAction, setClockAction] = useState<{ mode: 'in' | 'out' } | null>(null);
 
   async function closeWindow() {
@@ -105,6 +107,55 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     setList(l); 
   }
 
+  const isMobileLayout = /mobile\.html$/i.test(window.location.pathname)
+    || !!document.querySelector('.gbpos-mobile');
+
+  async function saveSchedule(tech: any, schedule: any) {
+    await updateTechnician({ ...tech, schedule });
+    await refresh();
+  }
+
+  async function clearTechnicianTime(tech: any) {
+    try {
+      const name = tech.nickname || `${tech.firstName || ''} ${tech.lastName || ''}`.trim() || `Tech ${tech.id}`;
+      if (!window.confirm(`Clear ALL time entries for ${name}? This cannot be undone.`)) return;
+      const api: any = (window as any).api;
+      const all = await api.dbGet('timeEntries') || [];
+      const mine = all.filter((entry: any) => entry.technicianId === tech.id);
+      let count = 0;
+      for (const entry of mine) {
+        try {
+          await api.dbDelete('timeEntries', entry.id);
+          count++;
+        } catch (error) {
+          console.error('delete time entry failed', error);
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 150));
+      await refresh();
+      setTechnicianMessage(tech.id, count ? `Cleared ${count} time entr${count === 1 ? 'y' : 'ies'}` : 'No entries to clear');
+    } catch (error) {
+      console.error('clear time failed', error);
+      alert('Failed to clear time entries');
+    }
+  }
+
+  async function deleteTechnician(tech: any) {
+    try {
+      if (!window.confirm(`Delete technician ${tech.firstName || ''} ${tech.lastName || ''}? This cannot be undone.`)) return;
+      const ok = await removeTechnician(tech.id);
+      if (!ok) {
+        alert('Failed to delete technician.');
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 120));
+      await refresh();
+    } catch (error) {
+      console.error('delete tech failed', error);
+      alert('Delete failed. See console for details.');
+    }
+  }
+
   useEffect(() => { 
     console.log('TechniciansWindow initializing...');
     refresh(); 
@@ -119,20 +170,22 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[90vh] overflow-auto p-4">
-        <div className="flex items-center justify-between mb-3">
+    <div className="gb-technicians-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="gb-technicians-window bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[90vh] overflow-auto p-4">
+        <div className="gb-technicians-header flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">Technicians</h3>
-          <div className="flex gap-2 flex-wrap justify-end">
-            <button className="px-3 py-1 bg-zinc-800 rounded" onClick={refresh}>Refresh</button>
-            <button className="px-3 py-1 bg-green-600 border border-green-500 text-white rounded hover:bg-green-700 transition-colors" onClick={() => setClockAction({ mode: 'in' })}>Clock In</button>
-            <button className="px-3 py-1 bg-red-600 border border-red-500 text-white rounded hover:bg-red-700 transition-colors" onClick={() => setClockAction({ mode: 'out' })}>Clock Out</button>
-            <button className="px-3 py-1 bg-zinc-800 rounded" onClick={() => setShowNew(true)}>Add New Technician</button>
-            <button type="button" className="gb-panel-x-button" onClick={() => void closeWindow()} aria-label="Close Technicians" title="Close Technicians">x</button>
+          <div className="gb-technicians-toolbar flex gap-2 flex-wrap justify-end">
+            <button className="gb-tech-refresh px-3 py-1 bg-zinc-800 rounded" onClick={refresh}>Refresh</button>
+            <button className="gb-tech-clock-in px-3 py-1 bg-green-600 border border-green-500 text-white rounded hover:bg-green-700 transition-colors" onClick={() => setClockAction({ mode: 'in' })}>Clock In</button>
+            <button className="gb-tech-clock-out px-3 py-1 bg-red-600 border border-red-500 text-white rounded hover:bg-red-700 transition-colors" onClick={() => setClockAction({ mode: 'out' })}>Clock Out</button>
+            <button className="gb-tech-add px-3 py-1 bg-zinc-800 rounded" onClick={() => setShowNew(true)}>Add Technician</button>
+            {!isMobileLayout ? (
+              <button type="button" className="gb-panel-x-button" onClick={() => void closeWindow()} aria-label="Close Technicians" title="Close Technicians">x</button>
+            ) : null}
           </div>
         </div>
 
-        <div className="border border-zinc-800 rounded overflow-hidden overflow-x-auto">
+        {!isMobileLayout ? <div className="gb-tech-desktop-table border border-zinc-800 rounded overflow-hidden overflow-x-auto">
           <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-zinc-800 text-zinc-400">
               <tr>
@@ -166,6 +219,12 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                           onClick={() => setVerifyTech(t)}
                         >
                           Verify Time
+                        </button>
+                        <button
+                          className="px-2 py-1 text-xs bg-purple-700 border border-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+                          onClick={() => setAnalyticsTech(t)}
+                        >
+                          Analytics
                         </button>
                         <button
                           className="px-2 py-1 text-xs bg-red-800 border border-red-700 text-white rounded hover:bg-red-700 transition-colors"
@@ -239,27 +298,68 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                       <ScheduleEditor 
                         tech={t} 
                         showMessage={(message) => setTechnicianMessage(t.id, message)}
-                        onSave={async (sched) => {
-                          console.log('=== SAVE PROCESS START ===');
-                          console.log('Technician before update:', t);
-                          console.log('Schedule to save:', sched);
-                          
-                          const techUpdate = { ...t, schedule: sched };
-                          console.log('Update payload:', techUpdate);
-                          
-                          const updated = await updateTechnician(techUpdate);
-                          console.log('Database update result:', updated);
-                          
-                          await refresh();
-                          console.log('=== SAVE PROCESS END ===');
-                        }} 
+                        onSave={(schedule) => saveSchedule(t, schedule)}
                       />
                     </td>
                   </tr>
                 ))}
             </tbody>
           </table>
-        </div>
+        </div> : (
+          <div className="gb-tech-mobile-list">
+            {list.length === 0 ? <div className="gb-tech-empty">No technicians</div> : null}
+            {list.map(tech => {
+              const fullName = `${tech.firstName || ''} ${tech.lastName || ''}`.trim() || `Technician ${tech.id}`;
+              return (
+                <article className="gb-tech-card" key={tech.id}>
+                  <div className="gb-tech-card-header">
+                    <div>
+                      <h4>{tech.nickname || fullName}</h4>
+                      {tech.nickname ? <p>{fullName}</p> : null}
+                    </div>
+                    <button type="button" className="gb-tech-edit" onClick={() => setEditing(tech)}>Edit</button>
+                  </div>
+
+                  <div className="gb-tech-contact">
+                    <a href={tech.phone ? `tel:${String(tech.phone).replace(/\D/g, '')}` : undefined}>
+                      <span>Phone</span>
+                      <strong>{formatPhone(tech.phone || '') || tech.phone || '-'}</strong>
+                    </a>
+                    <a href={tech.email ? `mailto:${tech.email}` : undefined}>
+                      <span>Email</span>
+                      <strong>{tech.email || '-'}</strong>
+                    </a>
+                  </div>
+
+                  <div className="gb-tech-actions">
+                    <button type="button" onClick={() => setPasscodeTech(tech)}>Passcode</button>
+                    <button type="button" className="verify" onClick={() => setVerifyTech(tech)}>Verify Time</button>
+                    <button type="button" className="analytics" onClick={() => setAnalyticsTech(tech)}>Analytics</button>
+                    <button type="button" className="danger" onClick={() => void clearTechnicianTime(tech)}>Clear Time</button>
+                  </div>
+
+                  {saveMessages[tech.id] ? <div className="gb-tech-message">{saveMessages[tech.id]}</div> : null}
+
+                  <details className="gb-tech-schedule">
+                    <summary>
+                      <span>Weekly Schedule</span>
+                      <span className="gb-tech-schedule-hint">Tap to edit</span>
+                    </summary>
+                    <ScheduleEditor
+                      tech={tech}
+                      showMessage={(message) => setTechnicianMessage(tech.id, message)}
+                      onSave={(schedule) => saveSchedule(tech, schedule)}
+                    />
+                  </details>
+
+                  <button type="button" className="gb-tech-delete" onClick={() => void deleteTechnician(tech)}>
+                    Delete Technician
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
       
   {showNew && <TechnicianForm onClose={() => setShowNew(false)} onSaved={async () => { await refresh(); }} />}
@@ -277,6 +377,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       }}
     />
   )}
+  {analyticsTech && <TechnicianAnalyticsWindow tech={analyticsTech} onClose={() => setAnalyticsTech(null)} />}
   {clockAction && (
     <ClockPasscodeModal
       mode={clockAction.mode}
@@ -626,6 +727,8 @@ const TimeVerificationModal: React.FC<{ tech: any; onClose: () => void }> = ({ t
 
 // Weekly schedule editor embedded per technician
 const ScheduleEditor: React.FC<{ tech: any; onSave: (sched: any) => Promise<void>; showMessage: (msg: string) => void }> = ({ tech, onSave, showMessage }) => {
+  const mobileSchedule = /mobile\.html$/i.test(window.location.pathname)
+    || !!document.querySelector('.gbpos-mobile');
   // Use tech.schedule directly instead of local state, but keep local for editing
   const [local, setLocal] = useState<any>(() => {
     const schedule = tech.schedule || {};
@@ -667,13 +770,13 @@ const ScheduleEditor: React.FC<{ tech: any; onSave: (sched: any) => Promise<void
     } catch {}
   }, { debounceMs: 2000, enabled: !!tech?.id, equals: Object.is });
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded p-3 max-w-full overflow-auto">
+    <div className="gb-schedule-editor bg-zinc-900 border border-zinc-800 rounded p-3 max-w-full overflow-auto">
       <div className="text-xs text-zinc-400 mb-2">Weekly Schedule</div>
-      <div className="space-y-1">
+      <div className="gb-schedule-days space-y-1">
         {days.map(d => {
           const isOff = local?.[d.key]?.off || false;
           return (
-            <div key={d.key} className="flex items-center gap-2 text-sm">
+            <div key={d.key} className="gb-schedule-day flex items-center gap-2 text-sm">
               <div className="w-10 text-zinc-300">{d.label}</div>
               <label className="flex items-center gap-1 cursor-pointer">
                 <input
@@ -685,17 +788,37 @@ const ScheduleEditor: React.FC<{ tech: any; onSave: (sched: any) => Promise<void
                 <span className="text-xs text-zinc-400">Off</span>
               </label>
               {!isOff && (
-                <div className="flex items-center gap-2">
-                  <TimeSelect value={local?.[d.key]?.start || ''} onChange={val => setDay(d.key,'start', val)} />
+                <div className="gb-schedule-times flex items-center gap-2">
+                  {mobileSchedule ? (
+                    <input
+                      type="time"
+                      aria-label={`${d.label} start time`}
+                      className="gb-mobile-schedule-time bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                      value={local?.[d.key]?.start || ''}
+                      onChange={event => setDay(d.key, 'start', event.target.value)}
+                    />
+                  ) : (
+                    <TimeSelect value={local?.[d.key]?.start || ''} onChange={val => setDay(d.key,'start', val)} />
+                  )}
                   <span className="text-xs text-zinc-500">to</span>
-                  <TimeSelect value={local?.[d.key]?.end || ''} onChange={val => setDay(d.key,'end', val)} />
+                  {mobileSchedule ? (
+                    <input
+                      type="time"
+                      aria-label={`${d.label} end time`}
+                      className="gb-mobile-schedule-time bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                      value={local?.[d.key]?.end || ''}
+                      onChange={event => setDay(d.key, 'end', event.target.value)}
+                    />
+                  ) : (
+                    <TimeSelect value={local?.[d.key]?.end || ''} onChange={val => setDay(d.key,'end', val)} />
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-700">
+      <div className="gb-schedule-footer flex items-center justify-between mt-3 pt-2 border-t border-zinc-700">
         <div className="text-sm text-zinc-400">Weekly Total: <span className="font-medium text-[#39FF14]">{totalHours()} hours</span></div>
         <button className="px-3 py-1 text-sm bg-[#39FF14] text-black font-medium rounded hover:bg-[#32E610] transition-colors" onClick={async () => {
           console.log('Save schedule for technician to DB only (calendar derives live)');

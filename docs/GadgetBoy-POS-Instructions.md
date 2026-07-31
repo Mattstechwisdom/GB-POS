@@ -322,6 +322,19 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Audit open shifts before payroll/commission reporting.
 - Do not assign records to the Supabase login display name.
 
+### Technician Analytics
+
+1. Open Technician Tools > Technicians.
+2. Select Analytics on the technician's card or desktop action row.
+3. Choose 7 days, 30 days, 90 days, or All time.
+4. Review assigned work orders, sales, consultations, logged time, common work, and recent activity.
+
+- Work-order and sales performance includes only records whose saved technician assignment matches that technician.
+- Billed, collected, average-ticket, completion-rate, and turnaround figures use saved POS values.
+- Consultation payout uses saved consultation hours at the configured reporting rule of $25 per hour.
+- Logged-time averages include completed clock-in/out entries; verification rate uses saved verification status.
+- The analytics report is read-only. Missing totals, payments, dates, or hours remain zero or unavailable and are never estimated.
+
 ## 18. Notifications
 
 ### Android
@@ -439,7 +452,108 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - The Android updater selects Android APK assets only.
 - Instructions uses the PDF from the same versioned GitHub release.
 
-## 25. Troubleshooting
+## 25. Complete Feature Directory
+
+Use this directory as a map of the POS. Detailed operating steps remain in the earlier workflow sections.
+
+### Main Workspace and Search
+
+- Unified recent-record workspace for work orders and sales.
+- Record-type, technician, status, date, and keyword filtering where available.
+- Invoice, client, phone, device, and item search.
+- Paginated or incremental loading without deleting records beyond the visible page.
+- Desktop right-click and Android long-press record actions.
+- Open, checkout, client profile, print, duplicate, reopen, mark-paid, call, text handoff, and delete actions where appropriate.
+
+### Clients and History
+
+- Search Client and Add Client are separate workflows.
+- Duplicate detection by matching full name, primary phone, or email.
+- Client overview card with editable contact information.
+- New Work Order and New Sale actions.
+- Work-order, sale, consultation, and saved-quote history.
+- Orphaned-link and duplicate-review tools for authorized maintenance.
+
+### Work Orders and Repair Operations
+
+- New, existing, and duplicated work-order workflows.
+- Assigned technician, work-order type, intake source, dates, device details, serial/IMEI, accessories, condition, and issue fields.
+- Reusable repair selection plus one-off custom lines.
+- Product selection from inventory.
+- Parts cost, sold price, labor, tax, discounts, deposits, payments, and remaining balance.
+- Internal Notes and timestamped Repair Journal.
+- Part order URL, distributor, order/arrival dates, tracking, tax-exempt status, and order state.
+- Client Update panel and QR status workflow with update history.
+- Work-order printout, customer receipt, release form, checkout, and closure.
+
+### Sales, Quick Sale, and Checkout
+
+- Client-linked sales and multi-item Quick Sale.
+- Product and custom item selection.
+- Quantity, condition, cost, sold price, discount, tax, totals, payments, and balance.
+- Shared checkout window and payment recording.
+- Customer receipt and sale-specific QR update actions.
+- Client sale history and reporting linkage.
+
+### Quotes and Consultations
+
+- Product and repair quote modes.
+- Existing-client search and client creation from valid quote information.
+- URL-assisted product autofill for device type, model fields, images, cost, condition, and editable sales summary.
+- Configurable markup and saved quote history.
+- Create Sale from selected quote items.
+- Consultation client, technician, date, time, duration, purpose, notes, calendar, and commission linkage.
+
+### Catalogs, Inventory, and Vendors
+
+- Device models, repair categories, repair definitions, and reusable service pricing.
+- Separate Products and Repair Parts inventory.
+- Device type/model, product category, condition, SKU, quantity, internal cost, markup, sold price, and source fields.
+- Saved distributor/vendor memory and Order URL buttons.
+- Separate parts-distributor and product-vendor records.
+- Tax exemption, contact details, notes, consignment, vendor share, and payout reporting.
+- Inventory selection from repair and sale workflows.
+
+### Scheduling, Staff, and Alerts
+
+- Day, week, and month calendar views where supported.
+- Consultations, events, technician schedules, part orders, and expected deliveries.
+- Separate Streaming / Content weekly planner.
+- Technician records, passcodes, assignments, schedules, clock-in/out, and time entries.
+- In-app notification inbox with read/unread management.
+- Device notification permission, consultation timing, work-order, sale, delivery, calendar, schedule, and Daily Look preferences.
+
+### Reporting and End of Day
+
+- Current-day End of Day overview separate from long-range reporting.
+- Labor collected, parts cost/charged, products cost/sold, consultations, and parts awaiting purchase.
+- Paid-cart/order confirmation tied back to work orders.
+- EOD email recipients and report sending.
+- Day, week, month, and year reporting filters.
+- Revenue, verified internal cost, gross profit, vendor amount owed, and technician commission calculations.
+- Charts and export/report outputs where available.
+
+### Documents and Customer Communication
+
+- Work-order form with terms and QR code.
+- Customer receipt and release form.
+- Quote output and consultation sheet.
+- Customer update emails from desktop/cloud delivery.
+- Android prepared-text handoff to the phone messaging app.
+- Per-ticket update history and delivery result.
+- Version-matched operating manual included with releases and updater downloads.
+
+### Cloud, Backup, Updates, and Support Tools
+
+- Supabase authentication, shared data loading, supported realtime changes, and queued offline synchronization.
+- Manual Sync Now and collection-change refreshes.
+- Local full/selective backups, scheduled daily backups, preview/dry-run restore, and encrypted portable backup where available.
+- Windows automatic update download/install/relaunch.
+- Android version check, signed APK update, instruction download, and install-permission handoff.
+- App Health Scan, environment information, orphan/duplicate checks, search-index rebuild, lookup rebuild, safe UI reset, totals validation, and logs.
+- Gidget text/voice assistant, recent chat history, local repair knowledge, POS search assistance, and safety boundaries.
+
+## 26. Troubleshooting
 
 ### App Opens Blank or Stays Loading
 
@@ -514,7 +628,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Shorten unusually long notes/items when appropriate.
 - QR codes and client information should remain on the first page; report the affected form and printer settings if they do not.
 
-## 26. Daily Technician Checklist
+## 27. Daily Technician Checklist
 
 ### Opening
 
@@ -554,7 +668,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 4. Send the EOD email.
 5. Confirm local daily backup completed.
 
-## 27. Data and Security Rules
+## 28. Data and Security Rules
 
 - Access customer information only for authorized shop work.
 - Use unique device locks and do not share shop credentials outside approved staff.
@@ -564,7 +678,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Log out of retired/lost devices and revoke access promptly.
 - Never alter production datasets for testing. Use a separate test environment or disposable test records clearly marked as tests.
 
-## 28. Support Information to Collect
+## 29. Support Information to Collect
 
 When reporting a problem, include:
 

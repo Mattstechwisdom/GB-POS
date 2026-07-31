@@ -3303,4 +3303,291 @@
   .gbpos-mobile .gb-client-quote-actions button:only-child {
     grid-column: 1 / -1;
   }
+
+  .gbpos-mobile .gb-technicians-overlay {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-technicians-window {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    min-height: 100% !important;
+    padding: 0.75rem !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .gbpos-mobile .gb-technicians-header {
+    align-items: flex-start !important;
+    gap: 0.65rem;
+  }
+
+  .gbpos-mobile .gb-technicians-header h3 {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem !important;
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar button {
+    min-height: 2.7rem;
+    padding: 0.4rem 0.5rem !important;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar .gb-tech-refresh {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar .gb-tech-add {
+    grid-column: 1 / 3;
+    border: 1px solid rgba(188, 19, 254, 0.65);
+    background: rgba(188, 19, 254, 0.16);
+    color: #e9b8ff;
+  }
+
+  .gbpos-mobile .gb-tech-mobile-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .gbpos-mobile .gb-tech-empty {
+    padding: 2rem 1rem;
+    border: 1px solid #27272a;
+    color: #a1a1aa;
+    text-align: center;
+  }
+
+  .gbpos-mobile .gb-tech-card {
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.8rem;
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    background: #18181b;
+  }
+
+  .gbpos-mobile .gb-tech-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .gbpos-mobile .gb-tech-card-header h4 {
+    margin: 0;
+    color: #f4f4f5;
+    font-size: 1.15rem;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-tech-card-header p {
+    margin: 0.1rem 0 0;
+    color: #a1a1aa;
+    font-size: 0.75rem;
+  }
+
+  .gbpos-mobile .gb-tech-edit {
+    min-width: 4rem;
+    min-height: 2.5rem;
+    border: 1px solid #52525b;
+    background: #27272a;
+    color: #f4f4f5;
+    font-weight: 700;
+  }
+
+  .gbpos-mobile .gb-tech-contact {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.45rem;
+  }
+
+  .gbpos-mobile .gb-tech-contact a {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+    padding: 0.55rem;
+    border: 1px solid #27272a;
+    background: #09090b;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .gbpos-mobile .gb-tech-contact span {
+    color: #71717a;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+  }
+
+  .gbpos-mobile .gb-tech-contact strong {
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-tech-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .gbpos-mobile .gb-tech-actions button {
+    min-height: 2.65rem;
+    padding: 0.35rem;
+    border: 1px solid #52525b;
+    background: #27272a;
+    color: #f4f4f5;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .gbpos-mobile .gb-tech-actions .verify {
+    border-color: #2563eb;
+    background: #1d4ed8;
+  }
+
+  .gbpos-mobile .gb-tech-actions .analytics {
+    border-color: #a855f7;
+    background: #7e22ce;
+  }
+
+  .gbpos-mobile .gb-tech-actions .danger {
+    border-color: #991b1b;
+    background: rgba(127, 29, 29, 0.72);
+  }
+
+  .gbpos-mobile .gb-tech-message {
+    padding: 0.55rem;
+    border: 1px solid #52525b;
+    background: #27272a;
+    color: #e4e4e7;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .gbpos-mobile .gb-tech-schedule {
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    background: #09090b;
+  }
+
+  .gbpos-mobile .gb-tech-schedule > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 3rem;
+    padding: 0.65rem;
+    cursor: pointer;
+    list-style: none;
+    color: #f4f4f5;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-tech-schedule > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-tech-schedule > summary::after {
+    content: "+";
+    color: #39ff14;
+    font-size: 1.25rem;
+  }
+
+  .gbpos-mobile .gb-tech-schedule[open] > summary::after {
+    content: "-";
+  }
+
+  .gbpos-mobile .gb-tech-schedule-hint {
+    margin-left: auto;
+    margin-right: 0.65rem;
+    color: #71717a;
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+
+  .gbpos-mobile .gb-schedule-editor {
+    padding: 0.65rem !important;
+    overflow: hidden !important;
+    border-width: 1px 0 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .gbpos-mobile .gb-schedule-editor > .text-xs:first-child {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-schedule-day {
+    display: grid !important;
+    grid-template-columns: 2.2rem 3.2rem minmax(0, 1fr);
+    min-height: 3rem;
+    gap: 0.35rem !important;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #27272a;
+  }
+
+  .gbpos-mobile .gb-schedule-day > .w-10 {
+    width: auto !important;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-schedule-times {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    min-width: 0;
+    gap: 0.25rem !important;
+  }
+
+  .gbpos-mobile .gb-schedule-times > div {
+    min-width: 0;
+  }
+
+  .gbpos-mobile .gb-schedule-times input,
+  .gbpos-mobile .gb-schedule-times select {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .gbpos-mobile .gb-mobile-schedule-time {
+    width: 100% !important;
+    min-height: 2.45rem;
+    padding: 0.35rem !important;
+    color-scheme: dark;
+    font-size: 0.75rem !important;
+  }
+
+  .gbpos-mobile .gb-schedule-footer {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .gbpos-mobile .gb-schedule-footer button {
+    width: 100%;
+    min-height: 2.75rem;
+  }
+
+  .gbpos-mobile .gb-tech-delete {
+    justify-self: end;
+    min-height: 2.35rem;
+    border: 0;
+    background: transparent;
+    color: #f87171;
+    font-size: 0.75rem;
+    text-decoration: underline;
+  }
 }

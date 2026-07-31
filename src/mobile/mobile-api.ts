@@ -504,7 +504,7 @@ function isAssignableTechnicianRow(row: any): boolean {
 
 function cloudConflictForKey(key: string): string {
   if (key === 'preferences') return 'shop_id,key';
-  if (key === 'technicians') return 'shop_id,email';
+  if (key === 'technicians') return 'shop_id,legacy_id';
   return 'shop_id,legacy_id';
 }
 

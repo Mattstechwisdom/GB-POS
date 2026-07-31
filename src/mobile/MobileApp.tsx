@@ -8,7 +8,11 @@ import { getSupabaseRuntimeConfig, supabase } from '../lib/supabase';
 import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
 import { technicianDisplayName } from '../lib/admin';
-import { syncNotificationsFromCalendar, syncNotificationsFromRecords } from '../lib/notifications';
+import {
+  requestDeviceNotificationPermission,
+  syncNotificationsFromCalendar,
+  syncNotificationsFromRecords,
+} from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
 
@@ -746,6 +750,19 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
     setRefreshKey((v) => v + 1);
   }, []);
 
+  const openNotifications = useCallback(() => {
+    const permissionRequest = requestDeviceNotificationPermission();
+    openModal('notifications');
+    void permissionRequest.then(async (settings) => {
+      window.dispatchEvent(new CustomEvent('gbpos:notification-permission-changed', { detail: settings }));
+    }).catch((error) => {
+      console.error('Notification permission request failed', error);
+      window.dispatchEvent(new CustomEvent('gbpos:notification-permission-error', {
+        detail: error instanceof Error ? error.message : 'Notification permission could not be requested.',
+      }));
+    });
+  }, [openModal]);
+
   useEffect(() => {
     registerOpenModal(openModal);
     const api = window.api as any;
@@ -955,7 +972,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
           <img className="mobile-topbar-logo" src={publicAsset('logo.png')} alt="GadgetBoy logo" />
         </button>
         <MobileBrandTitle />
-        <button type="button" className="mobile-icon-button" onClick={() => openModal('notifications')} aria-label="Open notifications">
+        <button type="button" className="mobile-icon-button" onClick={openNotifications} aria-label="Open notifications">
           <span aria-hidden="true">!</span>
         </button>
       </header>

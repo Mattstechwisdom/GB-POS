@@ -55,7 +55,8 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
   const [devicePermission, setDevicePermission] = useState<DeviceNotificationSettings['permission']>('default');
   const [permissionChecking, setPermissionChecking] = useState(false);
   const [permissionError, setPermissionError] = useState('');
-  const isMobileSurface = Capacitor.isNativePlatform()
+  const isNativeAndroid = Capacitor.getPlatform() === 'android' || !!window.GBPosAndroid;
+  const isMobileSurface = isNativeAndroid
     || /mobile\.html$/i.test(window.location.pathname)
     || !!document.querySelector('.gbpos-mobile');
 
@@ -90,21 +91,17 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
     }, 12_000);
     void (async () => {
       try {
-        let current = await loadDeviceNotificationSettings();
+        const current = await loadDeviceNotificationSettings();
         if (!active) return;
         setDevicePermission(current.permission);
-        if (Capacitor.isNativePlatform() && (current.permission === 'default' || current.permission === 'prompt')) {
-          current = await requestDeviceNotificationPermission();
-          if (!active) return;
-          setDevicePermission(current.permission);
-        } else if (
+        if (
           !isMobileSurface
           && current.permission === 'prompt'
           && typeof (window as any).api?.notificationRequestNativePermission === 'function'
         ) {
-          current = await requestDeviceNotificationPermission();
+          const requested = await requestDeviceNotificationPermission();
           if (!active) return;
-          setDevicePermission(current.permission);
+          setDevicePermission(requested.permission);
         }
         if (isMobileSurface && current.permission === 'granted') setMobileView('settings');
       } catch (error: any) {
@@ -121,7 +118,28 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
   }, [isMobileSurface]);
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    const onPermissionChanged = (event: Event) => {
+      const next = (event as CustomEvent<DeviceNotificationSettings>).detail;
+      if (!next?.permission) return;
+      setPermissionChecking(false);
+      setPermissionError('');
+      setDevicePermission(next.permission);
+      if (next.permission === 'granted') setMobileView('settings');
+    };
+    const onPermissionError = (event: Event) => {
+      setPermissionChecking(false);
+      setPermissionError(String((event as CustomEvent<string>).detail || 'Notification permission could not be requested.'));
+    };
+    window.addEventListener('gbpos:notification-permission-changed', onPermissionChanged);
+    window.addEventListener('gbpos:notification-permission-error', onPermissionError);
+    return () => {
+      window.removeEventListener('gbpos:notification-permission-changed', onPermissionChanged);
+      window.removeEventListener('gbpos:notification-permission-error', onPermissionError);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeAndroid) return;
     let active = true;
     const refreshPermission = async () => {
       if (document.visibilityState === 'hidden') return;
@@ -141,7 +159,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
       window.removeEventListener('focus', refreshPermission);
       document.removeEventListener('visibilitychange', refreshPermission);
     };
-  }, []);
+  }, [isNativeAndroid]);
 
   const unreadCount = useMemo(() => list.filter(n => !n.readAt).length, [list]);
 
@@ -227,7 +245,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
               if (isMobileSurface) {
                 if (devicePermission === 'granted') {
                   setMobileView('settings');
-                } else if (Capacitor.isNativePlatform() && (devicePermission === 'default' || devicePermission === 'prompt')) {
+                } else if (isNativeAndroid && (devicePermission === 'default' || devicePermission === 'prompt')) {
                   setPermissionChecking(true);
                   setPermissionError('');
                   const stopChecking = window.setTimeout(() => {
@@ -247,7 +265,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
                     window.clearTimeout(stopChecking);
                     setPermissionChecking(false);
                   }
-                } else if (Capacitor.isNativePlatform() && devicePermission === 'denied') {
+                } else if (isNativeAndroid && devicePermission === 'denied') {
                   openMobileNotificationSettings();
                 } else {
                   dispatchOpenModal('notificationSettings');

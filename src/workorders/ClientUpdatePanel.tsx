@@ -395,6 +395,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
     const extra = { estimatedDate, notes };
     setSavingKey(option.key);
     setResult(null);
+    const controller = new AbortController();
+    const requestTimeout = window.setTimeout(() => controller.abort(), 25_000);
     try {
       const api: any = (window as any).api;
       const sessionResult = await supabase.auth.getSession();
@@ -416,20 +418,34 @@ const ClientUpdatePanel: React.FC<Props> = ({
           notes: extra.notes || undefined,
           deliveryMode: selectedDelivery,
         }),
+        signal: controller.signal,
       });
       const delivery = await response.json().catch(() => null);
       if (!response.ok) throw new Error(delivery?.error || `Client update request failed (${response.status}).`);
 
-      if (delivery?.statusSaved && api?.dbUpdate) {
+      if (delivery?.record) {
+        const saved = mapCloudRow(type, delivery.record);
+        setRecord(saved);
+        onUpdated?.(saved);
+        if (delivery?.statusSaved && api?.dbUpdate) {
+          const key = type === 'sale' ? 'sales' : 'workOrders';
+          const patch = localPatch(type, option, extra);
+          void api.dbUpdate(key, record.id, { ...record, ...patch })
+            .then((localSaved: any) => {
+              if (!localSaved) return;
+              setRecord(localSaved);
+              onUpdated?.(localSaved);
+            })
+            .catch((syncError: any) => {
+              console.error('Client update was saved to Supabase, but the local cache refresh failed.', syncError);
+            });
+        }
+      } else if (delivery?.statusSaved && api?.dbUpdate) {
         const key = type === 'sale' ? 'sales' : 'workOrders';
         const patch = localPatch(type, option, extra);
         const saved = await api.dbUpdate(key, record.id, { ...record, ...patch });
         setRecord(saved || { ...record, ...patch });
         onUpdated?.(saved || { ...record, ...patch });
-      } else if (delivery?.record) {
-        const saved = mapCloudRow(type, delivery.record);
-        setRecord(saved);
-        onUpdated?.(saved);
       }
 
       if (selectedDelivery === 'text' && delivery?.textMessage) {
@@ -443,10 +459,14 @@ const ClientUpdatePanel: React.FC<Props> = ({
       setOpenKey('');
       setEstimatedDate('');
       setNotes('');
-      await loadHistory();
+      void loadHistory();
     } catch (e: any) {
-      setResult({ ok: false, message: e?.message || String(e) });
+      const message = e?.name === 'AbortError'
+        ? 'The update server did not respond in time. Nothing is locked; check the connection and tap the update again.'
+        : (e?.message || String(e));
+      setResult({ ok: false, message });
     } finally {
+      window.clearTimeout(requestTimeout);
       setSavingKey('');
     }
   }, [deliveryMode, estimatedDate, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);

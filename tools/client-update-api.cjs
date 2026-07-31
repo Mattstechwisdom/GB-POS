@@ -272,6 +272,9 @@ async function sendEmail(config, message) {
     mailTransport = nodemailer.createTransport({
       service: 'gmail',
       auth: { user: config.gmailUser, pass: config.gmailAppPassword },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     });
   }
   const info = await mailTransport.sendMail({

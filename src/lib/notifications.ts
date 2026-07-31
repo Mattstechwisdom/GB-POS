@@ -242,6 +242,16 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  if (typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
+    try {
+      const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
+      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
+        return permission as DeviceNotificationSettings['permission'];
+      }
+    } catch {
+      // Fall through to the Capacitor permission API.
+    }
+  }
   const desktopApi = api();
   if (typeof desktopApi?.notificationGetNativePermission === 'function') {
     try {
@@ -627,9 +637,34 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
   let permission = await getDeviceNotificationPermission();
   const desktopApi = api();
   const native = await getLocalNotificationsPlugin();
-  const isNativeAndroid = Capacitor.getPlatform() === 'android';
+  const isNativeAndroid = Capacitor.getPlatform() === 'android' || !!window.GBPosAndroid;
 
   if (
+    isNativeAndroid
+    && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      const nativePermissionResult = new Promise<DeviceNotificationSettings['permission']>((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+          reject(new Error('Android did not finish the notification permission request.'));
+        }, 20_000);
+        const onResult = (event: Event) => {
+          window.clearTimeout(timeout);
+          window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+          const next = String((event as CustomEvent)?.detail?.permission || '').toLowerCase();
+          resolve(next === 'granted' ? 'granted' : (next === 'denied' ? 'denied' : 'prompt'));
+        };
+        window.addEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+      });
+      window.GBPosAndroid.requestNotificationPermission();
+      permission = await nativePermissionResult;
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (
     isNativeAndroid
     && native?.requestPermissions
     && permission !== 'granted'
@@ -643,22 +678,6 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
       );
       const display = String(status?.display || '').toLowerCase();
       permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  } else if (
-    isNativeAndroid
-    && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
-    && permission !== 'granted'
-    && permission !== 'unsupported'
-  ) {
-    try {
-      window.GBPosAndroid.requestNotificationPermission();
-      const deadline = Date.now() + 8_000;
-      do {
-        await new Promise(resolve => window.setTimeout(resolve, 250));
-        permission = await getDeviceNotificationPermission();
-      } while (permission === 'prompt' && Date.now() < deadline);
     } catch {
       permission = await getDeviceNotificationPermission();
     }
@@ -695,6 +714,29 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
     try { await scheduleDeviceConsultationReminders(); } catch {}
   }
   return settings;
+}
+
+export async function openDeviceNotificationSystemSettings(): Promise<boolean> {
+  if (Capacitor.getPlatform() === 'android' || !!window.GBPosAndroid) {
+    try {
+      if (typeof window.GBPosAndroid?.openNotificationSettings === 'function') {
+        window.GBPosAndroid.openNotificationSettings();
+        return true;
+      }
+    } catch {
+      // Fall through to the platform API when the Android bridge is unavailable.
+    }
+  }
+  const desktopApi = api();
+  if (typeof desktopApi?.notificationOpenSystemSettings === 'function') {
+    try {
+      const result = await desktopApi.notificationOpenSystemSettings();
+      return result?.ok !== false;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 export async function sendTestDeviceNotification(): Promise<boolean> {
