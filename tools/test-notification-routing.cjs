@@ -22,7 +22,7 @@ assert.match(notifications, /enabledAt: permission === 'granted'/);
 assert.match(activity, /ActivityCompat\.requestPermissions/);
 assert.match(activity, /ActivityResultContracts\.RequestPermission/);
 assert.match(activity, /triggerWindowJSEvent/);
-assert.match(activity, /FLAG_PERMISSION_USER_SET/);
+assert.match(activity, /rememberNotificationPermissionRequested/);
 assert.match(activity, /dispatchNotificationPermissionResult/);
 assert.match(notifications, /getNotificationPermissionStatus.*setInterval/s);
 assert.match(manifest, /android\.permission\.POST_NOTIFICATIONS/);
