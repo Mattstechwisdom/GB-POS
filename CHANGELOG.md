@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.33 (2026-08-04)
+- Notifications: establishes a per-device authorization baseline so Windows and Android only alert for work orders and sales created after notifications were enabled, while older synced records remain available without generating stale alerts.
+- Notifications: routes in-app and native notification selections to the associated work order, sale, customer, technician schedule, or exact calendar entry on both Windows and Android.
+- Notifications / Android: prioritizes the native Android permission handshake, serializes concurrent permission requests, and retains the Capacitor fallback without leaving the authorization screen waiting indefinitely.
+- Sales Product Picker: adds a compact desktop catalog with search, category, condition, and availability filters plus a touch-friendly mobile layout.
+- Sales Product Picker: allows temporary quantity, stock, description, price, cost, condition, category, and ordering edits for the current sale without changing the permanent inventory record.
+- Sales: preserves inventory links and stock metadata when a catalog product is added so checkout and reporting continue to use the selected product correctly.
+
 ## v0.5.32 (2026-08-04)
 - Sales Product Picker: replaces the desktop Admin editor with the dedicated saved-product picker, keeps permanent Add Product controls Admin-only, and keeps the selection action visible without scrolling.
 - Sales Product Picker: builds the sale line directly from the selected inventory record so description, pricing, internal cost, stock state, vendor details, and ordering URL reliably transfer into the sale.

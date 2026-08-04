@@ -2718,7 +2718,7 @@ ipcMain.handle('window:toggleFullScreen', async (event: any) => {
   try { const w = BrowserWindow.fromWebContents(event.sender); if (!w) return { ok: false, error: 'no-window' }; const next = !w.isFullScreen(); w.setFullScreen(next); return { ok: true, value: next }; } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
 });
 // Open Calendar window
-ipcMain.handle('open-calendar', async () => {
+ipcMain.handle('open-calendar', async (_event: any, payload?: any) => {
   console.log('[IPC] open-calendar invoked');
   const { screen } = electron;
   const primary = screen.getPrimaryDisplay();
@@ -2758,7 +2758,9 @@ ipcMain.handle('open-calendar', async () => {
   });
   child.on('show', () => { try { child.maximize(); child.focus(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const url = isDev ? `${DEV_SERVER_URL}/?calendar=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?calendar=true`;
+  const eventId = Number(payload?.calendarEventId || 0) || 0;
+  const suffix = `?calendar=true${eventId ? `&calendarEventId=${eventId}` : ''}`;
+  const url = isDev ? `${DEV_SERVER_URL}/${suffix}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}${suffix}`;
   console.log('[Calendar] Loading URL:', url);
   child.loadURL(url).catch((e: any) => console.error('[Calendar] loadURL failed', e));
   return { ok: true };
@@ -7263,6 +7265,17 @@ ipcMain.handle('notifications:send-native', async (_event: any, payload: any) =>
     title: String(payload?.title || 'GadgetBoy POS'),
     body: String(payload?.body || ''),
     silent: false,
+  });
+  notice.on('click', () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('notifications:native-clicked', payload?.record || {});
+      } else if (!_event.sender.isDestroyed()) {
+        _event.sender.send('notifications:native-clicked', payload?.record || {});
+      }
+    } catch {}
   });
   notice.show();
   return { ok: true };

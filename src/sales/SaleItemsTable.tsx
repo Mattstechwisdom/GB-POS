@@ -147,6 +147,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         if (!picked) return; // cancelled
         const row: SaleItemRow = {
           id: crypto.randomUUID(),
+          inventoryProductId: typeof picked.inventoryProductId === 'number' ? picked.inventoryProductId : undefined,
           description: picked.itemDescription || picked.title || picked.name || 'Item',
           qty: Number(picked.quantity ?? 1) || 1,
           price: Number(picked.price ?? 0) || 0,
@@ -160,6 +161,8 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           vendorRelationship: picked.vendorRelationship,
           vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
           vendorTaxExempt: !!picked.vendorTaxExempt,
+          trackStock: !!picked.trackStock,
+          stockCountAtSelection: typeof picked.stockCount === 'number' ? picked.stockCount : undefined,
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);

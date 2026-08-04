@@ -2,11 +2,13 @@ export function buildSaleProductPickerPayload(product: Record<string, any>) {
   const itemDescription = String(product?.itemDescription || '').trim();
   if (!product?.id || !itemDescription) return null;
   const stockCount = Number(product.stockCount);
+  const quantity = Math.max(1, Math.round(Number(product.quantity) || 1));
+  const catalogInStock = !product.trackStock || (Number.isFinite(stockCount) && stockCount > 0);
   return {
     inventoryProductId: product.id,
     itemDescription,
     price: Number(product.price || 0),
-    quantity: 1,
+    quantity,
     condition: product.condition || 'New',
     internalCost: typeof product.internalCost === 'number' ? product.internalCost : undefined,
     category: product.category,
@@ -19,6 +21,6 @@ export function buildSaleProductPickerPayload(product: Record<string, any>) {
     vendorTaxExempt: !!product.vendorTaxExempt,
     trackStock: !!product.trackStock,
     stockCount: Number.isFinite(stockCount) ? stockCount : undefined,
-    inStock: !product.trackStock || (Number.isFinite(stockCount) && stockCount > 0),
+    inStock: typeof product.inStock === 'boolean' ? product.inStock : catalogInStock,
   };
 }

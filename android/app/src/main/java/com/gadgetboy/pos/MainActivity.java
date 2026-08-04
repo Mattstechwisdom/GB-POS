@@ -84,10 +84,6 @@ public class MainActivity extends BridgeActivity {
                     dispatchNotificationPermissionResult("granted");
                     return;
                 }
-                MainActivity.this.getSharedPreferences(
-                    NOTIFICATION_PERMISSION_PREFS,
-                    Context.MODE_PRIVATE
-                ).edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED, true).apply();
                 ActivityCompat.requestPermissions(
                     MainActivity.this,
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},

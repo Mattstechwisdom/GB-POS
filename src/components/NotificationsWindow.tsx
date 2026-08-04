@@ -9,6 +9,7 @@ import {
   markNotificationRead,
   purgeReadNotifications,
   NotificationRecord,
+  openNotificationDestination,
   requestDeviceNotificationPermission,
 } from '@/lib/notifications';
 import NotificationSettingsWindow from './NotificationSettingsWindow';
@@ -332,7 +333,22 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           return (
             <div
               key={n.id || n.key}
-              className={`px-3 py-3 border-b border-zinc-800 flex items-start gap-3 ${isUnread ? 'bg-zinc-900' : 'bg-zinc-900/50 opacity-80'}`}
+              className={`px-3 py-3 border-b border-zinc-800 flex items-start gap-3 cursor-pointer hover:bg-zinc-800/70 ${isUnread ? 'bg-zinc-900' : 'bg-zinc-900/50 opacity-80'}`}
+              role="button"
+              tabIndex={0}
+              onClick={async (event) => {
+                if ((event.target as HTMLElement).closest('button')) return;
+                if (n.id != null && isUnread) await markNotificationRead(Number(n.id), true);
+                await openNotificationDestination(n);
+                await load();
+              }}
+              onKeyDown={async (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                if (n.id != null && isUnread) await markNotificationRead(Number(n.id), true);
+                await openNotificationDestination(n);
+                await load();
+              }}
             >
               <div className={`w-2.5 h-2.5 rounded-full mt-1 ${kindColor(n.kind)}`} title={kindLabel(n.kind)} />
               <div className="flex-1 min-w-0">
@@ -366,7 +382,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
                     <button
                       className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
                       onClick={async () => {
-                        try { await (window as any).api.openNewWorkOrder?.({ workOrderId: Number(n.workOrderId) }); } catch {}
+                        try { await openNotificationDestination({ ...n, kind: 'work_order' }); } catch {}
                       }}
                     >
                       Open work order
@@ -376,7 +392,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
                     <button
                       className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
                       onClick={async () => {
-                        try { await (window as any).api.openNewSale?.({ id: Number(n.saleId) }); } catch {}
+                        try { await openNotificationDestination({ ...n, kind: 'sale' }); } catch {}
                       }}
                     >
                       Open sale
@@ -396,7 +412,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
                     <button
                       className="text-xs px-2 py-1 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
                       onClick={async () => {
-                        try { dispatchOpenModal('calendar'); } catch {}
+                        try { await openNotificationDestination(n); } catch {}
                       }}
                     >
                       Open calendar

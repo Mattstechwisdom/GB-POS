@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { dispatchOpenModal } from '../lib/modalBus';
 import {
   openDeviceNotificationSystemSettings,
+  initializeDeviceNotificationActionRouting,
   requestDeviceNotificationPermission,
 } from '../lib/notifications';
 
@@ -21,6 +22,7 @@ const NotificationConsentPrompt: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    void initializeDeviceNotificationActionRouting();
     let seenVersion = '';
     try { seenVersion = localStorage.getItem(CONSENT_KEY) || ''; } catch {}
     const forcePreview = new URLSearchParams(window.location.search).get('notificationConsentPreview') === '1';

@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('api', {
   openNewWorkOrder: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-workorder', payload),
   openDeviceCategories: (): Promise<any> => ipcRenderer.invoke('open-device-categories'),
   openRepairCategories: (): Promise<any> => ipcRenderer.invoke('open-repair-categories'),
-  openCalendar: (): Promise<any> => ipcRenderer.invoke('open-calendar'),
+  openCalendar: (payload?: any): Promise<any> => ipcRenderer.invoke('open-calendar', payload),
   openClockIn: (): Promise<any> => ipcRenderer.invoke('open-clock-in'),
   openQuoteGenerator: (): Promise<any> => ipcRenderer.invoke('open-quote-generator'),
   openEod: (): Promise<any> => ipcRenderer.invoke('open-eod'),
@@ -117,7 +117,12 @@ contextBridge.exposeInMainWorld('api', {
   openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
   notificationGetNativePermission: (): Promise<any> => ipcRenderer.invoke('notifications:get-native-permission'),
   notificationRequestNativePermission: (): Promise<any> => ipcRenderer.invoke('notifications:request-native-permission'),
-  notificationSendNative: (payload: { title?: string; body?: string; key?: string }): Promise<any> => ipcRenderer.invoke('notifications:send-native', payload),
+  notificationSendNative: (payload: { title?: string; body?: string; key?: string; record?: any }): Promise<any> => ipcRenderer.invoke('notifications:send-native', payload),
+  onNativeNotificationClicked: (cb: (record: any) => void): (() => void) => {
+    const handler = (_event: any, record: any) => cb(record);
+    ipcRenderer.on('notifications:native-clicked', handler);
+    return () => ipcRenderer.removeListener('notifications:native-clicked', handler);
+  },
   notificationOpenSystemSettings: (): Promise<any> => ipcRenderer.invoke('notifications:open-system-settings'),
   openReleaseForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-release-form', payload),
   openCustomerReceipt: (payload: any): Promise<any> => ipcRenderer.invoke('open-customer-receipt', payload),

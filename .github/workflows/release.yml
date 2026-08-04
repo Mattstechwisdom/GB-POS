@@ -68,6 +68,7 @@ jobs:
 
       - name: Run release regression tests
         run: |
+          npm run test:notifications:routing
           npm run test:sale-product-picker
           npm run test:quote-sales-prompt
           npm run test:client-update-api

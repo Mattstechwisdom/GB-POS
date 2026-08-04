@@ -26,6 +26,8 @@ const picked = buildSaleProductPickerPayload({
   reorderUrlTemplate: 'https://example.test/ps5',
   trackStock: true,
   stockCount: 2,
+  quantity: 3,
+  inStock: false,
 });
 
 assert.equal(picked.inventoryProductId, 42);
@@ -33,7 +35,8 @@ assert.equal(picked.itemDescription, 'PlayStation 5 Slim');
 assert.equal(picked.price, 499.99);
 assert.equal(picked.internalCost, 380);
 assert.equal(picked.productUrl, 'https://example.test/ps5');
-assert.equal(picked.inStock, true);
+assert.equal(picked.quantity, 3);
+assert.equal(picked.inStock, false);
 assert.equal(buildSaleProductPickerPayload({ id: 43, itemDescription: '' }), null);
 
 console.log('Sale product picker tests passed.');

@@ -62,8 +62,12 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
   const lastScrapedUrlRef = useRef('');
   const CATEGORY_OPTIONS = ['Phone', 'Tablet', 'Laptop', 'Desktop', 'Game Console', 'TV', 'Audio', 'Drone', 'Accessory', 'Other'];
   const [categoryFilter, setCategoryFilter] = useState<Product['category'] | ''>('');
+  const [conditionFilter, setConditionFilter] = useState('');
+  const [stockFilter, setStockFilter] = useState<'in' | 'out' | 'tracked' | ''>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'product' | 'part' | ''>('');
+  const [pickerQuantity, setPickerQuantity] = useState(1);
+  const [pickerInStock, setPickerInStock] = useState(true);
   const ITEM_TYPE_OPTIONS: Array<NonNullable<Product['itemType']>> = ['Product', 'Part'];
   const PART_CATEGORY_PRESETS = ['Screen', 'Battery', 'Charging Port', 'Camera', 'Speaker', 'Microphone', 'Buttons', 'Housing', 'Motherboard', 'Power Supply', 'Cable', 'Adhesive', 'Other'];
   const PRODUCT_CONDITION_OPTIONS = ['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor'];
@@ -120,20 +124,38 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
     const q = search.trim().toLowerCase();
     return list.filter(p => {
       const type = (p.itemType || 'Product');
-      const matchesQ = q ? (p.itemDescription || '').toLowerCase().includes(q) : true;
+      const matchesQ = q ? [p.itemDescription, p.category, p.condition, p.distributor, p.distributorSku]
+        .some(value => String(value || '').toLowerCase().includes(q)) : true;
       const matchesType = isPicker
         ? type === 'Product'
         : (typeFilter ? (typeFilter === 'product' ? type === 'Product' : type === 'Part') : true);
       const devices = Array.isArray(p.associatedDevices) ? p.associatedDevices : [];
       const matchesCat = categoryFilter ? (p.category === categoryFilter || devices.includes(categoryFilter)) : true;
-      return matchesQ && matchesType && matchesCat;
+      const matchesCondition = conditionFilter ? String(p.condition || 'New') === conditionFilter : true;
+      const count = Number(p.stockCount);
+      const matchesStock = stockFilter === 'tracked'
+        ? !!p.trackStock
+        : stockFilter === 'in'
+          ? (!p.trackStock || (Number.isFinite(count) && count > 0))
+          : stockFilter === 'out'
+            ? (!!p.trackStock && (!Number.isFinite(count) || count <= 0))
+            : true;
+      return matchesQ && matchesType && matchesCat && matchesCondition && matchesStock;
     });
-  }, [list, search, typeFilter, categoryFilter, isPicker]);
+  }, [list, search, typeFilter, categoryFilter, conditionFilter, stockFilter, isPicker]);
+
+  const pickerCategoryOptions = useMemo(() => Array.from(new Set([
+    ...CATEGORY_OPTIONS,
+    ...list.map(product => String(product.category || '').trim()).filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b)), [list]);
+
+  const pickerConditionOptions = useMemo(() => Array.from(new Set(
+    list.map(product => String(product.condition || 'New').trim()).filter(Boolean),
+  )).sort((a, b) => a.localeCompare(b)), [list]);
 
   const emitPickedProduct = () => {
     if (!selectedId) return;
-    const selectedProduct = list.find((product) => product.id === selectedId);
-    const product = selectedProduct || editing;
+    const product = { ...editing, id: selectedId, quantity: pickerQuantity, inStock: pickerInStock };
     const payload = buildSaleProductPickerPayload(product as Record<string, any>);
     if (!payload) return;
     if (onPick) {
@@ -200,6 +222,9 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
     if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; lastScrapedUrlRef.current = ''; return; }
     const found = list.find(p => p.id === selectedId);
     setEditing(found ? { ...blank, ...found } : blank);
+    setPickerQuantity(1);
+    const stockCount = Number(found?.stockCount);
+    setPickerInStock(!found?.trackStock || (Number.isFinite(stockCount) && stockCount > 0));
     // Only reset the manual-edit flag when the user picks a *different* item,
     // not when the list refreshes after saving the currently-selected item.
     if (prevSelectedIdRef.current !== selectedId) {
@@ -300,39 +325,54 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
   if (isPicker) {
     return (
-      <div className="flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100">
-        <input
-          type="search"
-          placeholder="Search saved products"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="mb-3 w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-3 text-base outline-none focus:border-[#39FF14]"
-          autoFocus
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-700 bg-zinc-950">
-          {filtered.length ? filtered.map((product) => (
-            <button
-              type="button"
-              key={product.id}
-              onClick={() => setSelectedId(product.id)}
-              className={`flex w-full items-center justify-between gap-3 border-b border-zinc-800 px-3 py-3 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 ring-1 ring-inset ring-[#BC13FE]' : 'bg-zinc-950 active:bg-zinc-800'}`}
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{product.itemDescription}</span>
-                <span className="block truncate text-xs text-zinc-400">{product.category || 'Other'} · {product.condition || 'New'}{product.trackStock ? ` · ${product.stockCount ?? 0} in stock` : ''}</span>
-              </span>
-              <strong className="shrink-0 tabular-nums">${Number(product.price || 0).toFixed(2)}</strong>
-            </button>
-          )) : <div className="p-4 text-sm text-zinc-400">No saved products match this search.</div>}
+      <div className="gb-sale-catalog-picker flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100">
+        <div className="gb-sale-catalog-toolbar grid shrink-0 grid-cols-[minmax(220px,1fr)_180px_160px_150px_auto] gap-2 border-b border-zinc-800 pb-3 pr-12">
+          <input type="search" placeholder="Search products, vendor, or SKU" value={search} onChange={e => setSearch(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" autoFocus />
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-2 py-2 text-sm outline-none focus:border-[#39FF14]"><option value="">All device types</option>{pickerCategoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select>
+          <select value={conditionFilter} onChange={e => setConditionFilter(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-2 py-2 text-sm outline-none focus:border-[#39FF14]"><option value="">All conditions</option>{pickerConditionOptions.map(condition => <option key={condition} value={condition}>{condition}</option>)}</select>
+          <select value={stockFilter} onChange={e => setStockFilter(e.target.value as any)} className="rounded border border-zinc-600 bg-zinc-800 px-2 py-2 text-sm outline-none focus:border-[#39FF14]"><option value="">Any availability</option><option value="in">Available</option><option value="out">Out of stock</option><option value="tracked">Stock tracked</option></select>
+          <button type="button" className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm hover:border-[#39FF14]" onClick={() => { setSearch(''); setCategoryFilter(''); setConditionFilter(''); setStockFilter(''); }}>Clear</button>
         </div>
-        <button
-          type="button"
-          className="mt-3 w-full rounded bg-[#39FF14] px-4 py-3 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
-          onClick={emitPickedProduct}
-          disabled={!selectedId}
-        >
-          Add Selected Product
-        </button>
+
+        <div className="gb-sale-catalog-layout grid min-h-0 flex-1 grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)] gap-3 pt-3">
+          <section className="gb-sale-catalog-results flex min-h-0 flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
+            <div className="grid grid-cols-[minmax(0,1fr)_110px_82px] border-b border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold uppercase text-zinc-400"><span>Product</span><span>Condition / Stock</span><span className="text-right">Price</span></div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {filtered.length ? filtered.map((product) => (
+                <button type="button" key={product.id} onClick={() => setSelectedId(product.id)} className={`grid w-full grid-cols-[minmax(0,1fr)_110px_82px] items-center gap-2 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 shadow-[inset_3px_0_0_#BC13FE]' : 'bg-zinc-950 hover:bg-zinc-900'}`}>
+                  <span className="min-w-0"><strong className="block truncate text-sm">{product.itemDescription}</strong><small className="block truncate text-zinc-500">{product.category || 'Other'}{product.distributor ? ` · ${product.distributor}` : ''}</small></span>
+                  <span className="min-w-0 text-xs text-zinc-300"><span className="block truncate">{product.condition || 'New'}</span><span className={product.trackStock && Number(product.stockCount || 0) <= 0 ? 'text-red-300' : 'text-zinc-500'}>{product.trackStock ? `${product.stockCount ?? 0} in stock` : 'Not tracked'}</span></span>
+                  <strong className="text-right text-sm tabular-nums">${Number(product.price || 0).toFixed(2)}</strong>
+                </button>
+              )) : <div className="p-4 text-sm text-zinc-400">No products match these filters.</div>}
+            </div>
+          </section>
+
+          <section className="gb-sale-catalog-editor min-h-0 overflow-y-auto rounded border border-zinc-700 bg-zinc-800 p-3">
+            {!selectedId ? <div className="grid h-full min-h-40 place-items-center text-sm text-zinc-400">Select a product to edit its sale details.</div> : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-2"><h3 className="font-semibold">Sale Item Details</h3><span className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-0.5 text-xs text-[#e9b7ff]">Sale only</span></div>
+                <label className="block text-xs text-zinc-400">Item description<input value={editing.itemDescription || ''} onChange={e => setEditing(ed => ({ ...ed, itemDescription: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-[#39FF14]" /></label>
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="text-xs text-zinc-400">Quantity<input type="number" min="1" step="1" value={pickerQuantity} onChange={e => setPickerQuantity(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
+                  <label className="text-xs text-zinc-400">Sale price<MoneyInput value={editing.price} onValueChange={value => setEditing(ed => ({ ...ed, price: value == null ? undefined : Number(value) }))} allowEmpty className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
+                  <label className="text-xs text-zinc-400">Internal cost<MoneyInput value={editing.internalCost} onValueChange={value => setEditing(ed => ({ ...ed, internalCost: value == null ? undefined : Number(value) }))} allowEmpty className="mt-1 w-full rounded border border-yellow-500 bg-yellow-100 px-2 py-2 text-sm text-black" /></label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs text-zinc-400">Condition<select value={editing.condition || 'New'} onChange={e => setEditing(ed => ({ ...ed, condition: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white">{PRODUCT_CONDITION_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                  <label className="text-xs text-zinc-400">Device type<select value={editing.category || ''} onChange={e => setEditing(ed => ({ ...ed, category: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white"><option value="">Other</option>{pickerCategoryOptions.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs text-zinc-400">Vendor / Distributor<input value={editing.distributor || ''} onChange={e => setEditing(ed => ({ ...ed, distributor: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
+                  <label className="text-xs text-zinc-400">SKU<input value={editing.distributorSku || ''} onChange={e => setEditing(ed => ({ ...ed, distributorSku: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
+                </div>
+                <label className="block text-xs text-zinc-400">Product URL<input type="url" value={editing.reorderUrlTemplate || ''} onChange={e => setEditing(ed => ({ ...ed, reorderUrlTemplate: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white" /></label>
+                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"><input type="checkbox" checked={pickerInStock} onChange={e => setPickerInStock(e.target.checked)} className="h-4 w-4 accent-[#39FF14]" />Available for this sale</label>
+                <div className="flex justify-end gap-2 border-t border-zinc-700 pt-3"><button type="button" className="rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm" onClick={() => setSelectedId(undefined)}>Cancel selection</button><button type="button" className="rounded bg-[#39FF14] px-5 py-2 font-semibold text-black disabled:opacity-40" onClick={emitPickedProduct} disabled={!editing.itemDescription?.trim()}>Add to Sale</button></div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     );
   }

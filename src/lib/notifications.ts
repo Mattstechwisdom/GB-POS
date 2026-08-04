@@ -3,6 +3,7 @@ export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'te
 import { publicAsset } from './publicAsset';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { dispatchOpenModal } from './modalBus';
 
 export type NotificationRecord = {
   id?: number;
@@ -57,6 +58,7 @@ export type NotificationSettings = {
 export type DeviceNotificationSettings = {
   enabled: boolean;
   permission: 'default' | 'prompt' | 'granted' | 'denied' | 'unsupported';
+  enabledAt?: string;
   consultationReminders: boolean;
   consultationLeadHours: number;
   newWorkOrders: boolean;
@@ -106,6 +108,8 @@ const DEFAULT_DEVICE_SETTINGS: DeviceNotificationSettings = {
 const DEVICE_SETTINGS_KEY = 'gbpos:deviceNotificationSettings:v1';
 const DEVICE_PENDING_IDS_KEY = 'gbpos:deviceNotificationPendingIds:v1';
 const SEEN_RECORDS_PREFIX = 'gbpos:deviceNotificationSeen';
+let notificationPermissionRequest: Promise<DeviceNotificationSettings> | null = null;
+let notificationActionRoutingStarted = false;
 
 function isValidHHmm(v: any): v is string {
   return /^\d{2}:\d{2}$/.test(String(v || ''));
@@ -242,6 +246,16 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  if (Capacitor.getPlatform() === 'android' && typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
+    try {
+      const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
+      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
+        return permission as DeviceNotificationSettings['permission'];
+      }
+    } catch {
+      // Fall through to the official Capacitor plugin.
+    }
+  }
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
@@ -310,7 +324,7 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
   const desktopApi = api();
   if (typeof desktopApi?.notificationSendNative === 'function') {
     try {
-      const result = await desktopApi.notificationSendNative({ title, body, key: rec.key });
+      const result = await desktopApi.notificationSendNative({ title, body, key: rec.key, record: rec });
       if (result?.ok) return;
     } catch {
       // Fall through to mobile or browser notification delivery.
@@ -331,6 +345,7 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
           smallIcon: 'gbpos_notification_icon',
           largeIcon: 'gbpos_notification_logo',
           iconColor: '#BC13FE',
+          extra: { gbposRecord: rec },
           schedule: { at: new Date(Date.now() + 250) },
         }],
       });
@@ -387,6 +402,20 @@ export async function scheduleDeviceConsultationReminders(calendarInput?: any[],
       body: `${time ? `${time} - ` : ''}${String(ev.title || 'Consultation').trim() || 'Consultation'}`,
       largeBody: `${customerName}${time ? ` at ${time}` : ''}${ev.customerPhone ? `\n${ev.customerPhone}` : ''}`,
       channelId: 'gbpos-tech-alerts',
+      extra: {
+        gbposRecord: {
+          key,
+          kind: 'consultation',
+          title: `Consultation reminder: ${customerName}`,
+          message: `${time ? `${time} - ` : ''}${String(ev.title || 'Consultation').trim() || 'Consultation'}`,
+          createdAt: nowIso(),
+          eventAt: eventAt.toISOString(),
+          calendarEventId: ev.id,
+          workOrderId: ev.workOrderId,
+          saleId: ev.saleId,
+          customerId: ev.customerId,
+        },
+      },
       schedule: {
         at: alertAt,
         allowWhileIdle: true,
@@ -407,12 +436,25 @@ function recordDateForNotification(record: any): string {
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+function recordCreatedAtMs(record: any, key: 'workOrders' | 'sales'): number {
+  const candidates = [record?.createdAt, record?.checkInAt];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const value = new Date(raw).getTime();
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
 async function syncNewRecordNotificationsForKey(
   key: 'workOrders' | 'sales',
   rows: any[],
   enabled: boolean,
+  enabledAt?: string,
 ): Promise<void> {
   if (!enabled) return;
+  const baselineMs = enabledAt ? new Date(enabledAt).getTime() : Number.NaN;
+  if (!Number.isFinite(baselineMs)) return;
   const storageKey = `${SEEN_RECORDS_PREFIX}:${key}`;
   const seen = new Set(loadJson<string[]>(storageKey, []));
   const currentIds = (Array.isArray(rows) ? rows : [])
@@ -429,6 +471,7 @@ async function syncNewRecordNotificationsForKey(
     const id = String(row?.id || '').trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    if (recordCreatedAtMs(row, key) <= baselineMs) continue;
 
     if (key === 'workOrders') {
       const customer = String(row?.customerName || [row?.firstName, row?.lastName].filter(Boolean).join(' ') || '').trim();
@@ -476,8 +519,8 @@ export async function syncNotificationsFromRecords(): Promise<void> {
     (a.getWorkOrders?.({ limit: 500, sortBy: 'activityAt', sortDir: 'desc' }) || a.dbGet('workOrders')).catch(() => []),
     a.dbGet('sales', { limit: 500, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
   ]);
-  await syncNewRecordNotificationsForKey('workOrders', workOrders, settings.newWorkOrders);
-  await syncNewRecordNotificationsForKey('sales', sales, settings.newSales);
+  await syncNewRecordNotificationsForKey('workOrders', workOrders, settings.newWorkOrders, settings.enabledAt);
+  await syncNewRecordNotificationsForKey('sales', sales, settings.newSales, settings.enabledAt);
 }
 
 function parseCalendarEventAt(ev: any): Date | null {
@@ -594,11 +637,16 @@ export async function saveNotificationSettings(next: NotificationSettings): Prom
 export async function loadDeviceNotificationSettings(): Promise<DeviceNotificationSettings> {
   const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
   const permission = await getDeviceNotificationPermission();
+  const storedEnabledAtMs = stored.enabledAt ? new Date(stored.enabledAt).getTime() : Number.NaN;
+  const enabledAt = stored.enabled && permission === 'granted'
+    ? (Number.isFinite(storedEnabledAtMs) ? stored.enabledAt : nowIso())
+    : stored.enabledAt;
   const settings: DeviceNotificationSettings = {
     ...DEFAULT_DEVICE_SETTINGS,
     ...stored,
     enabled: !!stored.enabled,
     permission,
+    enabledAt,
     consultationReminders: stored.consultationReminders !== false,
     consultationLeadHours: clamp(asNumber(stored.consultationLeadHours, DEFAULT_DEVICE_SETTINGS.consultationLeadHours), 1, 24),
     newWorkOrders: stored.newWorkOrders !== false,
@@ -614,11 +662,17 @@ export async function loadDeviceNotificationSettings(): Promise<DeviceNotificati
 
 export async function saveDeviceNotificationSettings(next: DeviceNotificationSettings): Promise<DeviceNotificationSettings> {
   const permission = next.permission === 'granted' ? 'granted' : await getDeviceNotificationPermission();
+  const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
+  const candidateEnabledAt = next.enabledAt || stored.enabledAt;
+  const candidateEnabledAtMs = candidateEnabledAt ? new Date(candidateEnabledAt).getTime() : Number.NaN;
   const settings: DeviceNotificationSettings = {
     ...DEFAULT_DEVICE_SETTINGS,
     ...next,
     enabled: !!next.enabled,
     permission,
+    enabledAt: next.enabled && permission === 'granted'
+      ? (Number.isFinite(candidateEnabledAtMs) ? candidateEnabledAt : nowIso())
+      : candidateEnabledAt,
     consultationReminders: !!next.consultationReminders,
     consultationLeadHours: clamp(asNumber(next.consultationLeadHours, DEFAULT_DEVICE_SETTINGS.consultationLeadHours), 1, 24),
     newWorkOrders: !!next.newWorkOrders,
@@ -632,30 +686,13 @@ export async function saveDeviceNotificationSettings(next: DeviceNotificationSet
   return settings;
 }
 
-export async function requestDeviceNotificationPermission(): Promise<DeviceNotificationSettings> {
+async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotificationSettings> {
   let permission = await getDeviceNotificationPermission();
   const desktopApi = api();
   const native = await getLocalNotificationsPlugin();
   const isNativeAndroid = Capacitor.getPlatform() === 'android' || !!window.GBPosAndroid;
 
   if (
-    isNativeAndroid
-    && native?.requestPermissions
-    && permission !== 'granted'
-    && permission !== 'unsupported'
-  ) {
-    try {
-      const status: any = await withTimeout(
-        native.requestPermissions(),
-        20_000,
-        'Android did not finish the notification permission request. Try again or open the app notification settings.',
-      );
-      const display = String(status?.display || '').toLowerCase();
-      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  } else if (
     isNativeAndroid
     && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
     && permission !== 'granted'
@@ -666,7 +703,7 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
         const timeout = window.setTimeout(() => {
           window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
           reject(new Error('Android did not finish the notification permission request.'));
-        }, 20_000);
+        }, 10_000);
         const onResult = (event: Event) => {
           window.clearTimeout(timeout);
           window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
@@ -677,6 +714,23 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
       });
       window.GBPosAndroid.requestNotificationPermission();
       permission = await nativePermissionResult;
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (
+    isNativeAndroid
+    && native?.requestPermissions
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      const status: any = await withTimeout(
+        native.requestPermissions(),
+        10_000,
+        'Android did not finish the notification permission request.',
+      );
+      const display = String(status?.display || '').toLowerCase();
+      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
     } catch {
       permission = await getDeviceNotificationPermission();
     }
@@ -702,17 +756,91 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
   }
 
   const current = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
+  const currentEnabledAtMs = current.enabledAt ? new Date(current.enabledAt).getTime() : Number.NaN;
   const settings = await saveDeviceNotificationSettings({
     ...DEFAULT_DEVICE_SETTINGS,
     ...current,
     enabled: permission === 'granted',
     permission,
+    enabledAt: permission === 'granted'
+      ? (Number.isFinite(currentEnabledAtMs) ? current.enabledAt : nowIso())
+      : current.enabledAt,
   } as DeviceNotificationSettings);
   if (permission === 'granted') {
     try { await ensureAndroidNotificationChannel(); } catch {}
     try { await scheduleDeviceConsultationReminders(); } catch {}
   }
   return settings;
+}
+
+export function requestDeviceNotificationPermission(): Promise<DeviceNotificationSettings> {
+  if (notificationPermissionRequest) return notificationPermissionRequest;
+  notificationPermissionRequest = performDeviceNotificationPermissionRequest().finally(() => {
+    notificationPermissionRequest = null;
+  });
+  return notificationPermissionRequest;
+}
+
+export async function openNotificationDestination(record: Partial<NotificationRecord>): Promise<boolean> {
+  const rec = record || {};
+  const api = (window as any).api;
+  const calendarKinds: NotificationKind[] = ['consultation', 'parts_delivery', 'event', 'tech_schedule', 'daily_look'];
+  if (rec.calendarEventId != null && rec.kind && calendarKinds.includes(rec.kind)) {
+    const payload = { calendarEventId: Number(rec.calendarEventId) };
+    if (Capacitor.isNativePlatform()) dispatchOpenModal('calendar', payload);
+    else if (typeof api?.openCalendar === 'function') await api.openCalendar(payload);
+    else dispatchOpenModal('calendar', payload);
+    return true;
+  }
+  if (rec.kind === 'work_order' && rec.workOrderId != null && typeof api?.openNewWorkOrder === 'function') {
+    await api.openNewWorkOrder({ workOrderId: Number(rec.workOrderId) });
+    return true;
+  }
+  if (rec.kind === 'sale' && rec.saleId != null && typeof api?.openNewSale === 'function') {
+    await api.openNewSale({ id: Number(rec.saleId) });
+    return true;
+  }
+  if (rec.workOrderId != null && typeof api?.openNewWorkOrder === 'function') {
+    await api.openNewWorkOrder({ workOrderId: Number(rec.workOrderId) });
+    return true;
+  }
+  if (rec.saleId != null && typeof api?.openNewSale === 'function') {
+    await api.openNewSale({ id: Number(rec.saleId) });
+    return true;
+  }
+  if (rec.customerId != null && typeof api?.openCustomerOverview === 'function') {
+    await api.openCustomerOverview(Number(rec.customerId));
+    return true;
+  }
+  if (rec.kind === 'tech_schedule') {
+    dispatchOpenModal('technicians');
+    return true;
+  }
+  if (rec.kind && calendarKinds.includes(rec.kind)) {
+    if (Capacitor.isNativePlatform()) dispatchOpenModal('calendar');
+    else if (typeof api?.openCalendar === 'function') await api.openCalendar();
+    else dispatchOpenModal('calendar');
+    return true;
+  }
+  return false;
+}
+
+export async function initializeDeviceNotificationActionRouting(): Promise<void> {
+  if (notificationActionRoutingStarted) return;
+  notificationActionRoutingStarted = true;
+  const native = await getLocalNotificationsPlugin();
+  if (native?.addListener) {
+    await native.addListener('localNotificationActionPerformed', (action: any) => {
+      const record = action?.notification?.extra?.gbposRecord;
+      if (record) void openNotificationDestination(record);
+    });
+  }
+  const desktopApi = api();
+  if (typeof desktopApi?.onNativeNotificationClicked === 'function') {
+    desktopApi.onNativeNotificationClicked((record: NotificationRecord) => {
+      void openNotificationDestination(record);
+    });
+  }
 }
 
 export async function openDeviceNotificationSystemSettings(): Promise<boolean> {

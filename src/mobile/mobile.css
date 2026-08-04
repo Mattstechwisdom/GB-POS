@@ -1001,6 +1001,58 @@
   right: calc(env(safe-area-inset-right) + 0.5rem) !important;
 }
 
+.gbpos-mobile .gb-sale-catalog-picker {
+  padding: 0.65rem !important;
+  overflow: hidden;
+}
+
+.gbpos-mobile .gb-sale-catalog-toolbar {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding-right: 0 !important;
+}
+
+.gbpos-mobile .gb-sale-catalog-toolbar input[type="search"] {
+  grid-column: 1 / -1;
+}
+
+.gbpos-mobile .gb-sale-catalog-toolbar button {
+  min-height: 2.75rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-results {
+  flex: 0 0 min(34dvh, 18rem);
+}
+
+.gbpos-mobile .gb-sale-catalog-results > div:first-child,
+.gbpos-mobile .gb-sale-catalog-results button {
+  grid-template-columns: minmax(0, 1fr) 5.5rem 4.5rem;
+  padding-inline: 0.55rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-results button {
+  padding-block: 0.55rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-editor {
+  flex: 1 1 auto;
+  padding: 0.7rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-editor .grid.grid-cols-3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gbpos-mobile .gb-sale-catalog-editor .grid.grid-cols-3 > :first-child {
+  grid-column: 1 / -1;
+}
+
 .gbpos-mobile .gb-quote-window {
   min-height: 100%;
   padding: 0.85rem !important;

@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatPhone } from '../lib/format';
 import { useAutosave } from '@/lib/useAutosave';
 import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
+import { consumeWindowPayload } from '@/lib/windowPayload';
 
 type CalendarEvent = {
   id?: number;
@@ -181,6 +182,12 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) =
 };
 
 const CalendarWindow: React.FC = () => {
+  const targetEventId = useMemo(() => {
+    const payload = consumeWindowPayload('calendar');
+    const queryId = new URLSearchParams(window.location.search).get('calendarEventId');
+    return Number(payload?.calendarEventId || queryId || 0) || 0;
+  }, []);
+  const targetOpenedRef = useRef(false);
   const [current, setCurrent] = useState<Date>(new Date());
   const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
   const [isMobileCalendar, setIsMobileCalendar] = useState(false);
@@ -206,6 +213,15 @@ const CalendarWindow: React.FC = () => {
     consultation: true,
     content: true,
   });
+
+  useEffect(() => {
+    if (!targetEventId || targetOpenedRef.current || !events.length) return;
+    const target = events.find((event) => Number(event.id) === targetEventId);
+    if (!target) return;
+    targetOpenedRef.current = true;
+    setCurrent(new Date(`${target.date}T12:00:00`));
+    setViewing(target);
+  }, [events, targetEventId]);
 
   useEffect(() => {
     const detect = () => {

@@ -52,7 +52,7 @@ declare global {
   openNewWorkOrder: (payload: any) => Promise<any>;
   openDeviceCategories: () => Promise<any>;
   openRepairCategories: () => Promise<any>;
-  openCalendar: () => Promise<any>;
+  openCalendar: (payload?: any) => Promise<any>;
   openClockIn: () => Promise<any>;
   openProducts: () => Promise<any>;
   openInventory: () => Promise<any>;
@@ -130,7 +130,8 @@ declare global {
     openNotificationSettings: () => Promise<any>;
     notificationGetNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string }>;
     notificationRequestNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string; error?: string }>;
-    notificationSendNative: (payload: { title?: string; body?: string; key?: string }) => Promise<{ ok: boolean; error?: string }>;
+    notificationSendNative: (payload: { title?: string; body?: string; key?: string; record?: any }) => Promise<{ ok: boolean; error?: string }>;
+    onNativeNotificationClicked: (cb: (record: any) => void) => () => void;
     notificationOpenSystemSettings: () => Promise<{ ok: boolean; error?: string }>;
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
