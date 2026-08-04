@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.32 (2026-08-04)
+- Sales Product Picker: replaces the desktop Admin editor with the dedicated saved-product picker, keeps permanent Add Product controls Admin-only, and keeps the selection action visible without scrolling.
+- Sales Product Picker: builds the sale line directly from the selected inventory record so description, pricing, internal cost, stock state, vendor details, and ordering URL reliably transfer into the sale.
+- Products Admin: collapses the Reorder section by default so the product form opens at a practical height while retaining all distributor, SKU, quantity, and URL controls.
+- Quote Generator: removes unstable website autofill and restores the confirmed-spec AI prompt built only from technician-entered fields.
+- Quote Generator: adds a free local Generate Sales Summary action through Gidget, preserves Copy AI Prompt as a fallback, retains numeric specifications, excludes private pricing fields, and prevents indefinite loading with a bounded timeout.
+- Client Updates: queues protected email content in Supabase and lets the authenticated shop POS deliver it using the existing encrypted Gmail App Password, avoiding a paid email provider or Google Cloud Console setup.
+- Client Updates: records queued, sending, sent, and retry states while preserving ticket status updates and delivery history across Railway, Supabase, Windows, and Android.
+- Notifications: adds first-run notification consent UI and strengthens native Windows and Android authorization handling without blocking access to the app.
+
 ## v0.5.31 (2026-07-31)
 - Client Updates: adds bounded Railway/Gmail delivery timeouts, always unlocks update actions after failures, keeps retries available, and refreshes local/cloud status without blocking the update window.
 - Client Updates: preserves delivery history and clearly distinguishes a saved ticket status from an email delivery failure.

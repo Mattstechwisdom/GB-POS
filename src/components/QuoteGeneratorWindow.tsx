@@ -10,14 +10,14 @@ import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
-import { markedUpPartPrice, scrapePartUrl } from '../lib/partOrdering';
-import { buildQuoteAutofillDraft } from '../lib/quoteAutofill';
+import { markedUpPartPrice } from '../lib/partOrdering';
 import { generateWithGidget, gidgetLocalStatus } from '../lib/gidgetLocalEngine';
+import { buildQuoteSalesPrompt } from '../lib/quoteSalesPrompt';
 
 const QUOTE_AUTOFILL_MARKUP_PCT = 15;
-const QUOTE_AUTOFILL_TIMEOUT_MS = 35_000;
+const QUOTE_SUMMARY_TIMEOUT_MS = 30_000;
 
-function withQuoteAutofillTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+function withQuoteSummaryTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
     promise.then(
@@ -512,8 +512,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Mode: sales or repairs quote workflow
   const [mode, setMode] = useState<'sales' | 'repairs'>('sales');
   const [sales, setSales] = useState<SalesState>({ items: [] });
-  const [scrapingItem, setScrapingItem] = useState<number | null>(null);
-  const [scrapeMessages, setScrapeMessages] = useState<Record<number, string>>({});
+  const [generatingSummaryItem, setGeneratingSummaryItem] = useState<number | null>(null);
+  const [summaryMessages, setSummaryMessages] = useState<Record<number, string>>({});
   const [repairs, setRepairs] = useState<RepairsState>({ lines: [] });
   const [quotes, setQuotes] = useState<any[]>([]);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -3986,109 +3986,6 @@ function QuoteGeneratorWindow(): JSX.Element {
     setSales((s) => ({ ...s, items: [...s.items, { expanded: true, dynamic: {}, images: [] }] }));
   }
 
-  async function scrapeQuoteItem(idx: number) {
-    const item = sales.items[idx];
-    const url = String(item?.url || '').trim();
-    if (!url || scrapingItem !== null) return;
-    setScrapingItem(idx);
-    setScrapeMessages((current) => ({ ...current, [idx]: 'Reading product page...' }));
-    try {
-      const metadata = await withQuoteAutofillTimeout(
-        scrapePartUrl(url),
-        QUOTE_AUTOFILL_TIMEOUT_MS,
-        'This product page took too long to respond. Please try Auto Fill again.',
-      );
-      if (!metadata.ok) throw new Error(metadata.error || 'This website did not expose readable product details.');
-      const existing = sales.items[idx] || item;
-      const inferred = buildQuoteAutofillDraft(metadata, { condition: existing.condition });
-      const markupPct = String(QUOTE_AUTOFILL_MARKUP_PCT);
-      const existingConditionPrice = (metadata.conditionOptions || []).find((option) =>
-        String(option.condition || '').toLowerCase() === String(existing.condition || '').toLowerCase())?.price;
-      const sourceCost = existingConditionPrice ?? metadata.price;
-      const internalCost = sourceCost ?? existing.internalCost;
-      const price = sourceCost === undefined
-        ? existing.price
-        : markedUpPartPrice(sourceCost, QUOTE_AUTOFILL_MARKUP_PCT);
-      // A new source URL represents a new product. Never retain photos from the
-      // previously scraped item when this page has no usable product gallery.
-      const images = (metadata.images || [])
-        .filter((image, imageIdx, all) => image && all.indexOf(image) === imageIdx)
-        .slice(0, 3);
-      const autofilledItem: SaleItem = {
-        ...existing,
-        expanded: true,
-        url: metadata.url || existing.url,
-        deviceType: inferred.deviceType,
-        brand: inferred.brand || existing.brand,
-        model: inferred.model || existing.model,
-        condition: existing.condition || (metadata.conditionOptions && metadata.conditionOptions.length > 1 ? undefined : inferred.condition),
-        description: inferred.description,
-        prompt: inferred.description,
-        images,
-        internalCost,
-        markupPct,
-        price,
-        dynamic: {
-          ...inferred.dynamic,
-          sourceVendor: metadata.vendor || existing.dynamic?.sourceVendor,
-        },
-      };
-      setSales((current) => ({
-        ...current,
-        items: current.items.map((currentItem, itemIdx) => itemIdx === idx ? autofilledItem : currentItem),
-      }));
-      const found = [metadata.title && 'title', metadata.price !== undefined && 'cost', metadata.images?.length && `${metadata.images.length} image${metadata.images.length === 1 ? '' : 's'}`, metadata.description && 'summary', metadata.specs?.length && 'specs'].filter(Boolean);
-      const needsConditionConfirmation = !!metadata.conditionOptions && metadata.conditionOptions.length > 1 && !existing.condition;
-      const baseMsg = needsConditionConfirmation
-        ? `Added ${found.join(', ') || 'available details'} and selected ${inferred.deviceType}. Confirm Condition below; this copied URL does not preserve the grade selected in your browser.`
-        : `Added ${found.join(', ') || 'available details'}, selected ${inferred.deviceType}, and set 15% markup. All fields remain editable.`;
-      setScrapeMessages((current) => ({ ...current, [idx]: `${baseMsg} Writing AI summary...` }));
-      setScrapingItem(null);
-
-      void (async () => {
-        let generatedSummary = inferred.description;
-        let aiApplied = false;
-        try {
-          const status = await withQuoteAutofillTimeout(gidgetLocalStatus(), 3_000, 'Gidget status timed out.');
-          if (status.ready) {
-            const prompt = buildAIPrompt(autofilledItem);
-            const response = await withQuoteAutofillTimeout(generateWithGidget({
-              instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Output ONLY the summary paragraph itself with no preamble, no meta-commentary such as "Sure, here is..." or "Certainly!", no headings, no quotation marks wrapping the response, and no closing remarks. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
-              messages: [{ role: 'user', content: prompt }],
-            }), 12_000, 'Gidget summary timed out.');
-            const cleaned = sanitizeAiSummary(response?.answer);
-            if (response?.ok && isValidAiSalesSummary(cleaned)) {
-              generatedSummary = cleaned;
-              aiApplied = true;
-            }
-          }
-        } catch {
-          // The factual page-based summary remains available when Gidget is unavailable or busy.
-        }
-        setSales((current) => ({
-          ...current,
-          items: current.items.map((currentItem, itemIdx) => {
-            if (itemIdx !== idx || String(currentItem.url || '').trim() !== String(autofilledItem.url || '').trim()) return currentItem;
-            if (currentItem.prompt !== inferred.description) return currentItem;
-            return { ...currentItem, prompt: generatedSummary, description: generatedSummary };
-          }),
-        }));
-        setScrapeMessages((current) => {
-          if (current[idx] !== `${baseMsg} Writing AI summary...`) return current;
-          return {
-            ...current,
-            [idx]: aiApplied
-              ? `${baseMsg} AI summary written.`
-              : `${baseMsg} AI summary unavailable, using the factual description. Open Gidget in the sidebar to finish its one-time setup for AI-written summaries.`,
-          };
-        });
-      })();
-    } catch (error: any) {
-      setScrapeMessages((current) => ({ ...current, [idx]: error?.message || 'Could not read this product page.' }));
-    } finally {
-      setScrapingItem(null);
-    }
-  }
   function removeSaleItem(idx: number) {
     setSales((s) => ({ ...s, items: s.items.filter((_, i) => i !== idx) }));
     if (createSaleSelecting) {
@@ -4806,19 +4703,7 @@ function QuoteGeneratorWindow(): JSX.Element {
         return false;
       } catch { return false; }
     };
-    const isPriceLike = (v: any) => {
-      try {
-        if (v == null) return false;
-        if (typeof v === 'number') return true;
-        const s = String(v).trim();
-        if (!s) return false;
-        // common currency/price patterns: $12.34, 12.34, 1234, 1,234.56
-        if (/^\$?\s*\d{1,3}(?:[\,\s]\d{3})*(?:[.,]\d{1,2})?\s*$/.test(s)) return true;
-        if (/^\d+(?:[.,]\d{1,2})?$/.test(s)) return true;
-        return false;
-      } catch { return false; }
-    };
-    const sanitizeVal = (v: any) => (isImageLike(v) || isPriceLike(v) ? '' : String(v ?? '').trim());
+    const sanitizeVal = (v: any) => (isImageLike(v) ? '' : String(v ?? '').trim());
     // Custom Build: create a sectioned, fact-first prompt using only provided fields
     if (it.deviceType === 'Custom Build') {
       lines.push('Produce a concise, professional single paragraph (5-7 sentences) that summarizes the provided Custom PC components and explains how they work together as a balanced system.');
@@ -4878,9 +4763,8 @@ function QuoteGeneratorWindow(): JSX.Element {
         if (k.startsWith('_')) return;
         if (k === 'otherSpecs' || k === 'sourceVendor') return;
         if (/image/i.test(k)) return;
-        if (/price/i.test(k)) return;
+        if (/price|cost|markup/i.test(k)) return;
         if (isImageLike(v)) return;
-        if (isPriceLike(v)) return;
         addSpec(friendlyDynamicLabel(k), v);
       });
       if (Array.isArray(it.dynamic.otherSpecs)) {
@@ -4912,26 +4796,80 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   async function copyPromptForItem(idx: number) {
     const it = sales.items[idx];
-    const prompt = buildAIPrompt(it);
-    // Try clipboard API with fallback
+    const prompt = buildQuoteSalesPrompt(it);
+    const fallbackCopy = () => {
+      const ta = document.createElement('textarea');
+      ta.value = prompt;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!copied) throw new Error('Clipboard copy was rejected.');
+    };
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(prompt);
+        try {
+          await navigator.clipboard.writeText(prompt);
+        } catch {
+          fallbackCopy();
+        }
       } else {
-        const ta = document.createElement('textarea');
-        ta.value = prompt;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+        fallbackCopy();
       }
       setSaveMsg('AI prompt copied to clipboard');
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (_) {
       setSaveMsg('Could not copy to clipboard');
       setTimeout(() => setSaveMsg(null), 2000);
+    }
+  }
+
+  async function generateSalesSummaryForItem(idx: number) {
+    if (generatingSummaryItem !== null) return;
+    const item = sales.items[idx];
+    if (!item) return;
+    const prompt = buildQuoteSalesPrompt(item);
+    setGeneratingSummaryItem(idx);
+    setSummaryMessages((current) => ({ ...current, [idx]: 'Writing sales summary from the entered fields...' }));
+    try {
+      const status = await withQuoteSummaryTimeout(
+        gidgetLocalStatus(),
+        3_000,
+        'The local summary engine did not respond.',
+      );
+      if (!status.supported) {
+        throw new Error('Automatic summaries are available in the installed Windows and Android apps. Copy AI Prompt remains available here.');
+      }
+      if (!status.ready) {
+        throw new Error('Gidget needs its one-time local model setup before it can write summaries. Copy AI Prompt remains available in the meantime.');
+      }
+      const response = await withQuoteSummaryTimeout(
+        generateWithGidget({
+          instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Output only the summary paragraph with no preamble, heading, bullets, quotation marks, or closing remarks. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        QUOTE_SUMMARY_TIMEOUT_MS,
+        'The summary took too long. Nothing was changed; try again or use Copy AI Prompt.',
+      );
+      const cleaned = sanitizeAiSummary(response?.answer);
+      if (!response?.ok || !isValidAiSalesSummary(cleaned)) {
+        throw new Error(response?.error || 'The generated response was not a valid 5-7 sentence sales paragraph. Nothing was changed; please try again.');
+      }
+      setSales((current) => ({
+        ...current,
+        items: current.items.map((currentItem, itemIdx) => itemIdx === idx
+          ? { ...currentItem, prompt: cleaned, description: cleaned }
+          : currentItem),
+      }));
+      setSummaryMessages((current) => ({ ...current, [idx]: 'Sales summary added. You can edit it below.' }));
+    } catch (error: any) {
+      setSummaryMessages((current) => ({ ...current, [idx]: error?.message || 'Could not generate the sales summary.' }));
+    } finally {
+      setGeneratingSummaryItem(null);
     }
   }
 
@@ -5119,7 +5057,13 @@ function QuoteGeneratorWindow(): JSX.Element {
               value={it.prompt || ''}
               onChange={(e) => setSales((s)=>({ ...s, items: s.items.map((x,i)=> (i===idx ? { ...x, prompt: e.target.value } : x)) }))}
             />
-            <div className="flex items-center justify-end mt-2"><button className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600" onClick={() => copyPromptForItem(idx)}>Copy AI Prompt</button></div>
+            <div className="flex flex-wrap items-center justify-end gap-2 mt-2">
+              <button type="button" className="px-3 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50" onClick={() => void generateSalesSummaryForItem(idx)} disabled={generatingSummaryItem !== null}>
+                {generatingSummaryItem === idx ? 'Writing...' : 'Generate Sales Summary'}
+              </button>
+              <button type="button" className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600" onClick={() => void copyPromptForItem(idx)}>Copy AI Prompt</button>
+            </div>
+            {summaryMessages[idx] && <div className="mt-1 text-[10px] text-zinc-300" role="status">{summaryMessages[idx]}</div>}
           </div>
 
           {/* Build Labor at the bottom */}
@@ -6221,20 +6165,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 value={it.url || ''}
                                 onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
                                 placeholder="https://example.com/product"
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    void scrapeQuoteItem(idx);
-                                  }
-                                }}
                               />
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
-                                onClick={() => void scrapeQuoteItem(idx)}
-                                disabled={!it.url || scrapingItem !== null}
-                                title="Fill this quote item from the product page"
-                              >{scrapingItem === idx ? 'Reading...' : 'Auto Fill'}</button>
                               <button
                                 type="button"
                                 className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
@@ -6252,9 +6183,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                                 title="Open in default browser"
                               >Open</button>
                             </div>
-                            <div className={`text-[10px] mt-0.5 ${scrapeMessages[idx]?.startsWith('Added') ? 'text-[#39FF14]' : 'text-zinc-400'}`}>
-                              {scrapeMessages[idx] || 'Paste a product link, then choose Auto Fill. All imported details remain editable.'}
-                            </div>
+                            <div className="text-[10px] mt-0.5 text-zinc-400">Optional reference link. Quote fields are entered manually and remain fully editable.</div>
                           </div>
                         )}
                         {/* Images at the top */}
@@ -6425,15 +6354,26 @@ function QuoteGeneratorWindow(): JSX.Element {
                               }))
                             }
                           />
-                          <div className="flex items-center justify-end mt-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2 mt-2">
                             <button
+                              type="button"
+                              className="px-3 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
+                              onClick={() => void generateSalesSummaryForItem(idx)}
+                              disabled={generatingSummaryItem !== null}
+                              title="Write the sales summary from the fields entered above"
+                            >
+                              {generatingSummaryItem === idx ? 'Writing...' : 'Generate Sales Summary'}
+                            </button>
+                            <button
+                              type="button"
                               className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
-                              onClick={() => copyPromptForItem(idx)}
+                              onClick={() => void copyPromptForItem(idx)}
                               title="Copy AI prompt to clipboard"
                             >
                               Copy AI Prompt
                             </button>
                           </div>
+                          {summaryMessages[idx] && <div className="mt-1 text-[10px] text-zinc-300" role="status">{summaryMessages[idx]}</div>}
                         </div>
                         )}
                         {it.deviceType !== 'Custom Build' && it.deviceType !== 'Custom PC' && (

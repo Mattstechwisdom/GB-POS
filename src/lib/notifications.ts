@@ -242,6 +242,18 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  const native = await getLocalNotificationsPlugin();
+  if (native?.checkPermissions) {
+    try {
+      const status: any = await withTimeout(native.checkPermissions(), 4000, 'Notification permission check timed out.');
+      const display = String(status?.display || '').toLowerCase();
+      if (display === 'granted') return 'granted';
+      if (display === 'denied') return 'denied';
+      return 'prompt';
+    } catch {
+      // Fall through to the Android bridge or desktop permission APIs.
+    }
+  }
   if (typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
     try {
       const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
@@ -262,19 +274,6 @@ async function getDeviceNotificationPermission(): Promise<DeviceNotificationSett
       }
     } catch {
       // Fall through to native mobile or browser permission checks.
-    }
-  }
-  const native = await getLocalNotificationsPlugin();
-  if (native?.checkPermissions) {
-    try {
-      const status: any = await withTimeout(native.checkPermissions(), 4000, 'Notification permission check timed out.');
-      const display = String(status?.display || '').toLowerCase();
-      if (display === 'granted') return 'granted';
-      if (display === 'denied') return 'denied';
-      return 'prompt';
-    } catch {
-      if (Capacitor.isNativePlatform()) return 'prompt';
-      // fall through to browser API
     }
   }
   if (typeof Notification !== 'undefined') {
@@ -641,6 +640,23 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
 
   if (
     isNativeAndroid
+    && native?.requestPermissions
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      const status: any = await withTimeout(
+        native.requestPermissions(),
+        20_000,
+        'Android did not finish the notification permission request. Try again or open the app notification settings.',
+      );
+      const display = String(status?.display || '').toLowerCase();
+      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (
+    isNativeAndroid
     && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
     && permission !== 'granted'
     && permission !== 'unsupported'
@@ -661,23 +677,6 @@ export async function requestDeviceNotificationPermission(): Promise<DeviceNotif
       });
       window.GBPosAndroid.requestNotificationPermission();
       permission = await nativePermissionResult;
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  } else if (
-    isNativeAndroid
-    && native?.requestPermissions
-    && permission !== 'granted'
-    && permission !== 'unsupported'
-  ) {
-    try {
-      const status: any = await withTimeout(
-        native.requestPermissions(),
-        20_000,
-        'Android did not finish the notification permission request. Try again or open the app notification settings.',
-      );
-      const display = String(status?.display || '').toLowerCase();
-      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
     } catch {
       permission = await getDeviceNotificationPermission();
     }

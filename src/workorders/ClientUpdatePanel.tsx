@@ -17,7 +17,7 @@ type UpdateHistoryRow = {
   message?: string | null;
   estimated_date?: string | null;
   recipient_email?: string | null;
-  delivery_status: 'sent' | 'failed' | 'not_requested';
+  delivery_status: 'pending' | 'sending' | 'sent' | 'failed' | 'not_requested';
   delivery_error?: string | null;
   created_at: string;
 };
@@ -225,7 +225,12 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [estimatedDate, setEstimatedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [savingKey, setSavingKey] = useState('');
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [result, setResult] = useState<{
+    ok: boolean;
+    message: string;
+    deliveryStatus?: string;
+    statusSaved?: boolean;
+  } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
@@ -455,6 +460,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
       setResult({
         ok: !!delivery?.ok,
         message: delivery?.message || delivery?.error || 'Status update processed.',
+        deliveryStatus: delivery?.deliveryStatus,
+        statusSaved: !!delivery?.statusSaved,
       });
       setOpenKey('');
       setEstimatedDate('');
@@ -464,12 +471,27 @@ const ClientUpdatePanel: React.FC<Props> = ({
       const message = e?.name === 'AbortError'
         ? 'The update server did not respond in time. Nothing is locked; check the connection and tap the update again.'
         : (e?.message || String(e));
-      setResult({ ok: false, message });
+      setResult({ ok: false, message, deliveryStatus: 'failed', statusSaved: false });
     } finally {
       window.clearTimeout(requestTimeout);
       setSavingKey('');
     }
   }, [deliveryMode, estimatedDate, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);
+
+  const exitUpdateScreen = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    try {
+      window.close();
+    } catch {
+      // Browser QR pages generally cannot close themselves unless opened by script.
+    }
+    window.setTimeout(() => {
+      if (!window.closed) window.location.assign('/');
+    }, 100);
+  }, [onClose]);
 
   const renderOption = (option: StatusOption) => {
     const open = openKey === option.key;
@@ -547,6 +569,25 @@ const ClientUpdatePanel: React.FC<Props> = ({
           <div className="gb-client-update-state">Loading update panel...</div>
         ) : error ? (
           <div className="gb-client-update-error">{error}</div>
+        ) : savingKey ? (
+          <section className="gb-client-update-confirmation sending" role="status" aria-live="polite">
+            <div className="gb-client-update-progress" aria-hidden="true"><span /></div>
+            <h3>Sending Client Update</h3>
+            <p>Saving the ticket status and delivering the email. Keep this window open for a moment.</p>
+          </section>
+        ) : result ? (
+          <section className={result.ok ? 'gb-client-update-confirmation success' : 'gb-client-update-confirmation failure'} role="alert">
+            <div className="gb-client-update-confirmation-mark" aria-hidden="true">{result.ok ? 'OK' : '!'}</div>
+            <h3>{result.ok ? (result.deliveryStatus === 'text_prepared' ? 'Text Message Ready' : result.deliveryStatus === 'queued' ? 'Update Queued' : 'Email Sent') : 'Email Not Sent'}</h3>
+            <p>{result.message}</p>
+            {!result.ok && result.statusSaved ? (
+              <div className="gb-client-update-saved-note">The ticket status was saved, but the client was not emailed.</div>
+            ) : null}
+            <div className="gb-client-update-confirmation-actions">
+              <button type="button" className="primary" onClick={() => setResult(null)}>Back to Update Screen</button>
+              <button type="button" onClick={exitUpdateScreen}>Exit</button>
+            </div>
+          </section>
         ) : (
           <>
             <section className="gb-client-update-card">
@@ -596,7 +637,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
                     <div className="gb-client-update-history-item-top">
                       <strong>{entry.status_label}</strong>
                       <span className={`delivery-${entry.delivery_status}`}>
-                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : entry.recipient_email ? 'Saved only' : 'Text prepared'}
+                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : entry.delivery_status === 'pending' || entry.delivery_status === 'sending' ? 'Email queued' : entry.recipient_email ? 'Saved only' : 'Text prepared'}
                       </span>
                     </div>
                     <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
@@ -618,12 +659,6 @@ const ClientUpdatePanel: React.FC<Props> = ({
               <h3>Status Updates</h3>
               {mainOptions.map(renderOption)}
             </section>
-
-            {result ? (
-              <div className={result.ok ? 'gb-client-update-result ok' : 'gb-client-update-result bad'}>
-                {result.message}
-              </div>
-            ) : null}
           </>
         )}
       </div>

@@ -1,5 +1,3 @@
-const nodemailer = require('nodemailer');
-
 const STATUS_OPTIONS = {
   repair: {
     pickup_reminder: 'Pickup Reminder',
@@ -88,9 +86,7 @@ function serverConfig() {
       || '',
     ),
     serviceRoleKey: String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
-    gmailUser: String(process.env.GBPOS_EMAIL_FROM || 'gadgetboysc@gmail.com').trim(),
-    gmailAppPassword: String(process.env.GBPOS_GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
-    fromName: String(process.env.GBPOS_EMAIL_FROM_NAME || 'GadgetBoy Repair & Retail').trim(),
+    deliveryWaitMs: Math.min(10_000, Math.max(0, Number(process.env.GBPOS_CLIENT_UPDATE_DELIVERY_WAIT_MS || 10_000) || 0)),
   };
 }
 
@@ -105,7 +101,12 @@ async function fetchJson(url, options) {
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = text; }
   if (!response.ok) {
-    const message = body?.message || body?.error_description || body?.error || text || `HTTP ${response.status}`;
+    const message = body?.message
+      || body?.error_description
+      || body?.error?.message
+      || (typeof body?.error === 'string' ? body.error : '')
+      || text
+      || `HTTP ${response.status}`;
     const error = new Error(String(message));
     error.status = response.status;
     throw error;
@@ -263,30 +264,6 @@ function smsCopy(context, statusKey, statusLabel, estimatedDate, notes) {
   return { ...details, text };
 }
 
-let mailTransport = null;
-
-async function sendEmail(config, message) {
-  if (!message.email) throw new Error('The client does not have an email address on file.');
-  if (!config.gmailAppPassword) throw new Error('Railway email delivery is not configured. Add GBPOS_GMAIL_APP_PASSWORD.');
-  if (!mailTransport) {
-    mailTransport = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: config.gmailUser, pass: config.gmailAppPassword },
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000,
-    });
-  }
-  const info = await mailTransport.sendMail({
-    from: `${config.fromName} <${config.gmailUser}>`,
-    to: message.email,
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
-  });
-  return String(info?.messageId || '');
-}
-
 async function updateTicket(config, token, context, patch) {
   const rows = await fetchJson(restUrl(config, context.table, {
     shop_id: `eq.${context.shopId}`,
@@ -308,6 +285,18 @@ async function insertHistory(config, token, row) {
     body: JSON.stringify(row),
   });
   return Array.isArray(result) ? result[0] : null;
+}
+
+async function waitForQueuedDelivery(config, token, historyId, timeoutMs = 10_000) {
+  if (!historyId) return null;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const rows = await selectRows(config, token, 'client_update_history', { id: `eq.${historyId}` });
+    const current = rows[0] || null;
+    if (!current || current.delivery_status === 'sent' || current.delivery_status === 'failed') return current;
+  }
+  return null;
 }
 
 async function handleSend(req, res) {
@@ -341,13 +330,16 @@ async function handleSend(req, res) {
     }
 
     const deliveryMode = String(body.deliveryMode || 'email').toLowerCase() === 'text' ? 'text' : 'email';
+    const message = emailCopy(context, statusKey, statusLabel, estimatedDate, notes);
+    if (deliveryMode === 'email' && !message.email) {
+      throw Object.assign(new Error('The client does not have an email address on file.'), { status: 400 });
+    }
     const savedRecord = await updateTicket(
       config,
       dataToken,
       context,
       buildPatch(context.type, statusKey, statusLabel, estimatedDate, notes),
     );
-    const message = emailCopy(context, statusKey, statusLabel, estimatedDate, notes);
     if (deliveryMode === 'text') {
       const sms = smsCopy(context, statusKey, statusLabel, estimatedDate, notes);
       if (!sms.phone) throw Object.assign(new Error('The client does not have a phone number on file.'), { status: 400 });
@@ -378,16 +370,6 @@ async function handleSend(req, res) {
       });
       return;
     }
-    let deliveryStatus = 'sent';
-    let deliveryError = '';
-    let providerMessageId = '';
-    try {
-      providerMessageId = await sendEmail(config, message);
-    } catch (error) {
-      deliveryStatus = 'failed';
-      deliveryError = String(error?.message || error);
-    }
-
     const history = await insertHistory(config, dataToken, {
       shop_id: context.shopId,
       qr_token_id: context.tokenRow?.id || null,
@@ -399,29 +381,34 @@ async function handleSend(req, res) {
       estimated_date: estimatedDate || null,
       recipient_email: message.email || null,
       email_subject: message.subject,
-      delivery_status: deliveryStatus,
-      delivery_error: deliveryError || null,
-      provider_message_id: providerMessageId || null,
+      email_text: message.text,
+      email_html: message.html,
+      delivery_status: 'pending',
+      delivery_error: null,
+      provider_message_id: null,
+      delivery_attempts: 0,
+      next_attempt_at: new Date().toISOString(),
+      delivery_updated_at: new Date().toISOString(),
     });
-
-    if (deliveryStatus === 'failed') {
+    const delivered = await waitForQueuedDelivery(config, dataToken, history?.id, config.deliveryWaitMs);
+    if (delivered?.delivery_status === 'sent') {
       json(res, 200, {
-        ok: false,
+        ok: true,
         statusSaved: true,
-        deliveryStatus,
-        error: `Status saved, but email was not sent: ${deliveryError}`,
+        deliveryStatus: 'sent',
+        message: `Status saved and email sent to ${message.email}.`,
         record: savedRecord,
-        history,
+        history: delivered,
       });
       return;
     }
     json(res, 200, {
       ok: true,
       statusSaved: true,
-      deliveryStatus,
-      message: `Status saved and email sent to ${message.email}.`,
+      deliveryStatus: 'queued',
+      message: `Status saved. Email to ${message.email} is queued for secure delivery by the shop POS.`,
       record: savedRecord,
-      history,
+      history: delivered || history,
     });
   } catch (error) {
     const status = Number(error?.status || 500) || 500;

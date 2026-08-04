@@ -1,24 +1,12 @@
 const assert = require('assert');
 const { Readable } = require('stream');
-const nodemailer = require('nodemailer');
-
 process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_PUBLISHABLE_KEY = 'test-publishable-key';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-process.env.GBPOS_GMAIL_APP_PASSWORD = 'test-app-password';
-
-let mailShouldFail = false;
-let mailSendCount = 0;
-nodemailer.createTransport = () => ({
-  sendMail: async (message) => {
-    mailSendCount += 1;
-    assert.equal(message.to, 'client@example.com');
-    if (mailShouldFail) throw new Error('Simulated provider rejection');
-    return { messageId: 'test-message-id' };
-  },
-});
+process.env.GBPOS_CLIENT_UPDATE_DELIVERY_WAIT_MS = '50';
 
 const historyWrites = [];
+let deliveryShouldComplete = true;
 global.fetch = async (url, options = {}) => {
   const method = String(options.method || 'GET').toUpperCase();
   const value = String(url);
@@ -63,6 +51,14 @@ global.fetch = async (url, options = {}) => {
     const row = JSON.parse(String(options.body || '{}'));
     historyWrites.push(row);
     body = [{ ...row, id: `history-${historyWrites.length}`, created_at: new Date().toISOString() }];
+  } else if (value.includes('/rest/v1/client_update_history') && method === 'GET') {
+    const row = historyWrites[historyWrites.length - 1];
+    body = row ? [{
+      ...row,
+      id: `history-${historyWrites.length}`,
+      delivery_status: deliveryShouldComplete ? 'sent' : 'pending',
+      provider_message_id: deliveryShouldComplete ? 'test-message-id' : null,
+    }] : [];
   } else {
     status = 404;
     body = { message: `Unexpected request: ${method} ${value}` };
@@ -156,19 +152,18 @@ async function invokeTextWithoutSession(statusKey) {
   const sent = await invoke('diagnosis');
   assert.equal(sent.ok, true);
   assert.equal(sent.deliveryStatus, 'sent');
-  assert.equal(historyWrites[0].delivery_status, 'sent');
-  assert.equal(historyWrites[0].provider_message_id, 'test-message-id');
+  assert.equal(historyWrites[0].delivery_status, 'pending');
+  assert.equal(historyWrites[0].recipient_email, 'client@example.com');
+  assert.match(historyWrites[0].email_html, /GADGETBOY Repair/);
 
-  mailShouldFail = true;
-  const failed = await invoke('part_ordered');
-  assert.equal(failed.ok, false);
-  assert.equal(failed.statusSaved, true);
-  assert.equal(failed.deliveryStatus, 'failed');
-  assert.match(failed.error, /Simulated provider rejection/);
-  assert.equal(historyWrites[1].delivery_status, 'failed');
-  assert.match(historyWrites[1].delivery_error, /Simulated provider rejection/);
+  deliveryShouldComplete = false;
+  const queued = await invoke('part_ordered');
+  assert.equal(queued.ok, true);
+  assert.equal(queued.statusSaved, true);
+  assert.equal(queued.deliveryStatus, 'queued');
+  assert.match(queued.message, /queued for secure delivery/);
+  assert.equal(historyWrites[1].delivery_status, 'pending');
 
-  const sentBeforeText = mailSendCount;
   const text = await invokeTextWithoutSession('repair_complete');
   assert.equal(text.ok, true);
   assert.equal(text.statusSaved, true);
@@ -178,11 +173,10 @@ async function invokeTextWithoutSession(statusKey) {
   assert.match(text.textMessage, /Great news! Your repair is complete/);
   assert.match(text.textMessage, /Call us at \(803\) 708-0101 or email gadgetboysc@gmail\.com/);
   assert.doesNotMatch(text.textMessage, /reply to this email/i);
-  assert.equal(mailSendCount, sentBeforeText);
   assert.equal(historyWrites[2].delivery_status, 'not_requested');
   assert.equal(historyWrites[2].message, text.textMessage);
 
-  console.log('Client update API tests passed (email, failure history, and secure QR text preparation).');
+  console.log('Client update API tests passed (email outbox, delivered/queued states, and secure QR text preparation).');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

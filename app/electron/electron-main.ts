@@ -3431,6 +3431,114 @@ function getCloudClient() {
   return cloudClient;
 }
 
+const CLIENT_UPDATE_EMAIL_POLL_MS = 3_000;
+let clientUpdateEmailTimer: NodeJS.Timeout | null = null;
+let clientUpdateEmailRunning = false;
+
+async function drainClientUpdateEmailQueue() {
+  if (clientUpdateEmailRunning) return { ok: true, busy: true };
+  const client = getCloudClient();
+  if (!client || !cloudSession?.shopId) return { ok: false, error: 'Cloud session is not ready.' };
+  if (!decryptAppPassword(readEmailConfig())) {
+    return { ok: false, pending: true, error: 'Gmail App Password is not configured on this shop PC.' };
+  }
+  clientUpdateEmailRunning = true;
+  let sent = 0;
+  let retried = 0;
+  try {
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+    await client
+      .from('client_update_history')
+      .update({ delivery_status: 'pending', delivery_updated_at: now.toISOString() })
+      .eq('shop_id', cloudSession.shopId)
+      .eq('delivery_status', 'sending')
+      .lt('delivery_updated_at', staleBefore);
+
+    const pendingResult = await client
+      .from('client_update_history')
+      .select('id,recipient_email,email_subject,email_text,email_html,delivery_attempts')
+      .eq('shop_id', cloudSession.shopId)
+      .eq('delivery_status', 'pending')
+      .or(`next_attempt_at.is.null,next_attempt_at.lte.${now.toISOString()}`)
+      .order('created_at', { ascending: true })
+      .limit(10);
+    if (pendingResult.error) throw pendingResult.error;
+
+    for (const candidate of pendingResult.data || []) {
+      const claimedResult = await client
+        .from('client_update_history')
+        .update({ delivery_status: 'sending', delivery_updated_at: new Date().toISOString() })
+        .eq('id', candidate.id)
+        .eq('shop_id', cloudSession.shopId)
+        .eq('delivery_status', 'pending')
+        .select('id,recipient_email,email_subject,email_text,email_html,delivery_attempts')
+        .maybeSingle();
+      if (claimedResult.error || !claimedResult.data) continue;
+
+      const claimed = claimedResult.data;
+      const delivery: any = await sendConfiguredEmail({
+        to: String(claimed.recipient_email || ''),
+        subject: String(claimed.email_subject || 'GadgetBoy POS Client Update'),
+        text: String(claimed.email_text || ''),
+        html: String(claimed.email_html || '') || undefined,
+      }).catch((error: any) => ({ ok: false, error: error?.message || String(error) }));
+      const attempts = Number(claimed.delivery_attempts || 0) + 1;
+      if (delivery?.ok) {
+        await client
+          .from('client_update_history')
+          .update({
+            delivery_status: 'sent',
+            delivery_error: null,
+            provider_message_id: delivery.messageId || null,
+            delivery_attempts: attempts,
+            next_attempt_at: null,
+            delivery_updated_at: new Date().toISOString(),
+          })
+          .eq('id', claimed.id)
+          .eq('shop_id', cloudSession.shopId);
+        sent += 1;
+      } else {
+        const retryDelaySeconds = Math.min(15 * 60, 30 * Math.pow(2, Math.min(attempts - 1, 5)));
+        await client
+          .from('client_update_history')
+          .update({
+            delivery_status: 'pending',
+            delivery_error: String(delivery?.error || 'Email delivery failed.').slice(0, 1000),
+            delivery_attempts: attempts,
+            next_attempt_at: new Date(Date.now() + retryDelaySeconds * 1000).toISOString(),
+            delivery_updated_at: new Date().toISOString(),
+          })
+          .eq('id', claimed.id)
+          .eq('shop_id', cloudSession.shopId);
+        retried += 1;
+      }
+    }
+    return { ok: true, sent, retried };
+  } catch (error: any) {
+    return { ok: false, sent, retried, error: error?.message || String(error) };
+  } finally {
+    clientUpdateEmailRunning = false;
+  }
+}
+
+function startClientUpdateEmailQueue() {
+  if (!clientUpdateEmailTimer) {
+    clientUpdateEmailTimer = setInterval(() => {
+      void drainClientUpdateEmailQueue();
+    }, CLIENT_UPDATE_EMAIL_POLL_MS);
+    clientUpdateEmailTimer.unref?.();
+  }
+  void drainClientUpdateEmailQueue();
+}
+
+function stopClientUpdateEmailQueue() {
+  if (clientUpdateEmailTimer) clearInterval(clientUpdateEmailTimer);
+  clientUpdateEmailTimer = null;
+}
+
+ipcMain.handle('email:drainClientUpdates', async () => drainClientUpdateEmailQueue());
+
 ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
   const supabaseUrl = String(payload?.supabaseUrl || '').trim();
   const supabasePublishableKey = String(payload?.supabasePublishableKey || '').trim();
@@ -3450,6 +3558,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
       getCloudCount('sales'),
     ]);
     scheduleCloudSyncQueueDrain(100);
+    startClientUpdateEmailQueue();
     return {
       ok: true,
       counts: {
@@ -3467,6 +3576,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
 });
 
 ipcMain.handle('cloud:clearSession', async () => {
+  stopClientUpdateEmailQueue();
   cloudSession = null;
   cloudClient = null;
   return { ok: true };

@@ -18,6 +18,7 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
+import NotificationConsentPrompt from './components/NotificationConsentPrompt';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
@@ -644,6 +645,7 @@ const AppInner: React.FC<{
         />
       ))}
       <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
+      <NotificationConsentPrompt />
     </div>
   );
 };

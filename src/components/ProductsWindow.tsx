@@ -3,6 +3,7 @@ import ContextMenu, { ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
 import MoneyInput from './MoneyInput';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
+import { buildSaleProductPickerPayload } from '../lib/saleProductPicker';
 
 type Product = {
   id?: number;
@@ -130,27 +131,11 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
   }, [list, search, typeFilter, categoryFilter, isPicker]);
 
   const emitPickedProduct = () => {
-    if (!selectedId || !editing?.itemDescription?.trim()) return;
-    const stockCount = Number(editing.stockCount);
-    const payload = {
-      inventoryProductId: editing.id,
-      itemDescription: editing.itemDescription.trim(),
-      price: Number(editing.price || 0),
-      quantity: 1,
-      condition: editing.condition || 'New',
-      internalCost: typeof editing.internalCost === 'number' ? editing.internalCost : undefined,
-      category: editing.category,
-      itemType: editing.itemType || 'Product',
-      distributor: editing.distributor || '',
-      distributorSku: editing.distributorSku || '',
-      productUrl: editing.reorderUrlTemplate || '',
-      vendorRelationship: (editing as any).vendorRelationship,
-      vendorSharePct: (editing as any).vendorSharePct,
-      vendorTaxExempt: !!(editing as any).vendorTaxExempt,
-      trackStock: !!editing.trackStock,
-      stockCount: Number.isFinite(stockCount) ? stockCount : undefined,
-      inStock: !editing.trackStock || (Number.isFinite(stockCount) && stockCount > 0),
-    };
+    if (!selectedId) return;
+    const selectedProduct = list.find((product) => product.id === selectedId);
+    const product = selectedProduct || editing;
+    const payload = buildSaleProductPickerPayload(product as Record<string, any>);
+    if (!payload) return;
     if (onPick) {
       onPick(payload);
       return;
@@ -313,7 +298,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
     } catch (e) { console.error('delete product failed', e); }
   }
 
-  if (pickerMode) {
+  if (isPicker) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100">
         <input
@@ -344,7 +329,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
           type="button"
           className="mt-3 w-full rounded bg-[#39FF14] px-4 py-3 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
           onClick={emitPickedProduct}
-          disabled={!selectedId || !editing.itemDescription?.trim()}
+          disabled={!selectedId}
         >
           Add Selected Product
         </button>
@@ -561,8 +546,9 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
             <textarea value={editing.notes || ''} onChange={e => setEditing(ed => ({ ...ed, notes: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px] mb-3" />
 
             {/* Reorder */}
-            <div className="border border-zinc-700 rounded p-3 mb-3">
-              <div className="text-sm font-medium mb-2">Reorder</div>
+            <details className="border border-zinc-700 rounded mb-3">
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800">Reorder</summary>
+              <div className="border-t border-zinc-700 p-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">Distributor</label>
@@ -605,7 +591,8 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
                   <div className="text-[11px] text-zinc-500 mt-1">Tokens supported: {'{{sku}}'}, {'{{qty}}'}</div>
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
 
             {/* Stock tracking */}
             <div className="border border-zinc-700 rounded p-3 mb-3">

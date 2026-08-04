@@ -121,6 +121,7 @@ declare global {
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     emailSendReportCsv: (payload: { to: string; subject: string; bodyText: string; filename: string; csv: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
+    emailDrainClientUpdates: () => Promise<{ ok: boolean; sent?: number; retried?: number; pending?: boolean; error?: string }>;
     openReporting: () => Promise<any>;
     openReportEmail: (payload: any) => Promise<any>;
     openCustomBuildItem: (payload: any) => Promise<any>;
