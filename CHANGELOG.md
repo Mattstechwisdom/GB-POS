@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.34 (2026-08-04)
+- Notifications / Android: replaces the legacy permission callback with Android's Activity Result permission launcher so a fresh installation reliably presents the operating-system notification prompt.
+- Notifications / Android: reads Android's actual permission decision flags, immediately identifies devices that previously blocked notifications, and provides the app-settings route instead of waiting indefinitely for a dialog Android will no longer show.
+- Notifications / Android: sends permission results through Capacitor's native event bridge and independently polls native status as a fallback so the authorization screen always resolves to allowed, denied, or settings-required.
+
 ## v0.5.33 (2026-08-04)
 - Notifications: establishes a per-device authorization baseline so Windows and Android only alert for work orders and sales created after notifications were enabled, while older synced records remain available without generating stale alerts.
 - Notifications: routes in-app and native notification selections to the associated work order, sale, customer, technician schedule, or exact calendar entry on both Windows and Android.

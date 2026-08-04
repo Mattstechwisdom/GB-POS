@@ -170,7 +170,7 @@ declare global {
       openExternalUrl?: (url: string) => void;
       openNotificationSettings?: () => void;
       getNotificationPermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
-      requestNotificationPermission?: () => void;
+      requestNotificationPermission?: () => 'requested' | 'granted' | 'denied' | 'unsupported';
       downloadAndInstallApk?: (url: string, fileName?: string) => void;
       downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
     };

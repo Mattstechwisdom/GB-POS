@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Process;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -20,6 +21,8 @@ import com.getcapacitor.BridgeActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,14 +34,17 @@ import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 4501;
-    private static final String NOTIFICATION_PERMISSION_PREFS = "gbpos_notification_permissions";
-    private static final String NOTIFICATION_PERMISSION_REQUESTED = "post_notifications_requested";
     private File pendingUpdateApk;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        notificationPermissionLauncher = getBridge().registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            granted -> dispatchNotificationPermissionResult(granted ? "granted" : "denied")
+        );
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().addJavascriptInterface(new GBPosAndroidBridge(), "GBPosAndroid");
         }
@@ -63,33 +69,39 @@ public class MainActivity extends BridgeActivity {
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED;
             if (granted) return "granted";
-            boolean requested = MainActivity.this.getSharedPreferences(
-                NOTIFICATION_PERMISSION_PREFS,
-                Context.MODE_PRIVATE
-            ).getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false);
-            return requested ? "denied" : "prompt";
+            int flags = getPackageManager().getPermissionFlags(
+                Manifest.permission.POST_NOTIFICATIONS,
+                getPackageName(),
+                Process.myUserHandle()
+            );
+            boolean decided = (flags & PackageManager.FLAG_PERMISSION_USER_SET) != 0
+                || (flags & PackageManager.FLAG_PERMISSION_USER_FIXED) != 0;
+            return decided ? "denied" : "prompt";
         }
 
         @JavascriptInterface
-        public void requestNotificationPermission() {
+        public String requestNotificationPermission() {
+            String current = getNotificationPermissionStatus();
+            if ("granted".equals(current)) {
+                dispatchNotificationPermissionResult("granted");
+                return "granted";
+            }
+            if ("denied".equals(current)) {
+                dispatchNotificationPermissionResult("denied");
+                return "denied";
+            }
             MainActivity.this.runOnUiThread(() -> {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                    dispatchNotificationPermissionResult("granted");
-                    return;
+                if (notificationPermissionLauncher != null) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                } else {
+                    ActivityCompat.requestPermissions(
+                        MainActivity.this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST_CODE
+                    );
                 }
-                if (ContextCompat.checkSelfPermission(
-                    MainActivity.this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED) {
-                    dispatchNotificationPermissionResult("granted");
-                    return;
-                }
-                ActivityCompat.requestPermissions(
-                    MainActivity.this,
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                    NOTIFICATION_PERMISSION_REQUEST_CODE
-                );
             });
+            return "requested";
         }
 
         @JavascriptInterface
@@ -263,20 +275,17 @@ public class MainActivity extends BridgeActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST_CODE) return;
-        getSharedPreferences(
-            NOTIFICATION_PERMISSION_PREFS,
-            Context.MODE_PRIVATE
-        ).edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED, true).apply();
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
         dispatchNotificationPermissionResult(granted ? "granted" : "denied");
     }
 
     private void dispatchNotificationPermissionResult(String permission) {
-        String script = "window.dispatchEvent(new CustomEvent('gbpos:android-notification-permission-result',{detail:{permission:"
-            + JSONObject.quote(permission) + "}}));";
         runOnUiThread(() -> {
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                getBridge().getWebView().evaluateJavascript(script, null);
+            if (getBridge() != null) {
+                getBridge().triggerWindowJSEvent(
+                    "gbpos:android-notification-permission-result",
+                    "{\"permission\":" + JSONObject.quote(permission) + "}"
+                );
             }
         });
     }

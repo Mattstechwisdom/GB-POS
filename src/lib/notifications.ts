@@ -700,20 +700,35 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
   ) {
     try {
       const nativePermissionResult = new Promise<DeviceNotificationSettings['permission']>((resolve, reject) => {
+        let pollTimer = 0;
         const timeout = window.setTimeout(() => {
+          window.clearInterval(pollTimer);
           window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
           reject(new Error('Android did not finish the notification permission request.'));
-        }, 10_000);
-        const onResult = (event: Event) => {
+        }, 12_000);
+        const finish = (next: string) => {
+          if (next !== 'granted' && next !== 'denied') return;
           window.clearTimeout(timeout);
+          window.clearInterval(pollTimer);
           window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+          resolve(next);
+        };
+        const onResult = (event: Event) => {
           const next = String((event as CustomEvent)?.detail?.permission || '').toLowerCase();
-          resolve(next === 'granted' ? 'granted' : (next === 'denied' ? 'denied' : 'prompt'));
+          finish(next);
         };
         window.addEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+        pollTimer = window.setInterval(() => {
+          try {
+            const next = String(window.GBPosAndroid?.getNotificationPermissionStatus?.() || '').toLowerCase();
+            finish(next);
+          } catch {}
+        }, 300);
       });
-      window.GBPosAndroid.requestNotificationPermission();
-      permission = await nativePermissionResult;
+      const requestState = String(window.GBPosAndroid.requestNotificationPermission() || '').toLowerCase();
+      permission = requestState === 'granted' || requestState === 'denied'
+        ? requestState
+        : await nativePermissionResult;
     } catch {
       permission = await getDeviceNotificationPermission();
     }
