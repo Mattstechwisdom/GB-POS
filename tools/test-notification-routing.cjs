@@ -10,6 +10,7 @@ const activity = read('android/app/src/main/java/com/gadgetboy/pos/MainActivity.
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const calendar = read('src/components/CalendarWindow.tsx');
 const electronMain = read('app/electron/electron-main.ts');
+const consentPrompt = read('src/components/NotificationConsentPrompt.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions', bridgeRequest);
@@ -29,5 +30,8 @@ assert.match(manifest, /android\.permission\.POST_NOTIFICATIONS/);
 assert.match(calendar, /calendarEventId/);
 assert.match(calendar, /setViewing\(target\)/);
 assert.match(electronMain, /notifications:native-clicked/);
+assert.match(consentPrompt, /if \(!forcePreview && seenDecision\) return/);
+assert.match(consentPrompt, /settings\.permission === 'granted'/);
+assert.match(consentPrompt, /localStorage\.setItem\(CONSENT_KEY, 'acknowledged'\)/);
 
 console.log('Notification permission and destination routing checks passed.');

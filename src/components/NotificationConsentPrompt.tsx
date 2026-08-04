@@ -3,6 +3,7 @@ import { dispatchOpenModal } from '../lib/modalBus';
 import {
   openDeviceNotificationSystemSettings,
   initializeDeviceNotificationActionRouting,
+  loadDeviceNotificationSettings,
   requestDeviceNotificationPermission,
 } from '../lib/notifications';
 
@@ -23,16 +24,35 @@ const NotificationConsentPrompt: React.FC = () => {
 
   useEffect(() => {
     void initializeDeviceNotificationActionRouting();
-    let seenVersion = '';
-    try { seenVersion = localStorage.getItem(CONSENT_KEY) || ''; } catch {}
+    let cancelled = false;
+    let timer = 0;
     const forcePreview = new URLSearchParams(window.location.search).get('notificationConsentPreview') === '1';
-    if (!forcePreview && seenVersion === __APP_VERSION__) return;
-    const timer = window.setTimeout(() => setVisible(true), 1100);
-    return () => window.clearTimeout(timer);
+    void (async () => {
+      let seenDecision = '';
+      try { seenDecision = localStorage.getItem(CONSENT_KEY) || ''; } catch {}
+      if (!forcePreview && seenDecision) return;
+
+      try {
+        const settings = await loadDeviceNotificationSettings();
+        if (!forcePreview && settings.permission === 'granted') {
+          try { localStorage.setItem(CONSENT_KEY, 'acknowledged'); } catch {}
+          return;
+        }
+      } catch {
+        // The consent prompt remains available when device status cannot be read.
+      }
+
+      if (cancelled) return;
+      timer = window.setTimeout(() => setVisible(true), 1100);
+    })();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   const rememberDecision = () => {
-    try { localStorage.setItem(CONSENT_KEY, __APP_VERSION__); } catch {}
+    try { localStorage.setItem(CONSENT_KEY, 'acknowledged'); } catch {}
   };
 
   const allowNotifications = async () => {

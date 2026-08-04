@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.36 (2026-08-04)
+- Notifications: treats notification consent as a permanent device decision instead of tying it to the installed app version, preventing the authorization prompt from returning after updates.
+- Notifications: verifies the operating system's current permission during startup and silently records already-approved devices while preserving manual access to notification settings.
+
 ## v0.5.35 (2026-08-04)
 - Notifications / Android: replaces the legacy permission callback with Android's Activity Result permission launcher so a fresh installation reliably presents the operating-system notification prompt.
 - Notifications / Android: reads Android's actual permission decision flags, immediately identifies devices that previously blocked notifications, and provides the app-settings route instead of waiting indefinitely for a dialog Android will no longer show.
