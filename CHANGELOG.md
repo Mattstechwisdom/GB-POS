@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.37 (2026-08-04)
+- Notifications / Android: opening Notifications or its Settings page no longer starts a hidden permission request; Android is contacted only when the user explicitly selects Allow notifications.
+- Notifications / Android: uses the official Capacitor Local Notifications permission API first, bounds every permission check, and retains the custom native bridge only as a fallback.
+- Notifications / Android: suppresses startup consent only when the operating system confirms permission is granted, and presents a direct Open device settings action when Android has already blocked further prompts.
+
 ## v0.5.36 (2026-08-04)
 - Notifications: treats notification consent as a permanent device decision instead of tying it to the installed app version, preventing the authorization prompt from returning after updates.
 - Notifications: verifies the operating system's current permission during startup and silently records already-approved devices while preserving manual access to notification settings.

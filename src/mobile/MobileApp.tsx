@@ -9,7 +9,6 @@ import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
 import { technicianDisplayName } from '../lib/admin';
 import {
-  requestDeviceNotificationPermission,
   syncNotificationsFromCalendar,
   syncNotificationsFromRecords,
 } from '../lib/notifications';
@@ -753,16 +752,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   }, []);
 
   const openNotifications = useCallback(() => {
-    const permissionRequest = requestDeviceNotificationPermission();
     openModal('notifications');
-    void permissionRequest.then(async (settings) => {
-      window.dispatchEvent(new CustomEvent('gbpos:notification-permission-changed', { detail: settings }));
-    }).catch((error) => {
-      console.error('Notification permission request failed', error);
-      window.dispatchEvent(new CustomEvent('gbpos:notification-permission-error', {
-        detail: error instanceof Error ? error.message : 'Notification permission could not be requested.',
-      }));
-    });
   }, [openModal]);
 
   useEffect(() => {

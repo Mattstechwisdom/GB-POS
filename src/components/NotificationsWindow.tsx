@@ -184,13 +184,15 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
     }
   };
 
-  if (isMobileSurface && mobileView === 'settings' && devicePermission === 'granted') {
+  if (isMobileSurface && mobileView === 'settings') {
     return (
       <div className="h-screen bg-zinc-900 text-zinc-100 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-3 p-3 border-b border-zinc-800">
           <div>
             <div className="text-lg font-semibold">Notification Preferences</div>
-            <div className="text-xs text-[#39FF14]">Allowed on this device</div>
+            <div className={`text-xs ${devicePermission === 'granted' ? 'text-[#39FF14]' : 'text-zinc-400'}`}>
+              {devicePermission === 'granted' ? 'Allowed on this device' : 'Device authorization required'}
+            </div>
           </div>
           <button
             type="button"
@@ -244,33 +246,7 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
             className="px-3 py-1.5 rounded border text-sm bg-zinc-800 border-zinc-700 text-zinc-200"
             onClick={async () => {
               if (isMobileSurface) {
-                if (devicePermission === 'granted') {
-                  setMobileView('settings');
-                } else if (isNativeAndroid && (devicePermission === 'default' || devicePermission === 'prompt')) {
-                  setPermissionChecking(true);
-                  setPermissionError('');
-                  const stopChecking = window.setTimeout(() => {
-                    setPermissionChecking(false);
-                    setPermissionError('Android did not finish the permission request. Tap Settings to retry.');
-                  }, 22_000);
-                  try {
-                    const next = await requestDeviceNotificationPermission();
-                    setDevicePermission(next.permission);
-                    if (next.permission === 'granted') setMobileView('settings');
-                    else if (next.permission === 'prompt') {
-                      setPermissionError('Android did not show the permission request. Tap Settings to try again.');
-                    }
-                  } catch (error: any) {
-                    setPermissionError(error?.message || 'Notification permission could not be requested.');
-                  } finally {
-                    window.clearTimeout(stopChecking);
-                    setPermissionChecking(false);
-                  }
-                } else if (isNativeAndroid && devicePermission === 'denied') {
-                  openMobileNotificationSettings();
-                } else {
-                  dispatchOpenModal('notificationSettings');
-                }
+                setMobileView('settings');
                 return;
               }
               if (canDispatchOpenModal()) {

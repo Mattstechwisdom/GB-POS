@@ -11,6 +11,8 @@ const manifest = read('android/app/src/main/AndroidManifest.xml');
 const calendar = read('src/components/CalendarWindow.tsx');
 const electronMain = read('app/electron/electron-main.ts');
 const consentPrompt = read('src/components/NotificationConsentPrompt.tsx');
+const notificationsWindow = read('src/components/NotificationsWindow.tsx');
+const mobileApp = read('src/mobile/MobileApp.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions', bridgeRequest);
@@ -26,12 +28,16 @@ assert.match(activity, /triggerWindowJSEvent/);
 assert.match(activity, /rememberNotificationPermissionRequested/);
 assert.match(activity, /dispatchNotificationPermissionResult/);
 assert.match(notifications, /getNotificationPermissionStatus.*setInterval/s);
+assert.match(notifications, /isNativeAndroid\s*&& !native\?\.requestPermissions\s*&& typeof window\.GBPosAndroid\?\.requestNotificationPermission/);
 assert.match(manifest, /android\.permission\.POST_NOTIFICATIONS/);
 assert.match(calendar, /calendarEventId/);
 assert.match(calendar, /setViewing\(target\)/);
 assert.match(electronMain, /notifications:native-clicked/);
-assert.match(consentPrompt, /if \(!forcePreview && seenDecision\) return/);
-assert.match(consentPrompt, /settings\.permission === 'granted'/);
+assert.match(consentPrompt, /if \(!forcePreview && settings\.permission === 'granted'\)/);
 assert.match(consentPrompt, /localStorage\.setItem\(CONSENT_KEY, 'acknowledged'\)/);
+const openNotifications = mobileApp.slice(mobileApp.indexOf('const openNotifications'), mobileApp.indexOf('useEffect(() =>', mobileApp.indexOf('const openNotifications')));
+assert.doesNotMatch(openNotifications, /requestDeviceNotificationPermission/);
+assert.match(notificationsWindow, /mobileView === 'settings'\)/);
+assert.match(notificationsWindow, /setMobileView\('settings'\);\s*return;/);
 
 console.log('Notification permission and destination routing checks passed.');

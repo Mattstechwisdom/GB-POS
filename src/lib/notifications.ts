@@ -246,16 +246,6 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
-  if (Capacitor.getPlatform() === 'android' && typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
-    try {
-      const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
-      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
-        return permission as DeviceNotificationSettings['permission'];
-      }
-    } catch {
-      // Fall through to the official Capacitor plugin.
-    }
-  }
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
@@ -694,6 +684,7 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
 
   if (
     isNativeAndroid
+    && !native?.requestPermissions
     && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
     && permission !== 'granted'
     && permission !== 'unsupported'

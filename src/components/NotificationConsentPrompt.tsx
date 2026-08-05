@@ -28,10 +28,6 @@ const NotificationConsentPrompt: React.FC = () => {
     let timer = 0;
     const forcePreview = new URLSearchParams(window.location.search).get('notificationConsentPreview') === '1';
     void (async () => {
-      let seenDecision = '';
-      try { seenDecision = localStorage.getItem(CONSENT_KEY) || ''; } catch {}
-      if (!forcePreview && seenDecision) return;
-
       try {
         const settings = await loadDeviceNotificationSettings();
         if (!forcePreview && settings.permission === 'granted') {

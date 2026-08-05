@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   DeviceNotificationSettings,
   loadDeviceNotificationSettings,
+  openDeviceNotificationSystemSettings,
   loadNotificationSettings,
   NotificationSettings,
   requestDeviceNotificationPermission,
@@ -212,7 +213,16 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
             <div className="mt-3 text-xs text-zinc-400">This platform does not expose device notifications. The in-app Notifications list will still work.</div>
           ) : null}
           {deviceBlocked ? (
-            <div className="mt-3 text-xs text-red-200">Notifications are blocked by the operating system. Turn them back on in this device's app settings, then return here.</div>
+            <div className="mt-3 rounded border border-red-500/40 bg-red-950/20 p-3 text-xs text-red-200">
+              <div>Notifications are blocked by the operating system. Turn them back on in this device's app settings, then return here.</div>
+              <button
+                type="button"
+                className="mt-2 rounded bg-[#BC13FE] px-3 py-1.5 font-semibold text-white"
+                onClick={() => void openDeviceNotificationSystemSettings()}
+              >
+                Open device settings
+              </button>
+            </div>
           ) : null}
           {permissionMessage ? <div className={`mt-3 text-xs ${deviceAllowed ? 'text-[#39FF14]' : 'text-zinc-300'}`}>{permissionMessage}</div> : null}
 
