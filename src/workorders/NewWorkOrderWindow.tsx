@@ -18,6 +18,11 @@ export type WorkOrderItemRow = {
   taxExempt?: boolean;
   supplierTaxRate?: number;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
+  inventoryProductId?: number;
+  trackStock?: boolean;
+  purchaseQueueRemovedAt?: string;
+  purchaseQueueRemovalNotice?: string;
+  purchaseQueueRemovalPaymentStatus?: string;
 };
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,6 +46,7 @@ import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, normalizePartInventoryTitle, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
+import { consumeInStockInventory } from '../lib/inventoryConsumption';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -966,6 +972,22 @@ const NewWorkOrderWindow: React.FC = () => {
 
   function onSave() {
     if (!ensureRequired('save', 'saving the work order')) return;
+    const orderingErrors = (wo.items || []).flatMap((item: any, index: number) => {
+      if (item?.requiresOrder !== true) return [];
+      const errors: string[] = [];
+      const rawCost = item?.internalCost;
+      if (rawCost === null || rawCost === undefined || rawCost === '' || !Number.isFinite(Number(rawCost)) || Number(rawCost) < 0) {
+        errors.push(`Item ${index + 1}: full supplier cost is required`);
+      }
+      if (!String(item?.distributor || '').trim() && !String(item?.orderSourceUrl || item?.productUrl || '').trim()) {
+        errors.push(`Item ${index + 1}: distributor or order URL is required`);
+      }
+      return errors;
+    });
+    if (orderingErrors.length) {
+      triggerWarningBanner('Complete ordering details before saving', orderingErrors.slice(0, 4).join(' · '));
+      return;
+    }
     if (!wo.productCategory || !wo.productCategory.trim()) {
       triggerWarningBanner('Device category is missing', 'Select a device category, then click Save again.');
       return;
@@ -1745,6 +1767,22 @@ const NewWorkOrderWindow: React.FC = () => {
   useEffect(() => {
     handleCheckoutRef.current = async () => {
       if (!ensureRequired('checkout', 'checking out')) return;
+      const orderingErrors = (wo.items || []).flatMap((item: any, index: number) => {
+        if (item?.requiresOrder !== true) return [];
+        const errors: string[] = [];
+        const rawCost = item?.internalCost;
+        if (rawCost === null || rawCost === undefined || rawCost === '' || !Number.isFinite(Number(rawCost)) || Number(rawCost) < 0) {
+          errors.push(`Item ${index + 1}: full supplier cost is required`);
+        }
+        if (!String(item?.distributor || '').trim() && !String(item?.orderSourceUrl || item?.productUrl || '').trim()) {
+          errors.push(`Item ${index + 1}: distributor or order URL is required`);
+        }
+        return errors;
+      });
+      if (orderingErrors.length) {
+        triggerWarningBanner('Complete ordering details before checkout', orderingErrors.slice(0, 4).join(' · '));
+        return;
+      }
       if (!isCustomBuild && (!wo.productCategory || !wo.productCategory.trim())) {
         triggerWarningBanner('Device category is missing', 'Select a device category, then click Checkout again.');
         return;
@@ -1995,6 +2033,14 @@ const NewWorkOrderWindow: React.FC = () => {
 
             savedAddonSale = await api.dbUpdate('sales', addonSaleId, { ...nextSale, id: addonSaleId });
             setAddonSale(savedAddonSale || nextSale);
+            if (appliedToAddonSale > 0 || saleStatus === 'closed') {
+              try {
+                await consumeInStockInventory(api, 'sale', addonSaleId, items);
+              } catch (inventoryError: any) {
+                console.error('Failed updating add-on sale inventory', inventoryError);
+                alert(`The add-on sale payment was saved, but inventory needs attention: ${inventoryError?.message || inventoryError}`);
+              }
+            }
           } catch (e) {
             console.error('Failed updating add-on sale payment', e);
           }
@@ -2016,10 +2062,12 @@ const NewWorkOrderWindow: React.FC = () => {
         // Persist the work order. If it's brand-new (id=0) we create it here so the
         // receipt can include a real QR-code URL. If already saved, update it.
         let effectiveId = Number((wo as any).id || 0) || 0;
+        let workOrderPersisted = false;
         if (effectiveId > 0) {
           try {
             const savedWo = await api.update('workOrders', { ...nextWo });
             applySavedCustomerSnapshot(savedWo || nextWo);
+            workOrderPersisted = true;
           } catch (e) {
             console.error('Failed persisting checkout update', e);
           }
@@ -2033,9 +2081,19 @@ const NewWorkOrderWindow: React.FC = () => {
               effectiveId = Number(added.id) || 0;
               // Sync state so autosave won't create a duplicate
               applySavedCustomerSnapshot({ ...nextWo, ...added, id: effectiveId });
+              workOrderPersisted = true;
             }
           } catch (e) {
             console.error('Failed creating work order on checkout', e);
+          }
+        }
+
+        if (workOrderPersisted && effectiveId && (appliedToWorkOrder > 0 || status === 'closed')) {
+          try {
+            await consumeInStockInventory(api, 'workOrder', effectiveId, updatedItems);
+          } catch (inventoryError: any) {
+            console.error('Work order inventory consumption failed', inventoryError);
+            alert(`Checkout was saved, but inventory needs attention: ${inventoryError?.message || inventoryError}`);
           }
         }
 

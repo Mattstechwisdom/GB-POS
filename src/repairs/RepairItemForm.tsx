@@ -228,6 +228,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       trackStock: false,
       stockCount: undefined,
       lowStockThreshold: undefined,
+      inventoryProductId: undefined,
     });
     setDeviceCategoryInput('');
     setRepairCategoryInput('');
@@ -288,6 +289,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       partSource: part.distributor || '',
       orderSourceUrl: normalizeOrderUrl(part.reorderUrlTemplate),
       taxExempt: part.vendorTaxExempt === true,
+      inventoryProductId: part.id,
+      trackStock: part.trackStock === true,
+      stockCount: part.stockCount,
     }));
     if (part.category) {
       setHasDeviceCategory(true);

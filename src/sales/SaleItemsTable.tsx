@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
+import { derivePartVendorFromUrl } from '@/lib/partOrdering';
 
 export type SaleItemRow = {
   id: string;
@@ -21,6 +22,12 @@ export type SaleItemRow = {
   vendorTaxExempt?: boolean;
   trackStock?: boolean;
   stockCountAtSelection?: number;
+  requiresOrder?: boolean;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
+  orderDate?: string;
+  purchaseQueueRemovedAt?: string;
+  purchaseQueueRemovalNotice?: string;
+  purchaseQueueRemovalPaymentStatus?: string;
 };
 
 interface Props {
@@ -52,11 +59,13 @@ function lineTotalFor(row: Partial<SaleItemRow> | null | undefined) {
 const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicator }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
+  const [editingError, setEditingError] = useState('');
 
   const selectedRow = useMemo(() => {
     if (!selected) return null;
     return items.find(i => i.id === selected) || null;
   }, [items, selected]);
+  const removedPurchaseItems = useMemo(() => items.filter(item => !!item.purchaseQueueRemovedAt), [items]);
 
   useEffect(() => {
     if (items.length === 0) {
@@ -163,6 +172,8 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
           vendorTaxExempt: !!picked.vendorTaxExempt,
           trackStock: !!picked.trackStock,
           stockCountAtSelection: typeof picked.stockCount === 'number' ? picked.stockCount : undefined,
+          requiresOrder: !picked.inStock,
+          orderStatus: picked.inStock ? 'in_stock' : 'needed',
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);
@@ -186,11 +197,14 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       price: 0,
       condition: 'New',
       inStock: true,
+      requiresOrder: false,
+      orderStatus: 'in_stock',
     };
     onChange([...items, row].slice(0, MAX_ITEMS));
     setSelected(row.id);
     // Open the editor immediately so the tech can type a custom description/price.
     setEditing(row);
+    setEditingError('');
   }
 
   return (
@@ -202,6 +216,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         </h4>
         <div className="text-xs text-zinc-400">Add products (max {MAX_ITEMS})</div>
       </div>
+      {removedPurchaseItems.length ? <div className="mb-2 rounded border border-amber-500/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100"><strong className="text-amber-300">Not ordered:</strong> {removedPurchaseItems.map(item => item.description || 'Product').join(', ')}. Select the item below for payment details or to restore it to the EOD Cart.</div> : null}
       <div className="gb-sale-items-table-wrap overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '12rem' }}>
         <table className="gb-sale-items-table w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
@@ -266,6 +281,13 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
         <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
       </div>
+
+      {selectedRow?.purchaseQueueRemovedAt ? (
+        <div className="mt-2 flex flex-col gap-2 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-xs text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <div><strong className="block text-amber-300">Product has not been ordered</strong>{selectedRow.purchaseQueueRemovalNotice || 'This product remains on the sale, but it was removed from the EOD purchasing cart after payment was recorded. Delivery and tracking information are unavailable.'}</div>
+          <button type="button" className="shrink-0 rounded bg-amber-500 px-3 py-1.5 font-semibold text-black" onClick={() => onChange(items.map(item => item.id === selectedRow.id ? { ...item, purchaseQueueRemovedAt: undefined, purchaseQueueRemovalNotice: undefined, purchaseQueueRemovalPaymentStatus: undefined } : item))}>Restore to EOD Cart</button>
+        </div>
+      ) : null}
 
       {editing && (
         <div className="gb-sale-item-editor mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
@@ -340,7 +362,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
                   type="checkbox"
                   className="h-4 w-4"
                   checked={!!editing.inStock}
-                  onChange={e => setEditing({ ...editing, inStock: e.target.checked })}
+                  onChange={e => setEditing({ ...editing, inStock: e.target.checked, requiresOrder: !e.target.checked, orderStatus: e.target.checked ? 'in_stock' : 'needed' })}
                 />
                 <span className="text-xs text-zinc-400">Available immediately</span>
               </div>
@@ -358,13 +380,14 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               </select>
             </div>
             <div className="w-1/2">
-              <label className="block text-xs text-zinc-400">Internal cost</label>
+              <label className="block text-xs text-zinc-400">{editing.requiresOrder ? 'Full checkout cost' : 'Internal cost'}</label>
               <MoneyInput
                 className="w-full bg-yellow-200 text-black rounded px-2 py-1"
                 value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
                 onValueChange={(v) => setEditing({ ...editing, internalCost: v == null ? undefined : Number(v || 0) })}
                 allowEmpty
               />
+              {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Include shipping and supplier tax.</div> : null}
             </div>
           </div>
           {isConsultationItem(editing) ? (
@@ -382,6 +405,18 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               onChange={e => setEditing({ ...editing, productUrl: e.target.value })}
             />
           </div>
+          {!isConsultationItem(editing) && editing.requiresOrder ? (
+            <div className="mt-2">
+              <label className="block text-xs text-zinc-400">Distributor</label>
+              <input
+                className="w-full bg-zinc-900 rounded px-2 py-1"
+                value={editing.distributor || ''}
+                onChange={e => setEditing({ ...editing, distributor: e.target.value })}
+                placeholder="Distributor name"
+              />
+            </div>
+          ) : null}
+          {editingError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">{editingError}</div> : null}
           <div className="flex gap-2 mt-2 justify-end">
             <button
               className="px-3 py-1 bg-zinc-800 rounded"
@@ -393,7 +428,18 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
             <button
               className="px-3 py-1 bg-brand text-black rounded"
               onClick={() => {
-                onChange(items.map(i => (i.id === editing.id ? editing : i)));
+                if (editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
+                  setEditingError('Enter the complete shop checkout cost, including shipping and supplier tax.');
+                  return;
+                }
+                if (editing.requiresOrder && !String(editing.distributor || '').trim() && !String(editing.productUrl || '').trim()) {
+                  setEditingError('Enter a distributor or product URL so the EOD Cart can group this product.');
+                  return;
+                }
+                const distributor = String(editing.distributor || '').trim() || derivePartVendorFromUrl(editing.productUrl);
+                const saved = { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
+                setEditingError('');
+                onChange(items.map(i => (i.id === editing.id ? saved : i)));
                 // Keep editor open on the selected row
               }}
             >

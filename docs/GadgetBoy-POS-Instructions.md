@@ -159,8 +159,9 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 1. Select the saved repair or part from inventory.
 2. Confirm the inventory quantity and internal cost.
 3. Add the client-facing part price and labor to the work order.
-4. Complete the repair and decrement the used inventory quantity.
-5. Reporting treats internal cost as cost and the client-facing part amount as parts revenue.
+4. Complete checkout. A saved, stock-tracked inventory item is consumed once; it is not added to the supplier cart merely because it was sold or used.
+5. Reporting treats the saved internal cost as COGS and the client-facing part amount as parts revenue.
+6. To replace the used stock, open Inventory, select the saved listing, and explicitly choose Add to Cart.
 
 ### Part Must Be Ordered
 
@@ -173,7 +174,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 7. Enter order date and estimated delivery when known.
 8. Mark Tax Exempt only when that distributor/order is actually tax exempt.
 9. Save. The URL becomes an Order URL button.
-10. Take the part payment according to shop policy and record it on the work order.
+10. Take the part payment according to shop policy and record it on the work order. The EOD cart warns when a client-linked item does not show verified payment.
 
 ### What Order Part Does
 
@@ -227,6 +228,25 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 7. Enter internal cost.
 8. Select or enter markup and verify sold price.
 9. Save, then search for the new record to confirm it exists.
+
+### Add a Saved Inventory Item to the Purchasing Cart
+
+1. Open Inventory and select the saved Part or Product listing.
+2. Confirm its Order URL, Vendor / Distributor, title, and supplier cost.
+3. Choose Add to Cart beside the Order URL.
+4. Enter the quantity to purchase.
+5. Enter Full Supplier Cost for the full quantity. Include known checkout costs; final shipping, tax, or fees can also be entered in the distributor cart at EOD.
+6. Choose Add to Cart again to confirm.
+7. The entry is now pending in End of Day > Cart. Inventory on-hand quantity does not increase yet.
+8. After the distributor checkout is verified in EOD, the purchased quantity is added to this inventory listing.
+
+### Inventory and Cart Rules
+
+- Selling or using an in-stock item reduces tracked stock and records COGS, but does not automatically create a supplier purchase.
+- Restocking is explicit. Use Add to Cart on the selected inventory listing.
+- A work-order or sale item marked as requiring an order can appear in the EOD cart without becoming a permanent inventory listing.
+- A manually added EOD cart item is a purchasing record only. It does not silently create or change a permanent catalog entry.
+- Never increase stock merely because an item was placed in the cart. Stock increases only after verified supplier checkout for an inventory restock.
 
 ## 11. Distributors and Vendors
 
@@ -359,12 +379,55 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 - End of Day is a concise overview of the current local shop day only.
 - It resets to the next day after midnight; it is not the monthly accounting report.
-- Review labor collected, part cost, parts charged, product cost, products sold, consultations, sales count, and parts awaiting purchase.
-- Parts charged and parts cost must remain separate.
-- Mark a cart/order paid only after checkout on the distributor site succeeds.
+- Review labor collected, parts/products charged, COGS, verified supplier spend, consultations, sales count, and items awaiting purchase.
+- Parts charged, COGS, and verified supplier spend must remain separate.
+- EOD buttons are organized as EOD Report Email, Cart, and Batch Out now. Sending the report is performed inside EOD Report Email.
+- Distributor rows in Cart are collapsed by default. Select a distributor row to expand it and select it again to collapse it.
+- Mark a cart checked out only after checkout on the distributor site succeeds.
 - Marking an order paid can update the linked work order and client update workflow.
 - EOD Report Email stores recipients and can send the completed daily summary.
 - Monthly totals belong in Reporting, not EOD.
+
+### Build the Purchasing Cart
+
+1. Open End of Day Report and choose Cart.
+2. Review pending items grouped by Vendor / Distributor.
+3. For an unsaved or one-time purchase, choose Add Part / Product.
+4. Select Part or Product, then paste the supplier URL. Supported pages fill the title, distributor, and cost; all scraped values remain editable and must be verified.
+5. For manual entry, type the title, choose or enter the saved distributor name, enter quantity, and enter supplier unit cost.
+6. Choose Add to Cart. This creates a pending purchase only; it does not claim that the shop paid for it.
+7. Change a line Quantity when the distributor cart quantity differs. The displayed line and distributor totals update from that quantity.
+8. Use each Order URL to open one item, Open Selected for checked lines, or View Cart to open all item URLs for that distributor.
+9. Use Open Cart when a saved distributor checkout/cart URL is available.
+10. Enter Additional Costs for shipping, sales tax, or checkout fees shown at that distributor's final checkout. Do not estimate them early.
+
+### Remove an Item from the Purchasing Cart
+
+1. Expand the Vendor / Distributor section containing the item.
+2. Choose Select to reveal the line-item checkboxes.
+3. Check only the entries that should leave the purchasing cart, then choose Delete Selected.
+4. Read the warning and confirm. Standalone manual purchases and inventory restocks are removed from the purchasing list.
+5. A linked work-order or sale item is never deleted from its transaction. It remains marked as requiring an order, while delivery and tracking fields are cleared because no supplier checkout was completed.
+6. The linked work order or sale displays a persistent Part/Product has not been ordered warning. The warning states the saved payment condition at removal so technicians do not mistake payment for a completed supplier order.
+7. Choose Restore to EOD Cart from that warning when the item still needs to be purchased. Verify its supplier information before checkout.
+
+### Verify Supplier Checkout
+
+1. Complete payment on each distributor website first.
+2. Return to the EOD cart and choose the main Checkout button.
+3. A verification window lists each distributor, item count, and full cart total.
+4. Check only the distributor carts that were successfully paid.
+5. Choose Checkout Verified Carts.
+6. The POS records those carts as verified supplier spend at the current checkout date and time.
+7. Linked work-order/sale items are marked ordered. An inventory restock also increases its saved on-hand quantity by the verified quantity.
+8. Unchecked distributors remain pending in the cart. Reopening a verified cart must not create a duplicate supplier-spend record.
+
+### Payment Warnings
+
+- Client-linked work-order and sale lines show whether the POS has factual payment evidence.
+- Shop-only manual purchases and inventory restocks show Shop purchase and do not create a false client-payment warning.
+- A warning does not block reviewing URLs, but the technician must resolve it before treating client-funded ordering as paid.
+- If the supplier charged a different final amount, correct quantity/unit cost and Additional Costs before verification.
 
 ## 20. Reporting and Money Rules
 
@@ -372,6 +435,9 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Labor is treated as full gross profit before overhead unless an explicit cost is entered elsewhere.
 - Parts profit equals client part charge minus verified internal part cost.
 - Product profit equals product sold amount minus verified internal product cost and any vendor amount owed.
+- COGS is attached to the sold/used item and drives gross profit, including items taken from existing stock.
+- Verified supplier spend is recorded only after an EOD distributor checkout is confirmed. It reports when cash left the shop and is not subtracted from gross profit a second time.
+- Reporting filters supplier spend by verified checkout date, while sale/work-order revenue follows the transaction date.
 - Sales commission is currently 5 percent of qualifying physical product sales and is split according to the configured shop policy.
 - Repair labor is not sales commission.
 - Consultation commission is based on technician-specific logged hours at the configured rate.

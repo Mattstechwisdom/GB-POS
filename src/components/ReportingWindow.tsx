@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '@/lib/admin';
 import { computeTotals } from '../lib/calc';
 import { dispatchOpenModal } from '@/lib/modalBus';
+import { itemFullCost } from '@/lib/orderAccounting';
 
 function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
   const d = new Date(date);
@@ -89,6 +90,18 @@ function saleReportDate(sale: any) {
   return sale?.checkoutDate || sale?.saleDate || sale?.transactionDate || sale?.invoiceDate || sale?.checkInAt || sale?.createdAt || sale?.updatedAt || '';
 }
 
+function purchaseReportDate(purchase: any) {
+  return purchase?.checkedOutAt || purchase?.updatedAt || purchase?.createdAt || '';
+}
+
+function verifiedPurchaseTotal(purchase: any) {
+  const recordedTotal = Number(purchase?.totalCost);
+  if (Number.isFinite(recordedTotal) && recordedTotal >= 0) return roundMoney(recordedTotal);
+  const itemCost = Number(purchase?.itemCost);
+  const additionalCost = Number(purchase?.additionalCost);
+  return roundMoney((Number.isFinite(itemCost) ? itemCost : 0) + (Number.isFinite(additionalCost) ? additionalCost : 0));
+}
+
 function saleItemsForReport(sale: any) {
   const items = Array.isArray(sale?.items) ? sale.items : [];
   if (items.length) return items;
@@ -136,11 +149,7 @@ function lineSoldTotal(item: any, sale: any) {
 }
 
 function lineInternalCost(item: any) {
-  const raw = item?.internalCost ?? item?.cost;
-  if (raw === null || typeof raw === 'undefined' || raw === '') return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
-  return roundMoney(n * lineUnits(item));
+  return itemFullCost(item);
 }
 
 function technicianDisplay(tech: any) {
@@ -166,7 +175,7 @@ function saleAssignedTechKey(sale: any) {
   return String(sale?.assignedTo || sale?.technician || sale?.technicianName || sale?.techName || '').trim().toLowerCase();
 }
 
-function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[], monthValue: string) {
+function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[], purchases: any[], monthValue: string) {
   const { start, end } = monthRange(monthValue);
   const activeTechs = (technicians || []).filter((tech: any) => tech && tech.active !== false);
   const salesSplitTechs = activeTechs.length ? activeTechs : [{ id: 'unassigned-sales', nickname: 'Unassigned Sales Split' }];
@@ -208,6 +217,26 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
   let vendorProfitTotal = 0;
 
   const monthSales = (sales || []).filter((sale) => dateInRange(saleReportDate(sale), start, end));
+  const purchaseRows = (purchases || [])
+    .filter((purchase) => purchase?.status === 'checked_out' && dateInRange(purchaseReportDate(purchase), start, end))
+    .map((purchase) => ({
+      Date: dateOnly(purchaseReportDate(purchase)),
+      Distributor: purchase?.distributor || 'Unassigned distributor',
+      Type: purchase?.itemType || 'Part',
+      Item: purchase?.title || 'Supplier purchase',
+      Quantity: Number(purchase?.quantity || 1),
+      'Item Cost': money(Number(purchase?.itemCost || 0)),
+      'Additional Cost': money(Number(purchase?.additionalCost || 0)),
+      'Supplier Spend': money(verifiedPurchaseTotal(purchase)),
+      Source: purchase?.sourceType || '',
+      'Source ID': purchase?.sourceId || purchase?.inventoryId || '',
+    }));
+  const supplierSpendParts = roundMoney((purchases || [])
+    .filter((purchase) => purchase?.status === 'checked_out' && String(purchase?.itemType || 'Part').toLowerCase() === 'part' && dateInRange(purchaseReportDate(purchase), start, end))
+    .reduce((sum, purchase) => sum + verifiedPurchaseTotal(purchase), 0));
+  const supplierSpendProducts = roundMoney((purchases || [])
+    .filter((purchase) => purchase?.status === 'checked_out' && String(purchase?.itemType || '').toLowerCase() === 'product' && dateInRange(purchaseReportDate(purchase), start, end))
+    .reduce((sum, purchase) => sum + verifiedPurchaseTotal(purchase), 0));
 
   for (const sale of monthSales) {
     const items = saleItemsForReport(sale);
@@ -325,6 +354,7 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
     end,
     productRows,
     consultationRows,
+    purchaseRows,
     technicianRows,
     summary: {
       salesCount: productRows.length,
@@ -340,6 +370,9 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
       missingConsultationHoursCount,
       vendorPayoutTotal,
       vendorProfitTotal,
+      supplierSpendParts,
+      supplierSpendProducts,
+      supplierSpendTotal: roundMoney(supplierSpendParts + supplierSpendProducts),
       salesSplitWarning: !activeTechs.length
         ? 'No active technicians were found, so sales commission is parked in Unassigned Sales Split.'
         : (activeTechs.length !== 2 ? `Sales commission is split across ${salesSplitCount} active technician(s), not exactly 2.` : ''),
@@ -365,6 +398,7 @@ const ReportingWindow: React.FC = () => {
   const [excludeTax, setExcludeTax] = useState<boolean>(true);
   const [data, setData] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [csv, setCsv] = useState<string>('');
   const [topRepairs, setTopRepairs] = useState<Array<{title: string; count: number}>>([]);
   const [topSales, setTopSales] = useState<Array<{title: string; count: number}>>([]);
@@ -381,11 +415,13 @@ const ReportingWindow: React.FC = () => {
   useEffect(() => { (async () => {
     try {
       const wos = await (window as any).api.getWorkOrders();
-      const [sales, vendorRows] = await Promise.all([
+      const [sales, vendorRows, purchaseRows] = await Promise.all([
         (window as any).api.dbGet('sales').catch(() => []),
         (window as any).api.dbGet('vendors').catch(() => []),
+        (window as any).api.dbGet('purchaseOrders').catch(() => []),
       ]);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
+      setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
       // Tag repairs and normalize sales
       const mappedWOs = (Array.isArray(wos) ? wos : []).map((w: any) => ({ ...w, kind: 'repair' as const }));
       const mappedSales = (Array.isArray(sales) ? sales : []).map((s: any) => {
@@ -410,7 +446,12 @@ const ReportingWindow: React.FC = () => {
       });
       setData([...(mappedWOs || []), ...mappedSales]);
     } catch (e) { console.error(e); }
-  })(); }, []);
+  })();
+    const off = (window as any).api?.onPurchaseOrdersChanged?.(() => {
+      (window as any).api.dbGet('purchaseOrders').then((rows: any[]) => setPurchaseOrders(Array.isArray(rows) ? rows : [])).catch(() => {});
+    });
+    return () => { try { off && off(); } catch {} };
+  }, []);
 
   const filtered = useMemo(() => {
     if (!data?.length) return [] as any[];
@@ -436,6 +477,19 @@ const ReportingWindow: React.FC = () => {
       return true;
     });
   }, [data, from, to, tech, includeRepairs, includeSales, onlyPaid]);
+
+  const filteredPurchases = useMemo(() => {
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? endOfInputDate(to) : null;
+    return purchaseOrders.filter((purchase) => {
+      if (purchase?.status !== 'checked_out') return false;
+      const date = new Date(purchaseReportDate(purchase));
+      if (Number.isNaN(date.getTime())) return false;
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    });
+  }, [from, purchaseOrders, to]);
 
   // Registered technicians list
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -491,10 +545,8 @@ const ReportingWindow: React.FC = () => {
     if (Array.isArray(w.items) && w.items.length > 0) {
       let sum = 0;
       for (const it of w.items) {
-        const val = Number((it && (it.internalCost || it.cost || 0)) || 0);
-        const qty = Number((it && (it.qty ?? it.quantity ?? 1)) || 1);
-        const units = Number.isFinite(qty) && qty > 0 ? qty : 1;
-        if (Number.isFinite(val)) sum += val * units;
+        const cost = itemFullCost(it);
+        if (cost !== null) sum += cost;
       }
       return sum;
     }
@@ -503,8 +555,24 @@ const ReportingWindow: React.FC = () => {
     return Number.isFinite(direct) ? direct : 0;
   }
 
+  function missingInternalCostCount(w: any): number {
+    if (Array.isArray(w.items) && w.items.length > 0) {
+      return w.items.filter((item: any) => {
+        const category = String(item?.category || '').toLowerCase();
+        if (category.startsWith('consult')) return false;
+        const physicalCharge = w.kind === 'sale'
+          ? Number(item?.price ?? item?.unitPrice ?? 0)
+          : Number(item?.parts ?? item?.partCost ?? item?.price ?? 0);
+        return physicalCharge > 0 && itemFullCost(item) === null;
+      }).length;
+    }
+    const physicalCharge = w.kind === 'sale' ? Number(w.price || 0) : Number(w.partCosts || 0);
+    const raw = w.internalCost;
+    return physicalCharge > 0 && (raw === null || raw === undefined || raw === '' || !Number.isFinite(Number(raw))) ? 1 : 0;
+  }
+
   const grouped = useMemo(() => {
-    const map = new Map<string, { orders: number; labor: number; parts: number; subtotal: number; tax: number; total: number; cost: number; profit: number }>();
+    const map = new Map<string, { orders: number; labor: number; parts: number; subtotal: number; tax: number; total: number; cost: number; profit: number; missingCost: number; supplierSpend: number }>();
     for (const w of filtered) {
       const totals = computeTotals({
         laborCost: Number(w.laborCost || 0),
@@ -515,7 +583,7 @@ const ReportingWindow: React.FC = () => {
       });
       const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
       const bucket = startOfPeriod(d, period).toISOString().slice(0,10);
-      const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0 };
+      const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 };
   const labor = Number(w.laborCost || 0);
   const parts = Number(w.partCosts || 0);
       const discount = Number(w.discount || 0);
@@ -533,10 +601,18 @@ const ReportingWindow: React.FC = () => {
       prev.total += revenue;
       prev.cost += cost;
       prev.profit += profit;
+      prev.missingCost += missingInternalCostCount(w);
+      map.set(bucket, prev);
+    }
+    for (const purchase of filteredPurchases) {
+      const d = new Date(purchaseReportDate(purchase));
+      const bucket = startOfPeriod(d, period).toISOString().slice(0,10);
+      const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 };
+      prev.supplierSpend += verifiedPurchaseTotal(purchase);
       map.set(bucket, prev);
     }
     return Array.from(map.entries()).sort((a,b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, ...v }));
-  }, [filtered, period, excludeTax]);
+  }, [filtered, filteredPurchases, period, excludeTax]);
 
   const csvRows = useMemo(() => grouped.map(r => ({
     period_start: r.date,
@@ -547,8 +623,10 @@ const ReportingWindow: React.FC = () => {
     tax: r.tax.toFixed(2),
     revenue: r.total.toFixed(2),
     cost: r.cost.toFixed(2),
-    profit: r.profit.toFixed(2),
-    margin_pct: ((r.subtotal ? (r.profit / r.subtotal) : 0) * 100).toFixed(1),
+    supplier_spend: r.supplierSpend.toFixed(2),
+    profit: r.missingCost ? 'Needs internal cost' : r.profit.toFixed(2),
+    margin_pct: r.missingCost ? 'Needs internal cost' : ((r.subtotal ? (r.profit / r.subtotal) : 0) * 100).toFixed(1),
+    audit_flag: r.missingCost ? `${r.missingCost} charged physical line(s) missing internal cost` : '',
   })), [grouped]);
 
   useEffect(() => { setCsv(formatCSV(csvRows)); }, [csvRows]);
@@ -592,8 +670,8 @@ const ReportingWindow: React.FC = () => {
   // Summary metrics across filtered set
   const summary = useMemo(() => {
     const s = grouped.reduce((acc, g) => {
-      acc.orders += g.orders; acc.labor += g.labor; acc.parts += g.parts; acc.subtotal += g.subtotal; acc.tax += g.tax; acc.revenue += g.total; acc.cost += g.cost; acc.profit += g.profit; return acc;
-    }, { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, revenue: 0, cost: 0, profit: 0 });
+      acc.orders += g.orders; acc.labor += g.labor; acc.parts += g.parts; acc.subtotal += g.subtotal; acc.tax += g.tax; acc.revenue += g.total; acc.cost += g.cost; acc.profit += g.profit; acc.missingCost += g.missingCost; acc.supplierSpend += g.supplierSpend; return acc;
+    }, { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, revenue: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 });
     const margin = s.subtotal ? (s.profit / s.subtotal) : 0;
     const avgTicket = s.orders ? (s.revenue / s.orders) : 0;
     return { ...s, margin, avgTicket };
@@ -601,8 +679,8 @@ const ReportingWindow: React.FC = () => {
 
   const endOfMonthReport = useMemo(() => {
     const sales = data.filter((row: any) => row.kind === 'sale');
-    return buildEndOfMonthReport(sales, technicians, vendors, monthEndMonth);
-  }, [data, technicians, vendors, monthEndMonth]);
+    return buildEndOfMonthReport(sales, technicians, vendors, purchaseOrders, monthEndMonth);
+  }, [data, technicians, vendors, purchaseOrders, monthEndMonth]);
 
   function downloadEndOfMonthReport() {
     const report = endOfMonthReport;
@@ -616,6 +694,9 @@ const ReportingWindow: React.FC = () => {
       'Known Gross Profit': money(report.summary.knownProfit),
       'Vendor Payouts Owed': money(report.summary.vendorPayoutTotal),
       'Profit From Vendor Sales': money(report.summary.vendorProfitTotal),
+      'Verified Parts Supplier Spend': money(report.summary.supplierSpendParts),
+      'Verified Products Supplier Spend': money(report.summary.supplierSpendProducts),
+      'Verified Supplier Spend Total': money(report.summary.supplierSpendTotal),
       'Total Commission': money(report.summary.totalCommission),
       'Sales Split Across Techs': report.summary.salesSplitCount,
       'Missing Internal Cost Lines': report.summary.missingInternalCostCount,
@@ -632,6 +713,7 @@ const ReportingWindow: React.FC = () => {
       { title: 'End of Month Summary', rows: summaryRows },
       { title: 'Product Sales Commission', rows: report.productRows },
       { title: 'Consultation Commission', rows: report.consultationRows },
+      { title: 'Verified Supplier Purchases', rows: report.purchaseRows },
       { title: 'Technician Totals', rows: report.technicianRows },
     ]);
     const blob = new Blob([body], { type: 'text/csv;charset=utf-8;' });
@@ -812,14 +894,14 @@ const ReportingWindow: React.FC = () => {
                   type="button"
                   className="px-3 py-2 bg-[#39FF14] text-black rounded font-semibold disabled:opacity-50"
                   onClick={downloadEndOfMonthReport}
-                  disabled={!endOfMonthReport.productRows.length && !endOfMonthReport.consultationRows.length}
+                  disabled={!endOfMonthReport.productRows.length && !endOfMonthReport.consultationRows.length && !endOfMonthReport.purchaseRows.length}
                 >
                   Download Spreadsheet CSV
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
               <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
                 <div className="text-xs text-zinc-500">Sales Commission Base</div>
                 <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.physicalSalesBase)}</div>
@@ -844,6 +926,14 @@ const ReportingWindow: React.FC = () => {
                 <div className="text-xs text-zinc-500">Vendor-Sale Profit</div>
                 <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.vendorProfitTotal)}</div>
               </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Parts Supplier Spend</div>
+                <div className="mt-1 text-2xl font-bold text-amber-300">{money(endOfMonthReport.summary.supplierSpendParts)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Products Supplier Spend</div>
+                <div className="mt-1 text-2xl font-bold text-amber-300">{money(endOfMonthReport.summary.supplierSpendProducts)}</div>
+              </div>
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm text-zinc-300 space-y-2">
@@ -852,6 +942,7 @@ const ReportingWindow: React.FC = () => {
               <div>Consultation commission is saved consultation hours multiplied by $25 and assigned to the saved technician on that sale.</div>
               <div>Internal cost is pulled only from saved line item cost values. Missing costs, missing hours, and missing technician assignments are flagged instead of estimated.</div>
               <div>Consignment payouts use the exact product vendor and saved vendor-share percentage. Wholesale parts distributors do not create vendor payouts.</div>
+              <div>Supplier spend includes only distributor carts verified at checkout. It is a cash-spend audit value and is not subtracted from gross profit a second time.</div>
               {(endOfMonthReport.summary.salesSplitWarning
                 || endOfMonthReport.summary.missingInternalCostCount
                 || endOfMonthReport.summary.missingConsultationAssignmentCount
@@ -1068,12 +1159,14 @@ const ReportingWindow: React.FC = () => {
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Cost & Profit</div>
           <div className="mt-2 space-y-1">
-            <div>Cost baseline: <span className="font-semibold">${summary.cost.toFixed(2)}</span></div>
-            <div>Gross profit: <span className="font-semibold">${summary.profit.toFixed(2)}</span></div>
-            <div>Margin: <span className="font-semibold">{(summary.margin * 100).toFixed(1)}%</span></div>
+            <div>Known internal cost: <span className="font-semibold">${summary.cost.toFixed(2)}</span></div>
+            <div>Verified supplier spend: <span className="font-semibold text-amber-300">${summary.supplierSpend.toFixed(2)}</span></div>
+            <div>Gross profit: <span className={`font-semibold ${summary.missingCost ? 'text-amber-300' : ''}`}>{summary.missingCost ? 'Needs internal cost' : `$${summary.profit.toFixed(2)}`}</span></div>
+            <div>Margin: <span className={`font-semibold ${summary.missingCost ? 'text-amber-300' : ''}`}>{summary.missingCost ? 'Needs internal cost' : `${(summary.margin * 100).toFixed(1)}%`}</span></div>
             <div>Avg ticket: <span className="font-semibold">${summary.avgTicket.toFixed(2)}</span></div>
           </div>
-          <div className="text-[11px] text-zinc-500 mt-2">Note: Cost baseline uses Internal Cost (what we paid). Parts is what we charged the client.</div>
+          <div className="text-[11px] text-zinc-500 mt-2">Internal cost drives item profit. Verified supplier spend records when cash actually left the shop and is not deducted from profit again.</div>
+          {summary.missingCost ? <div className="mt-2 text-xs text-amber-300">{summary.missingCost} charged physical line{summary.missingCost === 1 ? '' : 's'} need internal cost before profit is final.</div> : null}
         </div>
         {/* Repairs vs Sales split */}
         {(() => {
@@ -1087,9 +1180,9 @@ const ReportingWindow: React.FC = () => {
             const tax = t.tax || 0;
             const revenue = excludeTax ? subtotal : (subtotal + tax);
             const cost = sumInternalCost(w);
-            acc.orders += 1; acc.labor += labor; acc.parts += parts; acc.subtotal += subtotal; acc.tax += tax; acc.revenue += revenue; acc.cost += cost; acc.profit += (revenue - cost);
+            acc.orders += 1; acc.labor += labor; acc.parts += parts; acc.subtotal += subtotal; acc.tax += tax; acc.revenue += revenue; acc.cost += cost; acc.profit += (revenue - cost); acc.missingCost += missingInternalCostCount(w);
             return acc;
-          }, { orders:0, labor:0, parts:0, subtotal:0, tax:0, revenue:0, cost:0, profit:0 });
+          }, { orders:0, labor:0, parts:0, subtotal:0, tax:0, revenue:0, cost:0, profit:0, missingCost:0 });
           const repS = accum(repOnly); const salS = accum(salOnly);
           return (
             <div className="bg-zinc-950 border border-zinc-800 rounded p-3 col-span-2">
@@ -1102,7 +1195,7 @@ const ReportingWindow: React.FC = () => {
                     <div>Labor: <span className="font-semibold">${repS.labor.toFixed(2)}</span></div>
                     <div>Parts: <span className="font-semibold">${repS.parts.toFixed(2)}</span></div>
                     <div>Revenue: <span className="font-semibold">${repS.revenue.toFixed(2)}</span></div>
-                    <div>Profit: <span className="font-semibold">${repS.profit.toFixed(2)}</span></div>
+                    <div>Profit: <span className="font-semibold">{repS.missingCost ? 'Needs cost' : `$${repS.profit.toFixed(2)}`}</span></div>
                   </div>
                 </div>
                 <div>
@@ -1110,7 +1203,7 @@ const ReportingWindow: React.FC = () => {
                   <div className="mt-1 space-y-1">
                     <div>Orders: <span className="font-semibold">{salS.orders}</span></div>
                     <div>Revenue: <span className="font-semibold">${salS.revenue.toFixed(2)}</span></div>
-                    <div>Profit: <span className="font-semibold">${salS.profit.toFixed(2)}</span></div>
+                    <div>Profit: <span className="font-semibold">{salS.missingCost ? 'Needs cost' : `$${salS.profit.toFixed(2)}`}</span></div>
                   </div>
                 </div>
               </div>
@@ -1157,6 +1250,7 @@ const ReportingWindow: React.FC = () => {
                 <th className="px-2 py-1 text-right">Tax</th>
                 <th className="px-2 py-1 text-right">Revenue</th>
                 <th className="px-2 py-1 text-right">Cost</th>
+                <th className="px-2 py-1 text-right">Supplier Spend</th>
                 <th className="px-2 py-1 text-right">Profit</th>
                 <th className="px-2 py-1 text-right">Margin %</th>
               </tr>
@@ -1172,8 +1266,9 @@ const ReportingWindow: React.FC = () => {
                   <td className="px-2 py-1 text-right">${g.tax.toFixed(2)}</td>
                   <td className="px-2 py-1 text-right">${g.total.toFixed(2)}</td>
                   <td className="px-2 py-1 text-right">${g.cost.toFixed(2)}</td>
-                  <td className="px-2 py-1 text-right">${g.profit.toFixed(2)}</td>
-                  <td className="px-2 py-1 text-right">{(g.subtotal ? (g.profit / g.subtotal) * 100 : 0).toFixed(1)}%</td>
+                  <td className="px-2 py-1 text-right text-amber-200">${g.supplierSpend.toFixed(2)}</td>
+                  <td className={`px-2 py-1 text-right ${g.missingCost ? 'text-amber-300' : ''}`}>{g.missingCost ? 'Needs cost' : `$${g.profit.toFixed(2)}`}</td>
+                  <td className={`px-2 py-1 text-right ${g.missingCost ? 'text-amber-300' : ''}`}>{g.missingCost ? 'Needs cost' : `${(g.subtotal ? (g.profit / g.subtotal) * 100 : 0).toFixed(1)}%`}</td>
                 </tr>
               ))}
               {grouped.length === 0 && (

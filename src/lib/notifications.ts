@@ -246,6 +246,9 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
+  // Capacitor owns the Android runtime permission contract. Keep the custom
+  // bridge as a fallback for older installed shells, but do not let it bypass
+  // the Local Notifications plugin that actually presents Android's dialog.
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
@@ -676,6 +679,33 @@ export async function saveDeviceNotificationSettings(next: DeviceNotificationSet
   return settings;
 }
 
+async function waitForAndroidBridgePermissionResult(): Promise<DeviceNotificationSettings['permission']> {
+  return new Promise<DeviceNotificationSettings['permission']>((resolve, reject) => {
+    let pollTimer = 0;
+    const timeout = window.setTimeout(() => {
+      window.clearInterval(pollTimer);
+      window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+      reject(new Error('Android did not finish the notification permission request.'));
+    }, 20_000);
+    const finish = (next: string) => {
+      if (next !== 'granted' && next !== 'denied') return;
+      window.clearTimeout(timeout);
+      window.clearInterval(pollTimer);
+      window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+      resolve(next);
+    };
+    const onResult = (event: Event) => {
+      finish(String((event as CustomEvent)?.detail?.permission || '').toLowerCase());
+    };
+    window.addEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
+    pollTimer = window.setInterval(() => {
+      try {
+        finish(String(window.GBPosAndroid?.getNotificationPermissionStatus?.() || '').toLowerCase());
+      } catch {}
+    }, 300);
+  });
+}
+
 async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotificationSettings> {
   let permission = await getDeviceNotificationPermission();
   const desktopApi = api();
@@ -684,47 +714,6 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
 
   if (
     isNativeAndroid
-    && !native?.requestPermissions
-    && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
-    && permission !== 'granted'
-    && permission !== 'unsupported'
-  ) {
-    try {
-      const nativePermissionResult = new Promise<DeviceNotificationSettings['permission']>((resolve, reject) => {
-        let pollTimer = 0;
-        const timeout = window.setTimeout(() => {
-          window.clearInterval(pollTimer);
-          window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
-          reject(new Error('Android did not finish the notification permission request.'));
-        }, 12_000);
-        const finish = (next: string) => {
-          if (next !== 'granted' && next !== 'denied') return;
-          window.clearTimeout(timeout);
-          window.clearInterval(pollTimer);
-          window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
-          resolve(next);
-        };
-        const onResult = (event: Event) => {
-          const next = String((event as CustomEvent)?.detail?.permission || '').toLowerCase();
-          finish(next);
-        };
-        window.addEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
-        pollTimer = window.setInterval(() => {
-          try {
-            const next = String(window.GBPosAndroid?.getNotificationPermissionStatus?.() || '').toLowerCase();
-            finish(next);
-          } catch {}
-        }, 300);
-      });
-      const requestState = String(window.GBPosAndroid.requestNotificationPermission() || '').toLowerCase();
-      permission = requestState === 'granted' || requestState === 'denied'
-        ? requestState
-        : await nativePermissionResult;
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  } else if (
-    isNativeAndroid
     && native?.requestPermissions
     && permission !== 'granted'
     && permission !== 'unsupported'
@@ -732,11 +721,25 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
     try {
       const status: any = await withTimeout(
         native.requestPermissions(),
-        10_000,
+        20_000,
         'Android did not finish the notification permission request.',
       );
       const display = String(status?.display || '').toLowerCase();
       permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (
+    isNativeAndroid
+    && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      const requestState = String(window.GBPosAndroid.requestNotificationPermission() || '').toLowerCase();
+      permission = requestState === 'granted' || requestState === 'denied'
+        ? requestState
+        : await waitForAndroidBridgePermissionResult();
     } catch {
       permission = await getDeviceNotificationPermission();
     }

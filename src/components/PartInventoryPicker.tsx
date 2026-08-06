@@ -15,6 +15,7 @@ export type InventoryPartSelection = {
   reorderUrlTemplate?: string;
   vendorTaxExempt?: boolean;
   stockCount?: number;
+  trackStock?: boolean;
 };
 
 type Props = {

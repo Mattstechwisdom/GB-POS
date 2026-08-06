@@ -29,6 +29,7 @@ type InventoryItem = {
   trackStock?: boolean;
   stockCount?: number;
   lowStockThreshold?: number;
+  purchaseRestockKeys?: string[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -109,6 +110,11 @@ export default function InventoryWindow() {
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scrapingUrl, setScrapingUrl] = useState(false);
+  const [showCartAdder, setShowCartAdder] = useState(false);
+  const [cartQuantity, setCartQuantity] = useState(1);
+  const [cartTotalCost, setCartTotalCost] = useState<number | undefined>(undefined);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [cartMessage, setCartMessage] = useState('');
   const scrapeSequenceRef = useRef(0);
   const lastScrapedUrlRef = useRef('');
 
@@ -201,6 +207,12 @@ export default function InventoryWindow() {
     setEditing({ ...blankItem(mode), ...item, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
     setEditingOrderUrl(!item.reorderUrlTemplate);
     lastScrapedUrlRef.current = String(item.reorderUrlTemplate || '');
+    const quantity = Math.max(1, Math.round(Number(item.reorderQty || 1)));
+    const unitCost = Number(item.internalCost);
+    setShowCartAdder(false);
+    setCartQuantity(quantity);
+    setCartTotalCost(Number.isFinite(unitCost) ? unitCost * quantity : undefined);
+    setCartMessage('');
   };
 
   const startNew = () => {
@@ -208,6 +220,8 @@ export default function InventoryWindow() {
     setEditing(blankItem(mode));
     setEditingOrderUrl(false);
     lastScrapedUrlRef.current = '';
+    setShowCartAdder(false);
+    setCartMessage('');
   };
 
   const clearFields = () => {
@@ -215,6 +229,8 @@ export default function InventoryWindow() {
     setEditing(blankItem(mode));
     setEditingOrderUrl(false);
     lastScrapedUrlRef.current = '';
+    setShowCartAdder(false);
+    setCartMessage('');
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -337,6 +353,57 @@ export default function InventoryWindow() {
     if (!template) return;
     const url = fillUrlTemplate(template, { sku: item.distributorSku, qty: Number(item.reorderQty || 1) });
     try { await api?.openUrl?.(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); }
+  };
+
+  const beginAddToCart = () => {
+    const quantity = Math.max(1, Math.round(Number(editing.reorderQty || 1)));
+    const unitCost = Number(editing.internalCost);
+    setCartQuantity(quantity);
+    setCartTotalCost(Number.isFinite(unitCost) && unitCost >= 0 ? Math.round(unitCost * quantity * 100) / 100 : undefined);
+    setCartMessage('');
+    setShowCartAdder(true);
+  };
+
+  const addInventoryItemToCart = async () => {
+    if (!selectedId) return;
+    const title = String(editing.itemDescription || '').trim();
+    const distributor = String(editing.distributor || '').trim();
+    const quantity = Math.max(1, Math.round(Number(cartQuantity || 1)));
+    const totalCost = Number(cartTotalCost);
+    if (!title || !distributor || !Number.isFinite(totalCost) || totalCost < 0) {
+      setCartMessage('A title, distributor, quantity, and full supplier cost are required.');
+      return;
+    }
+    setAddingToCart(true);
+    setCartMessage('');
+    try {
+      const now = new Date().toISOString();
+      const orderUrl = fillUrlTemplate(String(editing.reorderUrlTemplate || ''), {
+        sku: editing.distributorSku,
+        qty: quantity,
+      });
+      await api?.dbAdd?.('purchaseOrders', {
+        status: 'pending',
+        sourceType: 'inventory',
+        inventoryId: selectedId,
+        itemType: mode === 'parts' ? 'Part' : 'Product',
+        title,
+        distributor,
+        orderUrl,
+        quantity,
+        unitCost: Math.round((totalCost / quantity) * 100) / 100,
+        itemCost: Math.round(totalCost * 100) / 100,
+        createdAt: now,
+        updatedAt: now,
+      });
+      setCartMessage(`Added ${quantity} to the EOD purchasing cart.`);
+      setShowCartAdder(false);
+    } catch (err) {
+      console.error('Inventory add to purchasing cart failed', err);
+      setCartMessage('This item could not be added to the purchasing cart.');
+    } finally {
+      setAddingToCart(false);
+    }
   };
 
   const autofillFromOrderUrl = useCallback(async (url: string) => {
@@ -540,6 +607,39 @@ export default function InventoryWindow() {
                     placeholder="Paste the distributor product URL"
                   />
                 )}
+                {selectedId ? (
+                  <div className="mt-3 rounded border border-zinc-700 bg-zinc-900/80 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-white">Restock this listing</div>
+                        <div className="text-xs text-zinc-400">Adds a pending supplier purchase. Stock changes only after verified checkout.</div>
+                      </div>
+                      {!showCartAdder ? <button type="button" onClick={beginAddToCart} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black">Add to Cart</button> : null}
+                    </div>
+                    {showCartAdder ? (
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(100px,0.45fr)_minmax(150px,1fr)_auto] sm:items-end">
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-zinc-400">Quantity</span>
+                          <input type="number" min="1" step="1" value={cartQuantity} onChange={(event) => {
+                            const nextQuantity = Math.max(1, Math.round(Number(event.target.value || 1)));
+                            const previousQuantity = Math.max(1, cartQuantity);
+                            setCartQuantity(nextQuantity);
+                            if (cartTotalCost != null) setCartTotalCost(Math.round((cartTotalCost / previousQuantity) * nextQuantity * 100) / 100);
+                          }} className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-zinc-400">Full Supplier Cost</span>
+                          <MoneyInput value={cartTotalCost} onValueChange={(value) => setCartTotalCost(value == null ? undefined : Number(value))} allowEmpty className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
+                        </label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setShowCartAdder(false)} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">Cancel</button>
+                          <button type="button" onClick={addInventoryItemToCart} disabled={addingToCart} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">{addingToCart ? 'Adding...' : 'Add to Cart'}</button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {cartMessage ? <div className={`mt-2 text-xs ${cartMessage.startsWith('Added') ? 'text-[#39FF14]' : 'text-red-300'}`}>{cartMessage}</div> : null}
+                  </div>
+                ) : null}
               </div>
 
               <label className="block md:col-span-2 md:mx-auto md:w-[72%]">

@@ -23,7 +23,7 @@ const ClearDatabaseWindow: React.FC = () => {
     'technicians','timeEntries','customers','workOrders','sales','calendarEvents','deviceCategories','productCategories','products','partSources','repairCategories','repairItems','intakeSources',
     'quoteFiles',
     // safe extras if present
-    'suppliers','vendors','invoices','payments','settings','preferences','userProfiles','systemLogs'
+    'suppliers','vendors','purchaseOrders','invoices','payments','settings','preferences','userProfiles','systemLogs'
   ])), []);
 
   async function loadCounts() {

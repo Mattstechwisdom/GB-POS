@@ -375,12 +375,13 @@ const BackupWindow: React.FC = () => {
     tiles.push({ key: 'TimeEntries', label: 'Time Entries', collections: ['timeEntries'], count: (allData.timeEntries || []).length });
     tiles.push({ key: 'RepairCategories', label: 'Repair Categories', collections: ['repairCategories'], count: (allData.repairCategories || []).length });
     tiles.push({ key: 'RepairItems', label: 'Repair Items', collections: ['repairItems'], count: (allData.repairItems || []).length });
+    tiles.push({ key: 'PurchaseOrders', label: 'Supplier Purchases', collections: ['purchaseOrders'], count: (allData.purchaseOrders || []).length });
     tiles.push({ key: 'PartSources', label: 'Part Sources', collections: ['partSources'], count: (allData.partSources || []).length });
     tiles.push({ key: 'IntakeSources', label: 'Intake Sources', collections: ['intakeSources'], count: (allData.intakeSources || []).length });
     // Extras from allData keys (skip core and grouped children)
     const skip = new Set([
       'technicians','customers','workOrders','sales','quotes','calendarEvents','deviceCategories',
-      'timeEntries','repairCategories','repairItems','partSources','intakeSources','products','productCategories'
+      'timeEntries','repairCategories','repairItems','purchaseOrders','partSources','intakeSources','products','productCategories'
     ]);
     const keys = Object.keys(allData || {});
     for (const k of keys) {
@@ -814,7 +815,7 @@ const BackupWindow: React.FC = () => {
       const dataCollections = Array.from(new Set([
         'technicians','timeEntries','customers','workOrders','sales','quotes','calendarEvents','deviceCategories','productCategories','products','partSources','repairCategories','repairItems','intakeSources',
         // additional potential collections often used
-        'suppliers','vendors','invoices','payments','settings','preferences','userProfiles','systemLogs'
+        'suppliers','vendors','purchaseOrders','invoices','payments','settings','preferences','userProfiles','systemLogs'
       ]));
 
       const collectedData: Record<string, any[]> = {};

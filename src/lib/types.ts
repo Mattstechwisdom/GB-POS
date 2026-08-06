@@ -169,4 +169,5 @@ export interface RepairItem {
   trackStock?: boolean;
   stockCount?: number;
   lowStockThreshold?: number;
+  inventoryProductId?: number;
 }

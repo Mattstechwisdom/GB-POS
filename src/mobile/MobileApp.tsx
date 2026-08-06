@@ -15,6 +15,7 @@ import {
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
 import NotificationConsentPrompt from '../components/NotificationConsentPrompt';
+import { installMobileLongPressContextMenu } from './longPressContextMenu';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -181,6 +182,7 @@ const StartupStatusScreen: React.FC<{ title: string; message?: string; error?: s
 function useLongPress(onLongPress: () => void, ms = 520) {
   const timerRef = useRef<number | null>(null);
   const firedRef = useRef(false);
+  const pointerRef = useRef({ id: -1, x: 0, y: 0 });
 
   const clear = useCallback(() => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -188,8 +190,10 @@ function useLongPress(onLongPress: () => void, ms = 520) {
   }, []);
 
   const start = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
     if ((event.target as HTMLElement).closest('button, a, input, textarea, select')) return;
     firedRef.current = false;
+    pointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
     clear();
     timerRef.current = window.setTimeout(() => {
       firedRef.current = true;
@@ -202,7 +206,15 @@ function useLongPress(onLongPress: () => void, ms = 520) {
     }, ms);
   }, [clear, ms, onLongPress]);
 
-  const end = useCallback(() => {
+  const move = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (pointerRef.current.id !== event.pointerId) return;
+    const dx = event.clientX - pointerRef.current.x;
+    const dy = event.clientY - pointerRef.current.y;
+    if (Math.hypot(dx, dy) > 12) clear();
+  }, [clear]);
+
+  const end = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (pointerRef.current.id === event.pointerId) pointerRef.current.id = -1;
     clear();
     window.setTimeout(() => {
       firedRef.current = false;
@@ -212,7 +224,9 @@ function useLongPress(onLongPress: () => void, ms = 520) {
   useEffect(() => clear, [clear]);
 
   return {
+    'data-mobile-long-press': 'managed',
     onPointerDown: start,
+    onPointerMove: move,
     onPointerUp: end,
     onPointerLeave: end,
     onPointerCancel: end,
@@ -497,6 +511,7 @@ function shouldOpenMobileDrawer() {
 }
 
 const MobileApp: React.FC = () => {
+  useEffect(() => installMobileLongPressContextMenu(), []);
   return <MobileAppRuntime />;
 };
 

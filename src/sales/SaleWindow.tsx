@@ -7,6 +7,7 @@ import PaymentPanel from '@/workorders/PaymentPanel';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
+import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 
 type SalePayload = {
   customerId?: number;
@@ -605,13 +606,29 @@ const SaleWindow: React.FC = () => {
 
   function validate(actionDescription: string): boolean {
     if (!ensureRequired(actionDescription.includes('checking out') ? 'checkout' : 'save', actionDescription)) return false;
+    const rows = sale.items || [];
+    const orderingErrors: string[] = [];
+    rows.forEach((row, index) => {
+      if (isConsultationItem(row) || !(row.requiresOrder === true || row.inStock === false)) return;
+      const rawCost = row.internalCost;
+      if (rawCost === null || rawCost === undefined || !Number.isFinite(Number(rawCost)) || Number(rawCost) < 0) {
+        orderingErrors.push(`Row ${index + 1}: full supplier cost is required`);
+      }
+      if (!String(row.distributor || '').trim() && !String(row.productUrl || '').trim()) {
+        orderingErrors.push(`Row ${index + 1}: distributor or order URL is required`);
+      }
+    });
+    if (orderingErrors.length) {
+      setErrors(orderingErrors);
+      triggerWarningBanner(`Complete ordering details before ${actionDescription}`, orderingErrors.slice(0, 4).join(' · '));
+      return false;
+    }
     if ((sale as any).id) {
       setErrors([]);
       return true;
     }
 
     const errs: string[] = [];
-    const rows = sale.items || [];
     if (rows.length === 0) {
       const desc = (sale as any).itemDescription;
       const qty = Number((sale as any).quantity || 0);
@@ -1242,6 +1259,14 @@ const SaleWindow: React.FC = () => {
           try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+        }
+        if (currentId && (additionalPaid > 0 || status === 'closed')) {
+          try {
+            await consumeInStockInventory((window as any).api, 'sale', currentId, Array.isArray(recordToPersist.items) ? recordToPersist.items : []);
+          } catch (inventoryError: any) {
+            console.error('Sale inventory consumption failed', inventoryError);
+            alert(`Sale payment was saved, but inventory needs attention: ${inventoryError?.message || inventoryError}`);
+          }
         }
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
 

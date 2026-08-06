@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
-import { derivePartVendorFromUrl, splitTaxIncludedCost } from '../lib/partOrdering';
+import { applyPurchaseQueueRemovalToItems, collectOrderCartRows, groupOrderCartRows, itemFullCost, type OrderCartRow } from '../lib/orderAccounting';
+import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -356,8 +357,7 @@ function itemSoldTotal(item: any): number {
 }
 
 function itemInternalCostTotal(item: any): number {
-  const cost = Number(item?.internalCost ?? item?.cost ?? 0);
-  return Number.isFinite(cost) ? round2(cost * itemQty(item)) : 0;
+  return itemFullCost(item) ?? 0;
 }
 
 function recordInternalCostTotal(record: any): number {
@@ -683,16 +683,46 @@ type UnifiedRow = {
   diagnosticLike?: boolean;
 };
 
+function cartPaymentLabel(row: OrderCartRow) {
+  if (row.paymentStatus === 'not_required') return 'Shop purchase';
+  if (row.paymentStatus === 'paid') return 'Paid';
+  if (row.paymentStatus === 'partial') return 'Partial';
+  if (row.paymentStatus === 'unpaid') return 'Not paid';
+  return 'Verify payment';
+}
+
+function cartPaymentClass(row: OrderCartRow) {
+  if (row.paymentStatus === 'not_required') return 'text-sky-200 border-sky-700 bg-sky-950/40';
+  if (row.paymentStatus === 'paid') return 'text-[#39FF14] border-[#39FF14]/30 bg-[#39FF14]/10';
+  if (row.paymentStatus === 'unpaid') return 'text-red-200 border-red-700 bg-red-950/40';
+  return 'text-amber-200 border-amber-600/50 bg-amber-950/30';
+}
+
 const EODWindow: React.FC = () => {
+  const isCartLayoutPreview = Boolean((import.meta as any).env?.DEV) && new URLSearchParams(window.location.search).get('cartPreview') === '1';
   const [reportDayKey, setReportDayKey] = useState(() => new Date().toDateString());
   const [savedSettings, setSavedSettings] = useState<EodSettings>(defaultSettings);
   const [draftSettings, setDraftSettings] = useState<EodSettings>(defaultSettings);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
+  const [selectingDistributors, setSelectingDistributors] = useState<Set<string>>(() => new Set());
+  const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
+  const [previewDeletedPurchaseKeys, setPreviewDeletedPurchaseKeys] = useState<Set<string>>(() => new Set());
+  const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
   const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
+  const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
+  const [showCart, setShowCart] = useState(false);
+  const [showAddPurchase, setShowAddPurchase] = useState(false);
+  const [showCheckoutVerification, setShowCheckoutVerification] = useState(false);
+  const [verifiedDistributors, setVerifiedDistributors] = useState<Set<string>>(() => new Set());
+  const [purchaseDraft, setPurchaseDraft] = useState<any>({ itemType: 'Part', orderUrl: '', title: '', distributor: '', quantity: 1, unitCost: '' });
+  const [purchaseDraftBusy, setPurchaseDraftBusy] = useState(false);
   const range = useMemo<RangeKey>(() => 'today', []);
   const customFrom = '';
   const customTo = '';
@@ -709,6 +739,13 @@ const EODWindow: React.FC = () => {
 
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [techSummary, setTechSummary] = useState<string>('');
+
+  useEffect(() => {
+    if (!showCart) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [showCart]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -796,18 +833,24 @@ const EODWindow: React.FC = () => {
             : Promise.resolve([]);
         const settingsPromise = api.dbGet ? api.dbGet('eodSettings').catch(() => []) : Promise.resolve([]);
         const customersPromise = api.dbGet ? api.dbGet('customers').catch(() => []) : Promise.resolve([]);
+        const purchaseOrdersPromise = api.dbGet ? api.dbGet('purchaseOrders').catch(() => []) : Promise.resolve([]);
+        const productsPromise = api.dbGet ? api.dbGet('products').catch(() => []) : Promise.resolve([]);
+        const vendorsPromise = api.dbGet ? api.dbGet('vendors').catch(() => []) : Promise.resolve([]);
         const batchPromise = api.getBatchOutInfo
           ? api.getBatchOutInfo().catch(() => null)
           : api.dbGet
             ? api.dbGet('batchInfo').catch(() => null)
             : Promise.resolve(null);
 
-        const [wo, sa, stored, batch, customerRows] = await Promise.all([woPromise, saPromise, settingsPromise, batchPromise, customersPromise]);
+        const [wo, sa, stored, batch, customerRows, purchaseRows, productRows, vendorRows] = await Promise.all([woPromise, saPromise, settingsPromise, batchPromise, customersPromise, purchaseOrdersPromise, productsPromise, vendorsPromise]);
         if (disposed) return;
 
         setWorkOrders(Array.isArray(wo) ? wo : []);
         setSales(Array.isArray(sa) ? sa : []);
         setCustomers(Array.isArray(customerRows) ? customerRows : []);
+        setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
+        setInventoryProducts(Array.isArray(productRows) ? productRows : []);
+        setVendors(Array.isArray(vendorRows) ? vendorRows : []);
 
         const storedSettings = Array.isArray(stored) ? stored[0] : stored;
         if (storedSettings && typeof storedSettings === 'object') {
@@ -826,8 +869,11 @@ const EODWindow: React.FC = () => {
       }
     }
     load();
+    const api = (window as any).api || {};
+    const off = api.onPurchaseOrdersChanged?.(() => load());
     return () => {
       disposed = true;
+      try { off?.(); } catch {}
     };
   }, []);
 
@@ -1222,6 +1268,13 @@ const EODWindow: React.FC = () => {
       return sum + (readNumber(sale, 'partCosts') ?? readNumber(sale, 'total') ?? 0);
     }, 0));
     const productsCost = round2(saleRowsInRange.reduce((sum, sale) => sum + recordInternalCostTotal(sale), 0));
+    const verifiedPurchasesInRange = (purchaseOrders || []).filter((purchase) => purchase?.status === 'checked_out' && isDateWithin(purchase?.checkedOutAt || purchase?.updatedAt, min, max));
+    const supplierSpendParts = round2(verifiedPurchasesInRange
+      .filter((purchase) => String(purchase?.itemType || 'Part').toLowerCase() === 'part')
+      .reduce((sum, purchase) => sum + (Number(purchase?.totalCost) || (Number(purchase?.itemCost) || 0) + (Number(purchase?.additionalCost) || 0)), 0));
+    const supplierSpendProducts = round2(verifiedPurchasesInRange
+      .filter((purchase) => String(purchase?.itemType || '').toLowerCase() === 'product')
+      .reduce((sum, purchase) => sum + (Number(purchase?.totalCost) || (Number(purchase?.itemCost) || 0) + (Number(purchase?.additionalCost) || 0)), 0));
 
     const checkInCount = (workOrders || []).reduce((count, workOrder) => {
       const checkInDate = firstDateInKeys(workOrder, ['checkInAt', 'checkInDate', 'check_in_at', 'createdAt', 'createdDate']);
@@ -1255,53 +1308,208 @@ const EODWindow: React.FC = () => {
       laborSold,
       productsSold,
       productsCost,
+      supplierSpendParts,
+      supplierSpendProducts,
       checkInCount,
       closedTicketCount,
     };
-  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, sales, start, workOrders]);
+  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, purchaseOrders, sales, start, workOrders]);
 
-  const partsPurchaseQueue = useMemo(() => {
-    const min = start.getTime();
-    const max = end.getTime();
-    const rows: Array<any> = [];
-    for (const workOrder of (workOrders || [])) {
-      if (!isDateWithin(getTimelineDate(workOrder), min, max)) continue;
-      const items = Array.isArray(workOrder?.items) ? workOrder.items : [];
-      for (const [itemIndex, item] of items.entries()) {
-        const url = String(item?.orderSourceUrl || workOrder?.partsOrderUrl || '').trim();
-        const requiresOrder = item?.requiresOrder === true || (!!url && item?.requiresOrder !== false);
-        const status = String(item?.orderStatus || (workOrder?.partsOrderDate ? 'ordered' : 'needed')).toLowerCase();
-        if (!requiresOrder || status === 'ordered' || status === 'received' || status === 'in_stock') continue;
-        const internalCost = Number(item?.internalCost);
-        const hasCost = Number.isFinite(internalCost) && internalCost >= 0;
-        const taxExempt = item?.taxExempt === true;
-        const taxRate = Number(item?.supplierTaxRate ?? 8) || 8;
-        const cost = splitTaxIncludedCost(hasCost ? internalCost : 0, taxExempt, taxRate);
-        rows.push({
-          key: `${workOrder?.id}-${item?.id || itemIndex}`,
-          itemIndex,
-          workOrderId: workOrder?.id,
-          customer: workOrder?.customerName || `Client #${workOrder?.customerId || ''}`,
-          title: item?.repair || item?.description || 'Repair part',
-          distributor: item?.distributor || item?.partSource || derivePartVendorFromUrl(url) || 'Unknown distributor',
-          url,
-          hasCost,
-          totalCost: cost.total,
-          preTaxCost: cost.preTax,
-          supplierTax: cost.tax,
-          sold: Number(item?.parts || 0) || 0,
-          taxExempt,
-          paymentRecorded: Number(workOrder?.amountPaid || 0) > 0 || (Array.isArray(workOrder?.payments) && workOrder.payments.length > 0),
-        });
-      }
+  const partsPurchaseQueue = useMemo(
+    () => {
+      const rows = isCartLayoutPreview
+      ? collectOrderCartRows([
+          { id: -101, customerName: 'Preview Client', payments: [{ applied: 185, appliedParts: 110 }], items: [{ id: 'preview-screen', repair: 'iPhone 15 Pro OLED Assembly', qty: 1, parts: 110, internalCost: 82.45, distributor: 'Phone LCD Parts', orderSourceUrl: 'https://www.phonelcdparts.com/example-screen', requiresOrder: true, orderStatus: 'needed' }] },
+          { id: -102, customerName: 'Preview Client', payments: [], items: [{ id: 'preview-power', repair: 'PlayStation 5 Power Supply', qty: 1, parts: 89.99, internalCost: 61.2, distributor: 'Amazon', orderSourceUrl: 'https://www.amazon.com/dp/example', requiresOrder: true, orderStatus: 'needed' }] },
+        ], [
+          { id: -201, customerName: 'Preview Sale', amountPaid: 20, totals: { total: 159.99, remaining: 139.99 }, items: [{ id: 'preview-product', description: 'Nintendo Switch Dock', qty: 1, price: 69.99, internalCost: 44.5, inStock: false, requiresOrder: true, distributor: 'Independent Vendor', productUrl: 'https://example.com/switch-dock', orderStatus: 'needed' }] },
+        ], [{ id: -301, status: 'pending', sourceType: 'inventory', inventoryId: -1, itemType: 'Product', title: 'USB-C Charging Cable', distributor: 'Independent Vendor', orderUrl: 'https://example.com/usb-c-cable', quantity: 3, unitCost: 7.5 }])
+      : collectOrderCartRows(workOrders, sales, purchaseOrders);
+      const ledgerSourceKeys = new Set(purchaseOrders.map(record => String(record?.sourceKey || '')).filter(Boolean));
+      return rows.filter(row => !previewDeletedPurchaseKeys.has(row.key) && (row.purchaseOrderId || !ledgerSourceKeys.has(row.key))).map(row => {
+        const override = Number(quantityOverrides[row.key]);
+        if (!Number.isFinite(override) || override <= 0 || override === row.quantity) return row;
+        const quantity = Math.max(1, Math.round(override));
+        const totalCost = round2(row.unitCost * quantity);
+        const totalCharge = round2(row.unitCharge * quantity);
+        return { ...row, quantity, totalCost, totalCharge, knownProfit: row.hasCost && row.totalCharge > 0 ? round2(totalCharge - totalCost) : null };
+      });
+    },
+    [isCartLayoutPreview, previewDeletedPurchaseKeys, purchaseOrders, quantityOverrides, sales, workOrders],
+  );
+  const purchaseGroups = useMemo(() => groupOrderCartRows(partsPurchaseQueue), [partsPurchaseQueue]);
+
+  const autofillPurchaseDraft = useCallback(async () => {
+    const orderUrl = normalizePartOrderUrl(purchaseDraft.orderUrl);
+    if (!orderUrl) return;
+    setPurchaseDraftBusy(true);
+    try {
+      const metadata = await scrapePartUrl(orderUrl);
+      const title = normalizePartInventoryTitle(metadata?.title);
+      const distributor = String(metadata?.vendor || derivePartVendorFromUrl(orderUrl) || '').trim();
+      setPurchaseDraft((current: any) => ({
+        ...current,
+        orderUrl,
+        title: title || current.title,
+        distributor: distributor || current.distributor,
+        unitCost: typeof metadata?.price === 'number' ? String(metadata.price) : current.unitCost,
+      }));
+    } catch (error) {
+      console.error('Purchase URL autofill failed', error);
+    } finally {
+      setPurchaseDraftBusy(false);
     }
-    rows.sort((a, b) => a.distributor.localeCompare(b.distributor) || Number(a.workOrderId || 0) - Number(b.workOrderId || 0));
-    return rows;
-  }, [end, start, workOrders]);
+  }, [purchaseDraft.orderUrl]);
 
-  const markSelectedPurchasesOrdered = useCallback(async () => {
-    const selected = partsPurchaseQueue.filter((row) => selectedPurchaseRows.has(row.key));
+  useEffect(() => {
+    if (!showAddPurchase || !/^https?:\/\//i.test(String(purchaseDraft.orderUrl || '').trim())) return;
+    const timer = window.setTimeout(() => { void autofillPurchaseDraft(); }, 550);
+    return () => window.clearTimeout(timer);
+  }, [autofillPurchaseDraft, purchaseDraft.orderUrl, showAddPurchase]);
+
+  const addManualPurchase = useCallback(async () => {
+    const title = String(purchaseDraft.title || '').trim();
+    const distributor = String(purchaseDraft.distributor || '').trim();
+    const quantity = Math.max(1, Math.round(Number(purchaseDraft.quantity) || 1));
+    const unitCost = Number(purchaseDraft.unitCost);
+    if (!title || !distributor || !Number.isFinite(unitCost) || unitCost < 0) {
+      setPurchaseUpdateMessage('Part/product title, distributor, quantity, and supplier unit cost are required.');
+      return;
+    }
+    setPurchaseDraftBusy(true);
+    try {
+      const api = (window as any).api || {};
+      const now = new Date().toISOString();
+      const payload = {
+        status: 'pending',
+        sourceType: 'manual',
+        itemType: purchaseDraft.itemType === 'Product' ? 'Product' : 'Part',
+        title,
+        distributor,
+        orderUrl: normalizePartOrderUrl(purchaseDraft.orderUrl),
+        quantity,
+        unitCost: round2(unitCost),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const saved = await api.dbAdd?.('purchaseOrders', payload);
+      if (!saved) throw new Error('The purchase record was not saved.');
+      setPurchaseOrders(current => {
+        const savedId = Number(saved?.id || 0);
+        if (savedId && current.some(record => Number(record?.id || 0) === savedId)) {
+          return current.map(record => Number(record?.id || 0) === savedId ? saved : record);
+        }
+        return [...current, saved];
+      });
+      const matchingVendor = vendors.some((vendor: any) => String(vendor?.name || '').trim().toLowerCase() === distributor.toLowerCase()
+        && String(vendor?.inventoryMode || 'Product') === payload.itemType);
+      if (!matchingVendor && api.dbAdd) {
+        const vendor = await api.dbAdd('vendors', { name: distributor, inventoryMode: payload.itemType, relationship: 'wholesale', taxExempt: false, createdAt: now, updatedAt: now });
+        if (vendor) setVendors(current => [...current, vendor]);
+      }
+      setPurchaseDraft({ itemType: 'Part', orderUrl: '', title: '', distributor: '', quantity: 1, unitCost: '' });
+      setShowAddPurchase(false);
+      setPurchaseUpdateMessage(`${title} was added to the purchasing cart and synced.`);
+    } catch (error: any) {
+      setPurchaseUpdateMessage(error?.message || 'The purchase could not be added.');
+    } finally {
+      setPurchaseDraftBusy(false);
+    }
+  }, [purchaseDraft, vendors]);
+
+  const deleteSelectedPurchaseRows = useCallback(async (rows: OrderCartRow[]) => {
+    if (!rows.length) return;
+    if (isCartLayoutPreview) {
+      setPreviewDeletedPurchaseKeys(current => new Set([...current, ...rows.map(row => row.key)]));
+      setSelectedPurchaseRows(current => { const next = new Set(current); rows.forEach(row => next.delete(row.key)); return next; });
+      setDeleteCandidateRows(null);
+      setPurchaseUpdateMessage(`Preview: removed ${rows.length} selected item${rows.length === 1 ? '' : 's'} from the cart.`);
+      return;
+    }
+
+    const api = (window as any).api || {};
+    const now = new Date().toISOString();
+    const failures: string[] = [];
+    const removedKeys = new Set<string>();
+    setPurchaseUpdateBusy(true);
+    setPurchaseUpdateMessage('');
+
+    try {
+      for (const row of rows) {
+        try {
+          if (row.sourceType === 'workOrder') {
+            const current = workOrders.find(record => Number(record?.id) === Number(row.sourceId));
+            if (!current) throw new Error(`WO #${row.sourceId} was not found.`);
+            const { items, matched } = applyPurchaseQueueRemovalToItems(current.items, row, now);
+            if (!matched) throw new Error(`The linked line on WO #${row.sourceId} was not found.`);
+            const updated = { ...current, items, updatedAt: now };
+            const saved = api.update ? await api.update('workOrders', updated) : await api.dbUpdate?.('workOrders', current.id, updated);
+            if (!saved) throw new Error(`WO #${row.sourceId} did not save.`);
+            setWorkOrders(currentRows => currentRows.map(record => Number(record?.id) === Number(row.sourceId) ? saved : record));
+          } else if (row.sourceType === 'sale') {
+            const current = sales.find(record => Number(record?.id) === Number(row.sourceId));
+            if (!current) throw new Error(`Sale #${row.sourceId} was not found.`);
+            const { items, matched } = applyPurchaseQueueRemovalToItems(current.items, row, now);
+            if (!matched) throw new Error(`The linked line on Sale #${row.sourceId} was not found.`);
+            const updated = { ...current, items, updatedAt: now };
+            const saved = await api.dbUpdate?.('sales', current.id, updated);
+            if (!saved) throw new Error(`Sale #${row.sourceId} did not save.`);
+            setSales(currentRows => currentRows.map(record => Number(record?.id) === Number(row.sourceId) ? saved : record));
+          }
+
+          if (row.purchaseOrderId) {
+            const deleted = await api.dbDelete?.('purchaseOrders', row.purchaseOrderId);
+            if (deleted === false || deleted == null) throw new Error('The purchasing record did not delete.');
+            setPurchaseOrders(current => current.filter(record => Number(record?.id) !== Number(row.purchaseOrderId)));
+          }
+          removedKeys.add(row.key);
+        } catch (error: any) {
+          failures.push(`${row.title}: ${error?.message || error}`);
+        }
+      }
+      setSelectedPurchaseRows(current => { const next = new Set(current); removedKeys.forEach(key => next.delete(key)); return next; });
+      setDeleteCandidateRows(null);
+      setPurchaseUpdateMessage(`${removedKeys.size} item${removedKeys.size === 1 ? '' : 's'} removed from the purchasing cart.${failures.length ? ` ${failures.join(' ')}` : ''}`);
+    } finally {
+      setPurchaseUpdateBusy(false);
+    }
+  }, [isCartLayoutPreview, sales, workOrders]);
+
+  const markSelectedPurchasesOrdered = useCallback(async (selectedOverride?: OrderCartRow[]) => {
+    const selected = selectedOverride || partsPurchaseQueue.filter((row) => selectedPurchaseRows.has(row.key));
     if (!selected.length) return;
+    if (isCartLayoutPreview) {
+      setPurchaseUpdateMessage('Preview mode: no records were changed or synced.');
+      return;
+    }
+    const missingCostRows = selected.filter(row => !row.hasCost);
+    if (missingCostRows.length) {
+      setPurchaseUpdateMessage(`Enter the full supplier cost for ${missingCostRows.length} selected item${missingCostRows.length === 1 ? '' : 's'} before marking the order purchased.`);
+      return;
+    }
+    const allocationByRow = new Map<string, number>();
+    for (const group of purchaseGroups) {
+      const extra = Number(additionalCostsByDistributor[group.distributor] || 0);
+      if (!Number.isFinite(extra) || extra < 0) {
+        setPurchaseUpdateMessage(`${group.distributor}: Additional Costs must be zero or a valid positive amount.`);
+        return;
+      }
+      if (extra <= 0) continue;
+      const selectedRows = group.rows.filter(row => selected.some(selectedRow => selectedRow.key === row.key));
+      if (selectedRows.length !== group.rows.length) {
+        setPurchaseUpdateMessage(`${group.distributor}: select every item in this distributor before applying shared shipping or checkout costs.`);
+        return;
+      }
+      const weightTotal = selectedRows.reduce((sum, row) => sum + (row.hasCost && row.totalCost > 0 ? row.totalCost : 1), 0);
+      let allocated = 0;
+      selectedRows.forEach((row, index) => {
+        const amount = index === selectedRows.length - 1
+          ? round2(extra - allocated)
+          : round2(extra * ((row.hasCost && row.totalCost > 0 ? row.totalCost : 1) / weightTotal));
+        allocationByRow.set(row.key, amount);
+        allocated = round2(allocated + amount);
+      });
+    }
     setPurchaseUpdateBusy(true);
     setPurchaseUpdateMessage('');
     const api = (window as any).api || {};
@@ -1311,14 +1519,83 @@ const EODWindow: React.FC = () => {
     let emailCount = 0;
     const failures: string[] = [];
     try {
-      const workOrderIds = Array.from(new Set(selected.map((row) => row.workOrderId)));
+      const savedPurchaseRecords: any[] = [];
+      const successfulPurchaseKeys = new Set<string>();
+      for (const row of selected) {
+        const additionalCost = allocationByRow.get(row.key) || 0;
+        const finalTotalCost = round2(row.totalCost + additionalCost);
+        const ledgerPayload = {
+          status: row.sourceType === 'inventory' ? 'processing' : 'checked_out',
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          sourceItemIndex: row.itemIndex,
+          sourceItemId: row.itemId || null,
+          sourceKey: row.key,
+          inventoryId: row.inventoryId || null,
+          itemType: row.itemType || (row.sourceType === 'sale' ? 'Product' : 'Part'),
+          title: row.title,
+          customer: row.customer,
+          distributor: row.distributor,
+          orderUrl: row.orderUrl,
+          quantity: row.quantity,
+          unitCost: row.unitCost,
+          itemCost: row.totalCost,
+          additionalCost,
+          totalCost: finalTotalCost,
+          paymentStatus: row.paymentStatus,
+          checkedOutAt: now,
+          updatedAt: now,
+        };
+        try {
+          let saved: any = null;
+          if (row.purchaseOrderId) {
+            const currentRecord = purchaseOrders.find(record => Number(record?.id) === Number(row.purchaseOrderId));
+            saved = await api.dbUpdate?.('purchaseOrders', row.purchaseOrderId, { ...currentRecord, ...ledgerPayload });
+          } else {
+            const existingLedger = purchaseOrders.find(record => record?.status === 'checked_out' && record?.sourceKey === row.key);
+            saved = existingLedger || await api.dbAdd?.('purchaseOrders', { ...ledgerPayload, createdAt: now });
+          }
+          if (!saved) throw new Error('Purchase ledger save returned no record.');
+          if (row.sourceType === 'inventory' && row.inventoryId) {
+            const inventoryItem = inventoryProducts.find(item => Number(item?.id) === Number(row.inventoryId));
+            if (!inventoryItem) throw new Error('Linked inventory item was not found.');
+            const appliedKeys = Array.isArray(inventoryItem.purchaseRestockKeys) ? inventoryItem.purchaseRestockKeys.map(String) : [];
+            if (!appliedKeys.includes(row.key)) {
+              const updatedInventory = { ...inventoryItem, trackStock: true, stockCount: Math.max(0, Number(inventoryItem.stockCount) || 0) + row.quantity, purchaseRestockKeys: [...appliedKeys, row.key].slice(-100), updatedAt: now };
+              const inventorySaved = api.update ? await api.update('products', updatedInventory) : await api.dbUpdate?.('products', inventoryItem.id, updatedInventory);
+              if (!inventorySaved) throw new Error('Inventory stock update returned no record.');
+              setInventoryProducts(items => items.map(item => Number(item?.id) === Number(row.inventoryId) ? inventorySaved : item));
+            }
+            saved = await api.dbUpdate?.('purchaseOrders', saved.id, { ...saved, status: 'checked_out', inventoryApplied: true, checkedOutAt: now, updatedAt: now });
+            if (!saved) throw new Error('Purchase checkout could not be finalized after updating stock.');
+          }
+          savedPurchaseRecords.push(saved);
+          successfulPurchaseKeys.add(row.key);
+        } catch (error: any) {
+          failures.push(`${row.title}: ${error?.message || error}`);
+        }
+      }
+      if (savedPurchaseRecords.length) {
+        updatedCount = savedPurchaseRecords.length;
+        setPurchaseOrders(current => {
+          const byId = new Map(current.map(record => [Number(record?.id), record]));
+          savedPurchaseRecords.forEach(record => byId.set(Number(record?.id), record));
+          return Array.from(byId.values());
+        });
+      }
+
+      const workOrderIds = Array.from(new Set(selected.filter(row => row.sourceType === 'workOrder').map((row) => row.sourceId)));
       for (const workOrderId of workOrderIds) {
         const current = workOrders.find((row) => Number(row?.id) === Number(workOrderId));
         if (!current) { failures.push(`WO #${workOrderId} was not found.`); continue; }
-        const selectedForWorkOrder = selected.filter((row) => Number(row.workOrderId) === Number(workOrderId));
+        const selectedForWorkOrder = selected.filter((row) => successfulPurchaseKeys.has(row.key) && row.sourceType === 'workOrder' && Number(row.sourceId) === Number(workOrderId));
+        if (!selectedForWorkOrder.length) continue;
         const items = (Array.isArray(current.items) ? current.items : []).map((item: any, itemIndex: number) => {
-          if (!selectedForWorkOrder.some((row) => row.itemIndex === itemIndex)) return item;
-          return { ...item, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+          const cartRow = selectedForWorkOrder.find((row) => row.itemIndex === itemIndex);
+          if (!cartRow) return item;
+          const extra = allocationByRow.get(cartRow.key) || 0;
+          const fullUnitCost = round2((Number(item.internalCost) || 0) + (extra / Math.max(1, cartRow.quantity)));
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
         });
         const updated = {
           ...current,
@@ -1333,7 +1610,6 @@ const EODWindow: React.FC = () => {
         try {
           const saved = api.update ? await api.update('workOrders', updated) : await api.dbUpdate?.('workOrders', current.id, updated);
           setWorkOrders((rows) => rows.map((row) => Number(row?.id) === Number(workOrderId) ? (saved || updated) : row));
-          updatedCount += selectedForWorkOrder.length;
 
           const customer = customers.find((row) => Number(row?.id) === Number(current.customerId));
           const email = String(current.customerEmail || customer?.email || '').trim();
@@ -1353,25 +1629,68 @@ const EODWindow: React.FC = () => {
           failures.push(`WO #${workOrderId}: ${error?.message || error}`);
         }
       }
+      const saleIds = Array.from(new Set(selected.filter(row => row.sourceType === 'sale').map(row => row.sourceId)));
+      for (const saleId of saleIds) {
+        const current = sales.find(row => Number(row?.id) === Number(saleId));
+        if (!current) { failures.push(`Sale #${saleId} was not found.`); continue; }
+        const selectedForSale = selected.filter(row => successfulPurchaseKeys.has(row.key) && row.sourceType === 'sale' && Number(row.sourceId) === Number(saleId));
+        if (!selectedForSale.length) continue;
+        const items = (Array.isArray(current.items) ? current.items : []).map((item: any, itemIndex: number) => {
+          const cartRow = selectedForSale.find(row => row.itemIndex === itemIndex);
+          if (!cartRow) return item;
+          const extra = allocationByRow.get(cartRow.key) || 0;
+          const fullUnitCost = round2((Number(item.internalCost) || 0) + (extra / Math.max(1, cartRow.quantity)));
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+        });
+        const updated = { ...current, items, updatedAt: now };
+        try {
+          const saved = await api.dbUpdate?.('sales', current.id, updated);
+          setSales(rows => rows.map(row => Number(row?.id) === Number(saleId) ? (saved || updated) : row));
+        } catch (error: any) {
+          failures.push(`Sale #${saleId}: ${error?.message || error}`);
+        }
+      }
       setSelectedPurchaseRows(new Set());
-      setPurchaseUpdateMessage(`${updatedCount} part${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
+      setQuantityOverrides({});
+      setAdditionalCostsByDistributor(current => {
+        const next = { ...current };
+        purchaseGroups.forEach(group => {
+          if (group.rows.every(row => selected.some(selectedRow => selectedRow.key === row.key))) delete next[group.distributor];
+        });
+        return next;
+      });
+      setPurchaseUpdateMessage(`${updatedCount} item${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
     } finally {
       setPurchaseUpdateBusy(false);
     }
-  }, [customers, partsPurchaseQueue, selectedPurchaseRows, workOrders]);
+  }, [additionalCostsByDistributor, customers, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
+    const additionalCosts = round2(Object.values(additionalCostsByDistributor).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0));
     return {
       count: partsPurchaseQueue.length,
       missingCost: partsPurchaseQueue.length - verified.length,
       cost: round2(verified.reduce((sum, row) => sum + row.totalCost, 0)),
-      preTax: round2(verified.reduce((sum, row) => sum + row.preTaxCost, 0)),
-      supplierTax: round2(verified.reduce((sum, row) => sum + row.supplierTax, 0)),
-      charged: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.sold, 0)),
-      profit: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.sold, 0) - verified.reduce((sum, row) => sum + row.totalCost, 0)),
+      additionalCosts,
+      checkoutCost: round2(verified.reduce((sum, row) => sum + row.totalCost, 0) + additionalCosts),
+      charged: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.totalCharge, 0)),
+      profit: round2(verified.reduce((sum, row) => sum + Number(row.knownProfit || 0), 0) - additionalCosts),
+      paymentWarnings: partsPurchaseQueue.filter(row => row.paymentStatus !== 'paid' && row.paymentStatus !== 'not_required').length,
     };
-  }, [partsPurchaseQueue]);
+  }, [additionalCostsByDistributor, partsPurchaseQueue]);
+
+  const openPurchaseUrl = useCallback((url: string) => {
+    if (!url) return;
+    const api = (window as any).api;
+    if (api?.openUrl) void api.openUrl(url);
+    else if (api?.openExternal) void api.openExternal(url);
+    else window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const openPurchaseRows = useCallback((rows: OrderCartRow[]) => {
+    rows.filter(row => row.orderUrl).forEach(row => openPurchaseUrl(row.orderUrl));
+  }, [openPurchaseUrl]);
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -1491,8 +1810,11 @@ const EODWindow: React.FC = () => {
       lines.push(`Total taken in: ${formatCurrency(dailyBatchSummary.totalTaken)}`);
       lines.push(`Card: ${formatCurrency(dailyBatchSummary.cardTotal)}`);
       lines.push(`Cash: ${formatCurrency(dailyBatchSummary.cashTotal)}`);
-      lines.push(`Parts charged: ${formatCurrency(dailyBatchSummary.partsSold)} | Parts cost: ${formatCurrency(dailyBatchSummary.partsCost)}`);
-      lines.push(`Products sold: ${formatCurrency(dailyBatchSummary.productsSold)} | Product cost: ${formatCurrency(dailyBatchSummary.productsCost)}`);
+      lines.push(`Parts charged: ${formatCurrency(dailyBatchSummary.partsSold)} | Parts COGS: ${formatCurrency(dailyBatchSummary.partsCost)}`);
+      lines.push(`Products sold: ${formatCurrency(dailyBatchSummary.productsSold)} | Product COGS: ${formatCurrency(dailyBatchSummary.productsCost)}`);
+      lines.push(`Verified supplier spend: Parts ${formatCurrency(dailyBatchSummary.supplierSpendParts)} | Products ${formatCurrency(dailyBatchSummary.supplierSpendProducts)}`);
+      lines.push(`Purchasing cart: ${partsPurchaseTotals.count} item(s) | Checkout total: ${formatCurrency(partsPurchaseTotals.checkoutCost)}`);
+      if (partsPurchaseTotals.paymentWarnings || partsPurchaseTotals.missingCost) lines.push(`Purchasing warnings: ${partsPurchaseTotals.paymentWarnings} payment | ${partsPurchaseTotals.missingCost} missing cost`);
     }
     if (draftSettings.includeCounts) {
       lines.push(`Check-ins: ${dailyBatchSummary.checkInCount}`);
@@ -1512,7 +1834,7 @@ const EODWindow: React.FC = () => {
       lines.push(`Last Batch Out: ${last}`);
     }
     return lines.filter(Boolean).join('\n');
-  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, reportHasAnyActivity, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.supplierSpendParts, dailyBatchSummary.supplierSpendProducts, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, partsPurchaseTotals.checkoutCost, partsPurchaseTotals.count, partsPurchaseTotals.missingCost, partsPurchaseTotals.paymentWarnings, reportHasAnyActivity, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining]);
 
   const presetBody = useMemo(() => {
     const header = `Batch report for ${rangeLabel(range, start, end)}`;
@@ -1923,9 +2245,15 @@ const EODWindow: React.FC = () => {
       rows.push(['Card', formatCurrency(dailyBatchSummary.cardTotal)]);
       rows.push(['Cash', formatCurrency(dailyBatchSummary.cashTotal)]);
       rows.push(['Parts charged', formatCurrency(dailyBatchSummary.partsSold)]);
-      rows.push(['Parts cost', formatCurrency(dailyBatchSummary.partsCost)]);
+      rows.push(['Parts COGS', formatCurrency(dailyBatchSummary.partsCost)]);
       rows.push(['Products sold', formatCurrency(dailyBatchSummary.productsSold)]);
-      rows.push(['Product cost', formatCurrency(dailyBatchSummary.productsCost)]);
+      rows.push(['Product COGS', formatCurrency(dailyBatchSummary.productsCost)]);
+      rows.push(['Parts supplier spend', formatCurrency(dailyBatchSummary.supplierSpendParts)]);
+      rows.push(['Products supplier spend', formatCurrency(dailyBatchSummary.supplierSpendProducts)]);
+      rows.push(['Purchasing cart', `${partsPurchaseTotals.count} item(s)`]);
+      rows.push(['Purchasing checkout total', formatCurrency(partsPurchaseTotals.checkoutCost)]);
+      if (partsPurchaseTotals.paymentWarnings) rows.push(['Unverified item payments', String(partsPurchaseTotals.paymentWarnings)]);
+      if (partsPurchaseTotals.missingCost) rows.push(['Missing item costs', String(partsPurchaseTotals.missingCost)]);
     }
     if (draftSettings.includeCounts) {
       rows.push(['Check-ins', String(dailyBatchSummary.checkInCount)]);
@@ -1950,7 +2278,7 @@ const EODWindow: React.FC = () => {
       .join('');
 
     return `<div style="${wrapperStyle}"><div style="${headerStyle}">${escapeHtml(header)}</div><table style="${tableStyle}"><tbody>${body}</tbody></table>${trendSectionHtml}${emailDetailsHtml}</div>`;
-  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, emailDetailsHtml, end, range, reportHasAnyActivity, start, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining, trendSectionHtml]);
+  }, [batchInfo, dailyBatchSummary.cardTotal, dailyBatchSummary.cashTotal, dailyBatchSummary.checkInCount, dailyBatchSummary.closedTicketCount, dailyBatchSummary.partsCost, dailyBatchSummary.partsSold, dailyBatchSummary.productsCost, dailyBatchSummary.productsSold, dailyBatchSummary.supplierSpendParts, dailyBatchSummary.supplierSpendProducts, dailyBatchSummary.totalTaken, draftSettings.includeBatchInfo, draftSettings.includeCounts, draftSettings.includeOutstanding, draftSettings.includePayments, draftSettings.includeSales, draftSettings.includeWorkOrders, emailDetailsHtml, end, partsPurchaseTotals.checkoutCost, partsPurchaseTotals.count, partsPurchaseTotals.missingCost, partsPurchaseTotals.paymentWarnings, range, reportHasAnyActivity, start, summary.grandRemaining, summary.saTotals.collected, summary.saTotals.count, summary.saTotals.remaining, summary.woTotals.collected, summary.woTotals.count, summary.woTotals.remaining, trendSectionHtml]);
 
   async function handleRowOpen(row: UnifiedRow) {
     const api = (window as any).api;
@@ -2026,8 +2354,8 @@ const EODWindow: React.FC = () => {
   return (
     <div className="min-h-screen bg-zinc-900 text-zinc-50 p-4">
       <div className="max-w-6xl mx-auto flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
             {viewMode === 'trends' && (
               <button
                 className="mt-1 px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
@@ -2043,20 +2371,19 @@ const EODWindow: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:min-w-[360px]">
             {viewMode === 'reports' && (
               <>
                 <button
-                  className="px-3 py-2 text-sm bg-amber-500 text-black border border-amber-400 rounded hover:brightness-110"
+                  className="min-h-11 px-3 py-2 text-sm font-semibold bg-[#BC13FE] text-white border border-[#d45cff] rounded hover:brightness-110"
+                  onClick={() => setShowCart(true)}
+                >Cart ({partsPurchaseTotals.count})</button>
+                <button
+                  className="min-h-11 px-3 py-2 text-sm font-semibold bg-amber-500 text-black border border-amber-400 rounded hover:brightness-110"
                   onClick={() => setShowEmailSettings(true)}
                 >EOD Report Email</button>
                 <button
-                  className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
-                  onClick={() => handleSend()}
-                  disabled={sending}
-                >{sending ? 'Sending…' : 'Send report'}</button>
-                <button
-                  className="px-3 py-2 text-sm bg-[#39FF14] text-black border border-[#39FF14] rounded hover:brightness-110"
+                  className="col-span-2 min-h-10 px-3 py-2 text-sm font-semibold bg-[#39FF14] text-black border border-[#39FF14] rounded hover:brightness-110"
                   onClick={() => handleBatchOutNow()}
                   disabled={sending}
                 >Batch Out now</button>
@@ -2110,7 +2437,7 @@ const EODWindow: React.FC = () => {
                     <div className="text-[11px] text-zinc-400">parts billed on work orders</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
-                    <div className="text-xs text-zinc-500">Parts cost</div>
+                    <div className="text-xs text-zinc-500">Parts COGS</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.partsCost)}</div>
                     <div className="text-[11px] text-zinc-400">saved internal part costs</div>
                   </div>
@@ -2120,9 +2447,19 @@ const EODWindow: React.FC = () => {
                     <div className="text-[11px] text-zinc-400">sales item totals</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
-                    <div className="text-xs text-zinc-500">Product cost</div>
+                    <div className="text-xs text-zinc-500">Product COGS</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.productsCost)}</div>
                     <div className="text-[11px] text-zinc-400">saved internal product costs</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-amber-500/40 rounded p-2">
+                    <div className="text-xs text-zinc-500">Parts supplier spend</div>
+                    <div className="text-xl font-semibold text-amber-300">{formatCurrency(dailyBatchSummary.supplierSpendParts)}</div>
+                    <div className="text-[11px] text-zinc-400">verified checkouts today</div>
+                  </div>
+                  <div className="bg-zinc-800 border border-amber-500/40 rounded p-2">
+                    <div className="text-xs text-zinc-500">Products supplier spend</div>
+                    <div className="text-xl font-semibold text-amber-300">{formatCurrency(dailyBatchSummary.supplierSpendProducts)}</div>
+                    <div className="text-[11px] text-zinc-400">verified checkouts today</div>
                   </div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Check-ins</div>
@@ -2193,52 +2530,138 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
-            <section className="bg-zinc-950 border border-amber-500/40 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-amber-300">Parts to Purchase</h3>
-                  <div className="text-xs text-zinc-400">Only saved work-order parts marked Order required and not yet marked ordered or received.</div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-right text-xs">
-                  <div><div className="text-zinc-500">Verified cost</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.cost)}</div></div>
-                  <div><div className="text-zinc-500">Supplier tax</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.supplierTax)}</div></div>
-                  <div><div className="text-zinc-500">Parts charged</div><div className="font-semibold">{formatCurrency(partsPurchaseTotals.charged)}</div></div>
-                  <div><div className="text-zinc-500">Part margin</div><div className="font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div></div>
-                </div>
+            <section className="flex flex-col gap-3 rounded-lg border border-[#BC13FE]/40 bg-zinc-950 p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[#d45cff]">Purchasing Cart</h3>
+                <div className="text-xs text-zinc-400">Outstanding parts and products stay here until they are marked ordered.</div>
               </div>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button type="button" disabled={!selectedPurchaseRows.size || purchaseUpdateBusy} onClick={() => void markSelectedPurchasesOrdered()} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : `Mark Selected Paid & Ordered (${selectedPurchaseRows.size})`}</button>
-                <span className="text-xs text-zinc-500">Updates each selected work order and sends email when a configured email service is available.</span>
-              </div>
-              {purchaseUpdateMessage ? <div className="mb-3 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">{purchaseUpdateMessage}</div> : null}
-              {partsPurchaseTotals.missingCost > 0 ? (
-                <div className="mb-3 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">
-                  {partsPurchaseTotals.missingCost} part{partsPurchaseTotals.missingCost === 1 ? '' : 's'} missing internal cost. They remain in the queue but are excluded from cost and margin totals.
-                </div>
-              ) : null}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm">
-                  <thead className="text-xs text-zinc-500 border-b border-zinc-800">
-                    <tr><th className="w-10 py-2 text-center">Paid</th><th className="py-2 text-left">Distributor / Part</th><th className="py-2 text-left">WO / Client</th><th className="py-2 text-right">Cost</th><th className="py-2 text-right">Tax</th><th className="py-2 text-right">Charged</th><th className="py-2 text-center">Payment</th><th className="py-2 text-right">Order</th></tr>
-                  </thead>
-                  <tbody>
-                    {partsPurchaseQueue.map((row, index) => (
-                      <tr key={`${row.workOrderId}-${row.url}-${index}`} className="border-b border-zinc-900">
-                        <td className="py-2 text-center"><input type="checkbox" checked={selectedPurchaseRows.has(row.key)} onChange={(event) => setSelectedPurchaseRows((current) => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Mark ${row.title} paid and ordered`} /></td>
-                        <td className="py-2 pr-3"><div className="font-medium">{row.distributor}</div><div className="text-xs text-zinc-400">{row.title}</div></td>
-                        <td className="py-2 pr-3"><div>WO #{row.workOrderId}</div><div className="text-xs text-zinc-400">{row.customer}</div></td>
-                        <td className="py-2 text-right">{row.hasCost ? formatCurrency(row.totalCost) : 'Not entered'}</td>
-                        <td className="py-2 text-right">{row.taxExempt ? 'Exempt' : formatCurrency(row.supplierTax)}</td>
-                        <td className="py-2 text-right">{formatCurrency(row.sold)}</td>
-                        <td className={`py-2 text-center text-xs ${row.paymentRecorded ? 'text-[#39FF14]' : 'text-amber-300'}`}>{row.paymentRecorded ? 'Recorded' : 'Verify'}</td>
-                        <td className="py-2 text-right">{row.url ? <button type="button" className="px-3 py-1 rounded bg-amber-500 text-black font-semibold" onClick={() => { const api = (window as any).api; if (api?.openUrl) void api.openUrl(row.url); else if (api?.openExternal) void api.openExternal(row.url); else window.open(row.url, '_blank', 'noopener,noreferrer'); }}>Open URL</button> : <span className="text-red-300">Missing URL</span>}</td>
-                      </tr>
-                    ))}
-                    {!partsPurchaseQueue.length ? <tr><td colSpan={8} className="py-6 text-center text-zinc-500">No parts need purchasing in this report range.</td></tr> : null}
-                  </tbody>
-                </table>
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span><span className="text-zinc-500">Items</span> <strong>{partsPurchaseTotals.count}</strong></span>
+                <span><span className="text-zinc-500">Known cost</span> <strong>{formatCurrency(partsPurchaseTotals.cost)}</strong></span>
+                {partsPurchaseTotals.paymentWarnings ? <span className="text-amber-300">{partsPurchaseTotals.paymentWarnings} payment warning{partsPurchaseTotals.paymentWarnings === 1 ? '' : 's'}</span> : null}
+                <button type="button" className="rounded bg-[#BC13FE] px-4 py-2 font-semibold text-white" onClick={() => setShowCart(true)}>Open Cart</button>
               </div>
             </section>
+
+            {showCart ? (
+              <div className="fixed inset-0 z-[100100] flex items-start justify-center overflow-x-hidden overflow-y-auto bg-black/80 p-2 sm:p-4" onClick={() => setShowCart(false)}>
+                <section className="my-2 min-w-0 w-full max-w-6xl rounded-lg border border-[#BC13FE]/50 bg-zinc-950 shadow-[0_24px_90px_rgba(0,0,0,0.75)] sm:my-6" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Purchasing cart">
+                  <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-950 p-4">
+                    <div>
+                      <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
+                      <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Cost is the complete shop checkout amount entered on each line.</p>
+                    </div>
+                    <div className="flex items-center gap-2"><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
+                  </header>
+
+                  <div className="grid grid-cols-2 gap-2 border-b border-zinc-800 p-4 sm:grid-cols-5">
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">To purchase</div><div className="text-xl font-semibold">{partsPurchaseTotals.count}</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Checkout total</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.checkoutCost)}</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Client charges</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.charged)}</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Known margin</div><div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div></div>
+                    <div className="col-span-2 rounded border border-zinc-800 bg-zinc-900 p-2 sm:col-span-1"><div className="text-[11px] text-zinc-500">Warnings</div><div className={`text-xl font-semibold ${partsPurchaseTotals.missingCost || partsPurchaseTotals.paymentWarnings ? 'text-amber-300' : 'text-[#39FF14]'}`}>{partsPurchaseTotals.missingCost + partsPurchaseTotals.paymentWarnings}</div></div>
+                  </div>
+
+                  <div className="space-y-2 p-2 sm:p-3">
+                    {purchaseUpdateMessage ? <div className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">{purchaseUpdateMessage}</div> : null}
+                    {purchaseGroups.map(group => {
+                      const selectedGroupRows = group.rows.filter(row => selectedPurchaseRows.has(row.key));
+                      const allSelected = selectedGroupRows.length === group.rows.length && group.rows.length > 0;
+                      const selectionActive = selectingDistributors.has(group.distributor);
+                      const additionalCost = Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0);
+                      return (
+                      <details key={group.distributor} className="group overflow-hidden rounded border border-zinc-800 bg-zinc-900/60">
+                        <summary className="cursor-pointer list-none bg-zinc-900 px-3 py-2">
+                          <div className="flex min-w-0 items-center justify-between gap-2">
+                            <div className="min-w-0"><h3 className="truncate text-sm font-semibold leading-tight text-white">{group.distributor}</h3><div className="text-[11px] leading-tight text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} | {formatCurrency(group.knownCost + additionalCost)}</div></div>
+                            <span className="shrink-0 text-[11px] text-zinc-400"><span className="group-open:hidden">Expand</span><span className="hidden group-open:inline">Collapse</span></span>
+                          </div>
+                        </summary>
+                        <div className="flex flex-wrap items-center gap-2 border-y border-zinc-800 bg-zinc-950/60 p-2">
+                          <button type="button" className={`rounded border px-3 py-2 text-xs font-semibold ${selectionActive ? 'border-[#BC13FE] bg-[#BC13FE]/20 text-white' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => setSelectingDistributors(current => { const next = new Set(current); if (next.has(group.distributor)) { next.delete(group.distributor); setSelectedPurchaseRows(selected => { const cleaned = new Set(selected); group.rows.forEach(row => cleaned.delete(row.key)); return cleaned; }); } else next.add(group.distributor); return next; })}>{selectionActive ? 'Cancel Select' : 'Select'}</button>
+                          {selectionActive ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={allSelected} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); group.rows.forEach(row => event.target.checked ? next.add(row.key) : next.delete(row.key)); return next; })} />Select all</label> : null}
+                          {selectionActive ? <button type="button" disabled={!selectedGroupRows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(selectedGroupRows)}>Open Selected</button> : null}
+                          {selectionActive ? <button type="button" disabled={!selectedGroupRows.length || purchaseUpdateBusy} className="rounded border border-red-500/70 bg-red-950/50 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40" onClick={() => setDeleteCandidateRows(selectedGroupRows)}>Delete Selected</button> : null}
+                          <button type="button" disabled={!group.rows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(group.rows)}>View Cart</button>
+                          <button type="button" disabled={!group.checkoutUrl} className="rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-black disabled:opacity-40" onClick={() => openPurchaseUrl(group.checkoutUrl)}>{group.checkoutUrl ? group.checkoutLabel : 'Cart URL unavailable'}</button>
+                        </div>
+                        <div className="divide-y divide-zinc-800">
+                          {group.rows.map(row => (
+                            <div key={row.key} className={`grid gap-2 p-2 text-sm md:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] md:grid-cols-[24px_minmax(180px,1.6fr)_100px_100px_130px_86px]' : 'grid-cols-[minmax(0,1fr)] md:grid-cols-[minmax(180px,1.6fr)_100px_100px_130px_86px]'}`}>
+                              {selectionActive ? <input type="checkbox" checked={selectedPurchaseRows.has(row.key)} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Select ${row.title}`} /> : null}
+                              <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div><label className="mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="mt-2 grid grid-cols-2 gap-2 text-xs md:hidden"><div><span className="text-zinc-500">Cost</span><div>{row.hasCost ? formatCurrency(row.totalCost) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`mt-2 inline-block rounded border px-2 py-1 text-[11px] md:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
+                              <div className="hidden text-right text-sm md:block"><div className="text-[10px] text-zinc-500">Full cost</div>{row.hasCost ? formatCurrency(row.totalCost) : <span className="text-red-300">Missing</span>}</div>
+                              <div className="hidden text-right text-sm md:block"><div className="text-[10px] text-zinc-500">Charged</div>{formatCurrency(row.totalCharge)}</div>
+                              <div className={`hidden rounded border px-2 py-1 text-center text-[11px] md:block ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div>
+                              <button type="button" disabled={!row.orderUrl} className={`${selectionActive ? 'col-start-2' : 'col-start-1'} rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs disabled:text-zinc-600 md:col-start-auto`} onClick={() => openPurchaseUrl(row.orderUrl)}>{row.orderUrl ? 'Order URL' : 'URL needed'}</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid gap-2 border-t border-zinc-800 bg-zinc-950/70 p-2 sm:grid-cols-[minmax(190px,280px)_1fr] sm:items-end">
+                          <label className="text-xs text-zinc-300">Additional Costs
+                            <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-2"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-2 outline-none" placeholder="Shipping, tax, checkout fees" value={additionalCostsByDistributor[group.distributor] || ''} onChange={event => setAdditionalCostsByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></div>
+                          </label>
+                          <div className="text-sm sm:text-right"><div><span className="text-zinc-500">Items</span> {formatCurrency(group.knownCost)}</div><div><span className="text-zinc-500">Additional</span> {formatCurrency(additionalCost)}</div><div className="mt-1 text-base font-semibold"><span className="text-zinc-400">Distributor total</span> {formatCurrency(group.knownCost + additionalCost)}</div></div>
+                        </div>
+                      </details>
+                    )})}
+                    {!purchaseGroups.length ? <div className="rounded border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">Nothing currently needs purchasing.</div> : null}
+                  </div>
+
+                  <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-950 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm"><span className="text-zinc-500">Total checkout cost</span> <strong className="ml-2 text-lg">{formatCurrency(partsPurchaseTotals.checkoutCost)}</strong>{partsPurchaseTotals.additionalCosts ? <span className="ml-2 text-zinc-400">includes {formatCurrency(partsPurchaseTotals.additionalCosts)} additional</span> : null}{partsPurchaseTotals.missingCost ? <span className="ml-2 text-red-300">+ {partsPurchaseTotals.missingCost} missing cost</span> : null}</div>
+                    <button type="button" disabled={!purchaseGroups.length || purchaseUpdateBusy} onClick={() => { setVerifiedDistributors(new Set()); setShowCheckoutVerification(true); }} className="rounded bg-[#39FF14] px-5 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : 'Checkout'}</button>
+                  </footer>
+                </section>
+              </div>
+            ) : null}
+
+            {deleteCandidateRows ? (
+              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => setDeleteCandidateRows(null)}>
+                <section className="w-full max-w-lg rounded-lg border border-red-500/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-label="Confirm cart item deletion">
+                  <header><h3 className="text-xl font-semibold text-red-300">Remove selected cart items?</h3><p className="mt-2 text-sm text-zinc-300">This removes {deleteCandidateRows.length} selected purchasing task{deleteCandidateRows.length === 1 ? '' : 's'} from the EOD Cart.</p></header>
+                  {deleteCandidateRows.some(row => row.sourceType === 'workOrder' || row.sourceType === 'sale') ? <div className="mt-4 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-sm text-amber-100"><strong className="block text-amber-300">Linked transaction warning</strong>Work-order and sale items will remain attached to their transaction. They will be marked <strong>not ordered</strong>, delivery and tracking fields will be cleared, and the transaction will show that payment may already have been taken. They can be restored to the EOD Cart from the item warning.</div> : null}
+                  <div className="mt-4 max-h-48 space-y-1 overflow-auto rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">{deleteCandidateRows.map(row => <div key={row.key} className="flex justify-between gap-3"><span className="truncate">{row.title}</span><span className="shrink-0 text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Restock' : 'Manual'}</span></div>)}</div>
+                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setDeleteCandidateRows(null)}>Cancel</button><button type="button" disabled={purchaseUpdateBusy} className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void deleteSelectedPurchaseRows(deleteCandidateRows)}>{purchaseUpdateBusy ? 'Deleting...' : 'Delete Selected'}</button></footer>
+                </section>
+              </div>
+            ) : null}
+
+            {showAddPurchase ? (
+              <div className="fixed inset-0 z-[100200] flex items-center justify-center overflow-y-auto bg-black/85 p-3" onClick={() => setShowAddPurchase(false)}>
+                <section className="w-full max-w-xl rounded-lg border border-[#39FF14]/50 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.8)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add cart item">
+                  <header className="mb-4 flex items-center justify-between gap-3"><div><h3 className="text-xl font-semibold text-[#39FF14]">Add Part / Product</h3><p className="text-xs text-zinc-400">Paste a supplier URL to fill available details, then verify every field.</p></div><button type="button" className="h-9 w-9 rounded border border-zinc-700" onClick={() => setShowAddPurchase(false)} aria-label="Close add purchase">x</button></header>
+                  <div className="mb-3 grid grid-cols-2 rounded border border-zinc-700 p-1">
+                    {(['Part', 'Product'] as const).map(itemType => <button key={itemType} type="button" className={`rounded px-3 py-2 text-sm font-semibold ${purchaseDraft.itemType === itemType ? (itemType === 'Part' ? 'bg-[#39FF14] text-black' : 'bg-sky-500 text-black') : 'text-zinc-400'}`} onClick={() => setPurchaseDraft((current: any) => ({ ...current, itemType }))}>{itemType}</button>)}
+                  </div>
+                  <label className="block text-xs text-zinc-300">Order URL<input type="url" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" placeholder="https://supplier.com/item" value={purchaseDraft.orderUrl} onChange={event => setPurchaseDraft((current: any) => ({ ...current, orderUrl: event.target.value }))} /></label>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs text-zinc-300 sm:col-span-2">Part / Product Title<input className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={purchaseDraft.title} onChange={event => setPurchaseDraft((current: any) => ({ ...current, title: event.target.value }))} /></label>
+                    <label className="text-xs text-zinc-300">Distributor<input list="eod-purchase-vendors" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={purchaseDraft.distributor} onChange={event => setPurchaseDraft((current: any) => ({ ...current, distributor: event.target.value }))} /><datalist id="eod-purchase-vendors">{vendors.filter((vendor: any) => String(vendor?.inventoryMode || 'Product') === purchaseDraft.itemType).map((vendor: any) => <option key={`${vendor.id}-${vendor.name}`} value={vendor.name} />)}</datalist></label>
+                    <label className="text-xs text-zinc-300">Quantity<input type="number" min="1" step="1" inputMode="numeric" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={purchaseDraft.quantity} onChange={event => setPurchaseDraft((current: any) => ({ ...current, quantity: event.target.value }))} /></label>
+                    <label className="text-xs text-zinc-300 sm:col-span-2">Supplier Unit Cost<input type="number" min="0" step="0.01" inputMode="decimal" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={purchaseDraft.unitCost} onChange={event => setPurchaseDraft((current: any) => ({ ...current, unitCost: event.target.value }))} /></label>
+                  </div>
+                  <div className="mt-3 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Estimated line cost</span><strong className="float-right">{formatCurrency((Number(purchaseDraft.unitCost) || 0) * Math.max(1, Number(purchaseDraft.quantity) || 1))}</strong></div>
+                  <footer className="mt-4 flex items-center justify-between gap-3"><span className="text-xs text-zinc-500">{purchaseDraftBusy ? 'Reading supplier information...' : 'Scraped details remain editable.'}</span><button type="button" disabled={purchaseDraftBusy} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-40" onClick={() => void addManualPurchase()}>Add to Cart</button></footer>
+                </section>
+              </div>
+            ) : null}
+
+            {showCheckoutVerification ? (
+              <div className="fixed inset-0 z-[100250] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => setShowCheckoutVerification(false)}>
+                <section className="w-full max-w-lg rounded-lg border border-amber-500/60 bg-zinc-950 p-4" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Verify distributor checkout">
+                  <header className="mb-4"><h3 className="text-xl font-semibold text-amber-300">Verify Supplier Checkout</h3><p className="mt-1 text-xs text-zinc-400">Check only distributors whose website checkout is complete and payment has actually been submitted.</p></header>
+                  <div className="space-y-2">
+                    {purchaseGroups.map(group => {
+                      const additional = Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0);
+                      return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'}</span></span></span><strong>{formatCurrency(group.knownCost + additional)}</strong></label>;
+                    })}
+                  </div>
+                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + group.knownCost + Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0), 0))}</strong></div>
+                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowCheckoutVerification(false)}>Back</button><button type="button" disabled={!verifiedDistributors.size || purchaseUpdateBusy} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40" onClick={() => { const rows = purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).flatMap(group => group.rows); setShowCheckoutVerification(false); void markSelectedPurchasesOrdered(rows); }}>Checkout Verified Carts</button></footer>
+                </section>
+              </div>
+            ) : null}
 
             {showEmailSettings ? (
               <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onClick={() => setShowEmailSettings(false)}>
@@ -2256,6 +2679,7 @@ const EODWindow: React.FC = () => {
                   <div className="flex justify-end gap-2">
                     <button type="button" className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" onClick={() => setShowEmailSettings(false)}>Cancel</button>
                     <button type="button" className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-black" onClick={() => { setSavedSettings(s => ({ ...s, recipients: draftSettings.recipients, subject: draftSettings.subject })); setShowEmailSettings(false); }}>Save Email Settings</button>
+                    <button type="button" disabled={sending} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { setSavedSettings(s => ({ ...s, recipients: draftSettings.recipients, subject: draftSettings.subject })); void handleSend(); }}>{sending ? 'Sending...' : 'Send Report'}</button>
                   </div>
                 </div>
               </div>
@@ -2694,9 +3118,11 @@ const EODWindow: React.FC = () => {
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Card</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cardTotal)}</div></div>
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Cash</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.cashTotal)}</div></div>
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts charged</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.partsSold)}</div></div>
-                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts cost</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.partsCost)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts COGS</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.partsCost)}</div></div>
                                 <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Products sold</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.productsSold)}</div></div>
-                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Product cost</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.productsCost)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Product COGS</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.productsCost)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Parts supplier spend</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.supplierSpendParts)}</div></div>
+                                <div className="flex items-center justify-between gap-3"><div className="text-zinc-400">Products supplier spend</div><div className="tabular-nums">{formatCurrency(dailyBatchSummary.supplierSpendProducts)}</div></div>
                               </>
                             ) : null}
                             {draftSettings.includeCounts ? (

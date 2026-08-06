@@ -28,6 +28,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   vendors: 'vendors',
   invoices: 'invoices',
   payments: 'payments',
+  purchaseOrders: 'purchase_orders',
   timeEntries: 'time_entries',
   quotes: 'quotes',
   settings: 'shop_settings',
@@ -45,6 +46,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
   products: 'products:changed',
+  purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
   timeEntries: 'timeEntries:changed',
@@ -405,6 +407,8 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       trackStock: !!row.track_stock,
       stockCount: cloudNumber(row.stock_count),
       lowStockThreshold: cloudNumber(row.low_stock_threshold),
+      purchaseRestockKeys: Array.isArray(row.purchase_restock_keys) ? row.purchase_restock_keys.map(String) : [],
+      inventoryConsumptionKeys: Array.isArray(row.inventory_consumption_keys) ? row.inventory_consumption_keys.map(String) : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -428,6 +432,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       type: row.type || '',
       model: row.model || '',
       trackStock: !!row.track_stock,
+      inventoryProductId: cloudNumber(row.inventory_product_id),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -725,6 +730,8 @@ function toCloudRow(key: string, item: any): any | null {
       track_stock: toCloudBool(item.trackStock),
       stock_count: toCloudIntId(item.stockCount) || 0,
       low_stock_threshold: toCloudIntId(item.lowStockThreshold) || 0,
+      purchase_restock_keys: Array.isArray(item.purchaseRestockKeys) ? item.purchaseRestockKeys.map((value: any) => String(value)).filter(Boolean).slice(-100) : [],
+      inventory_consumption_keys: Array.isArray(item.inventoryConsumptionKeys) ? item.inventoryConsumptionKeys.map((value: any) => String(value)).filter(Boolean).slice(-250) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -750,6 +757,7 @@ function toCloudRow(key: string, item: any): any | null {
       type: toCloudString(item.type),
       model: toCloudString(item.model),
       track_stock: toCloudBool(item.trackStock),
+      inventory_product_id: toCloudIntId(item.inventoryProductId),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -829,7 +837,7 @@ function toCloudRow(key: string, item: any): any | null {
       logged_at: toCloudIso(item.loggedAt || item.createdAt) || new Date().toISOString(),
     };
   }
-  if (key === 'invoices' || key === 'payments' || key === 'repairItems') {
+  if (key === 'invoices' || key === 'payments' || key === 'repairItems' || key === 'purchaseOrders') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
     return {
@@ -1293,7 +1301,7 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
       onConflict: cloudConflictForKey(key),
       ignoreDuplicates: false,
     }).select('*').maybeSingle();
-    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.part_category;
@@ -1307,14 +1315,17 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
       delete fallbackRow.reorder_url_template;
       delete fallbackRow.associated_devices;
       delete fallbackRow.markup_pct;
+      delete fallbackRow.purchase_restock_keys;
+      delete fallbackRow.inventory_consumption_keys;
       res = await supabase.from(table).upsert(fallbackRow, {
         onConflict: cloudConflictForKey(key),
         ignoreDuplicates: false,
       }).select('*').maybeSingle();
     }
-    if (res.error && key === 'repairCategories' && /markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.markup_pct;
+      delete fallbackRow.inventory_product_id;
       res = await supabase.from(table).upsert(fallbackRow, {
         onConflict: cloudConflictForKey(key),
         ignoreDuplicates: false,
@@ -1344,7 +1355,7 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     const row = toCloudRow(key, candidate);
     if (!row) throw new Error(`Cloud ${key} insert skipped: unsupported row.`);
     let res = await supabase.from(table).insert(row).select('*').single();
-    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.device_model;
@@ -1358,11 +1369,14 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
       delete fallbackRow.reorder_url_template;
       delete fallbackRow.associated_devices;
       delete fallbackRow.markup_pct;
+      delete fallbackRow.purchase_restock_keys;
+      delete fallbackRow.inventory_consumption_keys;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }
-    if (res.error && key === 'repairCategories' && /markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.markup_pct;
+      delete fallbackRow.inventory_product_id;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }
     if (!res.error) {
@@ -1748,6 +1762,7 @@ function makeApi() {
     onTechniciansChanged: 'technicians:changed',
     onProductCategoriesChanged: 'productCategories:changed',
     onProductsChanged: 'products:changed',
+    onPurchaseOrdersChanged: 'purchaseOrders:changed',
     onSalesChanged: 'sales:changed',
     onQuotesChanged: 'quotes:changed',
     onPartSourcesChanged: 'partSources:changed',

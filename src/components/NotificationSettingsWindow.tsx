@@ -83,6 +83,26 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
     void load();
   }, []);
 
+  useEffect(() => {
+    const refreshPermission = () => {
+      setRequestingPermission(false);
+      void load();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshPermission();
+    };
+    window.addEventListener('gbpos:android-notification-permission-result', refreshPermission);
+    window.addEventListener('gbpos:notification-permission-changed', refreshPermission);
+    window.addEventListener('focus', refreshPermission);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('gbpos:android-notification-permission-result', refreshPermission);
+      window.removeEventListener('gbpos:notification-permission-changed', refreshPermission);
+      window.removeEventListener('focus', refreshPermission);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
+
   const updateDevice = (patch: Partial<DeviceNotificationSettings>) => {
     setDeviceSettings(current => current ? { ...current, ...patch } : current);
   };

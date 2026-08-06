@@ -64,6 +64,7 @@ const TABLES = [
   'intakeSources',
   'suppliers',
   'vendors',
+  'purchaseOrders',
   'invoices',
   'payments',
   'settings',
@@ -122,6 +123,7 @@ async function main() {
   await importSimpleNamed(shopId, 'intake_sources', collections.intakeSources, mapNamedPayload);
   await importPayloadTable(shopId, 'suppliers', collections.suppliers, mapNamedPayload);
   await importPayloadTable(shopId, 'vendors', collections.vendors, mapNamedPayload);
+  await importPayloadTable(shopId, 'purchase_orders', collections.purchaseOrders, mapPayloadOnly);
   await importProducts(shopId);
   await importRepairCategories(shopId);
   await importPayloadTable(shopId, 'repair_items', collections.repairItems, mapPayloadOnly);

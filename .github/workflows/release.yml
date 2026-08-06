@@ -72,6 +72,9 @@ jobs:
           npm run test:sale-product-picker
           npm run test:quote-sales-prompt
           npm run test:client-update-api
+          npm run test:mobile-long-press
+          npm run test:order-accounting
+          npm run test:inventory-consumption
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

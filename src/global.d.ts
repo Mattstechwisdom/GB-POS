@@ -152,6 +152,7 @@ declare global {
   onTimeEntriesChanged: (cb: () => void) => () => void;
   onProductCategoriesChanged: (cb: () => void) => () => void;
   onProductsChanged: (cb: () => void) => () => void;
+  onPurchaseOrdersChanged: (cb: () => void) => () => void;
   // window controls
   getFullScreen: () => Promise<boolean>;
   setFullScreen: (flag: boolean) => Promise<any>;

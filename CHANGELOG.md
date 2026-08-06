@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.38 (2026-08-05)
+- End of Day: reorganizes the mobile header with prominent Cart and EOD Report Email actions, a full-width Batch Out action, and report sending contained inside the email window.
+- Purchasing Cart: groups pending parts and products into compact expandable distributor carts with quantities, order links, additional checkout costs, payment warnings, and per-distributor totals.
+- Purchasing Cart: adds URL-assisted and manual Part/Product entries, inventory restock entries, distributor memory, and a two-step verified checkout that records only carts actually paid.
+- Purchasing Cart: adds distributor-level Select mode and confirmed deletion; linked work-order/sale items remain intact with a persistent paid-but-not-ordered warning and a Restore to EOD Cart action.
+- Inventory: adds quantity-aware Add to Cart restocking and idempotent stock consumption so in-stock sale and work-order items deduct once without appearing as new supplier purchases.
+- Reporting: separates transaction COGS from verified supplier cash spend, includes supplier purchase detail in period and month-end exports, and prevents supplier cost from being subtracted from profit twice.
+- Cloud and backups: syncs supplier purchases, stock-consumption keys, inventory restock keys, and repair-to-inventory links through Supabase and includes purchasing records in protected backups.
+- Mobile: adds touch hold behavior for desktop-style context actions without changing normal tap behavior.
+- Notifications / Android: uses Capacitor Local Notifications as the primary Android permission handshake, retains the app bridge as a bounded fallback, and reveals notification choices only after the operating system grants access.
+- Instructions: expands the bundled operating manual with the complete in-stock, order-required, manual purchasing, restock, verified checkout, and reporting workflows.
+
 ## v0.5.37 (2026-08-04)
 - Notifications / Android: opening Notifications or its Settings page no longer starts a hidden permission request; Android is contacted only when the user explicitly selects Allow notifications.
 - Notifications / Android: uses the official Capacitor Local Notifications permission API first, bounds every permission check, and retains the custom native bridge only as a fallback.

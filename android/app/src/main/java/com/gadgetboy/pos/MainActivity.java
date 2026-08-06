@@ -37,6 +37,7 @@ public class MainActivity extends BridgeActivity {
     private static final String NOTIFICATION_PERMISSION_REQUESTED = "post_notifications_requested";
     private File pendingUpdateApk;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
+    private volatile boolean notificationPermissionRequestInFlight = false;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -45,6 +46,7 @@ public class MainActivity extends BridgeActivity {
         notificationPermissionLauncher = getBridge().registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
             granted -> {
+                notificationPermissionRequestInFlight = false;
                 rememberNotificationPermissionRequested();
                 dispatchNotificationPermissionResult(granted ? "granted" : "denied");
             }
@@ -68,6 +70,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String getNotificationPermissionStatus() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted";
+            if (notificationPermissionRequestInFlight) return "prompt";
             boolean granted = ContextCompat.checkSelfPermission(
                 MainActivity.this,
                 Manifest.permission.POST_NOTIFICATIONS
@@ -87,19 +90,21 @@ public class MainActivity extends BridgeActivity {
                 dispatchNotificationPermissionResult("granted");
                 return "granted";
             }
-            if ("denied".equals(current)) {
-                dispatchNotificationPermissionResult("denied");
-                return "denied";
-            }
+            notificationPermissionRequestInFlight = true;
             MainActivity.this.runOnUiThread(() -> {
-                if (notificationPermissionLauncher != null) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
-                } else {
-                    ActivityCompat.requestPermissions(
-                        MainActivity.this,
-                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        NOTIFICATION_PERMISSION_REQUEST_CODE
-                    );
+                try {
+                    if (notificationPermissionLauncher != null) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                    } else {
+                        ActivityCompat.requestPermissions(
+                            MainActivity.this,
+                            new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                            NOTIFICATION_PERMISSION_REQUEST_CODE
+                        );
+                    }
+                } catch (Exception ignored) {
+                    notificationPermissionRequestInFlight = false;
+                    dispatchNotificationPermissionResult("denied");
                 }
             });
             return "requested";
@@ -276,6 +281,7 @@ public class MainActivity extends BridgeActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST_CODE) return;
+        notificationPermissionRequestInFlight = false;
         rememberNotificationPermissionRequested();
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
         dispatchNotificationPermissionResult(granted ? "granted" : "denied");
