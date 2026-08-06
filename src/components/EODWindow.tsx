@@ -279,6 +279,19 @@ function resolveRange(range: RangeKey, customFrom: string, customTo: string) {
   return { start, end };
 }
 
+function resolveAccountingDayRange(batchOutTime?: string, now = new Date()) {
+  const [hourText = '21', minuteText = '00'] = String(batchOutTime || '21:00').split(':');
+  const hour = Math.min(23, Math.max(0, Number(hourText) || 0));
+  const minute = Math.min(59, Math.max(0, Number(minuteText) || 0));
+  const nextCutoff = new Date(now);
+  nextCutoff.setHours(hour, minute, 0, 0);
+  if (now >= nextCutoff) nextCutoff.setDate(nextCutoff.getDate() + 1);
+  const start = new Date(nextCutoff);
+  start.setDate(start.getDate() - 1);
+  const end = new Date(nextCutoff.getTime() - 1);
+  return { start, end };
+}
+
 function resolveCommissionRange(range: CommissionRangeKey, customFrom: string, customTo: string) {
   const now = new Date();
   let start = new Date();
@@ -763,6 +776,12 @@ const EODWindow: React.FC = () => {
   const [viewMode, setViewMode] = useState<'reports' | 'trends'>('reports');
   const [showCommissionPanel, setShowCommissionPanel] = useState(false);
   const [showEmailSettings, setShowEmailSettings] = useState(false);
+  const [showBatchSettings, setShowBatchSettings] = useState(false);
+  const [batchSettingsDraft, setBatchSettingsDraft] = useState(() => ({
+    schedule: defaultSettings.schedule,
+    sendTime: defaultSettings.sendTime,
+    batchOutTime: defaultSettings.batchOutTime || '21:00',
+  }));
   const [commissionRange, setCommissionRange] = useState<CommissionRangeKey>('currentMonth');
   const [commissionCustomFrom, setCommissionCustomFrom] = useState('');
   const [commissionCustomTo, setCommissionCustomTo] = useState('');
@@ -778,10 +797,17 @@ const EODWindow: React.FC = () => {
   }, [showCart]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const refreshClock = async () => {
       const nextDayKey = new Date().toDateString();
       setReportDayKey(current => current === nextDayKey ? current : nextDayKey);
-    }, 30_000);
+      try {
+        const info = await (window as any).api?.getBatchOutInfo?.();
+        if (info) setBatchInfo(info);
+      } catch {
+        // The next scheduler tick or window reopen will retry.
+      }
+    };
+    const timer = window.setInterval(() => { void refreshClock(); }, 30_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -934,8 +960,10 @@ const EODWindow: React.FC = () => {
   }, { enabled: settingsReady, debounceMs: 1000, equals: Object.is });
 
   const { start, end } = useMemo(
-    () => resolveRange(range, customFrom, customTo),
-    [range, customFrom, customTo, reportDayKey],
+    () => range === 'today'
+      ? resolveAccountingDayRange(savedSettings.batchOutTime)
+      : resolveRange(range, customFrom, customTo),
+    [range, customFrom, customTo, reportDayKey, savedSettings.batchOutTime],
   );
   const rangeKey = `${start.getTime()}-${end.getTime()}`;
   const { start: commissionStart, end: commissionEnd } = useMemo(
@@ -2266,6 +2294,29 @@ const EODWindow: React.FC = () => {
     setDraftSettings(s => ({ ...s, ...draftReportPrefs }));
   };
 
+  const openEmailSettings = () => {
+    setDraftSettings(current => ({
+      ...current,
+      recipients: savedSettings.recipients,
+      subject: savedSettings.subject || 'Daily batch report',
+    }));
+    setShowEmailSettings(true);
+  };
+
+  const openBatchSettings = () => {
+    setBatchSettingsDraft({
+      schedule: savedSettings.schedule,
+      sendTime: savedSettings.sendTime || '18:00',
+      batchOutTime: savedSettings.batchOutTime || '21:00',
+    });
+    setShowBatchSettings(true);
+  };
+
+  const saveBatchSettings = () => {
+    setSavedSettings(current => ({ ...current, ...batchSettingsDraft }));
+    setShowBatchSettings(false);
+  };
+
   const filteredLists = useMemo(() => {
     const workOrderRows = unified.filter(row => row.kind === 'work');
     const salesRows = unified.filter(row => row.kind === 'sale');
@@ -2562,7 +2613,7 @@ const EODWindow: React.FC = () => {
               <h1 className="text-3xl font-bold text-[#39FF14]">{viewMode === 'trends' ? 'Trends & Insights' : 'End of Day Report'}</h1>
               <p className="text-zinc-400 text-sm max-w-2xl">{viewMode === 'trends'
                 ? 'Review monthly volume, busy days, and popular devices/repairs at a glance.'
-                : 'Today only: review the shop activity from local midnight through close. Historical and monthly analysis remains in Reporting.'}
+                : `Current business day: ${formatDate(start)} through ${formatDate(end)}. Historical and monthly analysis remains in Reporting.`}
               </p>
             </div>
           </div>
@@ -2575,7 +2626,7 @@ const EODWindow: React.FC = () => {
                 >Cart ({partsPurchaseTotals.count})</button>
                 <button
                   className="min-h-11 px-3 py-2 text-sm font-semibold bg-amber-500 text-black border border-amber-400 rounded hover:brightness-110"
-                  onClick={() => setShowEmailSettings(true)}
+                  onClick={openEmailSettings}
                 >EOD Report Email</button>
                 <button
                   className="col-span-2 min-h-10 px-3 py-2 text-sm font-semibold bg-[#39FF14] text-black border border-[#39FF14] rounded hover:brightness-110"
@@ -2596,7 +2647,7 @@ const EODWindow: React.FC = () => {
                   <span className="text-xs text-zinc-500">{loadingData ? 'Loading…' : rangeLabel(range, start, end)}</span>
                 </div>
                 <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
-                  This daily snapshot refreshes automatically after local midnight. It does not delete or alter the transaction history used by Reporting.
+                  This daily snapshot rolls forward at the saved Batch Out time. It does not delete or alter the transaction history used by Reporting.
                 </div>
               </div>
 
@@ -2910,24 +2961,85 @@ const EODWindow: React.FC = () => {
             ) : null}
 
             {showEmailSettings ? (
-              <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onClick={() => setShowEmailSettings(false)}>
-                <div className="w-full max-w-lg rounded-lg border border-amber-500/50 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.65)]" onClick={e => e.stopPropagation()}>
+              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/80 p-3 sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowEmailSettings(false); }}>
+                <section className="gb-eod-email-dialog pointer-events-auto my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-amber-500/50 bg-zinc-950 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.75)]" role="dialog" aria-modal="true" aria-label="EOD report email settings" onMouseDown={event => event.stopPropagation()}>
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div><h3 className="text-xl font-semibold text-amber-300">EOD Report Email</h3><p className="text-xs text-zinc-400 mt-1">Separate multiple recipients with commas. These settings sync with the report configuration.</p></div>
-                    <button type="button" className="text-zinc-400 hover:text-white" onClick={() => setShowEmailSettings(false)}>x</button>
+                    <button type="button" className="rounded border border-zinc-700 px-2.5 py-1.5 text-zinc-400 hover:text-white" aria-label="Close email settings" onClick={() => setShowEmailSettings(false)}>x</button>
                   </div>
                   <label className="block text-sm text-zinc-300 mb-3">Recipients
-                    <textarea className="mt-1 min-h-24 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" placeholder="tech@example.com, owner@example.com" value={draftSettings.recipients} onChange={e => setDraftSettings(s => ({ ...s, recipients: e.target.value }))} />
+                    <textarea rows={3} autoComplete="email" inputMode="email" className="gb-eod-email-input mt-1 min-h-24 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white outline-none focus:border-amber-400" placeholder="tech@example.com, owner@example.com" value={draftSettings.recipients} onChange={e => setDraftSettings(s => ({ ...s, recipients: e.target.value }))} />
                   </label>
                   <label className="block text-sm text-zinc-300 mb-4">Subject
-                    <input className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" value={draftSettings.subject || ''} onChange={e => setDraftSettings(s => ({ ...s, subject: e.target.value }))} />
+                    <input type="text" autoComplete="off" className="gb-eod-email-input mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white outline-none focus:border-amber-400" value={draftSettings.subject || ''} onChange={e => setDraftSettings(s => ({ ...s, subject: e.target.value }))} />
                   </label>
-                  <div className="flex justify-end gap-2">
+
+                  <button type="button" className="mb-3 flex w-full items-center justify-between rounded border border-[#BC13FE]/60 bg-[#BC13FE]/10 px-3 py-3 text-left text-sm font-semibold text-purple-100 hover:border-[#d45cff]" onClick={openBatchSettings}>
+                    <span><span className="block">Daily Batch Settings</span><span className="mt-0.5 block text-xs font-normal text-zinc-400">Accounting day closes at {savedSettings.batchOutTime || '21:00'} · Email {savedSettings.schedule === 'manual' ? 'manual' : `at ${savedSettings.sendTime || '18:00'}`}</span></span>
+                    <span aria-hidden="true">›</span>
+                  </button>
+
+                  <details className="mb-4 rounded border border-zinc-800 bg-zinc-900/70">
+                    <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-zinc-300">Report Contents</summary>
+                    <div className="grid gap-2 border-t border-zinc-800 p-3 text-sm sm:grid-cols-2">
+                      {([
+                        ['includePayments', 'Payment totals'],
+                        ['includeCounts', 'Check-ins and closed tickets'],
+                        ['includeWorkOrders', 'Work order summary'],
+                        ['includeSales', 'Sales summary'],
+                        ['includeOutstanding', 'Outstanding balances'],
+                        ['includeBatchInfo', 'Batch timestamps'],
+                        ['emailIncludeWorkOrdersDetails', 'Work order details'],
+                        ['emailIncludeSalesDetails', 'Sales details'],
+                        ['emailIncludeOutstandingDetails', 'Outstanding details'],
+                        ['emailIncludeOpenTickets', 'Open tickets'],
+                        ['emailIncludeTechnicianSummary', 'Technician summary'],
+                      ] as Array<[keyof EodSettings, string]>).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 rounded px-1 py-1 text-zinc-300">
+                          <input type="checkbox" checked={Boolean(draftSettings[key])} onChange={event => setDraftSettings(current => ({ ...current, [key]: event.target.checked }))} />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+
+                  <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
                     <button type="button" className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" onClick={() => setShowEmailSettings(false)}>Cancel</button>
-                    <button type="button" className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-black" onClick={() => { setSavedSettings(s => ({ ...s, recipients: draftSettings.recipients, subject: draftSettings.subject })); setShowEmailSettings(false); }}>Save Email Settings</button>
-                    <button type="button" disabled={sending} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { setSavedSettings(s => ({ ...s, recipients: draftSettings.recipients, subject: draftSettings.subject })); void handleSend(); }}>{sending ? 'Sending...' : 'Send Report'}</button>
+                    <button type="button" className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-black" onClick={() => { saveDraftAsDefault(); setShowEmailSettings(false); }}>Save Email Settings</button>
+                    <button type="button" disabled={sending} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { saveDraftAsDefault(); void handleSend(); }}>{sending ? 'Sending...' : 'Send Report'}</button>
                   </div>
-                </div>
+                </section>
+              </div>
+            ) : null}
+
+            {showEmailSettings && showBatchSettings ? (
+              <div className="fixed inset-0 z-[100400] flex items-center justify-center overflow-y-auto bg-black/75 p-3 sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowBatchSettings(false); }}>
+                <section className="gb-eod-batch-dialog pointer-events-auto my-auto w-full max-w-md rounded-lg border border-[#BC13FE]/70 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.8)]" role="dialog" aria-modal="true" aria-label="Daily batch settings" onMouseDown={event => event.stopPropagation()}>
+                  <header className="mb-4 flex items-start justify-between gap-3">
+                    <div><h3 className="text-xl font-semibold text-purple-200">Daily Batch Settings</h3><p className="mt-1 text-xs text-zinc-400">Batch Out closes the current accounting day and starts the next one at this shop-local time.</p></div>
+                    <button type="button" className="rounded border border-zinc-700 px-2.5 py-1.5 text-zinc-400 hover:text-white" aria-label="Close batch settings" onClick={() => setShowBatchSettings(false)}>x</button>
+                  </header>
+                  <div className="space-y-3">
+                    <label className="block text-sm text-zinc-300">Batch Out time
+                      <input type="time" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white outline-none focus:border-[#BC13FE]" value={batchSettingsDraft.batchOutTime} onChange={event => setBatchSettingsDraft(current => ({ ...current, batchOutTime: event.target.value || '21:00' }))} />
+                    </label>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-3 text-xs leading-relaxed text-zinc-400">Transactions after this time belong to the next business day. If the app is closed at the cutoff, the missed batch is recorded once when the desktop app next opens.</div>
+                    <label className="block text-sm text-zinc-300">Email schedule
+                      <select className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white outline-none focus:border-[#BC13FE]" value={batchSettingsDraft.schedule} onChange={event => setBatchSettingsDraft(current => ({ ...current, schedule: event.target.value as EodSettings['schedule'] }))}>
+                        <option value="manual">Manual only</option>
+                        <option value="daily">Daily</option>
+                      </select>
+                    </label>
+                    <label className="block text-sm text-zinc-300">Daily report email time
+                      <input type="time" disabled={batchSettingsDraft.schedule === 'manual'} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white outline-none focus:border-[#BC13FE] disabled:opacity-40" value={batchSettingsDraft.sendTime} onChange={event => setBatchSettingsDraft(current => ({ ...current, sendTime: event.target.value || '18:00' }))} />
+                    </label>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-300"><div>Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div><div className="mt-1">Last email: {savedSettings.lastSentAt ? formatDate(savedSettings.lastSentAt) : 'Not yet sent'}</div></div>
+                  </div>
+                  <footer className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                    <button type="button" disabled={sending} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm disabled:opacity-50" onClick={() => void handleBatchOutNow()}>Batch Out Now</button>
+                    <span className="flex gap-2"><button type="button" className="flex-1 rounded border border-zinc-700 px-3 py-2 text-sm" onClick={() => setShowBatchSettings(false)}>Cancel</button><button type="button" className="flex-1 rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white" onClick={saveBatchSettings}>Save</button></span>
+                  </footer>
+                </section>
               </div>
             ) : null}
 
@@ -3238,7 +3350,7 @@ const EODWindow: React.FC = () => {
               </div>
             ) : null}
 
-            <details className="rounded-lg border border-zinc-800 bg-zinc-950/60">
+            <details className="hidden rounded-lg border border-zinc-800 bg-zinc-950/60">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-[#39FF14]">Daily email and batch settings</summary>
             <div className="grid grid-cols-12 gap-3 p-3 pt-0">
               <div className="col-span-12 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">

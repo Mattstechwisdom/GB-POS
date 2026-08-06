@@ -92,6 +92,48 @@ let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners = new Map<string, Set<() => void>>();
 const localFallback = new Map<string, any[]>();
 const pendingQueueKey = 'gbpos-mobile-pending-sync';
+const mobileBatchInfoKey = 'gbpos-mobile-batch-info:v1';
+
+function mobileLocalDateKey(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function mobileBatchDayKey(now: Date, cutoffTime?: string) {
+  const [hourText = '21', minuteText = '00'] = String(cutoffTime || '21:00').split(':');
+  const cutoff = new Date(now);
+  cutoff.setHours(Math.min(23, Math.max(0, Number(hourText) || 0)), Math.min(59, Math.max(0, Number(minuteText) || 0)), 0, 0);
+  if (now < cutoff) cutoff.setDate(cutoff.getDate() - 1);
+  return mobileLocalDateKey(cutoff);
+}
+
+function readMobileBatchInfo() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(mobileBatchInfoKey) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function recordMobileBatchOut(batchOutTime?: string) {
+  const now = new Date();
+  const info = {
+    ok: true,
+    lastBatchOutDate: now.toISOString(),
+    lastBatchOutDayKey: mobileBatchDayKey(now, batchOutTime),
+  };
+  try { window.localStorage.setItem(mobileBatchInfoKey, JSON.stringify(info)); } catch {}
+  return info;
+}
+
+function ensureMobileBatchOut() {
+  const settings = readLocalList('eodSettings')[0] || {};
+  const cutoffTime = settings.batchOutTime || settings.sendTime || '21:00';
+  const dueDayKey = mobileBatchDayKey(new Date(), cutoffTime);
+  const current = readMobileBatchInfo();
+  return current.lastBatchOutDayKey === dueDayKey ? { ok: true, ...current } : recordMobileBatchOut(cutoffTime);
+}
 
 function normalizeCloudId(row: any): number | string | null {
   const legacy = Number(row?.legacy_id);
@@ -1616,8 +1658,12 @@ function makeApi() {
     },
     backupImport: async () => ({ ok: false, error: 'Restore is not available in the Android app. Use the desktop import tool.' }),
     backupPickAndRead: async () => ({ ok: false, canceled: true, error: 'File restore is not available in the Android app.' }),
-    runBatchOut: async () => exportCurrentBackup(),
-    getBatchOutInfo: async () => ({ ok: true }),
+    runBatchOut: async () => {
+      const result = await exportCurrentBackup();
+      if (result?.ok === false) return result;
+      return { ...result, ...recordMobileBatchOut((readLocalList('eodSettings')[0] || {}).batchOutTime) };
+    },
+    getBatchOutInfo: async () => ensureMobileBatchOut(),
     serverSyncGetConfig: async () => ({ ok: true, config: { enabled: false, autoSync: true } }),
     serverSyncSetConfig: async () => ({ ok: false, error: 'Server/NAS sync is replaced by Supabase on Android.' }),
     serverSyncBrowse: async () => ({ ok: false, canceled: true }),

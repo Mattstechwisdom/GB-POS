@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.5.40 (2026-08-06)
+- End of Day Email: restores editable recipient and subject fields on Windows and Android, keeps report-content choices in the email window, and removes the old bottom settings dropdown.
+- End of Day Settings: opens Daily Batch Settings as a focused window over EOD Report Email with the accounting cutoff, email schedule, daily email time, and current batch status.
+- End of Day Accounting: uses the saved shop-local Batch Out time as the daily totals boundary instead of midnight.
+- Batch Scheduling: catches up a missed cutoff exactly once, keeps Batch Out independent from manual email scheduling, and waits for verified Supabase access before marking a Windows batch complete.
+- Android: records the accounting-day rollover while the app is active or next opened and keeps Batch Out Now as the explicit mobile backup export.
+- Instructions: documents the cutoff, catch-up, email, and platform-specific Batch Out behavior.
+
 ## v0.5.39 (2026-08-05)
 - Inventory / EOD: shows tracked parts and products at or below their saved threshold in a dedicated Low Stock section with Dismiss, View Item, and duplicate-safe Add MOQ to Cart actions.
 - Inventory: renames Reorder Qty to MOQ / Reorder Qty, uses that saved quantity for low-stock restocking, and opens the exact inventory record from EOD on Windows and Android.

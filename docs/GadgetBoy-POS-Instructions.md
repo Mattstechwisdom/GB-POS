@@ -388,8 +388,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ## 19. End of Day Report
 
-- End of Day is a concise overview of the current local shop day only.
-- It resets to the next day after midnight; it is not the monthly accounting report.
+- End of Day is a concise overview of the current shop accounting day only.
+- It rolls into a new day at the saved Batch Out time; it is not the monthly accounting report.
 - Review labor collected, parts/products charged, COGS, verified supplier spend, consultations, sales count, and items awaiting purchase.
 - Review Low Stock for tracked parts/products at or below their saved threshold. Add the saved MOQ to Cart, inspect the inventory record, or dismiss the current stock-state alert.
 - Parts charged, COGS, and verified supplier spend must remain separate.
@@ -397,7 +397,11 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Distributor rows in Cart are collapsed by default. Select a distributor row to expand it and select it again to collapse it.
 - Mark a cart checked out only after checkout on the distributor site succeeds.
 - Marking an order paid can update the linked work order and client update workflow.
-- EOD Report Email stores recipients and can send the completed daily summary.
+- EOD Report Email stores recipients and the email subject, and can send the completed daily summary.
+- Open Daily Batch Settings from inside EOD Report Email to set the shop-local Batch Out cutoff, email schedule, and daily email time.
+- Batch Out runs independently from the email schedule. Manual-only email delivery does not disable the daily accounting cutoff.
+- If the Windows app is closed at the cutoff, it records the missed batch once after the next successful Supabase login. It never marks a batch complete before cloud data is available.
+- Android records the accounting-day rollover when the app is active or next opened. Batch Out Now also exports the current mobile backup file.
 - Monthly totals belong in Reporting, not EOD.
 
 ### Build the Purchasing Cart

@@ -3564,6 +3564,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
     ]);
     scheduleCloudSyncQueueDrain(100);
     startClientUpdateEmailQueue();
+    void checkBatchOutSchedule();
     return {
       ok: true,
       counts: {
@@ -5301,12 +5302,15 @@ ipcMain.handle('backup:import', async () => {
 });
 
 ipcMain.handle('backup:runBatchOut', async () => {
-  return runBatchOutBackup('batchout');
+  const db = readDb();
+  const settings = Array.isArray((db as any)?.eodSettings) ? (db as any).eodSettings[0] : null;
+  const cutoffTime = settings?.batchOutTime || '21:00';
+  return runBatchOutBackup('batchout', batchOutDayKey(new Date(), cutoffTime));
 });
 
 ipcMain.handle('backup:getBatchOutInfo', async () => {
   const cfg = readBackupConfig();
-  return { ok: true, lastBackupPath: cfg.lastBackupPath, lastBackupDate: cfg.lastBackupDate, lastBatchOutDate: cfg.lastBatchOutDate };
+  return { ok: true, lastBackupPath: cfg.lastBackupPath, lastBackupDate: cfg.lastBackupDate, lastBatchOutDate: cfg.lastBatchOutDate, lastBatchOutDayKey: cfg.lastBatchOutDayKey };
 });
 
 ipcMain.handle('dev:environmentInfo', async () => {
@@ -7900,7 +7904,7 @@ ipcMain.handle('customBuild:openItem', async (event: any, payload: any) => {
 
 const BACKUP_CONFIG_PATH = () => path.join(resolveDataRoot(), 'backup-config.json');
 
-type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string; lastAutoEmailDate?: string };
+type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string; lastBatchOutDayKey?: string; lastAutoEmailDate?: string };
 
 function readBackupConfig(): BackupConfig {
   try {
@@ -8022,15 +8026,16 @@ async function writeComprehensiveBackupToRoot(targetRoot: string, label: string)
   return backupPath;
 }
 
-async function runBatchOutBackup(label: string = 'batchout') {
+async function runBatchOutBackup(label: string = 'batchout', batchDayKey?: string) {
   if (batchOutRunning) return { ok: false, error: 'Batch out already running' };
   batchOutRunning = true;
   try {
     const localBackupPath = await writeComprehensiveBackupToRoot(resolveDataRoot(), label);
     const backupPath = localBackupPath;
     const iso = new Date().toISOString();
-    writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso });
-    lastBatchOutDate = iso.slice(0, 10);
+    const completedDayKey = batchDayKey || localDateKey(new Date());
+    writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso, lastBatchOutDayKey: completedDayKey });
+    lastBatchOutDate = completedDayKey;
     console.log('[LOCAL-BACKUP] Backup written to', backupPath);
     return { ok: true, backupPath, localBackupPath };
   } catch (e: any) {
@@ -8047,6 +8052,14 @@ function parseHhMm(str?: string): { h: number; m: number } {
   const h = Math.min(23, Math.max(0, Number(parts[0] || 0)));
   const m = Math.min(59, Math.max(0, Number(parts[1] || 0)));
   return { h: Number.isFinite(h) ? h : 0, m: Number.isFinite(m) ? m : 0 };
+}
+
+function batchOutDayKey(now: Date, batchOutTime?: string) {
+  const { h, m } = parseHhMm(batchOutTime || '21:00');
+  const mostRecentCutoff = new Date(now);
+  mostRecentCutoff.setHours(h, m, 0, 0);
+  if (now < mostRecentCutoff) mostRecentCutoff.setDate(mostRecentCutoff.getDate() - 1);
+  return localDateKey(mostRecentCutoff);
 }
 
 function scheduleAllowsToday(schedule: string | undefined, date: Date) {
@@ -8539,8 +8552,11 @@ async function trySendScheduledEodEmail(targetDate: Date) {
 
 async function checkBatchOutSchedule() {
   try {
+    // A completed batch must include the authenticated Supabase records. The
+    // cloud session handler calls this again as soon as login is verified.
+    if (!cloudSession?.accessToken || !cloudSession?.shopId) return;
     const cfg = readBackupConfig();
-    if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = configDateKey(cfg.lastBatchOutDate) || null;
+    if (!lastBatchOutDate) lastBatchOutDate = cfg.lastBatchOutDayKey || configDateKey(cfg.lastBatchOutDate) || null;
     const db = readDb();
     const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
     const autoEmailDate = configDateKey((cfg as any)?.lastAutoEmailDate);
@@ -8550,19 +8566,17 @@ async function checkBatchOutSchedule() {
     const batchOutTime = settings?.batchOutTime || settings?.sendTime || '21:00';
     const sendTime = settings?.sendTime || batchOutTime || '21:00';
     const now = new Date();
-    if (!scheduleAllowsToday(scheduleMode, now)) return;
 
     const todayKey = localDateKey(now);
-
-    const { h, m } = parseHhMm(batchOutTime);
-    const batchTarget = new Date();
-    batchTarget.setHours(h, m, 0, 0);
-    if (autoBackup && lastBatchOutDate !== todayKey && now >= batchTarget) {
-      const res = await runBatchOutBackup('batchout');
+    const dueBatchDayKey = batchOutDayKey(now, batchOutTime);
+    if (autoBackup && lastBatchOutDate !== dueBatchDayKey) {
+      const res = await runBatchOutBackup('batchout', dueBatchDayKey);
       if (res.ok) {
-        lastBatchOutDate = todayKey;
+        lastBatchOutDate = dueBatchDayKey;
       }
     }
+
+    if (!scheduleAllowsToday(scheduleMode, now)) return;
 
     const scheduleModeLower = String(scheduleMode || '').trim().toLowerCase();
     const effectiveSendTime = (scheduleModeLower === 'weekly' || scheduleModeLower === 'monthly') ? '00:00' : sendTime;
