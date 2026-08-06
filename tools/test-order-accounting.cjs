@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
 
@@ -12,6 +13,20 @@ const build = esbuild.buildSync({
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
 const { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows } = moduleShim.exports;
+
+const readSource = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+const eodSource = readSource('src/components/EODWindow.tsx');
+const workOrderItemsSource = readSource('src/workorders/ItemsTable.tsx');
+const workOrderSource = readSource('src/workorders/NewWorkOrderWindow.tsx');
+const saleItemsSource = readSource('src/sales/SaleItemsTable.tsx');
+assert.doesNotMatch(eodSource, /<h3[^>]*>Purchasing Cart<\/h3>/, 'EOD must not repeat the cart section beneath the Cart button.');
+assert.match(eodSource, /View Invoice/, 'Every linked cart row must provide a transaction drill-down action.');
+assert.match(eodSource, /Warning: payment not taken/, 'Unpaid cart lines must display an explicit payment warning.');
+assert.match(workOrderItemsSource, /Supplier item cost/, 'Work-order supplier cost must live in the line-item editor.');
+assert.match(workOrderItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Work-order costs must exclude EOD checkout additions.');
+assert.match(saleItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Sale costs must follow the same EOD checkout accounting rule.');
+assert.doesNotMatch(workOrderSource, /<label[^>]*>Internal cost/, 'Parts Tracking must not own repair pricing fields.');
+assert.doesNotMatch(workOrderSource, /<label[^>]*>Order URL<\/label>/, 'Parts Tracking must not duplicate the line-item order URL.');
 
 assert.equal(calculateSalesTax(100, false, 8), 8, 'Non-exempt supplier purchases should add 8% South Carolina sales tax.');
 assert.equal(calculateSalesTax(100, true, 8), 0, 'Tax-exempt supplier purchases must not add sales tax.');

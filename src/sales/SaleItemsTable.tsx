@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
-import { derivePartVendorFromUrl } from '@/lib/partOrdering';
+import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 
 export type SaleItemRow = {
   id: string;
@@ -60,6 +60,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
+  const [scrapingProductUrl, setScrapingProductUrl] = useState(false);
 
   const selectedRow = useMemo(() => {
     if (!selected) return null;
@@ -205,6 +206,35 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
     // Open the editor immediately so the tech can type a custom description/price.
     setEditing(row);
     setEditingError('');
+  }
+
+  async function autofillProductOrderDetails(value: string) {
+    if (!editing || isConsultationItem(editing)) return;
+    const productUrl = normalizePartOrderUrl(value);
+    if (!productUrl) return;
+    setEditing(current => current ? { ...current, productUrl, inStock: false, requiresOrder: true, orderStatus: 'needed' } : current);
+    setScrapingProductUrl(true);
+    setEditingError('');
+    try {
+      const meta = await scrapePartUrl(productUrl);
+      const distributor = editing.distributor || meta.vendor || derivePartVendorFromUrl(productUrl);
+      const description = normalizePartInventoryTitle(meta.title) || meta.title || editing.description;
+      setEditing(current => current ? {
+        ...current,
+        productUrl,
+        description,
+        distributor,
+        internalCost: typeof meta.price === 'number' ? meta.price : current.internalCost,
+        inStock: false,
+        requiresOrder: true,
+        orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
+      } : current);
+      if (!meta.ok && meta.error) setEditingError(`URL saved, but supplier details could not be read: ${meta.error}`);
+    } catch (error: any) {
+      setEditingError(`URL saved, but supplier details could not be read: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScrapingProductUrl(false);
+    }
   }
 
   return (
@@ -380,14 +410,14 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               </select>
             </div>
             <div className="w-1/2">
-              <label className="block text-xs text-zinc-400">{editing.requiresOrder ? 'Full checkout cost' : 'Internal cost'}</label>
+              <label className="block text-xs text-zinc-400">Supplier item cost</label>
               <MoneyInput
                 className="w-full bg-yellow-200 text-black rounded px-2 py-1"
                 value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
                 onValueChange={(v) => setEditing({ ...editing, internalCost: v == null ? undefined : Number(v || 0) })}
                 allowEmpty
               />
-              {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Include shipping and supplier tax.</div> : null}
+              {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div> : null}
             </div>
           </div>
           {isConsultationItem(editing) ? (
@@ -403,7 +433,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               placeholder="https://..."
               value={editing.productUrl || ''}
               onChange={e => setEditing({ ...editing, productUrl: e.target.value })}
+              onBlur={e => { if (e.currentTarget.value.trim()) void autofillProductOrderDetails(e.currentTarget.value); }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void autofillProductOrderDetails(e.currentTarget.value); } }}
             />
+            {scrapingProductUrl ? <div className="mt-1 text-[10px] text-[#39FF14]">Reading supplier details...</div> : null}
           </div>
           {!isConsultationItem(editing) && editing.requiresOrder ? (
             <div className="mt-2">
@@ -429,7 +462,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               className="px-3 py-1 bg-brand text-black rounded"
               onClick={() => {
                 if (editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
-                  setEditingError('Enter the complete shop checkout cost, including shipping and supplier tax.');
+                  setEditingError('Enter the supplier item cost before shipping and tax.');
                   return;
                 }
                 if (editing.requiresOrder && !String(editing.distributor || '').trim() && !String(editing.productUrl || '').trim()) {

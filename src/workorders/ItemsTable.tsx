@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
-import { derivePartVendorFromUrl } from '@/lib/partOrdering';
+import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -50,6 +50,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
   const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
+  const [scrapingOrderUrl, setScrapingOrderUrl] = useState(false);
 
   const selectedRow = useMemo(() => {
     if (!selected) return null;
@@ -212,6 +213,40 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
     // Open the editor immediately so the tech can type a custom description/cost.
     setEditing(row);
     setEditingError('');
+  }
+
+  async function autofillOrderDetails(value: string) {
+    if (!editing) return;
+    const orderSourceUrl = normalizePartOrderUrl(value);
+    if (!orderSourceUrl) return;
+    setEditing(current => current ? { ...current, orderSourceUrl, requiresOrder: true, orderStatus: 'needed' } : current);
+    setScrapingOrderUrl(true);
+    setEditingError('');
+    try {
+      const meta = await scrapePartUrl(orderSourceUrl);
+      const internalCost = typeof meta.price === 'number' ? meta.price : editing.internalCost;
+      const markupPct = editing.markupPct ?? DEFAULT_PART_MARKUP_PCT;
+      const suggestedParts = markedUpPartPrice(internalCost, markupPct);
+      const distributor = editing.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
+      const normalizedTitle = normalizePartInventoryTitle(meta.title);
+      setEditing(current => current ? {
+        ...current,
+        orderSourceUrl,
+        repair: normalizedTitle || current.repair,
+        distributor,
+        partSource: current.partSource || distributor,
+        internalCost,
+        markupPct,
+        parts: Number(current.parts || 0) > 0 ? current.parts : (suggestedParts ?? current.parts),
+        requiresOrder: true,
+        orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
+      } : current);
+      if (!meta.ok && meta.error) setEditingError(`URL saved, but supplier details could not be read: ${meta.error}`);
+    } catch (error: any) {
+      setEditingError(`URL saved, but supplier details could not be read: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScrapingOrderUrl(false);
+    }
   }
 
   // Listen for repair selection from picker window via Electron IPC
@@ -381,14 +416,14 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
             {editing.requiresOrder ? (
               <>
                 <div>
-                  <label className="block text-xs text-zinc-400">Full checkout cost</label>
+                  <label className="block text-xs text-zinc-400">Supplier item cost</label>
                   <MoneyInput
                     className="w-full mt-1 bg-yellow-200 text-black rounded px-2 py-1"
                     value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
                     onValueChange={(value) => setEditing({ ...editing, internalCost: value == null ? undefined : Number(value) })}
                     allowEmpty
                   />
-                  <div className="mt-1 text-[10px] text-zinc-500">Include shipping and supplier tax.</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div>
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-400">Distributor</label>
@@ -406,8 +441,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                     type="url"
                     value={editing.orderSourceUrl || ''}
                     onChange={e => setEditing({ ...editing, orderSourceUrl: e.target.value })}
+                    onBlur={e => { if (e.currentTarget.value.trim()) void autofillOrderDetails(e.currentTarget.value); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void autofillOrderDetails(e.currentTarget.value); } }}
                     placeholder="https://..."
                   />
+                  {scrapingOrderUrl ? <div className="mt-1 text-[10px] text-[#39FF14]">Reading supplier details...</div> : null}
                 </div>
               </>
             ) : null}
@@ -450,7 +488,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
               className="px-3 py-1 bg-brand text-black rounded"
               onClick={() => {
                 if (editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
-                  setEditingError('Enter the complete shop checkout cost, including shipping and supplier tax.');
+                  setEditingError('Enter the supplier item cost before shipping and tax.');
                   return;
                 }
                 if (editing.requiresOrder && !String(editing.distributor || '').trim() && !String(editing.orderSourceUrl || '').trim()) {

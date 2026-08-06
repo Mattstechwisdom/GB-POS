@@ -1198,18 +1198,6 @@ const NewWorkOrderWindow: React.FC = () => {
     setPartsTrackingUrlEditing(!trackingUrl);
   }, [loaded, wo.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (String((wo as any).partsOrderUrl || '').trim()) return;
-    const sourceUrl = (wo.items || [])
-      .map((item: any) => String(item?.orderSourceUrl || '').trim())
-      .find(Boolean);
-    if (!sourceUrl) return;
-    const normalized = normalizeMaybeUrl(sourceUrl);
-    setWo(w => ({ ...w, partsOrderUrl: normalized, partsOrdered: true }));
-    setPartsOrderUrlDraft(normalized);
-    setPartsOrderUrlEditing(false);
-  }, [wo.items, (wo as any).partsOrderUrl]);
-
   const primaryPartsItem = useMemo(() => {
     const rows = Array.isArray(wo.items) ? wo.items : [];
     return rows.find((item: any) => String(item?.orderSourceUrl || '').trim())
@@ -1337,19 +1325,15 @@ const NewWorkOrderWindow: React.FC = () => {
   }, []);
 
   const handleSavePartsTracking = useCallback(() => {
-    const orderUrl = normalizeMaybeUrl(partsOrderUrlDraft);
     const trackingUrl = normalizeMaybeUrl(partsTrackingUrlDraft);
     setWo(w => ({
       ...w,
-      partsOrderUrl: orderUrl,
       partsTrackingUrl: trackingUrl,
-      partsOrdered: Boolean(orderUrl || trackingUrl || (w as any).partsOrderDate || (w as any).partsEstDelivery),
+      partsOrdered: Boolean(trackingUrl || (w as any).partsOrderDate || (w as any).partsEstDelivery || (w.items || []).some((item: any) => item?.orderStatus === 'ordered' || item?.orderStatus === 'received')),
     }));
-    setPartsOrderUrlDraft(orderUrl);
     setPartsTrackingUrlDraft(trackingUrl);
-    setPartsOrderUrlEditing(!orderUrl);
     setPartsTrackingUrlEditing(!trackingUrl);
-  }, [partsOrderUrlDraft, partsTrackingUrlDraft]);
+  }, [partsTrackingUrlDraft]);
 
   const handleClearPartsTracking = useCallback(() => {
     lastPartsScrapeUrlRef.current = '';
@@ -2393,12 +2377,12 @@ const NewWorkOrderWindow: React.FC = () => {
             accessories={wo.dropoffAccessories ?? []}
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
-          {/* Parts dates + order URL (under line items) */}
+          {/* Delivery tracking only. Pricing and supplier details live on each line item. */}
           <div className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="gb-wo-parts-header">
               <div>
                 <h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4>
-                <div className="text-[11px] text-zinc-500">Internal ordering details, not shown on printouts</div>
+                <div className="text-[11px] text-zinc-500">Delivery dates and carrier tracking only. Edit a repair line for cost, pricing, supplier, or its order URL.</div>
               </div>
               {partsSourceSummary ? (
                 <div className="gb-wo-parts-source-pill" title={partsSourceSummary}>
@@ -2406,49 +2390,10 @@ const NewWorkOrderWindow: React.FC = () => {
                 </div>
               ) : null}
             </div>
-            {(partsUrlMeta?.title || partsUrlMeta?.price || primaryPartsItem) ? (
-              <div className="gb-wo-parts-meta-row">
-                <div className="gb-wo-parts-meta-main" title={partsUrlMeta?.title || primaryPartsItem?.repair || ''}>
-                  {partsUrlMeta?.title || primaryPartsItem?.repair || 'No part selected'}
-                </div>
-                <div className="gb-wo-parts-meta-sub">
-                  {partsUrlMeta?.price != null ? `Internal $${partsUrlMeta.price.toFixed(2)}` : 'Internal cost not scanned'}
-                  {primaryPartsItem?.parts != null ? ` • Sold $${Number(primaryPartsItem.parts || 0).toFixed(2)}` : ''}
-                  {primaryPartsItem?.labor != null ? ` • Labor $${Number(primaryPartsItem.labor || 0).toFixed(2)}` : ''}
-                </div>
-              </div>
-            ) : null}
             {primaryPartsItem ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                <label className="text-xs text-zinc-400">Internal cost
-                  <input type="number" min="0" step="0.01" className="gb-wo-parts-control mt-1"
-                    value={primaryPartsItem.internalCost ?? ''}
-                    onChange={e => {
-                      const internalCost = e.target.value === '' ? undefined : Number(e.target.value);
-                      const parts = internalCost == null ? primaryPartsItem.parts : markedUpPartPrice(internalCost, primaryPartsItem.markupPct ?? DEFAULT_PART_MARKUP_PCT);
-                      updatePrimaryPartsItem({ internalCost, ...(parts == null ? {} : { parts }) });
-                    }} />
-                </label>
-                <label className="text-xs text-zinc-400">Markup %
-                  <input type="number" min="0" step="1" list="part-markup-presets" className="gb-wo-parts-control mt-1"
-                    value={primaryPartsItem.markupPct ?? DEFAULT_PART_MARKUP_PCT}
-                    onChange={e => {
-                      const markupPct = Number(e.target.value || 0);
-                      const parts = markedUpPartPrice(primaryPartsItem.internalCost, markupPct);
-                      updatePrimaryPartsItem({ markupPct, ...(parts == null ? {} : { parts }) });
-                    }} />
-                  <datalist id="part-markup-presets">{PART_MARKUP_PRESETS.map(value => <option key={value} value={value} />)}</datalist>
-                </label>
-                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">
-                  <input type="checkbox" checked={primaryPartsItem.requiresOrder !== false}
-                    onChange={e => updatePrimaryPartsItem({ requiresOrder: e.target.checked, orderStatus: e.target.checked ? 'needed' : 'in_stock' })} />
-                  Order required
-                </label>
-                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">
-                  <input type="checkbox" checked={primaryPartsItem.taxExempt === true}
-                    onChange={e => updatePrimaryPartsItem({ taxExempt: e.target.checked, supplierTaxRate: 8 })} />
-                  Tax Exempt
-                </label>
+              <div className="gb-wo-parts-meta-row">
+                <div className="gb-wo-parts-meta-main" title={primaryPartsItem.repair || ''}>{primaryPartsItem.repair || 'Selected repair item'}</div>
+                <div className="gb-wo-parts-meta-sub">{primaryPartsItem.orderStatus === 'received' ? 'Received' : primaryPartsItem.orderStatus === 'ordered' ? 'Ordered' : primaryPartsItem.requiresOrder ? 'Order needed' : 'In stock'}</div>
               </div>
             ) : null}
             <div className="gb-wo-parts-grid">
@@ -2469,47 +2414,6 @@ const NewWorkOrderWindow: React.FC = () => {
                   value={(wo as any).partsEstDelivery ? String((wo as any).partsEstDelivery).substring(0, 10) : ''}
                   onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null, partsOrdered: Boolean((w as any).partsOrderDate || e.target.value || (w as any).partsOrderUrl || (w as any).partsTrackingUrl) }))}
                 />
-              </div>
-              <div className="gb-wo-parts-url-field">
-                <label className="block text-xs text-zinc-400">Order URL</label>
-                {String((wo as any).partsOrderUrl || '').trim() && !partsOrderUrlEditing ? (
-                  <div className="gb-wo-parts-button-row">
-                    <button
-                      type="button"
-                      className="gb-wo-parts-link-button"
-                      onClick={handleOpenOrderUrl}
-                      title={String((wo as any).partsOrderUrl || '')}
-                    >
-                      Order URL
-                    </button>
-                    <button
-                      type="button"
-                      className="gb-wo-parts-secondary-button"
-                      onClick={() => setPartsOrderUrlEditing(true)}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="url"
-                    className="gb-wo-parts-control"
-                    placeholder="https://..."
-                    value={partsOrderUrlDraft}
-                    onChange={e => setPartsOrderUrlDraft(e.target.value)}
-                    onPaste={e => {
-                      const pasted = e.clipboardData.getData('text');
-                      window.setTimeout(() => commitPartsOrderUrl(pasted || partsOrderUrlDraft), 0);
-                    }}
-                    onBlur={() => commitPartsOrderUrl(partsOrderUrlDraft)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitPartsOrderUrl(partsOrderUrlDraft);
-                      }
-                    }}
-                  />
-                )}
               </div>
               <div className="gb-wo-parts-url-field">
                 <label className="block text-xs text-zinc-400">Tracking URL</label>
@@ -2553,10 +2457,10 @@ const NewWorkOrderWindow: React.FC = () => {
                 )}
               </div>
               <div className="gb-wo-parts-notes-field">
-                <label className="block text-xs text-zinc-400">Order notes</label>
+                <label className="block text-xs text-zinc-400">Delivery notes</label>
                 <input
                   className="gb-wo-parts-control"
-                  placeholder="e.g. Ordered 10/04, ETA 10/10"
+                  placeholder="Carrier, tracking status, delays, or delivery instructions"
                   value={(wo as any).partsDates || ''}
                   onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}
                 />
@@ -2568,23 +2472,6 @@ const NewWorkOrderWindow: React.FC = () => {
                   onClick={handleClearPartsTracking}
                 >
                   Clear
-                </button>
-                {partsUrlScraping ? <span className="gb-wo-parts-scan-status" role="status">Reading part details...</span> : null}
-                <button
-                  type="button"
-                  className="gb-wo-parts-secondary-button gb-wo-parts-save-part-button"
-                  disabled={partsSaveBusy !== null || !String((wo as any).partsOrderUrl || partsOrderUrlDraft || '').trim()}
-                  onClick={() => { void handleSavePartSource(); }}
-                >
-                  {partsSaveBusy === 'part' ? 'Saving...' : 'Save Part'}
-                </button>
-                <button
-                  type="button"
-                  className="gb-wo-parts-secondary-button gb-wo-parts-save-repair-button"
-                  disabled={partsSaveBusy !== null || !primaryPartsItem}
-                  onClick={() => { void handleSaveRepairTemplate(); }}
-                >
-                  {partsSaveBusy === 'repair' ? 'Saving...' : 'Save Repair'}
                 </button>
                 <button
                   type="button"

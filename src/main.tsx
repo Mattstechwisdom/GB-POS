@@ -274,12 +274,20 @@ function StandaloneWindowCloseButton() {
 	);
 }
 
+function shouldShowStandaloneCloseButton() {
+	try {
+		return !new URLSearchParams(window.location.search).has('checkout');
+	} catch {
+		return true;
+	}
+}
+
 function renderWithSuspense(root: ReturnType<typeof createRoot>, node: React.ReactNode) {
 	removeInitialHtmlLoader();
 	const content = isStandaloneWindowRoute()
 		? (
 			<>
-				<StandaloneWindowCloseButton />
+				{shouldShowStandaloneCloseButton() ? <StandaloneWindowCloseButton /> : null}
 				{node}
 			</>
 		)

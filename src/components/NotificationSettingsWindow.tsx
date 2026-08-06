@@ -67,14 +67,14 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
 
   const load = async () => {
     setLoadError('');
-    try {
-      const [notificationSettings, nextDeviceSettings] = await Promise.all([
-        loadNotificationSettings(),
-        loadDeviceNotificationSettings(),
-      ]);
-      setSettings(notificationSettings);
-      setDeviceSettings(nextDeviceSettings);
-    } catch (error: any) {
+    const [notificationResult, deviceResult] = await Promise.allSettled([
+      loadNotificationSettings(),
+      loadDeviceNotificationSettings(),
+    ]);
+    if (notificationResult.status === 'fulfilled') setSettings(notificationResult.value);
+    if (deviceResult.status === 'fulfilled') setDeviceSettings(deviceResult.value);
+    if (notificationResult.status === 'rejected' || deviceResult.status === 'rejected') {
+      const error = notificationResult.status === 'rejected' ? notificationResult.reason : deviceResult.status === 'rejected' ? deviceResult.reason : null;
       setLoadError(error?.message || 'Notification settings could not be loaded.');
     }
   };
@@ -215,7 +215,7 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
                 disabled={requestingPermission || deviceUnsupported}
                 onClick={askForPermission}
               >
-                {requestingPermission ? 'Waiting for device...' : 'Allow notifications'}
+                {requestingPermission ? 'Requesting permission...' : 'Allow notifications'}
               </button>
             ) : (
               <label className="flex items-center gap-2 text-sm">

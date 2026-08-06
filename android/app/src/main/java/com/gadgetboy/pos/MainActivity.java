@@ -43,7 +43,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        notificationPermissionLauncher = getBridge().registerForActivityResult(
+        notificationPermissionLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
             granted -> {
                 notificationPermissionRequestInFlight = false;
@@ -59,6 +59,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            boolean granted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED;
+            dispatchNotificationPermissionResult(granted ? "granted" : "denied");
+        } else {
+            dispatchNotificationPermissionResult("granted");
+        }
         if (pendingUpdateApk != null && canInstallPackages()) {
             File apkFile = pendingUpdateApk;
             pendingUpdateApk = null;

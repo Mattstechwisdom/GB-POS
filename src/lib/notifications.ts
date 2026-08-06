@@ -246,9 +246,18 @@ async function getLocalNotificationsPlugin(): Promise<any | null> {
 }
 
 async function getDeviceNotificationPermission(): Promise<DeviceNotificationSettings['permission']> {
-  // Capacitor owns the Android runtime permission contract. Keep the custom
-  // bridge as a fallback for older installed shells, but do not let it bypass
-  // the Local Notifications plugin that actually presents Android's dialog.
+  // The Android bridge reads PackageManager directly, so it is the most
+  // reliable source after permission is changed from Android's app settings.
+  if (typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
+    try {
+      const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
+      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
+        return permission as DeviceNotificationSettings['permission'];
+      }
+    } catch {
+      // Fall through to Capacitor's official Local Notifications plugin.
+    }
+  }
   const native = await getLocalNotificationsPlugin();
   if (native?.checkPermissions) {
     try {
@@ -259,16 +268,6 @@ async function getDeviceNotificationPermission(): Promise<DeviceNotificationSett
       return 'prompt';
     } catch {
       // Fall through to the Android bridge or desktop permission APIs.
-    }
-  }
-  if (typeof window.GBPosAndroid?.getNotificationPermissionStatus === 'function') {
-    try {
-      const permission = String(window.GBPosAndroid.getNotificationPermissionStatus() || '').toLowerCase();
-      if (permission === 'granted' || permission === 'denied' || permission === 'prompt' || permission === 'unsupported') {
-        return permission as DeviceNotificationSettings['permission'];
-      }
-    } catch {
-      // Fall through to the Capacitor permission API.
     }
   }
   const desktopApi = api();
@@ -714,23 +713,6 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
 
   if (
     isNativeAndroid
-    && native?.requestPermissions
-    && permission !== 'granted'
-    && permission !== 'unsupported'
-  ) {
-    try {
-      const status: any = await withTimeout(
-        native.requestPermissions(),
-        20_000,
-        'Android did not finish the notification permission request.',
-      );
-      const display = String(status?.display || '').toLowerCase();
-      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
-    } catch {
-      permission = await getDeviceNotificationPermission();
-    }
-  } else if (
-    isNativeAndroid
     && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
     && permission !== 'granted'
     && permission !== 'unsupported'
@@ -743,7 +725,28 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
     } catch {
       permission = await getDeviceNotificationPermission();
     }
-  } else if (typeof desktopApi?.notificationRequestNativePermission === 'function' && permission !== 'unsupported') {
+  }
+
+  // Some older APK shells do not expose the custom bridge. Use Capacitor's
+  // plugin there, and also retry through it if the bridge produced no result.
+  if (
+    isNativeAndroid
+    && native?.requestPermissions
+    && permission !== 'granted'
+    && permission !== 'unsupported'
+  ) {
+    try {
+      const status: any = await withTimeout(
+        native.requestPermissions(),
+        8000,
+        'Android did not finish the notification permission request.',
+      );
+      const display = String(status?.display || '').toLowerCase();
+      permission = display === 'granted' ? 'granted' : (display === 'denied' ? 'denied' : 'prompt');
+    } catch {
+      permission = await getDeviceNotificationPermission();
+    }
+  } else if (!isNativeAndroid && typeof desktopApi?.notificationRequestNativePermission === 'function' && permission !== 'unsupported') {
     try {
       const status: any = await withTimeout(
         desktopApi.notificationRequestNativePermission(),

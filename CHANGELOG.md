@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.5.41 (2026-08-06)
+- Android Notifications: makes the native permission handshake authoritative, recognizes permissions granted in Android Settings, and prevents Notification Settings from remaining stuck while checking.
+- End of Day Cart: removes the duplicate bottom cart summary, adds View Invoice actions, and clearly identifies unpaid or partially paid work-order and sale items.
+- Order Accounting: keeps supplier item cost, distributor, and order URL on each sale or work-order line item while leaving shipping, supplier tax, and checkout fees for End of Day checkout.
+- Part Entry: automatically reads pasted order URLs when editing line items and fills available title, distributor, and base-cost details without requiring a separate scrape button.
+- Parts Tracking: focuses the work-order section on order and delivery dates, tracking links, and delivery notes while preserving ordering details on the associated line item.
+- Checkout: removes the redundant in-app close button from the standalone Windows checkout window while retaining the mobile close control.
+
 ## v0.5.40 (2026-08-06)
 - End of Day Email: restores editable recipient and subject fields on Windows and Android, keeps report-content choices in the email window, and removes the old bottom settings dropdown.
 - End of Day Settings: opens Daily Batch Settings as a focused window over EOD Report Email with the accounting cutoff, email schedule, daily email time, and current batch status.

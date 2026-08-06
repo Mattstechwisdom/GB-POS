@@ -716,8 +716,8 @@ type UnifiedRow = {
 function cartPaymentLabel(row: OrderCartRow) {
   if (row.paymentStatus === 'not_required') return 'Shop purchase';
   if (row.paymentStatus === 'paid') return 'Paid';
-  if (row.paymentStatus === 'partial') return 'Partial';
-  if (row.paymentStatus === 'unpaid') return 'Not paid';
+  if (row.paymentStatus === 'partial') return 'Warning: partial payment';
+  if (row.paymentStatus === 'unpaid') return 'Warning: payment not taken';
   return 'Verify payment';
 }
 
@@ -1915,6 +1915,12 @@ const EODWindow: React.FC = () => {
     rows.filter(row => row.orderUrl).forEach(row => openPurchaseUrl(row.orderUrl));
   }, [openPurchaseUrl]);
 
+  const openPurchaseInvoice = useCallback(async (row: OrderCartRow) => {
+    const api = (window as any).api || {};
+    if (row.sourceType === 'workOrder') await api.openNewWorkOrder?.({ workOrderId: row.sourceId });
+    else if (row.sourceType === 'sale') await api.openNewSale?.({ id: row.sourceId });
+  }, []);
+
   const workStatusCounts = useMemo(() => {
     let open = 0;
     let closed = 0;
@@ -2806,19 +2812,6 @@ const EODWindow: React.FC = () => {
               ) : <div className="px-3 py-4 text-sm text-zinc-500">No tracked inventory is currently at or below its saved threshold.</div>}
             </section>
 
-            <section className="flex flex-col gap-3 rounded-lg border border-[#BC13FE]/40 bg-zinc-950 p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-[#d45cff]">Purchasing Cart</h3>
-                <div className="text-xs text-zinc-400">Outstanding parts and products stay here until they are marked ordered.</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <span><span className="text-zinc-500">Items</span> <strong>{partsPurchaseTotals.count}</strong></span>
-                <span><span className="text-zinc-500">Known cost</span> <strong>{formatCurrency(partsPurchaseTotals.cost)}</strong></span>
-                {partsPurchaseTotals.paymentWarnings ? <span className="text-amber-300">{partsPurchaseTotals.paymentWarnings} payment warning{partsPurchaseTotals.paymentWarnings === 1 ? '' : 's'}</span> : null}
-                <button type="button" className="rounded bg-[#BC13FE] px-4 py-2 font-semibold text-white" onClick={() => setShowCart(true)}>Open Cart</button>
-              </div>
-            </section>
-
             {selectedLowStockItem ? (
               <div className="fixed inset-0 z-[100110] flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4" onClick={() => setSelectedLowStockItem(null)}>
                 <section className="gb-eod-low-stock-actions w-full max-w-xl rounded-t-lg border border-amber-500/50 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.75)] sm:rounded-lg" role="dialog" aria-modal="true" aria-label="Low stock item actions" onClick={event => event.stopPropagation()}>
@@ -2842,7 +2835,7 @@ const EODWindow: React.FC = () => {
                   <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-950 p-4">
                     <div>
                       <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
-                      <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Cost is the complete shop checkout amount entered on each line.</p>
+                      <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Line-item cost excludes supplier tax, shipping, and checkout fees; those are calculated here.</p>
                     </div>
                     <div className="flex items-center gap-2"><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
                   </header>
@@ -2881,7 +2874,7 @@ const EODWindow: React.FC = () => {
                         </div>
                         <div className="divide-y divide-zinc-800">
                           {group.rows.map(row => (
-                            <div key={row.key} className={`gb-eod-cart-row grid gap-2 p-2 text-sm lg:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] lg:grid-cols-[24px_minmax(260px,2fr)_72px_110px_100px_120px_130px_150px_92px]' : 'grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(260px,2fr)_72px_110px_100px_120px_130px_150px_92px]'}`}>
+                            <div key={row.key} className={`gb-eod-cart-row grid gap-2 p-2 text-sm lg:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] lg:grid-cols-[24px_minmax(220px,2fr)_64px_96px_88px_105px_115px_125px_88px_92px]' : 'grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(220px,2fr)_64px_96px_88px_105px_115px_125px_88px_92px]'}`}>
                               {selectionActive ? <input type="checkbox" className="h-4 w-4 shrink-0 self-center accent-[#BC13FE]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={selectedPurchaseRows.has(row.key)} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Select ${row.title}`} /> : null}
                               <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div><label className="gb-eod-cart-mobile-qty mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400 lg:hidden">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="gb-eod-cart-mobile-amounts mt-2 grid grid-cols-2 gap-2 text-xs lg:hidden"><div><span className="text-zinc-500">Cost incl. tax</span><div>{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged incl. tax</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`gb-eod-cart-mobile-payment mt-2 inline-block rounded border px-2 py-1 text-[11px] lg:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
                               <label className="gb-eod-cart-desktop-cell hidden text-xs text-zinc-400 lg:block">Qty<input type="number" min="1" step="1" inputMode="numeric" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label>
@@ -2891,6 +2884,7 @@ const EODWindow: React.FC = () => {
                               <div className="gb-eod-cart-desktop-cell hidden text-right text-sm font-semibold lg:block"><div className="text-[10px] font-normal text-zinc-500">Charged incl. tax</div>{formatCurrency(row.totalCharge)}</div>
                               <div className={`gb-eod-cart-desktop-cell hidden rounded border px-2 py-1 text-center text-[11px] lg:block ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div>
                               <button type="button" disabled={!row.orderUrl} className={`${selectionActive ? 'col-start-2' : 'col-start-1'} rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs disabled:text-zinc-600 lg:col-start-auto`} onClick={() => openPurchaseUrl(row.orderUrl)}>{row.orderUrl ? 'Order URL' : 'URL needed'}</button>
+                              <button type="button" disabled={row.sourceType !== 'workOrder' && row.sourceType !== 'sale'} className={`${selectionActive ? 'col-start-2' : 'col-start-1'} rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-1 text-xs text-fuchsia-100 disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600 lg:col-start-auto`} onClick={() => void openPurchaseInvoice(row)}>{row.sourceType === 'workOrder' || row.sourceType === 'sale' ? 'View Invoice' : 'No Invoice'}</button>
                             </div>
                           ))}
                         </div>

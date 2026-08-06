@@ -13,11 +13,12 @@ const electronMain = read('app/electron/electron-main.ts');
 const consentPrompt = read('src/components/NotificationConsentPrompt.tsx');
 const notificationsWindow = read('src/components/NotificationsWindow.tsx');
 const mobileApp = read('src/mobile/MobileApp.tsx');
+const notificationSettingsWindow = read('src/components/NotificationSettingsWindow.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions');
-assert.ok(pluginRequest >= 0 && bridgeRequest > pluginRequest, 'Capacitor Local Notifications must request Android permission before the legacy bridge fallback.');
-assert.match(notifications, /native\.requestPermissions\(\).*20_000/s);
+assert.ok(bridgeRequest >= 0 && pluginRequest > bridgeRequest, 'Android must use its direct OS permission bridge before the Capacitor fallback.');
+assert.match(notifications, /native\.requestPermissions\(\).*8000/s);
 assert.match(notifications, /waitForAndroidBridgePermissionResult/);
 assert.match(notifications, /notificationPermissionRequest.*performDeviceNotificationPermissionRequest/s);
 assert.match(notifications, /localNotificationActionPerformed/);
@@ -26,6 +27,7 @@ assert.match(notifications, /recordCreatedAtMs\(row, key\) <= baselineMs/);
 assert.match(notifications, /enabledAt: permission === 'granted'/);
 assert.match(activity, /ActivityCompat\.requestPermissions/);
 assert.match(activity, /ActivityResultContracts\.RequestPermission/);
+assert.match(activity, /notificationPermissionLauncher = registerForActivityResult/);
 assert.match(activity, /triggerWindowJSEvent/);
 assert.match(activity, /rememberNotificationPermissionRequested/);
 assert.match(activity, /dispatchNotificationPermissionResult/);
@@ -44,5 +46,7 @@ const openNotifications = mobileApp.slice(mobileApp.indexOf('const openNotificat
 assert.doesNotMatch(openNotifications, /requestDeviceNotificationPermission/);
 assert.match(notificationsWindow, /mobileView === 'settings'\)/);
 assert.match(notificationsWindow, /setMobileView\('settings'\);\s*return;/);
+assert.match(notificationSettingsWindow, /Promise\.allSettled/);
+assert.doesNotMatch(notificationSettingsWindow, /Waiting for device/);
 
 console.log('Notification permission and destination routing checks passed.');
