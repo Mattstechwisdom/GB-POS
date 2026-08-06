@@ -3,6 +3,8 @@ import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import type { VendorRecord } from './VendorsWindow';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
+import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -64,18 +66,6 @@ function blankItem(mode: InventoryMode): InventoryItem {
   };
 }
 
-function fillUrlTemplate(template: string, values: { sku?: string; qty: number }) {
-  const sku = values.sku ?? '';
-  const qty = Number.isFinite(values.qty) && values.qty > 0 ? String(Math.round(values.qty)) : '1';
-  return template
-    .replace(/\{\{\s*sku\s*\}\}/gi, encodeURIComponent(String(sku)))
-    .replace(/\{\{\s*qty\s*\}\}/gi, encodeURIComponent(qty));
-}
-
-function isLow(item: InventoryItem): boolean {
-  return !!item.trackStock && typeof item.stockCount === 'number' && item.stockCount <= (item.lowStockThreshold ?? 1);
-}
-
 function money(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : '-';
@@ -96,6 +86,16 @@ function normalizeOrderUrl(value: unknown): string {
 
 export default function InventoryWindow() {
   const api = (window as any).api;
+  const requestedInventoryIdRef = useRef<number | undefined>(undefined);
+  const requestedInventoryIdInitializedRef = useRef(false);
+  const skipNextModeResetRef = useRef(false);
+  if (!requestedInventoryIdInitializedRef.current) {
+    const modalPayload = consumeWindowPayload('inventory');
+    const queryId = new URLSearchParams(window.location.search).get('inventoryId');
+    const requested = Number(modalPayload?.inventoryId ?? queryId);
+    requestedInventoryIdRef.current = Number.isFinite(requested) && requested > 0 ? requested : undefined;
+    requestedInventoryIdInitializedRef.current = true;
+  }
   const [mode, setMode] = useState<InventoryMode>('parts');
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
@@ -141,6 +141,10 @@ export default function InventoryWindow() {
   }, [api, load]);
 
   useEffect(() => {
+    if (skipNextModeResetRef.current) {
+      skipNextModeResetRef.current = false;
+      return;
+    }
     setSelectedId(undefined);
     setEditing(blankItem(mode));
     setSearch('');
@@ -152,7 +156,7 @@ export default function InventoryWindow() {
     const q = search.trim().toLowerCase();
     return items
       .filter((item) => (mode === 'parts' ? (item.itemType || 'Product') === 'Part' : (item.itemType || 'Product') !== 'Part'))
-      .filter((item) => !lowOnly || isLow(item))
+      .filter((item) => !lowOnly || isInventoryLowStock(item))
       .filter((item) => {
         if (!deviceFilter) return true;
         const devices = Array.isArray(item.associatedDevices) ? item.associatedDevices : [];
@@ -179,10 +183,23 @@ export default function InventoryWindow() {
     return {
       parts: parts.length,
       products: products.length,
-      low: items.filter(isLow).length,
+      low: items.filter(isInventoryLowStock).length,
       tracked: items.filter((item) => item.trackStock).length,
     };
   }, [items]);
+
+  useEffect(() => {
+    const requestedId = requestedInventoryIdRef.current;
+    if (loading || !requestedId) return;
+    const requestedItem = items.find((item) => Number(item.id) === requestedId);
+    requestedInventoryIdRef.current = undefined;
+    if (requestedItem) {
+      const requestedMode: InventoryMode = (requestedItem.itemType || 'Product') === 'Part' ? 'parts' : 'products';
+      if (requestedMode !== mode) skipNextModeResetRef.current = true;
+      setMode(requestedMode);
+      selectItem(requestedItem);
+    }
+  }, [items, loading, mode]);
 
   const visibleVendors = useMemo(() => vendors
     .filter((vendor) => (vendor.inventoryMode || 'Product') === (mode === 'parts' ? 'Part' : 'Product'))
@@ -351,12 +368,12 @@ export default function InventoryWindow() {
   const openReorder = async (item: InventoryItem) => {
     const template = String(item.reorderUrlTemplate || '').trim();
     if (!template) return;
-    const url = fillUrlTemplate(template, { sku: item.distributorSku, qty: Number(item.reorderQty || 1) });
+    const url = fillInventoryReorderUrl(template, item);
     try { await api?.openUrl?.(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); }
   };
 
   const beginAddToCart = () => {
-    const quantity = Math.max(1, Math.round(Number(editing.reorderQty || 1)));
+    const quantity = inventoryReorderQuantity(editing);
     const unitCost = Number(editing.internalCost);
     setCartQuantity(quantity);
     setCartTotalCost(Number.isFinite(unitCost) && unitCost >= 0 ? Math.round(unitCost * quantity * 100) / 100 : undefined);
@@ -377,25 +394,14 @@ export default function InventoryWindow() {
     setAddingToCart(true);
     setCartMessage('');
     try {
+      const existing = await api?.dbGet?.('purchaseOrders').catch(() => []);
+      if (Array.isArray(existing) && existing.some((row: any) => row?.status === 'pending' && row?.sourceType === 'inventory' && Number(row?.inventoryId) === Number(selectedId))) {
+        setCartMessage('This inventory item is already waiting in the EOD purchasing cart.');
+        return;
+      }
       const now = new Date().toISOString();
-      const orderUrl = fillUrlTemplate(String(editing.reorderUrlTemplate || ''), {
-        sku: editing.distributorSku,
-        qty: quantity,
-      });
-      await api?.dbAdd?.('purchaseOrders', {
-        status: 'pending',
-        sourceType: 'inventory',
-        inventoryId: selectedId,
-        itemType: mode === 'parts' ? 'Part' : 'Product',
-        title,
-        distributor,
-        orderUrl,
-        quantity,
-        unitCost: Math.round((totalCost / quantity) * 100) / 100,
-        itemCost: Math.round(totalCost * 100) / 100,
-        createdAt: now,
-        updatedAt: now,
-      });
+      const payload = buildInventoryReorderPurchase({ ...editing, id: selectedId, itemType: mode === 'parts' ? 'Part' : 'Product', internalCost: totalCost / quantity, reorderQty: quantity }, now);
+      await api?.dbAdd?.('purchaseOrders', payload);
       setCartMessage(`Added ${quantity} to the EOD purchasing cart.`);
       setShowCartAdder(false);
     } catch (err) {
@@ -453,8 +459,8 @@ export default function InventoryWindow() {
           </div>
         </header>
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(360px,42%)_minmax(0,1fr)] lg:overflow-hidden">
-          <section className="flex min-h-[320px] flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
+        <main className="gb-inventory-layout grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(400px,38%)_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[minmax(460px,36%)_minmax(0,1fr)]">
+          <section className="gb-inventory-list-pane flex min-h-[320px] flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
             <div className="shrink-0 border-b border-zinc-800 p-3">
               <div className="relative flex flex-wrap gap-2">
                 <input
@@ -515,7 +521,7 @@ export default function InventoryWindow() {
               ) : (
                 <div className="divide-y divide-zinc-800">
                   {visibleItems.map((item) => {
-                    const low = isLow(item);
+                    const low = isInventoryLowStock(item);
                     const selected = selectedId === item.id;
                     const devices = Array.isArray(item.associatedDevices) ? item.associatedDevices : [];
                     return (
@@ -555,7 +561,7 @@ export default function InventoryWindow() {
             </div>
           </section>
 
-          <section className="min-w-0 rounded border border-zinc-700 bg-zinc-950 p-4 lg:overflow-y-auto">
+          <section className="gb-inventory-form-pane min-w-0 rounded border border-zinc-700 bg-zinc-950 p-4 lg:overflow-y-auto xl:p-5">
             <div className="mb-4 flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">{selectedId ? `Edit ${mode === 'parts' ? 'Repair Part' : 'Product'}` : `Add ${mode === 'parts' ? 'Repair Part' : 'Product'}`}</h2>
@@ -817,7 +823,7 @@ export default function InventoryWindow() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">Reorder Qty</span>
+                <span className="mb-1 block text-xs text-zinc-400">MOQ / Reorder Qty</span>
                 <input
                   type="number"
                   min="1"
@@ -825,6 +831,7 @@ export default function InventoryWindow() {
                   onChange={(event) => setEditing((current) => ({ ...current, reorderQty: event.target.value === '' ? 1 : Number(event.target.value) }))}
                   className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                 />
+                <span className="mt-1 block text-[11px] text-zinc-500">Quantity added to the EOD cart when this item reaches its low-stock threshold.</span>
               </label>
 
               <label className="block md:col-span-2">

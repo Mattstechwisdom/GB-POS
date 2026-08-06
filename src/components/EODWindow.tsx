@@ -2,13 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
-import { applyPurchaseQueueRemovalToItems, collectOrderCartRows, groupOrderCartRows, itemFullCost, type OrderCartRow } from '../lib/orderAccounting';
+import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows, itemFullCost, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
+import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
 const CONSULTATION_HOURLY_RATE = 75;
 const CONSULTATION_TECH_RATE = 25;
+const LOW_STOCK_DISMISSALS_KEY = 'gbpos:eod-low-stock-dismissals:v1';
 
 interface EodSettings {
   id?: number;
@@ -84,6 +86,21 @@ function escapeHtml(text: string) {
 
 function round2(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function allocateSupplierTax(rows: OrderCartRow[], taxExempt: boolean) {
+  const byRow = new Map<string, number>();
+  const taxableTotal = round2(rows.reduce((sum, row) => sum + row.totalCost, 0));
+  const supplierTax = calculateSalesTax(taxableTotal, taxExempt, SC_SALES_TAX_RATE);
+  let allocatedTax = 0;
+  rows.forEach((row, index) => {
+    const amount = index === rows.length - 1
+      ? round2(supplierTax - allocatedTax)
+      : round2(supplierTax * (taxableTotal > 0 ? row.totalCost / taxableTotal : 1 / rows.length));
+    byRow.set(row.key, amount);
+    allocatedTax = round2(allocatedTax + amount);
+  });
+  return byRow;
 }
 
 function normalizeSaleItems(sale: any): Array<{ description: string; qty: number; price: number; category?: string; consultationHours?: number }> {
@@ -717,12 +734,25 @@ const EODWindow: React.FC = () => {
   const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
+  const [taxExemptByDistributor, setTaxExemptByDistributor] = useState<Record<string, boolean>>({});
   const [showCart, setShowCart] = useState(false);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showCheckoutVerification, setShowCheckoutVerification] = useState(false);
   const [verifiedDistributors, setVerifiedDistributors] = useState<Set<string>>(() => new Set());
   const [purchaseDraft, setPurchaseDraft] = useState<any>({ itemType: 'Part', orderUrl: '', title: '', distributor: '', quantity: 1, unitCost: '' });
   const [purchaseDraftBusy, setPurchaseDraftBusy] = useState(false);
+  const [selectedLowStockItem, setSelectedLowStockItem] = useState<any | null>(null);
+  const [lowStockBusy, setLowStockBusy] = useState(false);
+  const [lowStockMessage, setLowStockMessage] = useState('');
+  const [previewLowStockCartIds, setPreviewLowStockCartIds] = useState<Set<number>>(() => new Set());
+  const [lowStockDismissals, setLowStockDismissals] = useState<Record<string, string>>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LOW_STOCK_DISMISSALS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const range = useMemo<RangeKey>(() => 'today', []);
   const customFrom = '';
   const customTo = '';
@@ -758,6 +788,10 @@ const EODWindow: React.FC = () => {
   useEffect(() => {
     let disposed = false;
     async function refresh() {
+      if (!(window as any).api?.dbGet) {
+        if (!disposed) setTechnicians([]);
+        return;
+      }
       try {
         const list = await listTechnicians();
         if (!disposed) setTechnicians(Array.isArray(list) ? list : []);
@@ -870,10 +904,12 @@ const EODWindow: React.FC = () => {
     }
     load();
     const api = (window as any).api || {};
-    const off = api.onPurchaseOrdersChanged?.(() => load());
+    const offPurchases = api.onPurchaseOrdersChanged?.(() => load());
+    const offProducts = api.onProductsChanged?.(() => load());
     return () => {
       disposed = true;
-      try { off?.(); } catch {}
+      try { offPurchases?.(); } catch {}
+      try { offProducts?.(); } catch {}
     };
   }, []);
 
@@ -1319,11 +1355,16 @@ const EODWindow: React.FC = () => {
     () => {
       const rows = isCartLayoutPreview
       ? collectOrderCartRows([
-          { id: -101, customerName: 'Preview Client', payments: [{ applied: 185, appliedParts: 110 }], items: [{ id: 'preview-screen', repair: 'iPhone 15 Pro OLED Assembly', qty: 1, parts: 110, internalCost: 82.45, distributor: 'Phone LCD Parts', orderSourceUrl: 'https://www.phonelcdparts.com/example-screen', requiresOrder: true, orderStatus: 'needed' }] },
-          { id: -102, customerName: 'Preview Client', payments: [], items: [{ id: 'preview-power', repair: 'PlayStation 5 Power Supply', qty: 1, parts: 89.99, internalCost: 61.2, distributor: 'Amazon', orderSourceUrl: 'https://www.amazon.com/dp/example', requiresOrder: true, orderStatus: 'needed' }] },
+          { id: -101, customerName: 'Preview Client', taxRate: 8, payments: [{ applied: 193.8, appliedParts: 118.8 }], items: [{ id: 'preview-screen', repair: 'iPhone 15 Pro OLED Assembly', qty: 1, parts: 110, internalCost: 82.45, distributor: 'Phone LCD Parts', orderSourceUrl: 'https://www.phonelcdparts.com/example-screen', requiresOrder: true, orderStatus: 'needed' }] },
+          { id: -102, customerName: 'Preview Client', taxRate: 8, payments: [], items: [{ id: 'preview-power', repair: 'PlayStation 5 Power Supply', qty: 1, parts: 89.99, internalCost: 61.2, distributor: 'Amazon', orderSourceUrl: 'https://www.amazon.com/dp/example', requiresOrder: true, orderStatus: 'needed' }] },
         ], [
-          { id: -201, customerName: 'Preview Sale', amountPaid: 20, totals: { total: 159.99, remaining: 139.99 }, items: [{ id: 'preview-product', description: 'Nintendo Switch Dock', qty: 1, price: 69.99, internalCost: 44.5, inStock: false, requiresOrder: true, distributor: 'Independent Vendor', productUrl: 'https://example.com/switch-dock', orderStatus: 'needed' }] },
-        ], [{ id: -301, status: 'pending', sourceType: 'inventory', inventoryId: -1, itemType: 'Product', title: 'USB-C Charging Cable', distributor: 'Independent Vendor', orderUrl: 'https://example.com/usb-c-cable', quantity: 3, unitCost: 7.5 }])
+          { id: -201, customerName: 'Preview Sale', taxRate: 8, amountPaid: 20, totals: { total: 75.59, remaining: 55.59 }, items: [{ id: 'preview-product', description: 'Nintendo Switch Dock', qty: 1, price: 69.99, internalCost: 44.5, inStock: false, requiresOrder: true, distributor: 'Independent Vendor', productUrl: 'https://example.com/switch-dock', orderStatus: 'needed' }] },
+        ], [
+          { id: -301, status: 'pending', sourceType: 'inventory', inventoryId: -1, itemType: 'Product', title: 'USB-C Charging Cable', distributor: 'Independent Vendor', orderUrl: 'https://example.com/usb-c-cable', quantity: 3, unitCost: 7.5 },
+          ...Array.from(previewLowStockCartIds).map((inventoryId, index) => inventoryId === 91001
+            ? { id: -401 - index, status: 'pending', sourceType: 'inventory', inventoryId, itemType: 'Part', title: 'PlayStation 5 Power Supply', distributor: 'Console Parts Direct', orderUrl: 'https://example.com/ps5-power-supply?qty=2', quantity: 2, unitCost: 54.99 }
+            : { id: -401 - index, status: 'pending', sourceType: 'inventory', inventoryId, itemType: 'Product', title: 'USB-C 65W Power Adapter', distributor: 'Independent Vendor', orderUrl: 'https://example.com/usb-c-adapter?qty=4', quantity: 4, unitCost: 18.5 }),
+        ])
       : collectOrderCartRows(workOrders, sales, purchaseOrders);
       const ledgerSourceKeys = new Set(purchaseOrders.map(record => String(record?.sourceKey || '')).filter(Boolean));
       return rows.filter(row => !previewDeletedPurchaseKeys.has(row.key) && (row.purchaseOrderId || !ledgerSourceKeys.has(row.key))).map(row => {
@@ -1331,13 +1372,94 @@ const EODWindow: React.FC = () => {
         if (!Number.isFinite(override) || override <= 0 || override === row.quantity) return row;
         const quantity = Math.max(1, Math.round(override));
         const totalCost = round2(row.unitCost * quantity);
-        const totalCharge = round2(row.unitCharge * quantity);
-        return { ...row, quantity, totalCost, totalCharge, knownProfit: row.hasCost && row.totalCharge > 0 ? round2(totalCharge - totalCost) : null };
+        const baseTotalCharge = round2(row.baseUnitCharge * quantity);
+        const clientTax = calculateSalesTax(baseTotalCharge, false, row.clientTaxRate);
+        const totalCharge = round2(baseTotalCharge + clientTax);
+        return { ...row, quantity, totalCost, baseTotalCharge, clientTax, totalCharge, unitCharge: round2(totalCharge / quantity), knownProfit: row.hasCost && baseTotalCharge > 0 ? round2(baseTotalCharge - totalCost) : null };
       });
     },
-    [isCartLayoutPreview, previewDeletedPurchaseKeys, purchaseOrders, quantityOverrides, sales, workOrders],
+    [isCartLayoutPreview, previewDeletedPurchaseKeys, previewLowStockCartIds, purchaseOrders, quantityOverrides, sales, workOrders],
   );
   const purchaseGroups = useMemo(() => groupOrderCartRows(partsPurchaseQueue), [partsPurchaseQueue]);
+  const lowStockInventory = useMemo(() => {
+    const source = isCartLayoutPreview
+      ? [
+          { id: 91001, itemDescription: 'PlayStation 5 Power Supply', itemType: 'Part', category: 'Game Console', deviceModel: 'PlayStation 5', distributor: 'Console Parts Direct', internalCost: 54.99, reorderQty: 2, reorderUrlTemplate: 'https://example.com/ps5-power-supply?qty={{qty}}', trackStock: true, stockCount: 1, lowStockThreshold: 1 },
+          { id: 91002, itemDescription: 'USB-C 65W Power Adapter', itemType: 'Product', category: 'Accessory', distributor: 'Independent Vendor', internalCost: 18.5, reorderQty: 4, reorderUrlTemplate: 'https://example.com/usb-c-adapter?qty={{qty}}', trackStock: true, stockCount: 0, lowStockThreshold: 2 },
+        ]
+      : inventoryProducts;
+    return source
+      .filter(isInventoryLowStock)
+      .filter((item: any) => lowStockDismissals[String(item.id)] !== inventoryLowStockFingerprint(item))
+      .sort((a: any, b: any) => Number(a.stockCount || 0) - Number(b.stockCount || 0)
+        || String(a.itemDescription || '').localeCompare(String(b.itemDescription || '')));
+  }, [inventoryProducts, isCartLayoutPreview, lowStockDismissals]);
+  const pendingLowStockInventoryIds = useMemo(() => {
+    const ids = new Set<number>(previewLowStockCartIds);
+    purchaseOrders.forEach((record: any) => {
+      if (record?.status === 'pending' && record?.sourceType === 'inventory' && Number(record?.inventoryId) > 0) ids.add(Number(record.inventoryId));
+    });
+    return ids;
+  }, [previewLowStockCartIds, purchaseOrders]);
+
+  const distributorIsTaxExempt = useCallback((distributor: string, rows: OrderCartRow[]) => {
+    if (Object.prototype.hasOwnProperty.call(taxExemptByDistributor, distributor)) return taxExemptByDistributor[distributor];
+    const savedVendors = vendors.filter((vendor: any) => String(vendor?.name || '').trim().toLowerCase() === distributor.trim().toLowerCase());
+    if (savedVendors.length) return savedVendors.every((vendor: any) => vendor?.taxExempt === true);
+    return rows.length > 0 && rows.every(row => row.taxExempt === true);
+  }, [taxExemptByDistributor, vendors]);
+
+  const purchaseGroupAmounts = useMemo(() => {
+    const amounts = new Map<string, { itemSubtotal: number; supplierTax: number; additional: number; checkoutTotal: number; clientCharge: number; clientTax: number; knownMargin: number; taxExempt: boolean }>();
+    purchaseGroups.forEach(group => {
+      const taxExempt = distributorIsTaxExempt(group.distributor, group.rows);
+      const itemSubtotal = round2(group.knownCost);
+      const supplierTax = calculateSalesTax(itemSubtotal, taxExempt, SC_SALES_TAX_RATE);
+      const additional = round2(Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0));
+      const clientCharge = round2(group.rows.reduce((sum, row) => sum + row.totalCharge, 0));
+      const clientTax = round2(group.rows.reduce((sum, row) => sum + row.clientTax, 0));
+      const preTaxClientCharge = round2(group.rows.reduce((sum, row) => sum + row.baseTotalCharge, 0));
+      amounts.set(group.distributor, {
+        itemSubtotal,
+        supplierTax,
+        additional,
+        checkoutTotal: round2(itemSubtotal + supplierTax + additional),
+        clientCharge,
+        clientTax,
+        knownMargin: round2(preTaxClientCharge - itemSubtotal - supplierTax - additional),
+        taxExempt,
+      });
+    });
+    return amounts;
+  }, [additionalCostsByDistributor, distributorIsTaxExempt, purchaseGroups]);
+
+  const purchaseRowSupplierTax = useMemo(() => {
+    const taxByRow = new Map<string, number>();
+    purchaseGroups.forEach(group => {
+      const taxExempt = distributorIsTaxExempt(group.distributor, group.rows);
+      allocateSupplierTax(group.rows, taxExempt).forEach((tax, key) => taxByRow.set(key, tax));
+    });
+    return taxByRow;
+  }, [distributorIsTaxExempt, purchaseGroups]);
+
+  const updateDistributorTaxExempt = useCallback(async (distributor: string, checked: boolean) => {
+    setTaxExemptByDistributor(current => ({ ...current, [distributor]: checked }));
+    if (isCartLayoutPreview) return;
+    const matchingVendors = vendors.filter((vendor: any) => String(vendor?.name || '').trim().toLowerCase() === distributor.trim().toLowerCase());
+    if (!matchingVendors.length) return;
+    const api = (window as any).api || {};
+    const now = new Date().toISOString();
+    try {
+      const saved = await Promise.all(matchingVendors.map(async (vendor: any) => {
+        const updated = { ...vendor, taxExempt: checked, updatedAt: now };
+        return api.update ? (await api.update('vendors', updated) || updated) : (await api.dbUpdate?.('vendors', vendor.id, updated) || updated);
+      }));
+      const byId = new Map(saved.map((vendor: any) => [String(vendor?.id), vendor]));
+      setVendors(current => current.map((vendor: any) => byId.get(String(vendor?.id)) || vendor));
+    } catch (error: any) {
+      setPurchaseUpdateMessage(`${distributor}: tax-exempt setting could not sync. ${error?.message || error}`);
+    }
+  }, [isCartLayoutPreview, vendors]);
 
   const autofillPurchaseDraft = useCallback(async () => {
     const orderUrl = normalizePartOrderUrl(purchaseDraft.orderUrl);
@@ -1389,6 +1511,8 @@ const EODWindow: React.FC = () => {
         orderUrl: normalizePartOrderUrl(purchaseDraft.orderUrl),
         quantity,
         unitCost: round2(unitCost),
+        taxExempt: distributorIsTaxExempt(distributor, []),
+        supplierTaxRate: SC_SALES_TAX_RATE,
         createdAt: now,
         updatedAt: now,
       };
@@ -1415,7 +1539,58 @@ const EODWindow: React.FC = () => {
     } finally {
       setPurchaseDraftBusy(false);
     }
-  }, [purchaseDraft, vendors]);
+  }, [distributorIsTaxExempt, purchaseDraft, vendors]);
+
+  const dismissLowStockItem = useCallback((item: any) => {
+    const next = { ...lowStockDismissals, [String(item.id)]: inventoryLowStockFingerprint(item) };
+    setLowStockDismissals(next);
+    try { localStorage.setItem(LOW_STOCK_DISMISSALS_KEY, JSON.stringify(next)); } catch {}
+    setSelectedLowStockItem(null);
+    setLowStockMessage(`${item.itemDescription || 'Inventory item'} dismissed at its current stock level.`);
+  }, [lowStockDismissals]);
+
+  const addLowStockMoqToCart = useCallback(async (item: any) => {
+    const inventoryId = Number(item?.id);
+    if (pendingLowStockInventoryIds.has(inventoryId)) {
+      setLowStockMessage(`${item.itemDescription || 'This item'} is already in the purchasing cart.`);
+      setSelectedLowStockItem(null);
+      return;
+    }
+    setLowStockBusy(true);
+    setLowStockMessage('');
+    try {
+      const payload = buildInventoryReorderPurchase(item);
+      if (isCartLayoutPreview) {
+        setPreviewLowStockCartIds(current => new Set(current).add(inventoryId));
+        setLowStockMessage(`Preview: ${payload.quantity} ${payload.title} added to the purchasing cart.`);
+      } else {
+        const api = (window as any).api || {};
+        const saved = await api.dbAdd?.('purchaseOrders', payload);
+        if (!saved) throw new Error('The purchasing record was not saved.');
+        setPurchaseOrders(current => [...current, saved]);
+        setLowStockMessage(`${payload.quantity} ${payload.title} added to the purchasing cart and synced.`);
+      }
+      setSelectedLowStockItem(null);
+    } catch (error: any) {
+      setLowStockMessage(error?.message || 'This item could not be added to the purchasing cart.');
+    } finally {
+      setLowStockBusy(false);
+    }
+  }, [isCartLayoutPreview, pendingLowStockInventoryIds]);
+
+  const viewLowStockItem = useCallback(async (item: any) => {
+    if (isCartLayoutPreview) {
+      setLowStockMessage(`Preview item: ${item.itemDescription}. In the installed app this opens the matching inventory record.`);
+      setSelectedLowStockItem(null);
+      return;
+    }
+    try {
+      await (window as any).api?.openInventory?.({ inventoryId: Number(item.id) });
+      setSelectedLowStockItem(null);
+    } catch (error: any) {
+      setLowStockMessage(error?.message || 'The inventory item could not be opened.');
+    }
+  }, [isCartLayoutPreview]);
 
   const deleteSelectedPurchaseRows = useCallback(async (rows: OrderCartRow[]) => {
     if (!rows.length) return;
@@ -1488,14 +1663,19 @@ const EODWindow: React.FC = () => {
       return;
     }
     const allocationByRow = new Map<string, number>();
+    const supplierTaxByRow = new Map<string, number>();
     for (const group of purchaseGroups) {
+      const selectedRows = group.rows.filter(row => selected.some(selectedRow => selectedRow.key === row.key));
+      if (!selectedRows.length) continue;
+      const taxExempt = distributorIsTaxExempt(group.distributor, group.rows);
+      allocateSupplierTax(selectedRows, taxExempt).forEach((tax, key) => supplierTaxByRow.set(key, tax));
+
       const extra = Number(additionalCostsByDistributor[group.distributor] || 0);
       if (!Number.isFinite(extra) || extra < 0) {
         setPurchaseUpdateMessage(`${group.distributor}: Additional Costs must be zero or a valid positive amount.`);
         return;
       }
       if (extra <= 0) continue;
-      const selectedRows = group.rows.filter(row => selected.some(selectedRow => selectedRow.key === row.key));
       if (selectedRows.length !== group.rows.length) {
         setPurchaseUpdateMessage(`${group.distributor}: select every item in this distributor before applying shared shipping or checkout costs.`);
         return;
@@ -1523,7 +1703,9 @@ const EODWindow: React.FC = () => {
       const successfulPurchaseKeys = new Set<string>();
       for (const row of selected) {
         const additionalCost = allocationByRow.get(row.key) || 0;
-        const finalTotalCost = round2(row.totalCost + additionalCost);
+        const supplierTax = supplierTaxByRow.get(row.key) || 0;
+        const taxExempt = distributorIsTaxExempt(row.distributor, purchaseGroups.find(group => group.distributor === row.distributor)?.rows || [row]);
+        const finalTotalCost = round2(row.totalCost + supplierTax + additionalCost);
         const ledgerPayload = {
           status: row.sourceType === 'inventory' ? 'processing' : 'checked_out',
           sourceType: row.sourceType,
@@ -1540,6 +1722,9 @@ const EODWindow: React.FC = () => {
           quantity: row.quantity,
           unitCost: row.unitCost,
           itemCost: row.totalCost,
+          supplierTax,
+          supplierTaxRate: SC_SALES_TAX_RATE,
+          taxExempt,
           additionalCost,
           totalCost: finalTotalCost,
           paymentStatus: row.paymentStatus,
@@ -1594,8 +1779,10 @@ const EODWindow: React.FC = () => {
           const cartRow = selectedForWorkOrder.find((row) => row.itemIndex === itemIndex);
           if (!cartRow) return item;
           const extra = allocationByRow.get(cartRow.key) || 0;
-          const fullUnitCost = round2((Number(item.internalCost) || 0) + (extra / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+          const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
+          const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
+          const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
         });
         const updated = {
           ...current,
@@ -1639,8 +1826,10 @@ const EODWindow: React.FC = () => {
           const cartRow = selectedForSale.find(row => row.itemIndex === itemIndex);
           if (!cartRow) return item;
           const extra = allocationByRow.get(cartRow.key) || 0;
-          const fullUnitCost = round2((Number(item.internalCost) || 0) + (extra / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+          const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
+          const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
+          const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
         });
         const updated = { ...current, items, updatedAt: now };
         try {
@@ -1663,22 +1852,28 @@ const EODWindow: React.FC = () => {
     } finally {
       setPurchaseUpdateBusy(false);
     }
-  }, [additionalCostsByDistributor, customers, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, workOrders]);
+  }, [additionalCostsByDistributor, customers, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
-    const additionalCosts = round2(Object.values(additionalCostsByDistributor).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0));
+    const groupAmounts = Array.from(purchaseGroupAmounts.values());
+    const itemCost = round2(groupAmounts.reduce((sum, amount) => sum + amount.itemSubtotal, 0));
+    const supplierTax = round2(groupAmounts.reduce((sum, amount) => sum + amount.supplierTax, 0));
+    const additionalCosts = round2(groupAmounts.reduce((sum, amount) => sum + amount.additional, 0));
     return {
       count: partsPurchaseQueue.length,
       missingCost: partsPurchaseQueue.length - verified.length,
-      cost: round2(verified.reduce((sum, row) => sum + row.totalCost, 0)),
+      cost: round2(itemCost + supplierTax),
+      itemCost,
+      supplierTax,
       additionalCosts,
-      checkoutCost: round2(verified.reduce((sum, row) => sum + row.totalCost, 0) + additionalCosts),
-      charged: round2(partsPurchaseQueue.reduce((sum, row) => sum + row.totalCharge, 0)),
-      profit: round2(verified.reduce((sum, row) => sum + Number(row.knownProfit || 0), 0) - additionalCosts),
+      checkoutCost: round2(groupAmounts.reduce((sum, amount) => sum + amount.checkoutTotal, 0)),
+      charged: round2(groupAmounts.reduce((sum, amount) => sum + amount.clientCharge, 0)),
+      clientTax: round2(groupAmounts.reduce((sum, amount) => sum + amount.clientTax, 0)),
+      profit: round2(groupAmounts.reduce((sum, amount) => sum + amount.knownMargin, 0)),
       paymentWarnings: partsPurchaseQueue.filter(row => row.paymentStatus !== 'paid' && row.paymentStatus !== 'not_required').length,
     };
-  }, [additionalCostsByDistributor, partsPurchaseQueue]);
+  }, [partsPurchaseQueue, purchaseGroupAmounts]);
 
   const openPurchaseUrl = useCallback((url: string) => {
     if (!url) return;
@@ -2352,9 +2547,9 @@ const EODWindow: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-50 p-4">
-      <div className="max-w-6xl mx-auto flex flex-col gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="gb-eod-window min-h-screen bg-zinc-900 p-3 text-zinc-50 sm:p-4 lg:p-6">
+      <div className="gb-eod-shell mx-auto flex max-w-[1600px] flex-col gap-4">
+        <div className="gb-eod-header flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             {viewMode === 'trends' && (
               <button
@@ -2371,7 +2566,7 @@ const EODWindow: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:min-w-[360px]">
+          <div className="gb-eod-primary-actions grid w-full grid-cols-2 gap-2 md:w-auto md:min-w-[420px]">
             {viewMode === 'reports' && (
               <>
                 <button
@@ -2530,6 +2725,36 @@ const EODWindow: React.FC = () => {
               </div>
             </div>
 
+            <section className="gb-eod-low-stock overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <header className="flex flex-col gap-2 border-b border-zinc-800 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-amber-300">Low Stock</h3>
+                  <div className="text-xs text-zinc-400">Items at or below their saved reorder threshold. Select an item to restock, dismiss, or inspect it.</div>
+                </div>
+                <span className={`w-fit rounded border px-2.5 py-1 text-xs font-semibold ${lowStockInventory.length ? 'border-amber-500/50 bg-amber-950/40 text-amber-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>
+                  {lowStockInventory.length ? `${lowStockInventory.length} need attention` : 'Stock levels clear'}
+                </span>
+              </header>
+              {lowStockMessage ? <div className="border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-200">{lowStockMessage}</div> : null}
+              {lowStockInventory.length ? (
+                <div className="gb-eod-low-stock-list divide-y divide-zinc-800">
+                  {lowStockInventory.map((item: any) => {
+                    const inCart = pendingLowStockInventoryIds.has(Number(item.id));
+                    return (
+                      <button key={item.id} type="button" className="gb-eod-low-stock-row grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition hover:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-amber-400 sm:grid-cols-[minmax(220px,2fr)_100px_100px_100px_minmax(140px,1fr)_90px]" onClick={() => setSelectedLowStockItem(item)}>
+                        <span className="min-w-0"><strong className="block truncate text-sm text-white">{item.itemDescription || 'Untitled inventory item'}</strong><span className="block truncate text-[11px] text-zinc-500">{item.itemType || 'Item'}{item.deviceModel ? ` | ${item.deviceModel}` : item.category ? ` | ${item.category}` : ''}</span></span>
+                        <span className="text-right sm:text-left"><span className="block text-[10px] uppercase text-zinc-500 sm:hidden">On hand / alert</span><strong className="text-sm text-amber-200 sm:hidden">{Math.max(0, Number(item.stockCount) || 0)} / {Math.max(0, Number(item.lowStockThreshold) || 0)}</strong><span className="hidden text-sm font-semibold text-amber-200 sm:block"><span className="block text-[10px] font-normal uppercase text-zinc-500">On hand</span>{Math.max(0, Number(item.stockCount) || 0)}</span></span>
+                        <span className="hidden text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">Threshold</span>{Math.max(0, Number(item.lowStockThreshold) || 0)}</span>
+                        <span className="hidden text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">MOQ</span>{inventoryReorderQuantity(item)}</span>
+                        <span className="hidden min-w-0 truncate text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">Distributor</span>{item.distributor || 'Not assigned'}</span>
+                        <span className={`hidden rounded border px-2 py-1 text-center text-[11px] font-semibold sm:block ${inCart ? 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]' : 'border-amber-500/40 bg-amber-950/30 text-amber-200'}`}>{inCart ? 'In Cart' : 'Review'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : <div className="px-3 py-4 text-sm text-zinc-500">No tracked inventory is currently at or below its saved threshold.</div>}
+            </section>
+
             <section className="flex flex-col gap-3 rounded-lg border border-[#BC13FE]/40 bg-zinc-950 p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-[#d45cff]">Purchasing Cart</h3>
@@ -2543,9 +2768,26 @@ const EODWindow: React.FC = () => {
               </div>
             </section>
 
+            {selectedLowStockItem ? (
+              <div className="fixed inset-0 z-[100110] flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4" onClick={() => setSelectedLowStockItem(null)}>
+                <section className="gb-eod-low-stock-actions w-full max-w-xl rounded-t-lg border border-amber-500/50 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.75)] sm:rounded-lg" role="dialog" aria-modal="true" aria-label="Low stock item actions" onClick={event => event.stopPropagation()}>
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-600 sm:hidden" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><div className="text-[11px] font-semibold uppercase text-amber-300">Low stock</div><h3 className="truncate text-xl font-semibold text-white">{selectedLowStockItem.itemDescription}</h3><p className="mt-1 text-xs text-zinc-400">{Math.max(0, Number(selectedLowStockItem.stockCount) || 0)} on hand | alert at {Math.max(0, Number(selectedLowStockItem.lowStockThreshold) || 0)} | MOQ {inventoryReorderQuantity(selectedLowStockItem)}</p></div>
+                    <button type="button" className="h-9 w-9 shrink-0 rounded border border-zinc-700 bg-zinc-900 text-lg" aria-label="Close low stock actions" onClick={() => setSelectedLowStockItem(null)}>x</button>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" disabled={lowStockBusy} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold disabled:opacity-40" onClick={() => dismissLowStockItem(selectedLowStockItem)}>Dismiss</button>
+                    <button type="button" disabled={lowStockBusy || pendingLowStockInventoryIds.has(Number(selectedLowStockItem.id))} className="rounded bg-amber-500 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40" onClick={() => void addLowStockMoqToCart(selectedLowStockItem)}>{pendingLowStockInventoryIds.has(Number(selectedLowStockItem.id)) ? 'Already in Cart' : `Add MOQ (${inventoryReorderQuantity(selectedLowStockItem)}) to Cart`}</button>
+                    <button type="button" disabled={lowStockBusy} className="rounded bg-[#39FF14] px-4 py-3 text-sm font-semibold text-black disabled:opacity-40" onClick={() => void viewLowStockItem(selectedLowStockItem)}>View Item</button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
             {showCart ? (
               <div className="fixed inset-0 z-[100100] flex items-start justify-center overflow-x-hidden overflow-y-auto bg-black/80 p-2 sm:p-4" onClick={() => setShowCart(false)}>
-                <section className="my-2 min-w-0 w-full max-w-6xl rounded-lg border border-[#BC13FE]/50 bg-zinc-950 shadow-[0_24px_90px_rgba(0,0,0,0.75)] sm:my-6" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Purchasing cart">
+                <section className="gb-eod-cart-dialog my-2 min-w-0 w-full max-w-[min(96vw,1600px)] rounded-lg border border-[#BC13FE]/50 bg-zinc-950 shadow-[0_24px_90px_rgba(0,0,0,0.75)] sm:my-6" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Purchasing cart">
                   <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-950 p-4">
                     <div>
                       <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
@@ -2554,11 +2796,11 @@ const EODWindow: React.FC = () => {
                     <div className="flex items-center gap-2"><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
                   </header>
 
-                  <div className="grid grid-cols-2 gap-2 border-b border-zinc-800 p-4 sm:grid-cols-5">
+                  <div className="gb-eod-cart-summary grid grid-cols-2 gap-2 border-b border-zinc-800 p-3 sm:grid-cols-5 lg:p-4">
                     <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">To purchase</div><div className="text-xl font-semibold">{partsPurchaseTotals.count}</div></div>
-                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Checkout total</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.checkoutCost)}</div></div>
-                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Client charges</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.charged)}</div></div>
-                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Known margin</div><div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Checkout total</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.checkoutCost)}</div><div className="text-[10px] text-zinc-500">includes {formatCurrency(partsPurchaseTotals.supplierTax)} supplier tax</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Client charges</div><div className="text-xl font-semibold">{formatCurrency(partsPurchaseTotals.charged)}</div><div className="text-[10px] text-zinc-500">includes {formatCurrency(partsPurchaseTotals.clientTax)} client tax</div></div>
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">Known margin</div><div className="text-xl font-semibold text-[#39FF14]">{formatCurrency(partsPurchaseTotals.profit)}</div><div className="text-[10px] text-zinc-500">client tax excluded</div></div>
                     <div className="col-span-2 rounded border border-zinc-800 bg-zinc-900 p-2 sm:col-span-1"><div className="text-[11px] text-zinc-500">Warnings</div><div className={`text-xl font-semibold ${partsPurchaseTotals.missingCost || partsPurchaseTotals.paymentWarnings ? 'text-amber-300' : 'text-[#39FF14]'}`}>{partsPurchaseTotals.missingCost + partsPurchaseTotals.paymentWarnings}</div></div>
                   </div>
 
@@ -2568,48 +2810,52 @@ const EODWindow: React.FC = () => {
                       const selectedGroupRows = group.rows.filter(row => selectedPurchaseRows.has(row.key));
                       const allSelected = selectedGroupRows.length === group.rows.length && group.rows.length > 0;
                       const selectionActive = selectingDistributors.has(group.distributor);
-                      const additionalCost = Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0);
+                      const groupAmounts = purchaseGroupAmounts.get(group.distributor) || { itemSubtotal: group.knownCost, supplierTax: 0, additional: 0, checkoutTotal: group.knownCost, clientCharge: group.charge, clientTax: 0, knownMargin: group.knownProfit, taxExempt: false };
                       return (
                       <details key={group.distributor} className="group overflow-hidden rounded border border-zinc-800 bg-zinc-900/60">
                         <summary className="cursor-pointer list-none bg-zinc-900 px-3 py-2">
                           <div className="flex min-w-0 items-center justify-between gap-2">
-                            <div className="min-w-0"><h3 className="truncate text-sm font-semibold leading-tight text-white">{group.distributor}</h3><div className="text-[11px] leading-tight text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} | {formatCurrency(group.knownCost + additionalCost)}</div></div>
+                            <div className="min-w-0"><h3 className="truncate text-sm font-semibold leading-tight text-white">{group.distributor}</h3><div className="text-[11px] leading-tight text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} | {formatCurrency(groupAmounts.checkoutTotal)} | {groupAmounts.taxExempt ? 'Tax exempt' : '8% tax'}</div></div>
                             <span className="shrink-0 text-[11px] text-zinc-400"><span className="group-open:hidden">Expand</span><span className="hidden group-open:inline">Collapse</span></span>
                           </div>
                         </summary>
-                        <div className="flex flex-wrap items-center gap-2 border-y border-zinc-800 bg-zinc-950/60 p-2">
+                        <div className="gb-eod-cart-toolbar flex flex-wrap items-center gap-2 border-y border-zinc-800 bg-zinc-950/60 p-2">
                           <button type="button" className={`rounded border px-3 py-2 text-xs font-semibold ${selectionActive ? 'border-[#BC13FE] bg-[#BC13FE]/20 text-white' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => setSelectingDistributors(current => { const next = new Set(current); if (next.has(group.distributor)) { next.delete(group.distributor); setSelectedPurchaseRows(selected => { const cleaned = new Set(selected); group.rows.forEach(row => cleaned.delete(row.key)); return cleaned; }); } else next.add(group.distributor); return next; })}>{selectionActive ? 'Cancel Select' : 'Select'}</button>
-                          {selectionActive ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={allSelected} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); group.rows.forEach(row => event.target.checked ? next.add(row.key) : next.delete(row.key)); return next; })} />Select all</label> : null}
+                          {selectionActive ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" className="h-4 w-4 shrink-0 accent-[#BC13FE]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={allSelected} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); group.rows.forEach(row => event.target.checked ? next.add(row.key) : next.delete(row.key)); return next; })} />Select all</label> : null}
                           {selectionActive ? <button type="button" disabled={!selectedGroupRows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(selectedGroupRows)}>Open Selected</button> : null}
                           {selectionActive ? <button type="button" disabled={!selectedGroupRows.length || purchaseUpdateBusy} className="rounded border border-red-500/70 bg-red-950/50 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40" onClick={() => setDeleteCandidateRows(selectedGroupRows)}>Delete Selected</button> : null}
+                          <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold"><input type="checkbox" className="h-4 w-4 shrink-0 accent-[#39FF14]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={groupAmounts.taxExempt} onChange={event => void updateDistributorTaxExempt(group.distributor, event.target.checked)} />Tax Exempt</label>
                           <button type="button" disabled={!group.rows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(group.rows)}>View Cart</button>
                           <button type="button" disabled={!group.checkoutUrl} className="rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-black disabled:opacity-40" onClick={() => openPurchaseUrl(group.checkoutUrl)}>{group.checkoutUrl ? group.checkoutLabel : 'Cart URL unavailable'}</button>
                         </div>
                         <div className="divide-y divide-zinc-800">
                           {group.rows.map(row => (
-                            <div key={row.key} className={`grid gap-2 p-2 text-sm md:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] md:grid-cols-[24px_minmax(180px,1.6fr)_100px_100px_130px_86px]' : 'grid-cols-[minmax(0,1fr)] md:grid-cols-[minmax(180px,1.6fr)_100px_100px_130px_86px]'}`}>
-                              {selectionActive ? <input type="checkbox" checked={selectedPurchaseRows.has(row.key)} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Select ${row.title}`} /> : null}
-                              <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div><label className="mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="mt-2 grid grid-cols-2 gap-2 text-xs md:hidden"><div><span className="text-zinc-500">Cost</span><div>{row.hasCost ? formatCurrency(row.totalCost) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`mt-2 inline-block rounded border px-2 py-1 text-[11px] md:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
-                              <div className="hidden text-right text-sm md:block"><div className="text-[10px] text-zinc-500">Full cost</div>{row.hasCost ? formatCurrency(row.totalCost) : <span className="text-red-300">Missing</span>}</div>
-                              <div className="hidden text-right text-sm md:block"><div className="text-[10px] text-zinc-500">Charged</div>{formatCurrency(row.totalCharge)}</div>
-                              <div className={`hidden rounded border px-2 py-1 text-center text-[11px] md:block ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div>
-                              <button type="button" disabled={!row.orderUrl} className={`${selectionActive ? 'col-start-2' : 'col-start-1'} rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs disabled:text-zinc-600 md:col-start-auto`} onClick={() => openPurchaseUrl(row.orderUrl)}>{row.orderUrl ? 'Order URL' : 'URL needed'}</button>
+                            <div key={row.key} className={`gb-eod-cart-row grid gap-2 p-2 text-sm lg:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] lg:grid-cols-[24px_minmax(260px,2fr)_72px_110px_100px_120px_130px_150px_92px]' : 'grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(260px,2fr)_72px_110px_100px_120px_130px_150px_92px]'}`}>
+                              {selectionActive ? <input type="checkbox" className="h-4 w-4 shrink-0 self-center accent-[#BC13FE]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={selectedPurchaseRows.has(row.key)} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Select ${row.title}`} /> : null}
+                              <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div><label className="gb-eod-cart-mobile-qty mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400 lg:hidden">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="gb-eod-cart-mobile-amounts mt-2 grid grid-cols-2 gap-2 text-xs lg:hidden"><div><span className="text-zinc-500">Cost incl. tax</span><div>{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged incl. tax</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`gb-eod-cart-mobile-payment mt-2 inline-block rounded border px-2 py-1 text-[11px] lg:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
+                              <label className="gb-eod-cart-desktop-cell hidden text-xs text-zinc-400 lg:block">Qty<input type="number" min="1" step="1" inputMode="numeric" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label>
+                              <div className="gb-eod-cart-desktop-cell hidden text-right text-sm lg:block"><div className="text-[10px] text-zinc-500">Item cost</div>{row.hasCost ? formatCurrency(row.totalCost) : <span className="text-red-300">Missing</span>}</div>
+                              <div className="gb-eod-cart-desktop-cell hidden text-right text-sm lg:block"><div className="text-[10px] text-zinc-500">Supplier tax</div>{formatCurrency(purchaseRowSupplierTax.get(row.key) || 0)}</div>
+                              <div className="gb-eod-cart-desktop-cell hidden text-right text-sm font-semibold lg:block"><div className="text-[10px] font-normal text-zinc-500">Cost incl. tax</div>{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : <span className="text-red-300">Missing</span>}</div>
+                              <div className="gb-eod-cart-desktop-cell hidden text-right text-sm font-semibold lg:block"><div className="text-[10px] font-normal text-zinc-500">Charged incl. tax</div>{formatCurrency(row.totalCharge)}</div>
+                              <div className={`gb-eod-cart-desktop-cell hidden rounded border px-2 py-1 text-center text-[11px] lg:block ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div>
+                              <button type="button" disabled={!row.orderUrl} className={`${selectionActive ? 'col-start-2' : 'col-start-1'} rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs disabled:text-zinc-600 lg:col-start-auto`} onClick={() => openPurchaseUrl(row.orderUrl)}>{row.orderUrl ? 'Order URL' : 'URL needed'}</button>
                             </div>
                           ))}
                         </div>
                         <div className="grid gap-2 border-t border-zinc-800 bg-zinc-950/70 p-2 sm:grid-cols-[minmax(190px,280px)_1fr] sm:items-end">
                           <label className="text-xs text-zinc-300">Additional Costs
-                            <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-2"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-2 outline-none" placeholder="Shipping, tax, checkout fees" value={additionalCostsByDistributor[group.distributor] || ''} onChange={event => setAdditionalCostsByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></div>
+                            <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-2"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-2 outline-none" placeholder="Shipping and checkout fees" value={additionalCostsByDistributor[group.distributor] || ''} onChange={event => setAdditionalCostsByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></div>
                           </label>
-                          <div className="text-sm sm:text-right"><div><span className="text-zinc-500">Items</span> {formatCurrency(group.knownCost)}</div><div><span className="text-zinc-500">Additional</span> {formatCurrency(additionalCost)}</div><div className="mt-1 text-base font-semibold"><span className="text-zinc-400">Distributor total</span> {formatCurrency(group.knownCost + additionalCost)}</div></div>
+                          <div className="text-sm sm:text-right"><div><span className="text-zinc-500">Item subtotal</span> {formatCurrency(groupAmounts.itemSubtotal)}</div><div><span className="text-zinc-500">Supplier tax {groupAmounts.taxExempt ? '(exempt)' : `(${SC_SALES_TAX_RATE}%)`}</span> {formatCurrency(groupAmounts.supplierTax)}</div><div><span className="text-zinc-500">Additional</span> {formatCurrency(groupAmounts.additional)}</div><div className="mt-1 text-base font-semibold"><span className="text-zinc-400">Distributor total</span> {formatCurrency(groupAmounts.checkoutTotal)}</div></div>
                         </div>
                       </details>
                     )})}
                     {!purchaseGroups.length ? <div className="rounded border border-zinc-800 bg-zinc-900 p-8 text-center text-zinc-500">Nothing currently needs purchasing.</div> : null}
                   </div>
 
-                  <footer className="sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-950 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm"><span className="text-zinc-500">Total checkout cost</span> <strong className="ml-2 text-lg">{formatCurrency(partsPurchaseTotals.checkoutCost)}</strong>{partsPurchaseTotals.additionalCosts ? <span className="ml-2 text-zinc-400">includes {formatCurrency(partsPurchaseTotals.additionalCosts)} additional</span> : null}{partsPurchaseTotals.missingCost ? <span className="ml-2 text-red-300">+ {partsPurchaseTotals.missingCost} missing cost</span> : null}</div>
+                  <footer className="gb-eod-cart-footer sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-950 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm"><span className="text-zinc-500">Total checkout cost</span> <strong className="ml-2 text-lg">{formatCurrency(partsPurchaseTotals.checkoutCost)}</strong>{partsPurchaseTotals.supplierTax ? <span className="ml-2 text-zinc-400">{formatCurrency(partsPurchaseTotals.supplierTax)} supplier tax</span> : null}{partsPurchaseTotals.additionalCosts ? <span className="ml-2 text-zinc-400">{formatCurrency(partsPurchaseTotals.additionalCosts)} additional</span> : null}{partsPurchaseTotals.missingCost ? <span className="ml-2 text-red-300">+ {partsPurchaseTotals.missingCost} missing cost</span> : null}</div>
                     <button type="button" disabled={!purchaseGroups.length || purchaseUpdateBusy} onClick={() => { setVerifiedDistributors(new Set()); setShowCheckoutVerification(true); }} className="rounded bg-[#39FF14] px-5 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : 'Checkout'}</button>
                   </footer>
                 </section>
@@ -2653,11 +2899,11 @@ const EODWindow: React.FC = () => {
                   <header className="mb-4"><h3 className="text-xl font-semibold text-amber-300">Verify Supplier Checkout</h3><p className="mt-1 text-xs text-zinc-400">Check only distributors whose website checkout is complete and payment has actually been submitted.</p></header>
                   <div className="space-y-2">
                     {purchaseGroups.map(group => {
-                      const additional = Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0);
-                      return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'}</span></span></span><strong>{formatCurrency(group.knownCost + additional)}</strong></label>;
+                      const amounts = purchaseGroupAmounts.get(group.distributor);
+                      return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} · {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>;
                     })}
                   </div>
-                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + group.knownCost + Math.max(0, Number(additionalCostsByDistributor[group.distributor]) || 0), 0))}</strong></div>
+                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + (purchaseGroupAmounts.get(group.distributor)?.checkoutTotal || 0), 0))}</strong></div>
                   <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowCheckoutVerification(false)}>Back</button><button type="button" disabled={!verifiedDistributors.size || purchaseUpdateBusy} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40" onClick={() => { const rows = purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).flatMap(group => group.rows); setShowCheckoutVerification(false); void markSelectedPurchasesOrdered(rows); }}>Checkout Verified Carts</button></footer>
                 </section>
               </div>

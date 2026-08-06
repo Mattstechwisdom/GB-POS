@@ -75,6 +75,7 @@ jobs:
           npm run test:mobile-long-press
           npm run test:order-accounting
           npm run test:inventory-consumption
+          npm run test:inventory-reorder
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

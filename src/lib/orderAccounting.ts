@@ -18,6 +18,10 @@ export type OrderCartRow = {
   unitCost: number;
   totalCost: number;
   unitCharge: number;
+  baseUnitCharge: number;
+  baseTotalCharge: number;
+  clientTax: number;
+  clientTaxRate: number;
   totalCharge: number;
   knownProfit: number | null;
   paymentStatus: OrderCartPaymentStatus;
@@ -44,6 +48,20 @@ export type OrderCartGroup = {
 function roundMoney(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
+}
+
+export const SC_SALES_TAX_RATE = 8;
+
+export function calculateSalesTax(amount: unknown, taxExempt = false, taxRate = SC_SALES_TAX_RATE) {
+  const taxableAmount = Math.max(0, Number(amount) || 0);
+  const rate = Math.max(0, Number(taxRate) || 0);
+  return taxExempt ? 0 : roundMoney(taxableAmount * rate / 100);
+}
+
+function clientChargeWithTax(baseCharge: number, record: any) {
+  const clientTaxRate = Math.max(0, Number(record?.taxRate) || 0);
+  const clientTax = calculateSalesTax(baseCharge, false, clientTaxRate);
+  return { clientTaxRate, clientTax, totalCharge: roundMoney(baseCharge + clientTax) };
 }
 
 export function itemQuantity(item: any) {
@@ -154,14 +172,18 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
   for (const record of Array.isArray(workOrders) ? workOrders : []) {
     const items = Array.isArray(record?.items) ? record.items : [];
     const required = items.filter((item: any) => needsWorkOrderPurchase(item, record));
-    const requiredCharge = roundMoney(required.reduce((sum: number, item: any) => sum + itemSoldCharge(item, 'workOrder'), 0));
+    const requiredCharge = roundMoney(required.reduce((sum: number, item: any) => {
+      const baseCharge = itemSoldCharge(item, 'workOrder');
+      return sum + clientChargeWithTax(baseCharge, record).totalCharge;
+    }, 0));
     const payment = workOrderPartPayment(record, requiredCharge);
     required.forEach((item: any, itemIndex: number) => {
       const sourceIndex = items.indexOf(item);
       const orderUrl = normalizePartOrderUrl(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '');
       const quantity = itemQuantity(item);
       const cost = itemFullCost(item);
-      const charge = itemSoldCharge(item, 'workOrder');
+      const baseCharge = itemSoldCharge(item, 'workOrder');
+      const charge = clientChargeWithTax(baseCharge, record);
       rows.push({
         key: `workOrder:${record?.id}:${item?.id || sourceIndex}`,
         sourceType: 'workOrder',
@@ -177,9 +199,13 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         hasCost: cost !== null,
         unitCost: cost === null ? 0 : roundMoney(cost / quantity),
         totalCost: cost ?? 0,
-        unitCharge: roundMoney(charge / quantity),
-        totalCharge: charge,
-        knownProfit: cost === null ? null : roundMoney(charge - cost),
+        unitCharge: roundMoney(charge.totalCharge / quantity),
+        baseUnitCharge: roundMoney(baseCharge / quantity),
+        baseTotalCharge: baseCharge,
+        clientTax: charge.clientTax,
+        clientTaxRate: charge.clientTaxRate,
+        totalCharge: charge.totalCharge,
+        knownProfit: cost === null ? null : roundMoney(baseCharge - cost),
         paymentStatus: payment.status,
         paymentDetail: payment.detail,
         taxExempt: item?.taxExempt === true,
@@ -196,7 +222,8 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
       const orderUrl = normalizePartOrderUrl(item?.productUrl || item?.orderSourceUrl || item?.reorderUrlTemplate || '');
       const quantity = itemQuantity(item);
       const cost = itemFullCost(item);
-      const charge = itemSoldCharge(item, 'sale');
+      const baseCharge = itemSoldCharge(item, 'sale');
+      const charge = clientChargeWithTax(baseCharge, record);
       rows.push({
         key: `sale:${record?.id}:${item?.id || itemIndex}`,
         sourceType: 'sale',
@@ -212,9 +239,13 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         hasCost: cost !== null,
         unitCost: cost === null ? 0 : roundMoney(cost / quantity),
         totalCost: cost ?? 0,
-        unitCharge: roundMoney(charge / quantity),
-        totalCharge: charge,
-        knownProfit: cost === null ? null : roundMoney(charge - cost),
+        unitCharge: roundMoney(charge.totalCharge / quantity),
+        baseUnitCharge: roundMoney(baseCharge / quantity),
+        baseTotalCharge: baseCharge,
+        clientTax: charge.clientTax,
+        clientTaxRate: charge.clientTaxRate,
+        totalCharge: charge.totalCharge,
+        knownProfit: cost === null ? null : roundMoney(baseCharge - cost),
         paymentStatus: payment.status,
         paymentDetail: payment.detail,
         taxExempt: item?.vendorTaxExempt === true,
@@ -248,6 +279,10 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
       unitCost: hasCost ? roundMoney(unitCost) : 0,
       totalCost,
       unitCharge: 0,
+      baseUnitCharge: 0,
+      baseTotalCharge: 0,
+      clientTax: 0,
+      clientTaxRate: 0,
       totalCharge: 0,
       knownProfit: null,
       paymentStatus: 'not_required',

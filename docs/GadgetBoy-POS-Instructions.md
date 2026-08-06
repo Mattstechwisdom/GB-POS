@@ -223,11 +223,22 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 2. Choose Add New.
 3. Paste and verify the order URL when available.
 4. Select device type/model or product category.
-5. Enter the normalized title, condition, SKU, and quantity.
+5. Enter the normalized title, condition, SKU, and on-hand quantity.
 6. Select or add the Vendor / Distributor.
 7. Enter internal cost.
 8. Select or enter markup and verify sold price.
-9. Save, then search for the new record to confirm it exists.
+9. Enable stock tracking, set Low Alert At, and enter the MOQ / Reorder Qty the shop normally purchases when restocking.
+10. Save, then search for the new record to confirm it exists.
+
+### Low-Stock Restocking from EOD
+
+1. Using an in-stock saved part or product on a work order or sale deducts its quantity once when the transaction is saved or checked out.
+2. If the remaining on-hand quantity stays above Low Alert At, no purchasing task is created.
+3. When on-hand quantity reaches or falls below Low Alert At, End of Day Report shows the item in Low Stock.
+4. Select the low-stock row and choose Add MOQ to Cart to add the saved MOQ / Reorder Qty to the purchasing cart. The action will not create a second pending restock for the same inventory item.
+5. Choose View Item to open the exact saved inventory record and verify cost, distributor, URL, threshold, or MOQ before ordering.
+6. Choose Dismiss only when no restock is needed at the current stock level. Dismissal does not edit inventory and the alert returns when the stock state changes.
+7. Adding MOQ to Cart does not increase on-hand inventory. Stock increases only after the distributor cart is paid and verified through EOD checkout.
 
 ### Add a Saved Inventory Item to the Purchasing Cart
 
@@ -380,6 +391,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - End of Day is a concise overview of the current local shop day only.
 - It resets to the next day after midnight; it is not the monthly accounting report.
 - Review labor collected, parts/products charged, COGS, verified supplier spend, consultations, sales count, and items awaiting purchase.
+- Review Low Stock for tracked parts/products at or below their saved threshold. Add the saved MOQ to Cart, inspect the inventory record, or dismiss the current stock-state alert.
 - Parts charged, COGS, and verified supplier spend must remain separate.
 - EOD buttons are organized as EOD Report Email, Cart, and Batch Out now. Sending the report is performed inside EOD Report Email.
 - Distributor rows in Cart are collapsed by default. Select a distributor row to expand it and select it again to collapse it.
@@ -399,7 +411,9 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 7. Change a line Quantity when the distributor cart quantity differs. The displayed line and distributor totals update from that quantity.
 8. Use each Order URL to open one item, Open Selected for checked lines, or View Cart to open all item URLs for that distributor.
 9. Use Open Cart when a saved distributor checkout/cart URL is available.
-10. Enter Additional Costs for shipping, sales tax, or checkout fees shown at that distributor's final checkout. Do not estimate them early.
+10. Leave Tax Exempt unchecked unless the shop's account with that distributor is actually exempt. The POS adds South Carolina's 8% supplier sales tax when it is unchecked.
+11. Enter Additional Costs only for shipping or other checkout fees shown at that distributor's final checkout. Supplier tax is calculated separately; do not enter it again.
+12. Verify that Cost incl. tax, Charged incl. tax, supplier tax, client tax, and the distributor checkout total match the saved transaction and supplier checkout before payment.
 
 ### Remove an Item from the Purchasing Cart
 

@@ -11,7 +11,10 @@ const build = esbuild.buildSync({
 });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { applyPurchaseQueueRemovalToItems, collectOrderCartRows, groupOrderCartRows } = moduleShim.exports;
+const { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows } = moduleShim.exports;
+
+assert.equal(calculateSalesTax(100, false, 8), 8, 'Non-exempt supplier purchases should add 8% South Carolina sales tax.');
+assert.equal(calculateSalesTax(100, true, 8), 0, 'Tax-exempt supplier purchases must not add sales tax.');
 
 const workOrders = [{
   id: 101,
@@ -129,6 +132,19 @@ assert.equal(workOrder.totalCost, 100);
 assert.equal(workOrder.totalCharge, 120);
 assert.equal(workOrder.knownProfit, 20);
 assert.equal(workOrder.paymentStatus, 'paid');
+
+const taxedWorkOrder = collectOrderCartRows([{
+  ...workOrders[0],
+  id: 103,
+  taxRate: 8,
+  payments: [{ applied: 154.6, appliedParts: 129.6, appliedLabor: 25 }],
+  items: [workOrders[0].items[0]],
+}], [], [])[0];
+assert.equal(taxedWorkOrder.baseTotalCharge, 120);
+assert.equal(taxedWorkOrder.clientTax, 9.6);
+assert.equal(taxedWorkOrder.totalCharge, 129.6, 'Cart Charged must include the saved client tax rate.');
+assert.equal(taxedWorkOrder.knownProfit, 20, 'Client tax collected must not be treated as shop margin.');
+assert.equal(taxedWorkOrder.paymentStatus, 'paid');
 
 const removedWorkOrder = applyPurchaseQueueRemovalToItems(workOrders[0].items, workOrder, '2026-08-05T15:00:00.000Z');
 assert.equal(removedWorkOrder.matched, true);

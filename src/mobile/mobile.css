@@ -8,6 +8,105 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/* Shared windows stay intentionally mobile inside the Android shell, even on
+   wide tablets and landscape screens that cross desktop breakpoints. */
+.gbpos-mobile .gb-eod-window {
+  min-height: 100%;
+  padding: 0.75rem !important;
+}
+
+.gbpos-mobile .gb-eod-shell {
+  width: 100%;
+  max-width: none !important;
+}
+
+.gbpos-mobile .gb-eod-header {
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+.gbpos-mobile .gb-eod-primary-actions {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-dialog {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  border-radius: 6px !important;
+}
+
+.gbpos-mobile .gb-eod-cart-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  padding: 0.65rem !important;
+}
+
+.gbpos-mobile .gb-eod-cart-toolbar {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-toolbar > * {
+  width: 100%;
+  min-height: 2.6rem;
+  justify-content: center;
+}
+
+.gbpos-mobile .gb-eod-cart-row {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-row:has(> input[type="checkbox"]) {
+  grid-template-columns: 1.25rem minmax(0, 1fr) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-desktop-cell {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-eod-cart-mobile-amounts {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-mobile-qty {
+  display: flex !important;
+}
+
+.gbpos-mobile .gb-eod-cart-mobile-payment {
+  display: inline-block !important;
+}
+
+.gbpos-mobile .gb-eod-cart-footer {
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+.gbpos-mobile .gb-inventory-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  overflow-y: auto !important;
+}
+
+.gbpos-mobile .gb-inventory-list-pane {
+  min-height: 18rem !important;
+  max-height: 42dvh;
+}
+
+.gbpos-mobile .gb-inventory-form-pane {
+  overflow: visible !important;
+  padding: 0.75rem !important;
+}
+
+.gbpos-mobile .gb-customer-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+}
+
 .gbpos-mobile * {
   min-width: 0;
   letter-spacing: 0;
@@ -3641,5 +3740,38 @@
     color: #f87171;
     font-size: 0.75rem;
     text-decoration: underline;
+  }
+}
+
+/* Keep the compact cart structure after the legacy mobile breakpoint rules so
+   shared grid utilities cannot turn its controls into oversized single rows. */
+.gbpos-mobile .gb-eod-primary-actions,
+.gbpos-mobile .gb-eod-cart-summary,
+.gbpos-mobile .gb-eod-cart-toolbar,
+.gbpos-mobile .gb-eod-cart-mobile-amounts {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-row {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.gbpos-mobile .gb-eod-cart-row:has(> input[type="checkbox"]) {
+  grid-template-columns: 1.25rem minmax(0, 1fr) !important;
+}
+
+@media (min-width: 760px) {
+  .gbpos-mobile .gb-eod-cart-dialog {
+    width: min(100%, 1100px) !important;
+    max-width: 1100px !important;
+    margin: 0.75rem auto !important;
+  }
+
+  .gbpos-mobile .gb-eod-cart-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-eod-cart-toolbar {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
 }

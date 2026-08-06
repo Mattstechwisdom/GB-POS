@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+## v0.5.39 (2026-08-05)
+- Inventory / EOD: shows tracked parts and products at or below their saved threshold in a dedicated Low Stock section with Dismiss, View Item, and duplicate-safe Add MOQ to Cart actions.
+- Inventory: renames Reorder Qty to MOQ / Reorder Qty, uses that saved quantity for low-stock restocking, and opens the exact inventory record from EOD on Windows and Android.
+- Purchasing Cart: includes saved client tax in Charged totals and adds a distributor-level Tax Exempt option; non-exempt supplier carts calculate South Carolina's 8% sales tax separately from shipping and checkout fees.
+- Responsive layouts: expands desktop EOD and inventory workspaces with denser accounting columns while preserving compact phone and tablet layouts, including landscape; Android taps keep the primary action and deliberate holds use the matching desktop right-click menu.
+- Reporting: saves and displays base item cost, supplier tax, tax-exempt status, additional costs, and the final verified supplier spend without treating client tax as profit.
+
 ## v0.5.38 (2026-08-05)
 - End of Day: reorganizes the mobile header with prominent Cart and EOD Report Email actions, a full-width Batch Out action, and report sending contained inside the email window.
 - Purchasing Cart: groups pending parts and products into compact expandable distributor carts with quantities, order links, additional checkout costs, payment warnings, and per-distributor totals.

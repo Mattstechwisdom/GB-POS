@@ -55,7 +55,7 @@ declare global {
   openCalendar: (payload?: any) => Promise<any>;
   openClockIn: () => Promise<any>;
   openProducts: () => Promise<any>;
-  openInventory: () => Promise<any>;
+  openInventory: (payload?: { inventoryId?: number }) => Promise<any>;
   openWorkOrderRepairPicker: () => Promise<any>;
   openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;

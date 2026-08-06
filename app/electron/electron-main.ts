@@ -5109,7 +5109,7 @@ ipcMain.handle('open-products', async (event: any) => {
   return { ok: true };
 });
 
-ipcMain.handle('open-inventory', async (event: any) => {
+ipcMain.handle('open-inventory', async (event: any, payload?: { inventoryId?: number }) => {
   const parentFromSender = (() => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
@@ -5134,7 +5134,9 @@ ipcMain.handle('open-inventory', async (event: any) => {
   });
   showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const url = isDev ? `${DEV_SERVER_URL}/?inventory=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?inventory=true`;
+  const inventoryId = Number(payload?.inventoryId);
+  const inventoryQuery = Number.isFinite(inventoryId) && inventoryId > 0 ? `&inventoryId=${encodeURIComponent(String(inventoryId))}` : '';
+  const url = isDev ? `${DEV_SERVER_URL}/?inventory=true${inventoryQuery}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?inventory=true${inventoryQuery}`;
   child.loadURL(url);
   return { ok: true };
 });
