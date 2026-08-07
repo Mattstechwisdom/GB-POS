@@ -25,6 +25,17 @@ assert.match(eodSource, /Warning: payment not taken/, 'Unpaid cart lines must di
 assert.match(workOrderItemsSource, /Supplier item cost/, 'Work-order supplier cost must live in the line-item editor.');
 assert.match(workOrderItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Work-order costs must exclude EOD checkout additions.');
 assert.match(saleItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Sale costs must follow the same EOD checkout accounting rule.');
+assert.doesNotMatch(workOrderItemsSource, /normalizePartInventoryTitle/, 'A supplier URL must not replace a custom work-order repair or device name.');
+assert.doesNotMatch(saleItemsSource, /normalizePartInventoryTitle/, 'A supplier URL must not replace a custom sale item name.');
+assert.doesNotMatch(workOrderItemsSource, /repair:\s*(?:meta\.title|normalizedTitle)/, 'Work-order URL autofill must preserve the technician-entered repair name.');
+assert.doesNotMatch(workOrderSource, /repair:\s*meta\.title/, 'Parts Tracking URL autofill must preserve existing work-order item names.');
+assert.doesNotMatch(saleItemsSource, /description:\s*(?:meta\.title|normalizedTitle)/, 'Sale URL autofill must preserve the technician-entered product name.');
+assert.match(workOrderItemsSource, /parts: suggestedParts \?\? current\.parts/, 'Work-order URL pricing must apply supplier cost and markup to Parts charged.');
+assert.match(saleItemsSource, /price == null \? \{\} : \{ price \}/, 'Sale URL pricing must apply supplier cost and markup to the customer price.');
+assert.doesNotMatch(workOrderItemsSource, />Close<\/button>/, 'Work-order line-item editor must not duplicate a Close button above its fields.');
+assert.doesNotMatch(saleItemsSource, />Close<\/button>/, 'Sale line-item editor must not duplicate a Close button above its fields.');
+assert.match(workOrderItemsSource, />\s*Cancel\s*<\/button>[\s\S]*onCommit\?\.\(nextItems\);[\s\S]*setEditing\(null\);/, 'Work-order item Save must close the editor and Cancel must remain at the bottom.');
+assert.match(saleItemsSource, />\s*Cancel\s*<\/button>[\s\S]*onCommit\?\.\(nextItems\);[\s\S]*setEditing\(null\);/, 'Sale item Save must close the editor and Cancel must remain at the bottom.');
 assert.match(workOrderItemsSource, /onCommit\?\.\(nextItems\)/, 'Work-order item edits must commit immediately so EOD reads the saved cost.');
 assert.match(saleItemsSource, /onCommit\?\.\(nextItems\)/, 'Sale item edits must commit immediately so EOD reads the saved cost.');
 assert.match(eodSource, /Items arrive on different dates/, 'The EOD cart must support split delivery dates.');

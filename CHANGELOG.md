@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.5.46 (2026-08-07)
+- Mobile Home: replaces the bottom New WO and New Sale shortcuts with Quick Sale, Add Client, and Search Client, and removes those duplicate actions from the side drawer.
+- Line Item Editors: removes the redundant top Close button, keeps Cancel and Save together at the bottom, and closes Sales and Work Order editors automatically after Save.
+- Consultation Editing: removes product-ordering controls from consultation line items, preserves an edited customer hourly rate, and calculates technician commission from saved hours rather than the amount charged.
+- Custom Item URL Pricing: preserves technician-entered Sales and Work Order names while supplier URLs update cost, markup, and the resulting customer charge.
+
 ## v0.5.45 (2026-08-07)
 - Consultation Client Updates: places the saved consultation's Update Client action directly beneath the client information on both desktop and mobile, matching the work-order workflow.
 

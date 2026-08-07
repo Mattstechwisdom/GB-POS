@@ -622,10 +622,22 @@
   font-weight: 850;
 }
 
-.mobile-quickbar button:first-child {
+.mobile-quickbar .quick-sale {
+  border-color: rgba(168, 85, 247, 0.9);
+  background: #7e22ce;
+  color: #fff;
+}
+
+.mobile-quickbar .add-client {
   border-color: #39ff14;
   background: #39ff14;
   color: #09090b;
+}
+
+.mobile-quickbar .search-client {
+  border-color: #3b82f6;
+  background: #1d4ed8;
+  color: #fff;
 }
 
 .mobile-drawer-layer,

@@ -18,9 +18,16 @@ assert.equal(c.splitCommissionPool(60, c.selectedSalesCommissionTechnicians(tech
 assert.deepEqual(c.allocateCommissionPool(0.05, 2), [0.03, 0.02]);
 assert.equal(c.allocateCommissionPool(50, 3).reduce((sum, value) => sum + value, 0), 50);
 assert.equal(c.consultationCommission(3, two), 75);
+assert.equal(c.consultationCommission(1, two), 25, 'One saved consultation hour earns $25 regardless of the customer rate.');
 assert.deepEqual(c.selectedSalesCommissionTechnicians(techs, c.normalizeCommissionSettings({})).map(t => t.id), ['matt', 'alex', 'sam']);
 const reportingSource = fs.readFileSync(path.resolve('src/components/ReportingWindow.tsx'), 'utf8');
 const eodSource = fs.readFileSync(path.resolve('src/components/EODWindow.tsx'), 'utf8');
 assert.match(reportingSource, /Array\.isArray\(sale\?\.items\).*return 0;/s);
 assert.match(eodSource, /\(driver\|distance\|travel\|fee\)/);
+assert.match(eodSource, /breakdown\.consultationHours[\s\S]*consultationCollectionRatio/, 'EOD commission must use saved consultation hours instead of inferring hours from customer charges.');
+assert.doesNotMatch(eodSource, /consultationCollected\s*\/\s*CONSULTATION_HOURLY_RATE/, 'Changing the customer rate must not change hourly technician commission.');
+const saleWindowSource = fs.readFileSync(path.resolve('src/sales/SaleWindow.tsx'), 'utf8');
+const saleItemsSource = fs.readFileSync(path.resolve('src/sales/SaleItemsTable.tsx'), 'utf8');
+assert.doesNotMatch(saleWindowSource, /Auto-update consultation item price/, 'Opening an existing consultation must not reset its edited customer rate.');
+assert.match(saleItemsSource, /!isConsultationItem\(editing\) \? <>[\s\S]*Supplier item cost/, 'Product ordering fields must be hidden when editing a consultation.');
 console.log('Commission settings and split calculations passed.');

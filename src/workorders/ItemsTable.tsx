@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
-import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -234,23 +234,24 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
     setEditingError('');
     try {
       const meta = await scrapePartUrl(orderSourceUrl);
-      const internalCost = typeof meta.price === 'number' ? meta.price : editing.internalCost;
-      const markupPct = editing.markupPct ?? DEFAULT_PART_MARKUP_PCT;
-      const suggestedParts = markedUpPartPrice(internalCost, markupPct);
-      const distributor = editing.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
-      const normalizedTitle = normalizePartInventoryTitle(meta.title);
-      setEditing(current => current ? {
-        ...current,
-        orderSourceUrl,
-        repair: normalizedTitle || current.repair,
-        distributor,
-        partSource: current.partSource || distributor,
-        internalCost,
-        markupPct,
-        parts: Number(current.parts || 0) > 0 ? current.parts : (suggestedParts ?? current.parts),
-        requiresOrder: true,
-        orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
-      } : current);
+      setEditing(current => {
+        if (!current) return current;
+        const internalCost = typeof meta.price === 'number' ? meta.price : current.internalCost;
+        const markupPct = current.markupPct ?? DEFAULT_PART_MARKUP_PCT;
+        const suggestedParts = markedUpPartPrice(internalCost, markupPct);
+        const distributor = current.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
+        return {
+          ...current,
+          orderSourceUrl,
+          distributor,
+          partSource: current.partSource || distributor,
+          internalCost,
+          markupPct,
+          parts: suggestedParts ?? current.parts,
+          requiresOrder: true,
+          orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
+        };
+      });
       if (!meta.ok && meta.error) setEditingError(`URL saved, but supplier details could not be read: ${meta.error}`);
     } catch (error: any) {
       setEditingError(`URL saved, but supplier details could not be read: ${error?.message || 'Unknown error'}`);
@@ -372,10 +373,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
-            <div className="flex items-center gap-2 max-w-[75%]">
-              <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
-              <button className="px-2 py-0.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Close</button>
-            </div>
+            <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 mt-2">
@@ -448,7 +446,11 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                   <MoneyInput
                     className="w-full mt-1 bg-yellow-200 text-black rounded px-2 py-1"
                     value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
-                    onValueChange={(value) => setEditing({ ...editing, internalCost: value == null ? undefined : Number(value) })}
+                    onValueChange={(value) => {
+                      const internalCost = value == null ? undefined : Number(value);
+                      const parts = markedUpPartPrice(internalCost, editing.markupPct ?? DEFAULT_PART_MARKUP_PCT);
+                      setEditing({ ...editing, internalCost, ...(parts == null ? {} : { parts }) });
+                    }}
                     allowEmpty
                   />
                   <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div>
@@ -468,7 +470,18 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-400">Markup %</label>
-                  <input type="number" min="0" step="1" className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.markupPct ?? DEFAULT_PART_MARKUP_PCT} onChange={e => setEditing({ ...editing, markupPct: e.target.value })} />
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="w-full mt-1 bg-zinc-900 rounded px-2 py-1"
+                    value={editing.markupPct ?? DEFAULT_PART_MARKUP_PCT}
+                    onChange={e => {
+                      const markupPct = e.target.value;
+                      const parts = markedUpPartPrice(editing.internalCost, markupPct);
+                      setEditing({ ...editing, markupPct, ...(parts == null ? {} : { parts }) });
+                    }}
+                  />
                 </div>
                 <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
                   <input type="checkbox" checked={editing.taxExempt === true} onChange={e => setEditing({ ...editing, taxExempt: e.target.checked })} />
@@ -519,10 +532,9 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
           <div className="flex gap-2 mt-2 justify-end">
             <button
               className="px-3 py-1 bg-zinc-800 rounded"
-              onClick={() => setEditing(selectedRow ? { ...selectedRow } : null)}
-              disabled={!selectedRow}
+              onClick={() => { setEditingError(''); setEditing(null); }}
             >
-              Reset
+              Cancel
             </button>
             <button
               className="px-3 py-1 bg-brand text-black rounded"
@@ -541,7 +553,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                 setEditingError('');
                 onChange(nextItems);
                 void onCommit?.(nextItems);
-                // Keep editor open on the selected row
+                setEditing(null);
               }}
             >
               Save

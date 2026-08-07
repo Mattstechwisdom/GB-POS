@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
-import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import { derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 
 export type SaleItemRow = {
   id: string;
@@ -227,18 +227,24 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
     setEditingError('');
     try {
       const meta = await scrapePartUrl(productUrl);
-      const distributor = editing.distributor || meta.vendor || derivePartVendorFromUrl(productUrl);
-      const description = normalizePartInventoryTitle(meta.title) || meta.title || editing.description;
-      setEditing(current => current ? {
-        ...current,
-        productUrl,
-        description,
-        distributor,
-        internalCost: typeof meta.price === 'number' ? meta.price : current.internalCost,
-        inStock: false,
-        requiresOrder: true,
-        orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
-      } : current);
+      setEditing(current => {
+        if (!current) return current;
+        const distributor = current.distributor || meta.vendor || derivePartVendorFromUrl(productUrl);
+        const internalCost = typeof meta.price === 'number' ? meta.price : current.internalCost;
+        const markupPct = current.markupPct ?? 10;
+        const price = markedUpPartPrice(internalCost, markupPct);
+        return {
+          ...current,
+          productUrl,
+          distributor,
+          internalCost,
+          markupPct,
+          ...(price == null ? {} : { price }),
+          inStock: false,
+          requiresOrder: true,
+          orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
+        };
+      });
       if (!meta.ok && meta.error) setEditingError(`URL saved, but supplier details could not be read: ${meta.error}`);
     } catch (error: any) {
       setEditingError(`URL saved, but supplier details could not be read: ${error?.message || 'Unknown error'}`);
@@ -333,13 +339,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
         <div className="gb-sale-item-editor mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
-            <div className="flex items-center gap-2 max-w-[75%]">
-              <div className="text-[11px] text-zinc-400 truncate max-w-[60%]" title={editing.description || ''}>{editing.description || ''}</div>
-              <button className="px-2 py-0.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded" onClick={() => setEditing(null)}>Close</button>
-            </div>
+            <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
           </div>
 
-          <label className="block text-xs text-zinc-400 mt-2">Item</label>
+          <label className="block text-xs text-zinc-400 mt-2">{isConsultationItem(editing) ? 'Consultation' : 'Item'}</label>
           <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
           <div className="flex gap-2 mt-2">
             <div className="w-1/3">
@@ -371,6 +374,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
             </div>
           </div>
 
+          {!isConsultationItem(editing) ? <>
           <div className="flex gap-2 mt-2">
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Category</label>
@@ -424,7 +428,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
               <MoneyInput
                 className="w-full bg-yellow-200 text-black rounded px-2 py-1"
                 value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
-                onValueChange={(v) => setEditing({ ...editing, internalCost: v == null ? undefined : Number(v || 0) })}
+                onValueChange={(v) => {
+                  const internalCost = v == null ? undefined : Number(v || 0);
+                  const price = markedUpPartPrice(internalCost, editing.markupPct ?? 10);
+                  setEditing({ ...editing, internalCost, ...(price == null ? {} : { price }) });
+                }}
                 allowEmpty
               />
               {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div> : null}
@@ -445,7 +453,18 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
             </div>
             <div>
               <label className="block text-xs text-zinc-400">Markup %</label>
-              <input type="number" min="0" step="1" className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.markupPct ?? 10} onChange={e => setEditing({ ...editing, markupPct: e.target.value })} />
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className="w-full bg-zinc-900 rounded px-2 py-1"
+                value={editing.markupPct ?? 10}
+                onChange={e => {
+                  const markupPct = e.target.value;
+                  const price = markedUpPartPrice(editing.internalCost, markupPct);
+                  setEditing({ ...editing, markupPct, ...(price == null ? {} : { price }) });
+                }}
+              />
             </div>
             <div>
               <label className="block text-xs text-zinc-400">Reorder / MOQ</label>
@@ -460,12 +479,19 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
               <textarea className="w-full min-h-[64px] bg-zinc-900 rounded px-2 py-1" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
             </div>
           </div>
+          </> : null}
           {isConsultationItem(editing) ? (
-            <div className="mt-2 text-[11px] text-zinc-400">
-              Consultation pricing is $75 for the first hour + $50 per additional hour. Technician payout is tracked separately in EOD reporting.
+            <div className="mt-2 space-y-2">
+              <div>
+                <label className="block text-xs text-zinc-400">Consultation Notes</label>
+                <textarea className="mt-1 w-full min-h-[80px] bg-zinc-900 rounded px-2 py-1" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+              </div>
+              <div className="text-[11px] text-zinc-400">
+                The customer hourly rate is editable. Technician commission remains based on saved hours at the configured $25 per hour, independent of the customer rate.
+              </div>
             </div>
           ) : null}
-          <div className="mt-2">
+          {!isConsultationItem(editing) ? <div className="mt-2">
             <label className="block text-xs text-zinc-400">Product URL</label>
             <input
               className="w-full bg-zinc-900 rounded px-2 py-1"
@@ -477,7 +503,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void autofillProductOrderDetails(e.currentTarget.value); } }}
             />
             {scrapingProductUrl ? <div className="mt-1 text-[10px] text-[#39FF14]">Reading supplier details...</div> : null}
-          </div>
+          </div> : null}
           {!isConsultationItem(editing) && editing.requiresOrder ? (
             <div className="mt-2">
               <label className="block text-xs text-zinc-400">Distributor</label>
@@ -493,29 +519,31 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
           <div className="flex gap-2 mt-2 justify-end">
             <button
               className="px-3 py-1 bg-zinc-800 rounded"
-              onClick={() => setEditing(selectedRow ? { ...selectedRow } : null)}
-              disabled={!selectedRow}
+              onClick={() => { setEditingError(''); setEditing(null); }}
             >
-              Reset
+              Cancel
             </button>
             <button
               className="px-3 py-1 bg-brand text-black rounded"
               onClick={() => {
-                if (editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
+                if (!isConsultationItem(editing) && editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
                   setEditingError('Enter the supplier item cost before shipping and tax.');
                   return;
                 }
-                if (editing.requiresOrder && !String(editing.distributor || '').trim() && !String(editing.productUrl || '').trim()) {
+                if (!isConsultationItem(editing) && editing.requiresOrder && !String(editing.distributor || '').trim() && !String(editing.productUrl || '').trim()) {
                   setEditingError('Enter a distributor or product URL so the EOD Cart can group this product.');
                   return;
                 }
-                const distributor = String(editing.distributor || '').trim() || derivePartVendorFromUrl(editing.productUrl);
-                const saved = { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
+                const consultation = isConsultationItem(editing);
+                const distributor = consultation ? editing.distributor : (String(editing.distributor || '').trim() || derivePartVendorFromUrl(editing.productUrl));
+                const saved = consultation
+                  ? { ...editing, inStock: true, requiresOrder: false, orderStatus: 'in_stock' as const }
+                  : { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
                 const nextItems = items.map(i => (i.id === editing.id ? saved : i));
                 setEditingError('');
                 onChange(nextItems);
                 void onCommit?.(nextItems);
-                // Keep editor open on the selected row
+                setEditing(null);
               }}
             >
               Save

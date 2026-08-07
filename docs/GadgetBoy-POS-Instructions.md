@@ -336,6 +336,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 - Consultation commission is technician-specific.
 - Current reporting policy values logged consultation time at $25 per hour for technician commission.
+- An approved customer hourly rate may be edited on the consultation line item. This does not change technician commission: one saved consultation hour still earns the assigned technician $25 under the current policy.
+- Consultation line items do not use product URLs, supplier costs, device/product fields, markup, reorder, tax-exempt, or stock controls.
 - Incorrect technician assignment produces incorrect commission, so verify it before saving.
 
 ## 16. Calendar and Content Schedule

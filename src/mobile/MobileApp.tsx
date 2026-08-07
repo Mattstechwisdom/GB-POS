@@ -1087,9 +1087,9 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       </section>
 
       <nav className="mobile-quickbar" aria-label="Quick actions">
-        <button type="button" onClick={() => openModal('newWorkOrder')}>New WO</button>
-        <button type="button" onClick={() => openModal('newSale')}>New Sale</button>
-        <button type="button" onClick={() => openModal('customerSearch')}>Clients</button>
+        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Sale</button>
+        <button type="button" className="add-client" onClick={() => openModal('addClient')}>Add Client</button>
+        <button type="button" className="search-client" onClick={() => openModal('customerSearch')}>Search Client</button>
       </nav>
 
       <MobileDrawer
@@ -1193,14 +1193,9 @@ function MobileDrawer(props: {
 }) {
   const { open, profileName, role, onClose, onOpenModal, onRefresh, update, updateOpening = false, onUpdate, onSignOut } = props;
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    client: true,
     technician: true,
     admin: false,
   });
-  const clientDatabase = [
-    ['customerSearch', 'Search Client'],
-    ['addClient', 'Add Client'],
-  ] as const;
   const technicianTools = [
     ['technicians', 'Technicians'],
     ['calendar', 'Calendar'],
@@ -1236,13 +1231,8 @@ function MobileDrawer(props: {
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
           <DrawerButton label="Generate Quote" tone="green" featured onClick={() => handleOpenModal('quoteGenerator')} />
           <DrawerButton label="Consultation" tone="blue" featured onClick={() => handleOpenModal('consultation')} />
-          <DrawerButton label="Quick Sale" tone="purple" featured onClick={() => handleOpenModal('quickSale')} />
           <DrawerButton label="End of Day Report" tone="amber" featured onClick={() => handleOpenModal('eod')} />
         </div>
-
-        <DrawerSection title="Client Database" open={openSections.client} tone="default" onToggle={() => toggleSection('client')}>
-          {clientDatabase.map(([type, label]) => <DrawerButton key={label} label={label} onClick={() => handleOpenModal(type)} />)}
-        </DrawerSection>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
           {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}

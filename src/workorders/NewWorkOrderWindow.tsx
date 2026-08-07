@@ -50,7 +50,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
-import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, normalizePartInventoryTitle, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
+import { DEFAULT_PART_MARKUP_PCT, PART_MARKUP_PRESETS, derivePartVendorFromUrl, markedUpPartPrice, scrapePartUrl, type PartUrlMetadata } from '../lib/partOrdering';
 import { consumeInStockInventory } from '../lib/inventoryConsumption';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
@@ -1250,7 +1250,7 @@ const NewWorkOrderWindow: React.FC = () => {
     try {
       const scraped = await scrapePartUrl(orderUrl);
       if (sequence !== partsScrapeSequenceRef.current) return null;
-      const meta = { ...scraped, title: normalizePartInventoryTitle(scraped.title) };
+      const meta = scraped;
       const vendor = meta.vendor || derivePartVendorFromUrl(orderUrl);
       lastPartsScrapeUrlRef.current = orderUrl;
       setPartsUrlMeta(meta);
@@ -1259,42 +1259,19 @@ const NewWorkOrderWindow: React.FC = () => {
         let idx = items.findIndex((item: any) => String(item?.orderSourceUrl || '').trim() === orderUrl);
         if (idx < 0) idx = items.findIndex((item: any) => Number(item?.parts || 0) > 0);
         if (idx < 0 && items.length) idx = 0;
-        if (idx < 0 && (meta.title || typeof meta.price === 'number')) {
-          const internalCost = typeof meta.price === 'number' ? meta.price : undefined;
-          items.push({
-            id: crypto.randomUUID(),
-            device: String((w as any).productCategory || 'Other'),
-            repairCategory: 'Repair',
-            repair: meta.title || 'Repair Part',
-            parts: internalCost == null ? 0 : (markedUpPartPrice(internalCost, DEFAULT_PART_MARKUP_PCT) || 0),
-            labor: 0,
-            status: 'pending',
-            note: '',
-            partSource: vendor,
-            distributor: vendor,
-            internalCost,
-            markupPct: DEFAULT_PART_MARKUP_PCT,
-            requiresOrder: true,
-            orderStatus: 'needed',
-            taxExempt: false,
-            supplierTaxRate: 8,
-            orderSourceUrl: orderUrl,
-          });
-          idx = items.length - 1;
-        }
         if (idx >= 0) {
           const current: any = items[idx];
-          const nextParts = typeof meta.price === 'number' && Number(current.parts || 0) <= 0
-            ? (markedUpPartPrice(meta.price, DEFAULT_PART_MARKUP_PCT) ?? current.parts)
+          const markupPct = current.markupPct ?? DEFAULT_PART_MARKUP_PCT;
+          const nextParts = typeof meta.price === 'number'
+            ? (markedUpPartPrice(meta.price, markupPct) ?? current.parts)
             : current.parts;
           items[idx] = {
             ...current,
-            repair: meta.title || current.repair,
             parts: Number(nextParts || 0) || 0,
             partSource: current.partSource || vendor,
             distributor: current.distributor || vendor,
             internalCost: typeof meta.price === 'number' ? meta.price : current.internalCost,
-            markupPct: current.markupPct ?? DEFAULT_PART_MARKUP_PCT,
+            markupPct,
             requiresOrder: true,
             orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed',
             taxExempt: current.taxExempt === true,
@@ -1310,7 +1287,7 @@ const NewWorkOrderWindow: React.FC = () => {
         };
       });
       if (meta.ok) {
-        triggerWarningBanner('Part URL scanned', meta.title || vendor || 'Part details were found.');
+        triggerWarningBanner('Part URL scanned', typeof meta.price === 'number' ? 'Supplier cost and customer price were updated.' : (vendor || 'Supplier details were found.'));
       } else if (meta.error) {
         triggerWarningBanner('URL saved', `Could not auto-fill details: ${meta.error}`);
       }

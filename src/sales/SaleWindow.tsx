@@ -137,12 +137,6 @@ async function geocodeAddress(address: string, near?: { lat: number; lng: number
   }
 }
 
-function calcConsultationPrice(hours: number, hasDistanceFee: boolean): number {
-  const extra = Math.max(0, hours - 1) * CONSULTATION_EXTRA_RATE;
-  const dist = hasDistanceFee ? CONSULTATION_DISTANCE_FEE : 0;
-  return CONSULTATION_BASE_RATE + extra + dist;
-}
-
 // Add minutes to a HH:MM time string; returns null if base time is empty
 function addHoursToTime(time: string, hours: number): string | null {
   if (!time) return null;
@@ -417,23 +411,6 @@ const SaleWindow: React.FC = () => {
   useEffect(() => {
     refreshAddressHistory();
   }, [refreshAddressHistory]);
-
-  // Auto-update consultation item price whenever hours or distanceFee changes
-  useEffect(() => {
-    const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
-    if (!isConsult) return;
-    const hours = Number((sale as any).consultationHours) || 1;
-    const newPrice = calcConsultationPrice(hours, distanceFeeApplied);
-    setSale(s => ({
-      ...s,
-      items: ((s.items || []) as SaleItemRow[]).map(r =>
-        String(r.category || '').toLowerCase().startsWith('consult')
-          ? { ...r, price: newPrice }
-          : r
-      ),
-    }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(sale as any).consultationHours, distanceFeeApplied]);
 
   useEffect(() => () => {
     if (warningHideTimer.current !== undefined) {

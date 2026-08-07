@@ -605,7 +605,10 @@ function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number,
   const commissionableCollected = round2(collected * commissionableRatio);
   const consultationCollected = round2(collected * consultationRatio);
   const salesCommission = round2(commissionableCollected * commissionRate);
-  const consultationHoursCollected = round2(consultationCollected / CONSULTATION_HOURLY_RATE);
+  const consultationCollectionRatio = Number(breakdown.consultationNet || 0) > 0
+    ? Math.min(1, consultationCollected / Number(breakdown.consultationNet || 0))
+    : 0;
+  const consultationHoursCollected = round2(Number(breakdown.consultationHours || 0) * consultationCollectionRatio);
   const consultationPayout = round2(consultationHoursCollected * consultationTechHourlyRate);
   const commission = round2(salesCommission + consultationPayout);
   const date = latestPaymentDateInRange(sale, startMs, endMs) || getTimelineDate(sale) || new Date(0);
@@ -1078,7 +1081,7 @@ const EODWindow: React.FC = () => {
         prev.collected += collectedPortion;
         if (isConsultationCategory(cat)) {
           prev.consultationCollected += consultationPortion || collectedPortion;
-          prev.consultationPayout += row.consultationHoursCollected * commissionSettings.consultationTechHourlyRate * share;
+          prev.consultationPayout += row.consultationPayout;
         } else {
           prev.commissionableCollected += commissionablePortion || collectedPortion;
         }

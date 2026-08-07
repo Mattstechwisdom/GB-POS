@@ -470,8 +470,8 @@ export default function ConsultationBookingWindow() {
       const customChargeItem: any = customLaborCharge != null ? {
         id: crypto.randomUUID(),
         description: purpose,
-        qty: 1,
-        price: effectiveLaborCharge,
+        qty: billedHours,
+        price: effectiveLaborCharge / billedHours,
         consultationHours: billedHours,
         category: 'Consultation',
         inStock: true,
