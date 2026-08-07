@@ -6,6 +6,7 @@ import Button from './Button';
 import DuplicateCustomerDialog from './DuplicateCustomerDialog';
 import { Customer } from '../lib/types';
 import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
+import { isCompleteCustomerEmail, isCompleteCustomerPhone, newCustomerContactErrors } from '../lib/customerContactValidation';
 
 interface Props {
   customer?: Customer | null;
@@ -26,6 +27,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [declinedPhone, setDeclinedPhone] = useState(false);
+  const [declinedEmail, setDeclinedEmail] = useState(false);
   const lastChangeRef = useRef<number>(Date.now());
   const abortRef = useRef<any>(null);
   const editSeqRef = useRef(0);
@@ -61,6 +64,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   useEffect(() => {
     setLocal(customer || {});
+    setDeclinedPhone(false);
+    setDeclinedEmail(false);
     setDirty(false);
     editSeqRef.current = 0;
   }, [customer]);
@@ -81,20 +86,26 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     if (!c) return false;
     const hasFirst = !!c.firstName && !!c.firstName.trim();
     const hasLast = !!c.lastName && !!c.lastName.trim();
-    const hasContact = !!(c.phone || c.email);
+    const hasExistingContact = isCompleteCustomerPhone(c.phone) || isCompleteCustomerEmail(c.email);
+    const contactDecisionsComplete = (isCompleteCustomerPhone(c.phone) || declinedPhone)
+      && (isCompleteCustomerEmail(c.email) || declinedEmail);
     const zipOk = !c.zip || /^[0-9]{5}$/.test(c.zip.toString());
-    return hasFirst && hasLast && hasContact && zipOk;
-  }, []);
+    const contactOk = (c as any).id ? hasExistingContact : contactDecisionsComplete;
+    return hasFirst && hasLast && contactOk && zipOk;
+  }, [declinedEmail, declinedPhone]);
 
   const validate = useCallback(() => {
     const errs: string[] = [];
     if (!local.firstName || !local.firstName.trim()) errs.push('First name required');
     if (!local.lastName || !local.lastName.trim()) errs.push('Last name required');
-    if (!(local.phone || local.email)) errs.push('Phone or Email required');
+    if (!(local as any).id) errs.push(...newCustomerContactErrors(local, { declinedPhone, declinedEmail }));
+    else if (!(local.phone || local.email)) errs.push('Phone or Email required');
+    if ((local as any).id && local.phone && !isCompleteCustomerPhone(local.phone)) errs.push('Phone must be 10 digits');
+    if ((local as any).id && local.email && !isCompleteCustomerEmail(local.email)) errs.push('Enter a complete email address');
     if (local.zip && !/^[0-9]{5}$/.test(local.zip.toString())) errs.push('Zip must be 5 digits');
     setErrors(errs);
     return errs.length === 0;
-  }, [local]);
+  }, [declinedEmail, declinedPhone, local]);
 
   const duplicateSignature = useCallback((matches: CustomerDuplicateMatch[]) => {
     return matches
@@ -223,10 +234,10 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     },
   });
 
-  async function makePayloadForCustomer(): Promise<{ customerId?: number; customerName?: string; customerPhone?: string }> {
+  async function makePayloadForCustomer(): Promise<{ customerId: number; customerName: string; customerPhone: string } | null> {
     const saved = await ensureCustomerSaved();
-    const c = (saved || local || {}) as any;
-    if (!c.id) return {} as any;
+    if (!saved?.id) return null;
+    const c = saved as any;
     const name = (c.name || `${c.firstName || ''} ${c.lastName || ''}`).trim();
     return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
   }
@@ -256,6 +267,11 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
           <div className={`gb-customer-overview-form ${compactCreate ? 'w-full' : 'w-5/12'}`}>
             <CustomerForm
               customer={local}
+              requireContactDecision={!(local as any)?.id}
+              declinedPhone={declinedPhone}
+              declinedEmail={declinedEmail}
+              onDeclinedPhoneChange={setDeclinedPhone}
+              onDeclinedEmailChange={setDeclinedEmail}
               onChange={c => {
                 editSeqRef.current += 1;
                 setDirty(true);
@@ -270,6 +286,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
+                  if (!payload) return;
                   await (window as any).api.openNewWorkOrder(payload);
                 }}
               >New Work Order</Button>
@@ -277,6 +294,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
+                  if (!payload) return;
                   await (window as any).api.openNewSale(payload);
                 }}
               >New Sale</Button>

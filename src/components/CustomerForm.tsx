@@ -6,6 +6,11 @@ import { Customer } from '../lib/types';
 interface Props {
   customer?: Partial<Customer>;
   onChange: (c: Partial<Customer>) => void;
+  requireContactDecision?: boolean;
+  declinedPhone?: boolean;
+  declinedEmail?: boolean;
+  onDeclinedPhoneChange?: (declined: boolean) => void;
+  onDeclinedEmailChange?: (declined: boolean) => void;
 }
 
 const EMAIL_DOMAINS = [
@@ -19,7 +24,15 @@ const EMAIL_DOMAINS = [
   'msn.com',
 ];
 
-const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
+const CustomerForm: React.FC<Props> = ({
+  customer = {},
+  onChange,
+  requireContactDecision = false,
+  declinedPhone = false,
+  declinedEmail = false,
+  onDeclinedPhoneChange,
+  onDeclinedEmailChange,
+}) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [phoneAltTouched, setPhoneAltTouched] = useState(false);
@@ -72,26 +85,34 @@ const CustomerForm: React.FC<Props> = ({ customer = {}, onChange }) => {
         />
       </div>
       <div>
-        <label className="block text-[12px] text-zinc-400">Phone</label>
+        <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+          <label className="block text-[12px] text-zinc-400">Phone</label>
+          {requireContactDecision ? <label className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-400"><input type="checkbox" aria-label="Phone contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedPhone} onChange={event => { const checked = event.target.checked; if (checked) update('phone', ''); onDeclinedPhoneChange?.(checked); }} />Declined</label> : null}
+        </div>
         <Input
           value={local.phone || ''}
-          onChange={e => update('phone', formatPhoneTyping(e.target.value))}
+          onChange={e => { onDeclinedPhoneChange?.(false); update('phone', formatPhoneTyping(e.target.value)); }}
           onBlur={() => setPhoneTouched(true)}
           inputMode="tel"
           autoComplete="tel"
+          disabled={requireContactDecision && declinedPhone}
         />
         {phoneTouched && local.phone && local.phone.replace(/\D/g, '').length !== 10 ? (
           <div className="mt-1 text-[11px] text-red-400">Phone should be 10 digits (###-###-####)</div>
         ) : null}
       </div>
       <div>
-        <label className="block text-[12px] text-zinc-400">Email</label>
+        <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+          <label className="block text-[12px] text-zinc-400">Email</label>
+          {requireContactDecision ? <label className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-400"><input type="checkbox" aria-label="Email contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedEmail} onChange={event => { const checked = event.target.checked; if (checked) update('email', ''); onDeclinedEmailChange?.(checked); }} />Declined</label> : null}
+        </div>
         <Input
           value={local.email || ''}
-          onChange={e => update('email', e.target.value)}
+          onChange={e => { onDeclinedEmailChange?.(false); update('email', e.target.value); }}
           list={emailListIdRef.current}
           inputMode="email"
           autoComplete="email"
+          disabled={requireContactDecision && declinedEmail}
         />
         <datalist id={emailListIdRef.current}>
           {emailSuggestions.map(s => (

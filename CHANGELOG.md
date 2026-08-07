@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.5.43 (2026-08-07)
+- New Client Contact: requires a complete 10-digit phone number and complete email address before saving or continuing, with compact independent Declined choices beside Phone and Email; Alt Phone remains optional.
+- Client Workflow Safety: blocks New Work Order and New Sale from opening until the new client passes validation and is saved with a real customer ID.
+- End of Day Layout: moves Low Stock into the left desktop overview column, stacks it cleanly on mobile, and removes the duplicate full-width section beneath the report while keeping purchasing in the Cart window.
+
 ## v0.5.42 (2026-08-06)
 - Ticket Item Accounting: saves work-order and sale item edits immediately, including supplier cost, quantity, distributor, order URL, markup, tax status, SKU, model, condition, notes, and reorder quantity, without adding ticket-only custom items to the permanent inventory catalog.
 - End of Day Cart: adds distributor-wide and optional per-item estimated delivery dates, carries verified delivery details back to the source ticket, and mirrors expected arrivals into the synced calendar.

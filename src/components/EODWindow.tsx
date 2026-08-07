@@ -2706,13 +2706,36 @@ const EODWindow: React.FC = () => {
         {viewMode === 'reports' ? (
           <div className="space-y-3">
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Today</h3>
-                  <span className="text-xs text-zinc-500">{loadingData ? 'Loading…' : rangeLabel(range, start, end)}</span>
-                </div>
-                <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs text-zinc-300 leading-relaxed">
-                  This daily snapshot rolls forward at the saved Batch Out time. It does not delete or alter the transaction history used by Reporting.
+              <div className="gb-eod-low-stock col-span-12 flex min-h-0 flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)] lg:col-span-4">
+                <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800 px-3 py-3">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-amber-300">Low Stock</h3>
+                    <div className="text-xs text-zinc-400">Select an item to restock, dismiss, or inspect it.</div>
+                  </div>
+                  <span className={`w-fit shrink-0 rounded border px-2.5 py-1 text-xs font-semibold ${lowStockInventory.length ? 'border-amber-500/50 bg-amber-950/40 text-amber-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>
+                    {lowStockInventory.length ? `${lowStockInventory.length} need attention` : 'Stock levels clear'}
+                  </span>
+                </header>
+                {lowStockMessage ? <div className="border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-200">{lowStockMessage}</div> : null}
+                {lowStockInventory.length ? (
+                  <div className="gb-eod-low-stock-list min-h-0 divide-y divide-zinc-800 lg:max-h-[34rem] lg:overflow-y-auto">
+                    {lowStockInventory.map((item: any) => {
+                      const inCart = pendingLowStockInventoryIds.has(Number(item.id));
+                      return (
+                        <button key={item.id} type="button" className="gb-eod-low-stock-row grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition hover:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-amber-400" onClick={() => setSelectedLowStockItem(item)}>
+                          <span className="min-w-0">
+                            <strong className="block truncate text-sm text-white">{item.itemDescription || 'Untitled inventory item'}</strong>
+                            <span className="block truncate text-[11px] text-zinc-500">{item.itemType || 'Item'}{item.deviceModel ? ` | ${item.deviceModel}` : item.category ? ` | ${item.category}` : ''}{item.distributor ? ` | ${item.distributor}` : ''}</span>
+                            <span className="mt-1 block text-[11px] text-zinc-400">On hand <strong className="text-amber-200">{Math.max(0, Number(item.stockCount) || 0)}</strong> / alert {Math.max(0, Number(item.lowStockThreshold) || 0)} / MOQ {inventoryReorderQuantity(item)}</span>
+                          </span>
+                          <span className={`rounded border px-2 py-1 text-center text-[11px] font-semibold ${inCart ? 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]' : 'border-amber-500/40 bg-amber-950/30 text-amber-200'}`}>{inCart ? 'In Cart' : 'Review'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : <div className="flex min-h-28 items-center justify-center px-4 py-5 text-center text-sm text-zinc-500">No tracked inventory is currently at or below its saved threshold.</div>}
+                <div className="mt-auto border-t border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+                  The business day rolls forward at the saved Batch Out time. Reporting history is not altered.
                 </div>
               </div>
 
@@ -2840,36 +2863,6 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            <section className="gb-eod-low-stock overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-              <header className="flex flex-col gap-2 border-b border-zinc-800 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-amber-300">Low Stock</h3>
-                  <div className="text-xs text-zinc-400">Items at or below their saved reorder threshold. Select an item to restock, dismiss, or inspect it.</div>
-                </div>
-                <span className={`w-fit rounded border px-2.5 py-1 text-xs font-semibold ${lowStockInventory.length ? 'border-amber-500/50 bg-amber-950/40 text-amber-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>
-                  {lowStockInventory.length ? `${lowStockInventory.length} need attention` : 'Stock levels clear'}
-                </span>
-              </header>
-              {lowStockMessage ? <div className="border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-200">{lowStockMessage}</div> : null}
-              {lowStockInventory.length ? (
-                <div className="gb-eod-low-stock-list divide-y divide-zinc-800">
-                  {lowStockInventory.map((item: any) => {
-                    const inCart = pendingLowStockInventoryIds.has(Number(item.id));
-                    return (
-                      <button key={item.id} type="button" className="gb-eod-low-stock-row grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition hover:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-amber-400 sm:grid-cols-[minmax(220px,2fr)_100px_100px_100px_minmax(140px,1fr)_90px]" onClick={() => setSelectedLowStockItem(item)}>
-                        <span className="min-w-0"><strong className="block truncate text-sm text-white">{item.itemDescription || 'Untitled inventory item'}</strong><span className="block truncate text-[11px] text-zinc-500">{item.itemType || 'Item'}{item.deviceModel ? ` | ${item.deviceModel}` : item.category ? ` | ${item.category}` : ''}</span></span>
-                        <span className="text-right sm:text-left"><span className="block text-[10px] uppercase text-zinc-500 sm:hidden">On hand / alert</span><strong className="text-sm text-amber-200 sm:hidden">{Math.max(0, Number(item.stockCount) || 0)} / {Math.max(0, Number(item.lowStockThreshold) || 0)}</strong><span className="hidden text-sm font-semibold text-amber-200 sm:block"><span className="block text-[10px] font-normal uppercase text-zinc-500">On hand</span>{Math.max(0, Number(item.stockCount) || 0)}</span></span>
-                        <span className="hidden text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">Threshold</span>{Math.max(0, Number(item.lowStockThreshold) || 0)}</span>
-                        <span className="hidden text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">MOQ</span>{inventoryReorderQuantity(item)}</span>
-                        <span className="hidden min-w-0 truncate text-sm sm:block"><span className="block text-[10px] uppercase text-zinc-500">Distributor</span>{item.distributor || 'Not assigned'}</span>
-                        <span className={`hidden rounded border px-2 py-1 text-center text-[11px] font-semibold sm:block ${inCart ? 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]' : 'border-amber-500/40 bg-amber-950/30 text-amber-200'}`}>{inCart ? 'In Cart' : 'Review'}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : <div className="px-3 py-4 text-sm text-zinc-500">No tracked inventory is currently at or below its saved threshold.</div>}
-            </section>
 
             {selectedLowStockItem ? (
               <div className="fixed inset-0 z-[100110] flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4" onClick={() => setSelectedLowStockItem(null)}>
