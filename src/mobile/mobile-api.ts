@@ -3,6 +3,7 @@ import { dispatchOpenModal } from '../lib/modalBus';
 import { storeWindowPayload } from '../lib/windowPayload';
 import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { getCloudEmailStatus, sendCloudEmail } from '../lib/cloudEmail';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
 type CloudSession = {
@@ -1760,15 +1761,65 @@ function makeApi() {
       window.open(url, '_blank', 'noopener,noreferrer');
       return { ok: true };
     },
-    emailGetConfig: async () => ({ ok: true, hasAppPassword: false, bodyTemplate: null }),
-    emailSetGmailAppPassword: async () => ({ ok: false, error: 'Email SMTP settings are desktop-only.' }),
+    emailGetConfig: async () => {
+      const status = await getCloudEmailStatus(cloudSession?.shopId || '');
+      return {
+        ok: status.ok,
+        hasAppPassword: status.configured,
+        fromEmail: status.fromEmail || 'gadgetboysc@gmail.com',
+        fromName: status.fromName || 'GadgetBoy Repair & Retail',
+        bodyTemplate: null,
+        error: status.error,
+      };
+    },
+    emailSetGmailAppPassword: async () => ({ ok: false, error: 'The Gmail App Password is managed securely in Supabase Edge Function secrets.' }),
     emailSetFromName: async () => ({ ok: true }),
     emailSetBodyTemplate: async () => ({ ok: true }),
     emailClearGmailAppPassword: async () => ({ ok: true }),
-    emailSendQuoteHtml: async () => ({ ok: false, error: 'Email sending is desktop-only until a cloud email function is added.' }),
-    emailSendQuotePdf: async () => ({ ok: false, error: 'Email sending is desktop-only until a cloud email function is added.' }),
-    emailSendReportCsv: async () => ({ ok: false, error: 'Email sending is desktop-only until a cloud email function is added.' }),
-    emailSendReportHtml: async () => ({ ok: false, error: 'Email sending is desktop-only until a cloud email function is added.' }),
+    emailSendQuoteHtml: async (payload: any) => sendCloudEmail({
+      shopId: cloudSession?.shopId || '',
+      to: String(payload?.to || ''),
+      subject: String(payload?.subject || 'Gadgetboy Quote'),
+      text: String(payload?.bodyText || ''),
+      attachments: [{
+        filename: String(payload?.filename || 'gadgetboy-quote.html'),
+        content: String(payload?.html || ''),
+        contentType: 'text/html; charset=utf-8',
+      }],
+    }),
+    emailSendQuotePdf: async (payload: any) => {
+      const requested = String(payload?.filename || 'gadgetboy-quote.pdf');
+      const htmlFilename = requested.replace(/\.pdf$/i, '') + '.html';
+      return sendCloudEmail({
+        shopId: cloudSession?.shopId || '',
+        to: String(payload?.to || ''),
+        subject: String(payload?.subject || 'Gadgetboy Quote'),
+        text: String(payload?.bodyText || ''),
+        attachments: [{
+          filename: htmlFilename,
+          content: String(payload?.html || ''),
+          contentType: 'text/html; charset=utf-8',
+        }],
+      });
+    },
+    emailSendReportCsv: async (payload: any) => sendCloudEmail({
+      shopId: cloudSession?.shopId || '',
+      to: String(payload?.to || ''),
+      subject: String(payload?.subject || 'GadgetBoy Report'),
+      text: String(payload?.bodyText || ''),
+      attachments: [{
+        filename: String(payload?.filename || 'gadgetboy-report.csv'),
+        content: String(payload?.csv || ''),
+        contentType: 'text/csv; charset=utf-8',
+      }],
+    }),
+    emailSendReportHtml: async (payload: any) => sendCloudEmail({
+      shopId: cloudSession?.shopId || '',
+      to: String(payload?.to || ''),
+      subject: String(payload?.subject || 'Daily batch report'),
+      text: String(payload?.bodyText || ''),
+      html: payload?.html ? String(payload.html) : undefined,
+    }),
     getFullScreen: async () => false,
     setFullScreen: async () => ({ ok: true }),
     toggleFullScreen: async () => ({ ok: true }),

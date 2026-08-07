@@ -99,6 +99,7 @@ export default function InventoryWindow() {
   const [mode, setMode] = useState<InventoryMode>('parts');
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
+  const [deviceCategories, setDeviceCategories] = useState<any[]>([]);
   const [repairCategories, setRepairCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -115,19 +116,22 @@ export default function InventoryWindow() {
   const [cartTotalCost, setCartTotalCost] = useState<number | undefined>(undefined);
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState('');
+  const [compatibleDeviceInput, setCompatibleDeviceInput] = useState('');
   const scrapeSequenceRef = useRef(0);
   const lastScrapedUrlRef = useRef('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [products, vendorRows, repairRows] = await Promise.all([
+      const [products, vendorRows, deviceRows, repairRows] = await Promise.all([
         api?.dbGet?.('products').catch(() => []),
         api?.dbGet?.('vendors').catch(() => []),
+        api?.dbGet?.('deviceCategories').catch(() => []),
         api?.dbGet?.('repairCategories').catch(() => []),
       ]);
       setItems(Array.isArray(products) ? products : []);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
+      setDeviceCategories(Array.isArray(deviceRows) ? deviceRows : []);
       setRepairCategories(Array.isArray(repairRows) ? repairRows : []);
     } finally {
       setLoading(false);
@@ -168,6 +172,7 @@ export default function InventoryWindow() {
           item.itemDescription,
           item.category,
           item.deviceModel,
+          ...(Array.isArray(item.associatedDevices) ? item.associatedDevices : []),
           item.partCategory,
           item.condition,
           item.distributor,
@@ -207,21 +212,65 @@ export default function InventoryWindow() {
 
   const deviceModels = useMemo(() => {
     const deviceType = String(editing.category || '').trim().toLowerCase();
-    const models = repairCategories
+    const preferredModels = deviceCategories
+      .filter((row) => !deviceType || String(row?.title || '').trim().toLowerCase() === deviceType)
+      .map((row) => String(row?.name || '').trim())
+      .filter(Boolean);
+    const otherModels = deviceCategories
+      .filter((row) => deviceType && String(row?.title || '').trim().toLowerCase() !== deviceType)
+      .map((row) => String(row?.name || '').trim())
+      .filter(Boolean);
+    const models = [...preferredModels, ...otherModels];
+    repairCategories
       .filter((row) => String(row?.type || row?.category || '').trim().toLowerCase() === deviceType)
       .map((row) => String(row?.model || row?.deviceModel || '').trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .forEach((model) => models.push(model));
     items.forEach((item) => {
       if (String(item.category || '').trim().toLowerCase() === deviceType && String(item.deviceModel || '').trim()) {
         models.push(String(item.deviceModel).trim());
       }
     });
+    (Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []).forEach((model) => {
+      if (String(model || '').trim()) models.push(String(model).trim());
+    });
     return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b));
-  }, [editing.category, items, repairCategories]);
+  }, [deviceCategories, editing.associatedDevices, editing.category, items, repairCategories]);
+
+  const compatibleDeviceMatches = useMemo(() => {
+    const query = compatibleDeviceInput.trim().toLowerCase();
+    const selected = new Set((Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []).map((value) => String(value).toLowerCase()));
+    return deviceModels
+      .filter((model) => !selected.has(model.toLowerCase()))
+      .filter((model) => !query || model.toLowerCase().includes(query))
+      .slice(0, 10);
+  }, [compatibleDeviceInput, deviceModels, editing.associatedDevices]);
+
+  const saveCompatibleDevice = (value = compatibleDeviceInput) => {
+    const model = String(value || '').trim();
+    if (!model) return;
+    setEditing((current) => ({
+      ...current,
+      deviceModel: current.deviceModel || model,
+      associatedDevices: Array.from(new Set([...(Array.isArray(current.associatedDevices) ? current.associatedDevices : []), model])),
+    }));
+    setCompatibleDeviceInput('');
+  };
+
+  const removeCompatibleDevice = (model: string) => {
+    setEditing((current) => {
+      const associatedDevices = (Array.isArray(current.associatedDevices) ? current.associatedDevices : []).filter((value) => value !== model);
+      return { ...current, associatedDevices, deviceModel: current.deviceModel === model ? (associatedDevices[0] || '') : current.deviceModel };
+    });
+  };
 
   const selectItem = (item: InventoryItem) => {
+    const associatedDevices = Array.from(new Set([
+      ...(Array.isArray(item.associatedDevices) ? item.associatedDevices : []),
+      item.deviceModel,
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
     setSelectedId(item.id);
-    setEditing({ ...blankItem(mode), ...item, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
+    setEditing({ ...blankItem(mode), ...item, associatedDevices, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
     setEditingOrderUrl(!item.reorderUrlTemplate);
     lastScrapedUrlRef.current = String(item.reorderUrlTemplate || '');
     const quantity = Math.max(1, Math.round(Number(item.reorderQty || 1)));
@@ -230,6 +279,7 @@ export default function InventoryWindow() {
     setCartQuantity(quantity);
     setCartTotalCost(Number.isFinite(unitCost) ? unitCost * quantity : undefined);
     setCartMessage('');
+    setCompatibleDeviceInput('');
   };
 
   const startNew = () => {
@@ -239,6 +289,7 @@ export default function InventoryWindow() {
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
+    setCompatibleDeviceInput('');
   };
 
   const clearFields = () => {
@@ -248,6 +299,7 @@ export default function InventoryWindow() {
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
+    setCompatibleDeviceInput('');
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -278,15 +330,17 @@ export default function InventoryWindow() {
     setSaving(true);
     try {
       const now = new Date().toISOString();
+      const associatedDevices = Array.from(new Set([
+        ...(Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []),
+        editing.deviceModel,
+      ].map((value) => String(value || '').trim()).filter(Boolean)));
       const payload: InventoryItem = {
         ...editing,
         itemDescription: description,
         itemType: mode === 'parts' ? 'Part' : 'Product',
         category: String(editing.category || 'Other').trim() || 'Other',
-        deviceModel: String(editing.deviceModel || '').trim(),
-        associatedDevices: Array.from(new Set((Array.isArray(editing.associatedDevices) ? editing.associatedDevices : [])
-          .map((value) => String(value || '').trim())
-          .filter(Boolean))),
+        deviceModel: associatedDevices[0] || '',
+        associatedDevices,
         partCategory: mode === 'parts' ? (String(editing.partCategory || 'Other').trim() || 'Other') : '',
         condition: String(editing.condition || 'New').trim() || 'New',
         markupPct: editing.markupPct ?? DEFAULT_MARKUP_PCT,
@@ -687,11 +741,36 @@ export default function InventoryWindow() {
               </datalist>
 
               {mode === 'parts' ? (
-                <label className="block">
-                  <span className="mb-1 block text-xs text-zinc-400">Device Model</span>
-                  <input list="inventory-device-models" value={editing.deviceModel || ''} onChange={(event) => setEditing((current) => ({ ...current, deviceModel: event.target.value }))} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" placeholder="Select or enter a model" />
-                  <datalist id="inventory-device-models">{deviceModels.map((value) => <option key={value} value={value} />)}</datalist>
-                </label>
+                <div className="relative block">
+                  <span className="mb-1 block text-xs text-zinc-400">Compatible Devices</span>
+                  <div className="flex min-w-0 gap-2">
+                    <input
+                      value={compatibleDeviceInput}
+                      onChange={(event) => setCompatibleDeviceInput(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveCompatibleDevice(); } }}
+                      className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
+                      placeholder="Type an Xbox, PlayStation, phone, or other model"
+                    />
+                    <button type="button" onClick={() => saveCompatibleDevice()} disabled={!compatibleDeviceInput.trim()} className="shrink-0 rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-40">Save</button>
+                  </div>
+                  {compatibleDeviceInput.trim() && compatibleDeviceMatches.length ? (
+                    <div className="absolute left-0 right-0 z-30 mt-1 max-h-48 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl">
+                      {compatibleDeviceMatches.map((model) => (
+                        <button key={model} type="button" onClick={() => saveCompatibleDevice(model)} className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800">{model}</button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {(editing.associatedDevices || []).length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(editing.associatedDevices || []).map((model) => (
+                        <span key={model} className="inline-flex max-w-full items-center gap-1 rounded border border-[#39FF14]/40 bg-[#39FF14]/10 px-2 py-1 text-xs text-[#b7ffab]">
+                          <span className="truncate">{model}</span>
+                          <button type="button" aria-label={`Remove ${model}`} onClick={() => removeCompatibleDevice(model)} className="text-zinc-400 hover:text-white">X</button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : <span className="mt-1 block text-[11px] text-zinc-500">Save one or more device models that can use this part.</span>}
+                </div>
               ) : null}
 
               {mode === 'parts' ? (

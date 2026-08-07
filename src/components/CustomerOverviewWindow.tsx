@@ -15,9 +15,10 @@ interface Props {
   closeAfterSave?: boolean; // default: save closes the window
   childDialog?: boolean; // rendered inline inside another window's own dialog (hide standalone chrome)
   compactCreate?: boolean; // client fields only for embedded booking flows
+  embeddedCreate?: boolean; // compact form rendered inside a parent workflow
 }
 
-const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true, childDialog = false, compactCreate = false }) => {
+const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true, childDialog = false, compactCreate = false, embeddedCreate = false }) => {
   const isModalShell = useMemo(() => {
     try { return childDialog || !!document.querySelector('[data-modal-shell="1"]'); } catch { return childDialog; }
   }, [childDialog]);
@@ -244,13 +245,13 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   return (
     <>
-    <div className={`gb-customer-overview-overlay fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6 ${isModalShell ? '' : 'is-child-dialog'}`}>
-      <div className="gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
+    <div className={`gb-customer-overview-overlay ${embeddedCreate ? 'is-embedded-create' : 'fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6'} ${isModalShell && !embeddedCreate ? '' : 'is-child-dialog'}`}>
+      <div className={`gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded overflow-auto p-4 ${embeddedCreate ? 'w-full max-w-none' : 'w-[1300px] max-w-[95vw] max-h-[95vh]'}`}>
         {/* Top toolbar with actions */}
         <div className="gb-customer-overview-header flex items-center justify-between mb-3">
-          <div className="text-lg font-semibold text-zinc-200">Customer Overview</div>
+          <div className="text-lg font-semibold text-zinc-200">{embeddedCreate ? 'Add New Client' : 'Customer Overview'}</div>
           <div className="flex items-center gap-2">
-            <Button neon onClick={handleSave}>Save</Button>
+            <Button className="gb-customer-header-save" neon onClick={handleSave}>Save</Button>
             {!isModalShell && (
               <button
                 type="button"
@@ -272,12 +273,16 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
               declinedEmail={declinedEmail}
               onDeclinedPhoneChange={setDeclinedPhone}
               onDeclinedEmailChange={setDeclinedEmail}
+              keyboardSafeEmail={embeddedCreate}
               onChange={c => {
                 editSeqRef.current += 1;
                 setDirty(true);
                 setLocal(prev => ({ ...prev, ...c }));
               }}
             />
+            <div className="gb-customer-mobile-save mt-3 hidden">
+              <Button neon onClick={handleSave}>Save Client</Button>
+            </div>
           </div>
           {!compactCreate ? <div className="gb-customer-overview-history w-7/12 flex flex-col gap-3">
             {/* Primary actions above filters */}
@@ -489,7 +494,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
     <div className="flex flex-col gap-2">
       <div className="border border-zinc-700 rounded overflow-hidden">
         <div className="min-h-[16rem] max-h-[24rem] overflow-y-auto">
-          <table className="w-full text-sm">
+          <table className="gb-customer-history-table w-full text-sm">
             <thead className="bg-zinc-800 text-zinc-400 sticky top-0">
               <tr>
                 <th className="text-left px-2 py-1">Date</th>
@@ -654,7 +659,7 @@ const CompletedQuotesPanel: React.FC<{ customer: Partial<Customer> | any }> = ({
         {rows.length === 0 ? (
           <div className="p-3 text-xs text-zinc-400">No completed quotes found for this customer.</div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="gb-customer-quotes-table w-full text-sm">
             <thead className="sticky top-0 bg-zinc-900 text-zinc-400">
               <tr>
                 <th className="text-left px-2 py-1">Date</th>

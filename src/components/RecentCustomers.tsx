@@ -12,6 +12,14 @@ interface CustomerLite {
   createdAt?: string;
 }
 
+function splitCustomerName(value: unknown) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || undefined,
+    lastName: parts.length > 1 ? parts.slice(1).join(' ') : undefined,
+  };
+}
+
 const RecentCustomers: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,26 +115,29 @@ const RecentCustomers: React.FC = () => {
       const seen = new Set<number | string>();
       const recent: CustomerLite[] = [];
       for (const w of sorted) {
-        const key = (typeof w.customerId !== 'undefined' && w.customerId !== null) ? w.customerId : (w.customerName || `${w.firstName || ''} ${w.lastName || ''}` || w.phone);
+        const numericCustomerId = Number(w.customerId);
+        const linkedCustomerId = Number.isFinite(numericCustomerId) && numericCustomerId > 0 ? numericCustomerId : null;
+        const key = linkedCustomerId ?? (w.customerName || `${w.firstName || ''} ${w.lastName || ''}` || w.customerPhone || w.phone);
         if (!key || seen.has(key)) continue;
         seen.add(key);
         let c: CustomerLite | undefined;
-        if (typeof key === 'number' && customerMap.has(key)) {
-          const found = customerMap.get(key)!;
+        const inlineName = splitCustomerName(w.customerName);
+        if (linkedCustomerId != null && customerMap.has(linkedCustomerId)) {
+          const found = customerMap.get(linkedCustomerId)!;
           c = {
             id: found.id,
-            firstName: (found as any).firstName,
-            lastName: (found as any).lastName,
-            phone: (found as any).phone || (found as any).phoneAlt,
-            email: (found as any).email,
+            firstName: (found as any).firstName || w.firstName || inlineName.firstName,
+            lastName: (found as any).lastName || w.lastName || inlineName.lastName,
+            phone: (found as any).phone || (found as any).phoneAlt || w.customerPhone || w.phone,
+            email: (found as any).email || w.customerEmail,
             createdAt: (found as any).createdAt,
           };
         } else {
           // Fallback for legacy/inlined data
           c = {
-            id: (typeof w.customerId === 'number' ? w.customerId : w.id),
-            firstName: w.firstName || undefined,
-            lastName: w.lastName || undefined,
+            id: linkedCustomerId || w.id,
+            firstName: w.firstName || inlineName.firstName,
+            lastName: w.lastName || inlineName.lastName,
             phone: w.customerPhone || w.phone || undefined,
             email: w.customerEmail || undefined,
             createdAt: w.checkInAt,

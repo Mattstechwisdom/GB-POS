@@ -204,6 +204,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ### Parts
 
 - Parts are repair components organized by device type and device model.
+- Use the compatible-device selector to assign one clean reusable part title to every model it fits. For example, save `HDMI Port` once and associate each supported console instead of duplicating the device name in the part title.
 - Store condition, SKU, quantity, internal cost, markup, sold price, distributor, order URL, and tax status where available.
 - Used and new parts must be distinguishable.
 - A saved order URL becomes a button after save.
@@ -223,12 +224,13 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 2. Choose Add New.
 3. Paste and verify the order URL when available.
 4. Select device type/model or product category.
-5. Enter the normalized title, condition, SKU, and on-hand quantity.
-6. Select or add the Vendor / Distributor.
-7. Enter internal cost.
-8. Select or enter markup and verify sold price.
-9. Enable stock tracking, set Low Alert At, and enter the MOQ / Reorder Qty the shop normally purchases when restocking.
-10. Save, then search for the new record to confirm it exists.
+5. For a Part, type and select each compatible device model, then choose Save beside the compatibility field. Selected models remain visible as removable labels.
+6. Enter the normalized title, condition, SKU, and on-hand quantity.
+7. Select or add the Vendor / Distributor.
+8. Enter internal cost.
+9. Select or enter markup and verify sold price.
+10. Enable stock tracking, set Low Alert At, and enter the MOQ / Reorder Qty the shop normally purchases when restocking.
+11. Save, then search for the new record to confirm it exists.
 
 ### Low-Stock Restocking from EOD
 
@@ -323,11 +325,13 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ## 15. Consultations
 
-1. Search or add the client.
-2. Enter the date, start/end time or billable duration, purpose, assigned technician, and notes.
-3. Save the consultation.
-4. Confirm it appears on Calendar and under the client.
-5. At checkout, record the consultation sale/payment when applicable.
+1. Search for the client. On mobile, choosing New reveals only the client fields directly beneath search.
+2. Enter complete client contact information or record the required declined-contact decisions, then choose Save Client. The form collapses into the saved client card.
+3. Enter the date, start/end time or billable duration, purpose, assigned technician, and notes.
+4. Estimated Hours automatically calculates $75 for the first hour plus $50 for every additional hour. Amount Charged remains editable for an approved custom total; choose Use automatic to return to the standard calculation.
+5. Save the consultation.
+6. Confirm it appears on Calendar and under the client.
+7. At checkout, record the consultation sale/payment when applicable.
 
 - Consultation commission is technician-specific.
 - Current reporting policy values logged consultation time at $25 per hour for technician commission.
@@ -340,6 +344,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Day, Week, and Month views are available where shown.
 - Filter colors identify events, consultations, parts orders/deliveries, and technician schedules.
 - Tapping an entry opens its details.
+- Choose Expand Notes above an entry's Notes field when a larger editor is needed. Selecting the shaded area closes it without discarding the shared notes text.
 - Part order and expected delivery dates can create calendar entries from work-order data.
 - Streaming / Content Schedule is a separate weekly schedule for names, times, stream type/game, filming, and content work.
 - Content schedule Add contains only content/streaming fields, not repair or consultation categories.
@@ -391,6 +396,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - End of Day is a concise overview of the current shop accounting day only.
 - It rolls into a new day at the saved Batch Out time; it is not the monthly accounting report.
 - Review labor collected, parts/products charged, COGS, verified supplier spend, consultations, sales count, and items awaiting purchase.
+- On desktop, the current-day overview is fixed to one screen: Low Stock occupies the left rail, accounting figures are grouped by purpose, and Open/Closed tickets appear side by side.
 - Review Low Stock for tracked parts/products at or below their saved threshold. Add the saved MOQ to Cart, inspect the inventory record, or dismiss the current stock-state alert.
 - Parts charged, COGS, and verified supplier spend must remain separate.
 - EOD buttons are organized as EOD Report Email, Cart, and Batch Out now. Sending the report is performed inside EOD Report Email.

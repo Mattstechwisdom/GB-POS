@@ -9,6 +9,7 @@ import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
+import { consultationLocationDisplay } from '@/lib/consultationLocation';
 
 type SalePayload = {
   customerId?: number;
@@ -1080,9 +1081,7 @@ const SaleWindow: React.FC = () => {
               : (sale.checkInAt ? new Date(String(sale.checkInAt)).toLocaleDateString() : new Date().toLocaleDateString());
             const consultationTimeLabel = appointmentTime || '';
 
-            const address = (sale as any).consultationType === 'athome'
-              ? String((sale as any).consultationAddress || '').trim()
-              : 'In-Store';
+            const address = consultationLocationDisplay(sale as any);
 
             const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
             const driverFee = Number((sale as any).driverFee ?? (driverItem as any)?.price ?? 0) || 0;
@@ -1100,6 +1099,7 @@ const SaleWindow: React.FC = () => {
               consultationTimeLabel,
               reasonForVisit,
               address,
+              consultationType: (sale as any).consultationType,
               firstHourRateLabel: money(firstHourRate),
               driverFeeLabel: money(driverFee),
               firstHourTotalLabel: money(firstHourTotal),
@@ -1353,9 +1353,10 @@ const SaleWindow: React.FC = () => {
               const consultationTimeLabel = appointmentTime || '';
 
               const consultationType = String((recordToPersist as any).consultationType || (sale as any).consultationType || '').trim();
-              const address = consultationType === 'athome'
-                ? String((recordToPersist as any).consultationAddress || (sale as any).consultationAddress || '').trim()
-                : 'In-Store';
+              const address = consultationLocationDisplay({
+                consultationType,
+                consultationAddress: (recordToPersist as any).consultationAddress || (sale as any).consultationAddress,
+              });
 
               const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
               const driverFee = Number((recordToPersist as any).driverFee ?? (driverItem as any)?.price ?? (sale as any).driverFee ?? 0) || 0;
@@ -1373,6 +1374,7 @@ const SaleWindow: React.FC = () => {
                 consultationTimeLabel,
                 reasonForVisit,
                 address,
+                consultationType,
                 firstHourRateLabel: money(firstHourRate),
                 driverFeeLabel: money(driverFee),
                 firstHourTotalLabel: money(firstHourTotal),

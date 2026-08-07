@@ -4,6 +4,7 @@ import { useAutosave } from '@/lib/useAutosave';
 import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
+import { consultationLocationDisplay } from '@/lib/consultationLocation';
 
 type CalendarEvent = {
   id?: number;
@@ -29,6 +30,7 @@ type CalendarEvent = {
   customerPhone?: string;
   customerEmail?: string;
   consultationAddress?: string;
+  consultationType?: string;
   technician?: string;
   location?: string;
   // Weekly schedule (for category 'schedule')
@@ -195,6 +197,7 @@ const CalendarWindow: React.FC = () => {
   const [isMobileCalendar, setIsMobileCalendar] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
@@ -215,6 +218,10 @@ const CalendarWindow: React.FC = () => {
     consultation: true,
     content: true,
   });
+
+  useEffect(() => {
+    if (!editing) setNotesExpanded(false);
+  }, [editing]);
 
   useEffect(() => {
     if (!targetEventId || targetOpenedRef.current || !events.length) return;
@@ -320,14 +327,18 @@ const CalendarWindow: React.FC = () => {
         ]);
         const customerById = new Map((Array.isArray(customers) ? customers : []).map((customer: any) => [Number(customer?.id || 0), customer]));
         const enriched = (Array.isArray(list) ? list : []).map((event: CalendarEvent) => {
-          const customer: any = customerById.get(Number(event.customerId || 0));
-          if (!customer) return event;
-          return {
+          const normalizedEvent = event.category === 'consultation' ? {
             ...event,
-            customerEmail: event.customerEmail || customer.email || '',
-            customerPhone: event.customerPhone || customer.phone || '',
-            customerName: event.customerName || [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim(),
-            consultationAddress: event.consultationAddress || (event.category === 'consultation' ? event.location : '') || '',
+            location: consultationLocationDisplay(event),
+            consultationAddress: consultationLocationDisplay(event),
+          } : event;
+          const customer: any = customerById.get(Number(event.customerId || 0));
+          if (!customer) return normalizedEvent;
+          return {
+            ...normalizedEvent,
+            customerEmail: normalizedEvent.customerEmail || customer.email || '',
+            customerPhone: normalizedEvent.customerPhone || customer.phone || '',
+            customerName: normalizedEvent.customerName || [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim(),
           };
         });
         if (alive) setEvents(enriched);
@@ -1277,14 +1288,60 @@ const CalendarWindow: React.FC = () => {
               )}
               {/* Schedule entries are managed in Admin → Technicians and are not editable here */}
               <div className="col-span-2">
-                <label className="block text-xs text-zinc-400">Notes</label>
-                <textarea className="gb-calendar-notes w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[140px]" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-xs text-zinc-400">Notes</label>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700"
+                    onClick={() => setNotesExpanded(true)}
+                  >
+                    Expand Notes
+                  </button>
+                </div>
+                <textarea
+                  className="gb-calendar-notes w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 min-h-[190px] resize-y"
+                  value={editing.notes || ''}
+                  onChange={e => setEditing({ ...editing, notes: e.target.value })}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-3">
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
               <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setContentEditorLocked(false); }}>Cancel</button>
               <button className="px-3 py-1 bg-[#39FF14] text-black rounded" onClick={() => saveEvent(editing)}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && notesExpanded && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/75 flex items-center justify-center p-3 sm:p-6"
+          role="presentation"
+          onClick={() => setNotesExpanded(false)}
+        >
+          <div
+            className="w-full max-w-[860px] max-h-[88vh] bg-zinc-900 border border-zinc-700 rounded shadow-2xl flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-expanded-notes-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
+              <div className="min-w-0">
+                <h3 id="calendar-expanded-notes-title" className="font-semibold text-lg">Calendar Entry Notes</h3>
+                <p className="text-xs text-zinc-400 truncate">{editing.title || calendarEventVisual(editing).label}</p>
+              </div>
+              <button type="button" className="gb-icon-button" aria-label="Close expanded notes" onClick={() => setNotesExpanded(false)}>X</button>
+            </div>
+            <div className="p-4 flex-1 min-h-0">
+              <textarea
+                autoFocus
+                className="w-full h-[58vh] min-h-[300px] max-h-[68vh] bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed"
+                value={editing.notes || ''}
+                onChange={(event) => setEditing({ ...editing, notes: event.target.value })}
+                placeholder="Add detailed notes for this calendar entry..."
+              />
             </div>
           </div>
         </div>

@@ -6,9 +6,9 @@ import CustomerOverviewWindow from './CustomerOverviewWindow';
 import ClientUpdatePanel from '../workorders/ClientUpdatePanel';
 import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
+import { SHOP_CONSULTATION_LOCATION } from '../lib/consultationLocation';
+import { calculateConsultationPricing, CONSULTATION_BASE_RATE, CONSULTATION_EXTRA_RATE } from '../lib/consultationPricing';
 
-const CONSULTATION_BASE_RATE = 75;
-const CONSULTATION_EXTRA_RATE = 50;
 const CONSULTATION_DISTANCE_FEE = 20;
 const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
 
@@ -145,6 +145,7 @@ export default function ConsultationBookingWindow() {
   const [city, setCity] = useState('');
   const [zip, setZip] = useState('');
   const [hours, setHours] = useState(1);
+  const [customLaborCharge, setCustomLaborCharge] = useState<number | null>(null);
   const [driverFee, setDriverFee] = useState(0);
 
   // Shop location (used for distance-based driver fee)
@@ -351,10 +352,8 @@ export default function ConsultationBookingWindow() {
 
   const techLabel = (t: Technician) => technicianDisplayName(t);
 
-  const billedHours = Math.max(1, Number(hours) || 1);
-  const extraHours = Math.max(0, billedHours - 1);
-  const laborCost = CONSULTATION_BASE_RATE + (extraHours * CONSULTATION_EXTRA_RATE);
-  const totalCost = laborCost + driverFee;
+  const { billedHours, extraHours, automaticLaborCharge: laborCost, laborCharge: chargedLabor } = calculateConsultationPricing(hours, customLaborCharge);
+  const totalCost = chargedLabor + driverFee;
 
   const computeDistanceFee = useCallback(async (clientAddress: string) => {
     const addr = String(clientAddress || '').trim();
@@ -452,7 +451,8 @@ export default function ConsultationBookingWindow() {
         setDriverFee(res.fee);
       }
 
-      const effectiveTotalCost = laborCost + effectiveDriverFee;
+      const effectiveLaborCharge = calculateConsultationPricing(hours, customLaborCharge).laborCharge;
+      const effectiveTotalCost = effectiveLaborCharge + effectiveDriverFee;
 
       if (locationType === 'athome') {
         try { await upsertAddressHistory(fullAddress); } catch {}
@@ -467,7 +467,16 @@ export default function ConsultationBookingWindow() {
 
       // 2. Create consultation sale record
       const purpose = title.trim() || 'Consultation';
-      const baseItem: any = {
+      const customChargeItem: any = customLaborCharge != null ? {
+        id: crypto.randomUUID(),
+        description: purpose,
+        qty: 1,
+        price: effectiveLaborCharge,
+        consultationHours: billedHours,
+        category: 'Consultation',
+        inStock: true,
+      } : null;
+      const baseItem: any = customLaborCharge == null ? {
         id: crypto.randomUUID(),
         description: purpose,
         qty: 1,
@@ -475,8 +484,8 @@ export default function ConsultationBookingWindow() {
         consultationHours: 1,
         category: 'Consultation',
         inStock: true,
-      };
-      const extraItem: any = extraHours > 0 ? {
+      } : null;
+      const extraItem: any = customLaborCharge == null && extraHours > 0 ? {
         id: crypto.randomUUID(),
         description: `${purpose} (Additional Hours)`,
         qty: extraHours,
@@ -495,7 +504,7 @@ export default function ConsultationBookingWindow() {
         inStock: true,
       } : null;
 
-      const saleItems = [baseItem, extraItem, driverItem].filter(Boolean);
+      const saleItems = [customChargeItem, baseItem, extraItem, driverItem].filter(Boolean);
 
       const saleRecord: any = {
         customerId: customer!.id,
@@ -512,12 +521,12 @@ export default function ConsultationBookingWindow() {
         notes: notes.trim() || undefined,
         consultationHours: billedHours,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
         appointmentDate: date,
         appointmentTime: time || undefined,
         appointmentEndTime: endTime || undefined,
         driverFee: effectiveDriverFee > 0 ? effectiveDriverFee : undefined,
-        laborCost: laborCost,
+        laborCost: effectiveLaborCharge,
         partCosts: 0,
         totals: { subTotal: effectiveTotalCost, tax: 0, total: effectiveTotalCost, remaining: effectiveTotalCost },
         total: effectiveTotalCost,
@@ -531,7 +540,7 @@ export default function ConsultationBookingWindow() {
       // 3. Create calendar event
       const location = locationType === 'athome'
         ? (fullAddress.trim() || 'At Home')
-        : 'In-Store';
+        : SHOP_CONSULTATION_LOCATION;
 
       const createdEvent = await api.dbAdd('calendarEvents', {
         category: 'consultation',
@@ -547,7 +556,7 @@ export default function ConsultationBookingWindow() {
         notes: notes.trim() || undefined,
         location,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
         saleId: createdSale?.id,
         source: 'consultation',
       });
@@ -600,7 +609,7 @@ export default function ConsultationBookingWindow() {
             </button>
           )}
           <button
-            onClick={() => { setDone(null); setQrDataUrl(''); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setError(''); }}
+            onClick={() => { setDone(null); setQrDataUrl(''); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setCustomLaborCharge(null); setError(''); }}
             className="px-6 py-2 bg-zinc-700 text-zinc-200 font-semibold rounded hover:bg-zinc-600"
           >
             Book Another
@@ -647,7 +656,7 @@ export default function ConsultationBookingWindow() {
               <button onClick={clearCustomer} className="text-xs text-zinc-400 hover:text-red-400 ml-4">Change</button>
             </div>
           ) : (
-            <div className="relative">
+            <div className="relative gb-consultation-client-search">
               <input
                 className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-blue-400 focus:outline-none pr-20"
                 placeholder="Search by name or phone…"
@@ -678,6 +687,24 @@ export default function ConsultationBookingWindow() {
                   ))}
                 </div>
               )}
+              {showCustomerCreator ? (
+                <div className="gb-consultation-client-create mt-3">
+                  <CustomerOverviewWindow
+                    customer={null}
+                    closeAfterSave
+                    childDialog
+                    compactCreate
+                    embeddedCreate
+                    onClose={() => setShowCustomerCreator(false)}
+                    onSaved={(saved) => {
+                      const created = saved as Customer;
+                      setAllCustomers((current) => current.some((row) => row.id === created.id) ? current : [created, ...current]);
+                      selectCustomer(created);
+                      setShowCustomerCreator(false);
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
         </section>
@@ -862,7 +889,7 @@ export default function ConsultationBookingWindow() {
         {/* ── Pricing ───────────────────────────────────────────── */}
         <section className="bg-zinc-800 border border-zinc-700 rounded p-4">
           <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-3">Pricing</h2>
-          <div className="grid grid-cols-3 gap-4 items-end">
+          <div className="gb-consultation-pricing-grid grid grid-cols-3 gap-4 items-end">
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Estimated Hours</label>
               <input
@@ -875,22 +902,25 @@ export default function ConsultationBookingWindow() {
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">First Hour ($)</label>
+              <label className="block text-xs text-zinc-400 mb-1">Amount Charged ($)</label>
               <input
                 type="number"
                 min="0"
-                step="5"
+                step="0.01"
                 className="w-full bg-yellow-100 text-black border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                value={CONSULTATION_BASE_RATE}
-                readOnly
+                value={chargedLabor}
+                onChange={e => setCustomLaborCharge(Math.max(0, Number(e.target.value) || 0))}
               />
               <div className="mt-1 text-[11px] text-zinc-500">
-                Additional hours: ${CONSULTATION_EXTRA_RATE}/hr
+                Auto: ${CONSULTATION_BASE_RATE} first hour + ${CONSULTATION_EXTRA_RATE}/hr after
+                {customLaborCharge != null ? (
+                  <button type="button" className="ml-2 text-blue-400 hover:text-blue-300" onClick={() => setCustomLaborCharge(null)}>Use automatic</button>
+                ) : null}
               </div>
             </div>
             <div className="text-right">
               <div className="text-xs text-zinc-400 mb-1">Labor</div>
-              <div className="text-base font-semibold text-zinc-200">${laborCost.toFixed(2)}</div>
+              <div className="text-base font-semibold text-zinc-200">${chargedLabor.toFixed(2)}</div>
             </div>
           </div>
           {locationType === 'athome' && (
@@ -963,21 +993,6 @@ export default function ConsultationBookingWindow() {
         </button>
       </div>
     </div>
-    {showCustomerCreator ? (
-      <CustomerOverviewWindow
-        customer={null}
-        closeAfterSave
-        childDialog
-        compactCreate
-        onClose={() => setShowCustomerCreator(false)}
-        onSaved={(saved) => {
-          const created = saved as Customer;
-          setAllCustomers((current) => current.some((row) => row.id === created.id) ? current : [created, ...current]);
-          selectCustomer(created);
-          setShowCustomerCreator(false);
-        }}
-      />
-    ) : null}
     </>
   );
 }

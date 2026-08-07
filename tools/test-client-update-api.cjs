@@ -16,6 +16,12 @@ global.fetch = async (url, options = {}) => {
 
   if (value.endsWith('/auth/v1/user')) {
     body = { id: '00000000-0000-0000-0000-000000000001' };
+  } else if (value.endsWith('/functions/v1/send-pos-email') && method === 'POST') {
+    const request = JSON.parse(String(options.body || '{}'));
+    assert.equal(request.action, 'send-client-update');
+    assert.equal(request.shopId, '00000000-0000-0000-0000-000000000020');
+    assert.match(request.historyId, /^history-/);
+    body = { ok: true, messageId: 'cloud-message-id' };
   } else if (value.includes('/rest/v1/qr_status_tokens')) {
     const consultationToken = value.includes('consult-token');
     body = [{

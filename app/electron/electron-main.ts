@@ -1235,10 +1235,69 @@ function decryptAppPassword(cfg: any): string | null {
   }
 }
 
+async function sendSupabaseEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
+  if (!cloudSession?.supabaseUrl || !cloudSession?.accessToken || !cloudSession?.shopId) {
+    return { ok: false, unavailable: true, error: 'Cloud session is not ready.' };
+  }
+  try {
+    const attachments = (Array.isArray(payload.attachments) ? payload.attachments : []).map((attachment: any) => {
+      const raw = attachment?.content;
+      if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
+        return {
+          filename: String(attachment?.filename || 'attachment'),
+          contentBase64: Buffer.from(raw).toString('base64'),
+          encoding: 'base64',
+          contentType: String(attachment?.contentType || 'application/octet-stream'),
+        };
+      }
+      return {
+        filename: String(attachment?.filename || 'attachment'),
+        content: String(raw ?? ''),
+        contentType: String(attachment?.contentType || 'application/octet-stream'),
+      };
+    });
+    const response = await fetch(`${cloudSession.supabaseUrl.replace(/\/+$/, '')}/functions/v1/send-pos-email`, {
+      method: 'POST',
+      headers: {
+        apikey: cloudSession.supabasePublishableKey,
+        Authorization: `Bearer ${cloudSession.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'send',
+        shopId: cloudSession.shopId,
+        to: payload.to,
+        bcc: payload.bcc,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+        attachments,
+      }),
+    });
+    const body: any = await response.json().catch(() => null);
+    if (!response.ok || !body?.ok) {
+      return { ok: false, error: String(body?.error || `Supabase email failed (${response.status}).`) };
+    }
+    return { ok: true, messageId: body.messageId || null };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || String(error) };
+  }
+}
+
 async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
+  const cloudDelivery = await sendSupabaseEmail(payload);
+  if (cloudDelivery.ok) return cloudDelivery;
+
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
-  if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
+  if (!appPass) {
+    return {
+      ok: false,
+      error: cloudDelivery.unavailable
+        ? 'Email not configured. Add the Gmail App Password to Supabase or this PC.'
+        : String(cloudDelivery.error || 'Supabase email delivery failed.'),
+    };
+  }
 
   const to = String(payload?.to || '').trim();
   if (!to) return { ok: false, error: 'Missing recipient email' };

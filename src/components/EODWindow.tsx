@@ -2663,9 +2663,9 @@ const EODWindow: React.FC = () => {
   }
 
   return (
-    <div className="gb-eod-window min-h-screen bg-zinc-900 p-3 text-zinc-50 sm:p-4 lg:p-6">
-      <div className="gb-eod-shell mx-auto flex max-w-[1600px] flex-col gap-4">
-        <div className="gb-eod-header flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="gb-eod-window min-h-screen bg-zinc-900 p-3 text-zinc-50 sm:p-4 lg:h-screen lg:min-h-0 lg:overflow-hidden lg:p-4">
+      <div className="gb-eod-shell mx-auto flex max-w-[1600px] flex-col gap-3 lg:h-full lg:min-h-0">
+        <div className="gb-eod-header flex shrink-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             {viewMode === 'trends' && (
               <button
@@ -2704,8 +2704,8 @@ const EODWindow: React.FC = () => {
         </div>
 
         {viewMode === 'reports' ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <div className="gb-eod-dashboard space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+            <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
               <div className="gb-eod-low-stock col-span-12 flex min-h-0 flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)] lg:col-span-4">
                 <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800 px-3 py-3">
                   <div className="min-w-0">
@@ -2739,12 +2739,13 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="col-span-12 min-h-0 overflow-hidden lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Batch totals</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : rangeLabel(range, start, end)}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid min-h-0 grid-cols-2 gap-2 overflow-y-auto pr-1 text-sm">
+                  <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Payments received</div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Total taken in</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.totalTaken)}</div>
@@ -2760,6 +2761,7 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.cashTotal)}</div>
                     <div className="text-[11px] text-zinc-400">after change given</div>
                   </div>
+                  <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Revenue and cost</div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Labor billed</div>
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.laborSold)}</div>
@@ -2785,6 +2787,7 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold">{formatCurrency(dailyBatchSummary.productsCost)}</div>
                     <div className="text-[11px] text-zinc-400">saved internal product costs</div>
                   </div>
+                  <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Supplier checkout</div>
                   <div className="bg-zinc-800 border border-amber-500/40 rounded p-2">
                     <div className="text-xs text-zinc-500">Parts supplier spend</div>
                     <div className="text-xl font-semibold text-amber-300">{formatCurrency(dailyBatchSummary.supplierSpendParts)}</div>
@@ -2795,25 +2798,22 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold text-amber-300">{formatCurrency(dailyBatchSummary.supplierSpendProducts)}</div>
                     <div className="text-[11px] text-zinc-400">verified checkouts today</div>
                   </div>
+                  <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Ticket intake</div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">
                     <div className="text-xs text-zinc-500">Check-ins</div>
                     <div className="text-xl font-semibold">{dailyBatchSummary.checkInCount}</div>
                     <div className="text-[11px] text-zinc-400">new tickets checked in</div>
                   </div>
-                  <div className="bg-zinc-800 border border-zinc-700 rounded p-2 col-span-2">
-                    <div className="text-xs text-zinc-500">Closed tickets</div>
-                    <div className="text-xl font-semibold">{dailyBatchSummary.closedTicketCount}</div>
-                    <div className="text-[11px] text-zinc-400">tickets closed in the selected day</div>
-                  </div>
                 </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="col-span-12 min-h-0 overflow-hidden lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
                   <button
                     type="button"
                     className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'work' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
@@ -2850,14 +2850,24 @@ const EODWindow: React.FC = () => {
                     <div className="text-xl font-semibold text-orange-300">{formatCurrency(summary.grandRemaining)}</div>
                     <div className="text-[11px] text-zinc-400">{filteredLists.outstanding.length} with balance</div>
                   </button>
+                  <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Ticket status</div>
                   <button
                     type="button"
-                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition col-span-2 ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
+                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
                     onClick={() => setActiveList(prev => (prev === 'openTickets' ? null : 'openTickets'))}
                   >
                     <div className="text-xs text-zinc-500">Open tickets</div>
                     <div className="text-xl font-semibold">{filteredLists.openTickets.length}</div>
                     <div className="text-[11px] text-zinc-400">not closed / needs checkout</div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'collected' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
+                    onClick={() => setActiveList(prev => (prev === 'collected' ? null : 'collected'))}
+                  >
+                    <div className="text-xs text-zinc-500">Closed tickets</div>
+                    <div className="text-xl font-semibold">{dailyBatchSummary.closedTicketCount}</div>
+                    <div className="text-[11px] text-zinc-400">closed in this business day</div>
                   </button>
                   <div className="col-span-2 pt-2 border-t border-zinc-800 text-xs text-zinc-400">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
                 </div>
@@ -3340,7 +3350,8 @@ const EODWindow: React.FC = () => {
             ) : null}
 
             {listMeta ? (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className="fixed inset-0 z-[100090] flex items-center justify-center bg-black/75 p-3" onClick={() => setActiveList(null)}>
+              <div className="flex max-h-[88vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.7)]" role="dialog" aria-modal="true" aria-label={listMeta.title} onClick={(event) => event.stopPropagation()}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold">{listMeta.title}</h3>
@@ -3353,7 +3364,7 @@ const EODWindow: React.FC = () => {
                   >Close</button>
                 </div>
                 {listMeta.rows.length ? (
-                  <div className="overflow-x-auto">
+                  <div className="min-h-0 overflow-auto">
                     <table className="min-w-full text-sm">
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
@@ -3399,6 +3410,7 @@ const EODWindow: React.FC = () => {
                 ) : (
                   <div className="text-sm text-zinc-400">No records in this category for the selected range.</div>
                 )}
+              </div>
               </div>
             ) : null}
 

@@ -281,8 +281,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   function selectInventoryPart(part: InventoryPartSelection) {
     setFormData((current) => ({
       ...current,
-      category: part.category || current.category,
-      model: part.deviceModel || current.model,
+      category: current.category || part.category,
+      model: current.model || part.deviceModel || part.associatedDevices?.[0] || '',
       partCost: Number(part.price || 0),
       internalCost: typeof part.internalCost === 'number' ? part.internalCost : current.internalCost,
       markupPct: part.markupPct ?? DEFAULT_MARKUP_PCT,
@@ -561,7 +561,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         </div>
       </div>
 
-      {partPickerOpen ? <PartInventoryPicker onSelect={selectInventoryPart} onClose={() => setPartPickerOpen(false)} /> : null}
+      {partPickerOpen ? <PartInventoryPicker deviceModel={formData.model || ''} onSelect={selectInventoryPart} onClose={() => setPartPickerOpen(false)} /> : null}
 
       {/* Footer buttons */}
       {mode === 'admin' && (

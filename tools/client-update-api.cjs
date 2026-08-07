@@ -359,6 +359,28 @@ async function waitForQueuedDelivery(config, token, historyId, timeoutMs = 10_00
   return null;
 }
 
+async function requestCloudEmailDelivery(config, history) {
+  if (!history?.id || !history?.shop_id || !config.serviceRoleKey) return null;
+  try {
+    return await fetchJson(`${config.supabaseUrl}/functions/v1/send-pos-email`, {
+      method: 'POST',
+      headers: {
+        apikey: config.publishableKey,
+        Authorization: `Bearer ${config.serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'send-client-update',
+        shopId: history.shop_id,
+        historyId: history.id,
+      }),
+    });
+  } catch (error) {
+    console.error('Supabase client-update email delivery failed:', error?.message || String(error));
+    return null;
+  }
+}
+
 async function handleSend(req, res) {
   const config = serverConfig();
   if (!config.supabaseUrl || !config.publishableKey) {
@@ -454,6 +476,7 @@ async function handleSend(req, res) {
       next_attempt_at: new Date().toISOString(),
       delivery_updated_at: new Date().toISOString(),
     });
+    await requestCloudEmailDelivery(config, history);
     const delivered = await waitForQueuedDelivery(config, dataToken, history?.id, config.deliveryWaitMs);
     if (delivered?.delivery_status === 'sent') {
       json(res, 200, {

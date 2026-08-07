@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { consultationLocationDisplay } from '../lib/consultationLocation';
 
 function getPayload() {
   try {
@@ -134,7 +135,10 @@ const ConsultSheetWindow: React.FC = () => {
   const consultationDateLabel = String((data as any).consultationDateLabel || '').trim();
   const consultationTimeLabel = String((data as any).consultationTimeLabel || '').trim();
   const reasonForVisit = String((data as any).reasonForVisit || '').trim();
-  const address = String((data as any).address || '').trim();
+  const address = consultationLocationDisplay({
+    consultationType: (data as any).consultationType,
+    consultationAddress: (data as any).address,
+  });
 
   const firstHourRateLabel = String((data as any).firstHourRateLabel || '').trim();
   const driverFeeLabel = String((data as any).driverFeeLabel || '').trim();

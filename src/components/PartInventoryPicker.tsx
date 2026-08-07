@@ -5,6 +5,7 @@ export type InventoryPartSelection = {
   itemDescription?: string;
   category?: string;
   deviceModel?: string;
+  associatedDevices?: string[];
   partCategory?: string;
   condition?: string;
   price?: number;
@@ -21,11 +22,12 @@ export type InventoryPartSelection = {
 type Props = {
   onSelect: (part: InventoryPartSelection) => void;
   onClose: () => void;
+  deviceModel?: string;
 };
 
-export default function PartInventoryPicker({ onSelect, onClose }: Props) {
+export default function PartInventoryPicker({ onSelect, onClose, deviceModel = '' }: Props) {
   const [parts, setParts] = useState<InventoryPartSelection[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(deviceModel);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function PartInventoryPicker({ onSelect, onClose }: Props) {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return parts.filter((part) => !q || [part.itemDescription, part.category, part.deviceModel, part.partCategory, part.distributor, part.distributorSku]
+    return parts.filter((part) => !q || [part.itemDescription, part.category, part.deviceModel, ...(part.associatedDevices || []), part.partCategory, part.distributor, part.distributorSku]
       .some((value) => String(value || '').toLowerCase().includes(q)));
   }, [parts, search]);
 
@@ -68,7 +70,8 @@ export default function PartInventoryPicker({ onSelect, onClose }: Props) {
             {visible.map((part, index) => (
               <button key={part.id ?? `${part.itemDescription}-${index}`} type="button" onClick={() => onSelect(part)} className="min-w-0 rounded border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-[#39FF14]">
                 <div className="truncate font-semibold">{part.itemDescription || 'Unnamed part'}</div>
-                <div className="mt-1 truncate text-xs text-zinc-400">{[part.category, part.deviceModel, part.partCategory, part.condition].filter(Boolean).join(' | ')}</div>
+                <div className="mt-1 truncate text-xs text-zinc-400">{[part.category, part.partCategory, part.condition].filter(Boolean).join(' | ')}</div>
+                {(part.associatedDevices?.length || part.deviceModel) ? <div className="mt-1 truncate text-[11px] text-zinc-500">Fits: {(part.associatedDevices?.length ? part.associatedDevices : [part.deviceModel]).filter(Boolean).join(', ')}</div> : null}
                 <div className="mt-2 flex items-center justify-between gap-2 text-sm">
                   <span className="truncate text-zinc-500">{part.distributor || 'No vendor'}</span>
                   <span className="font-semibold text-[#39FF14]">${Number(part.price || 0).toFixed(2)}</span>

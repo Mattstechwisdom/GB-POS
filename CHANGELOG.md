@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.5.44 (2026-08-07)
+- Consultations: saves and displays `At Shop Location` wherever an in-shop consultation address appears, including new calendar entries and consultation printouts, while normalizing older blank or In-Store values without changing real at-home addresses.
+- Consultation Mobile Workflow: keeps Add New Client fields directly beneath client search, collapses them into the saved client card, removes the keyboard-blocking email suggestion list on that embedded form, and calculates the charge from hours while allowing a deliberate custom amount.
+- Mobile Client Profiles: stacks New Work Order and New Sale, keeps history filters and tables inside the phone viewport, and places Save Client directly below Notes.
+- Mobile Touch: verifies that a normal tap opens a record while a deliberate hold invokes the same context actions as desktop right-click.
+- Recent Customers: hydrates names, phone numbers, and email addresses from the canonical customer record plus the latest linked work order so partial legacy ticket data no longer creates incomplete rows.
+- Calendar: adds a larger native Notes field and an Expand Notes overlay that closes from the shaded backdrop.
+- End of Day: groups daily payment, revenue, supplier, and ticket figures into a non-scrolling desktop overview with Open and Closed tickets side by side.
+- Parts Inventory: allows one reusable part title to be assigned to multiple compatible device models and filters the repair part picker by the current device without overwriting it.
+- Email Delivery: adds an authenticated Supabase email function for mobile and hosted client updates while retaining the existing desktop Gmail fallback.
+- Distributor URLs: identifies known and generic distributor names locally from pasted order URLs even when product-page scraping is unavailable, so vendor entry no longer depends on Railway.
+
 ## v0.5.43 (2026-08-07)
 - New Client Contact: requires a complete 10-digit phone number and complete email address before saving or continuing, with compact independent Declined choices beside Phone and Email; Alt Phone remains optional.
 - Client Workflow Safety: blocks New Work Order and New Sale from opening until the new client passes validation and is saved with a real customer ID.

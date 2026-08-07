@@ -11,6 +11,7 @@ interface Props {
   declinedEmail?: boolean;
   onDeclinedPhoneChange?: (declined: boolean) => void;
   onDeclinedEmailChange?: (declined: boolean) => void;
+  keyboardSafeEmail?: boolean;
 }
 
 const EMAIL_DOMAINS = [
@@ -32,6 +33,7 @@ const CustomerForm: React.FC<Props> = ({
   declinedEmail = false,
   onDeclinedPhoneChange,
   onDeclinedEmailChange,
+  keyboardSafeEmail = false,
 }) => {
   const [local, setLocal] = useState<Partial<Customer>>(customer);
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -109,16 +111,18 @@ const CustomerForm: React.FC<Props> = ({
         <Input
           value={local.email || ''}
           onChange={e => { onDeclinedEmailChange?.(false); update('email', e.target.value); }}
-          list={emailListIdRef.current}
+          list={keyboardSafeEmail ? undefined : emailListIdRef.current}
           inputMode="email"
           autoComplete="email"
           disabled={requireContactDecision && declinedEmail}
         />
-        <datalist id={emailListIdRef.current}>
-          {emailSuggestions.map(s => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
+        {!keyboardSafeEmail ? (
+          <datalist id={emailListIdRef.current}>
+            {emailSuggestions.map(s => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        ) : null}
       </div>
       <div>
         <label className="block text-[12px] text-zinc-400">Alt. Phone</label>

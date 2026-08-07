@@ -16,6 +16,16 @@ export const DEFAULT_PART_MARKUP_PCT = 10;
 
 export const PART_MARKUP_PRESETS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 
+const KNOWN_PART_VENDOR_HOSTS: Array<[RegExp, string]> = [
+  [/(?:^|\.)phonelcdparts\.com$/i, 'Phone LCD Parts'],
+  [/(?:^|\.)mobilesentrix\.com$/i, 'MobileSentrix'],
+  [/(?:^|\.)injuredgadgets\.com$/i, 'Injured Gadgets'],
+  [/(?:^|\.)backmarket\.com$/i, 'Back Market'],
+  [/(?:^|\.)amazon\.com$/i, 'Amazon'],
+  [/(?:^|\.)ebay\.com$/i, 'eBay'],
+  [/(?:^|\.)walmart\.com$/i, 'Walmart'],
+];
+
 export function splitTaxIncludedCost(cost: unknown, taxExempt: boolean, taxRate = 8) {
   const total = Math.max(0, Number(cost) || 0);
   if (taxExempt || !(taxRate > 0)) return { total: Math.round(total * 100) / 100, preTax: Math.round(total * 100) / 100, tax: 0 };
@@ -38,6 +48,8 @@ export function derivePartVendorFromUrl(value: unknown): string {
   if (!url) return '';
   try {
     const host = new URL(url).hostname.replace(/^www\./i, '');
+    const knownVendor = KNOWN_PART_VENDOR_HOSTS.find(([pattern]) => pattern.test(host));
+    if (knownVendor) return knownVendor[1];
     const base = host.split('.')[0] || '';
     const cleaned = base.replace(/[^a-z0-9]+/gi, ' ').trim();
     if (!cleaned) return '';
@@ -532,5 +544,13 @@ export async function scrapePartUrl(urlInput: string): Promise<PartUrlMetadata> 
   }
   const fallback = await fetchProductSourceFallback(url);
   if (fallback?.ok) return fallback;
-  return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: 'This product page blocked both the direct reader and fallback reader.' };
+  const vendor = derivePartVendorFromUrl(url);
+  return {
+    ok: Boolean(vendor),
+    url,
+    vendor,
+    error: vendor
+      ? 'Distributor identified from the URL. Product details were not read.'
+      : 'This product page blocked both the direct reader and fallback reader.',
+  };
 }

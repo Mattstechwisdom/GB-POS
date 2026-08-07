@@ -12,6 +12,8 @@
    wide tablets and landscape screens that cross desktop breakpoints. */
 .gbpos-mobile .gb-eod-window {
   min-height: 100%;
+  height: auto !important;
+  overflow: visible !important;
   padding: 0.75rem !important;
 }
 
@@ -3332,6 +3334,36 @@
     background: rgba(0, 0, 0, 0.78) !important;
   }
 
+  .gbpos-mobile .gb-customer-overview-overlay.is-embedded-create {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  .gbpos-mobile .is-embedded-create .gb-customer-overview-panel {
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0.75rem !important;
+  }
+
+  .gbpos-mobile .is-embedded-create .gb-customer-overview-header .gb-customer-header-save {
+    display: none !important;
+  }
+
+  .gbpos-mobile .is-embedded-create .gb-customer-mobile-save {
+    display: block !important;
+  }
+
+  .gbpos-mobile .is-embedded-create .gb-customer-mobile-save button {
+    width: 100%;
+    min-height: 3rem;
+  }
+
   .gbpos-mobile .gb-customer-overview-overlay.is-child-dialog .gb-customer-overview-panel {
     min-height: 100dvh !important;
   }
@@ -3341,7 +3373,8 @@
     max-width: 100% !important;
     max-height: none !important;
     padding: 0.75rem !important;
-    overflow: visible !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
     border: 0 !important;
     background: #09090b !important;
   }
@@ -3377,6 +3410,8 @@
   .gbpos-mobile .gb-customer-overview-form,
   .gbpos-mobile .gb-customer-overview-history {
     width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   .gbpos-mobile .gb-customer-form-grid {
@@ -3401,9 +3436,12 @@
 
   .gbpos-mobile .gb-customer-primary-actions {
     display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 0.55rem !important;
     margin: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   .gbpos-mobile .gb-customer-primary-actions button {
@@ -3433,8 +3471,11 @@
 
   .gbpos-mobile .gb-customer-history-filters {
     display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 0.3rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   .gbpos-mobile .gb-customer-history-filters button {
@@ -3445,6 +3486,32 @@
 
   .gbpos-mobile .gb-customer-overview-footer {
     margin-top: 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-header .gb-customer-header-save {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-customer-mobile-save {
+    display: block !important;
+  }
+
+  .gbpos-mobile .gb-customer-mobile-save button {
+    width: 100%;
+    min-height: 3rem;
+  }
+
+  .gbpos-mobile .gb-consultation-client-create .gb-customer-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-consultation-pricing-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  .gbpos-mobile .gb-consultation-pricing-grid > :last-child {
+    grid-column: 1 / -1;
+    text-align: left !important;
   }
 
   .gbpos-mobile .gb-client-info-card {
@@ -3469,6 +3536,21 @@
     min-width: 0 !important;
     table-layout: fixed !important;
     font-size: 0.69rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-quotes-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 0.69rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-quotes-table th,
+  .gbpos-mobile .gb-customer-quotes-table td {
+    overflow: hidden;
+    padding: 0.35rem 0.25rem !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .gbpos-mobile .gb-customer-history-table th,
