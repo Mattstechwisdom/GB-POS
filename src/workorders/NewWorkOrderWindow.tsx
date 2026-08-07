@@ -19,6 +19,11 @@ export type WorkOrderItemRow = {
   supplierTaxRate?: number;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   inventoryProductId?: number;
+  deviceModel?: string;
+  condition?: 'New' | 'Used' | 'Refurbished' | 'Other';
+  distributorSku?: string;
+  quantity?: number;
+  reorderQty?: number;
   trackStock?: boolean;
   purchaseQueueRemovedAt?: string;
   purchaseQueueRemovalNotice?: string;
@@ -723,7 +728,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
   // Recompute partCosts, laborCost, and totals whenever items or payment fields change
   useEffect(() => {
-    const partCosts = wo.items.reduce((sum, r) => sum + (r.parts || 0), 0);
+    const partCosts = wo.items.reduce((sum, r) => sum + ((r.parts || 0) * Math.max(1, Number(r.quantity || 1))), 0);
     const laborCost = wo.items.reduce((sum, r) => sum + (r.labor || 0), 0);
     const totals = computeTotals({
       laborCost,
@@ -1066,8 +1071,8 @@ const NewWorkOrderWindow: React.FC = () => {
       status: row.status as any || 'pending',
       description: row.repair,
       qty: 1,
-      unitPrice: (row.parts || 0) + (row.labor || 0),
-      parts: row.parts,
+      unitPrice: ((row.parts || 0) * Math.max(1, Number(row.quantity || 1))) + (row.labor || 0),
+      parts: (row.parts || 0) * Math.max(1, Number(row.quantity || 1)),
       labor: row.labor,
     })) as any;
     return { ...wo, items } as unknown as WorkOrderFull;
@@ -1188,6 +1193,25 @@ const NewWorkOrderWindow: React.FC = () => {
   const handleItemsChange = useCallback((items: WorkOrderItemRow[]) => {
     setWo(w => ({ ...w, items }));
   }, []);
+
+  const handleItemsCommit = useCallback(async (items: WorkOrderItemRow[]) => {
+    const current = { ...(woRef.current || {}), items };
+    setWo(w => ({ ...w, items }));
+    if (!Number(current.id || 0)) return;
+    try {
+      const api: any = (window as any).api || {};
+      const payload = await enrichWorkOrderCustomer(current);
+      const saved = typeof api.update === 'function'
+        ? await api.update('workOrders', payload)
+        : await api.dbUpdate?.('workOrders', current.id, payload);
+      if (saved) applySavedCustomerSnapshot(saved);
+      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+      try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
+    } catch (error) {
+      console.error('Immediate work-order item save failed', error);
+      triggerWarningBanner('Item is still on screen but was not synced', 'Save the work order before closing and check your connection.');
+    }
+  }, [applySavedCustomerSnapshot, enrichWorkOrderCustomer]);
 
   useEffect(() => {
     const orderUrl = String((wo as any).partsOrderUrl || '').trim();
@@ -2366,6 +2390,7 @@ const NewWorkOrderWindow: React.FC = () => {
             <ItemsTable
               items={wo.items}
               onChange={handleItemsChange}
+              onCommit={handleItemsCommit}
               onAddProduct={handleAddProduct}
               addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
               readonlyItems={readonlyAddonRows as any}

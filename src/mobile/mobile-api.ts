@@ -964,7 +964,11 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
     .is('revoked_at', null)
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
-  if (existing.data?.token) return `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+  if (existing.data?.token) {
+    return type === 'consult'
+      ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
+      : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+  }
 
   const recordKey = cloudRecordKeyForQrType(type);
   const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
@@ -994,7 +998,9 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
       .select('token')
       .single();
     if (!inserted.error && inserted.data?.token) {
-      return `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
+      return type === 'consult'
+        ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
+        : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
       throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);

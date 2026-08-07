@@ -25,6 +25,11 @@ export type WorkOrderItemRow = {
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   orderDate?: string;
   inventoryProductId?: number;
+  deviceModel?: string;
+  condition?: 'New' | 'Used' | 'Refurbished' | 'Other';
+  distributorSku?: string;
+  quantity?: number;
+  reorderQty?: number;
   trackStock?: boolean;
   purchaseQueueRemovedAt?: string;
   purchaseQueueRemovalNotice?: string;
@@ -36,6 +41,7 @@ const MAX_ITEMS = 5;
 interface Props {
   items: WorkOrderItemRow[];
   onChange: (items: WorkOrderItemRow[]) => void;
+  onCommit?: (items: WorkOrderItemRow[]) => void | Promise<void>;
   onAddProduct?: () => void | Promise<void>;
   addProductDisabled?: boolean;
   /** Read-only rows (e.g., linked retail add-ons) shown inside the items table. */
@@ -44,7 +50,7 @@ interface Props {
   onRemoveReadonlyItem?: (row: WorkOrderItemRow) => void | Promise<void>;
 }
 
-const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
+const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
   const ro = useMemo(() => (Array.isArray(readonlyItems) ? readonlyItems : []), [readonlyItems]);
 
   const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
@@ -206,6 +212,10 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
       parts: 0,
       labor: 0,
       status: 'pending',
+      quantity: 1,
+      condition: 'New',
+      markupPct: DEFAULT_PART_MARKUP_PCT,
+      reorderQty: 1,
       orderStatus: 'in_stock',
     };
     onChange([...items, row].slice(0, MAX_ITEMS));
@@ -405,6 +415,24 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                 onChange={e => setEditing({ ...editing, repair: e.target.value })}
               />
             </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Device Model</label>
+              <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.deviceModel || ''} onChange={e => setEditing({ ...editing, deviceModel: e.target.value })} placeholder="Specific model" />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Condition</label>
+              <select className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.condition || 'New'} onChange={e => setEditing({ ...editing, condition: e.target.value as WorkOrderItemRow['condition'] })}>
+                <option value="New">New</option><option value="Used">Used</option><option value="Refurbished">Refurbished</option><option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Quantity</label>
+              <input type="number" min="1" step="1" className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.quantity || 1} onChange={e => setEditing({ ...editing, quantity: Math.max(1, Math.round(Number(e.target.value || 1))) })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Reorder / MOQ</label>
+              <input type="number" min="1" step="1" className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.reorderQty || 1} onChange={e => setEditing({ ...editing, reorderQty: Math.max(1, Math.round(Number(e.target.value || 1))) })} />
+            </div>
             <label className="col-span-2 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
               <input
                 type="checkbox"
@@ -434,6 +462,18 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                     placeholder="Distributor name"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs text-zinc-400">Supplier SKU</label>
+                  <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.distributorSku || ''} onChange={e => setEditing({ ...editing, distributorSku: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400">Markup %</label>
+                  <input type="number" min="0" step="1" className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.markupPct ?? DEFAULT_PART_MARKUP_PCT} onChange={e => setEditing({ ...editing, markupPct: e.target.value })} />
+                </div>
+                <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={editing.taxExempt === true} onChange={e => setEditing({ ...editing, taxExempt: e.target.checked })} />
+                  Supplier tax exempt
+                </label>
                 <div className="col-span-2">
                   <label className="block text-xs text-zinc-400">Order URL</label>
                   <input
@@ -497,8 +537,10 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProduct
                 }
                 const distributor = String(editing.distributor || '').trim() || derivePartVendorFromUrl(editing.orderSourceUrl);
                 const saved = { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
+                const nextItems = items.map(i => (i.id === editing.id ? saved : i));
                 setEditingError('');
-                onChange(items.map(i => (i.id === editing.id ? saved : i)));
+                onChange(nextItems);
+                void onCommit?.(nextItems);
                 // Keep editor open on the selected row
               }}
             >

@@ -8,6 +8,7 @@ interface CustomerLite {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  email?: string;
   createdAt?: string;
 }
 
@@ -117,6 +118,7 @@ const RecentCustomers: React.FC = () => {
             firstName: (found as any).firstName,
             lastName: (found as any).lastName,
             phone: (found as any).phone || (found as any).phoneAlt,
+            email: (found as any).email,
             createdAt: (found as any).createdAt,
           };
         } else {
@@ -126,6 +128,7 @@ const RecentCustomers: React.FC = () => {
             firstName: w.firstName || undefined,
             lastName: w.lastName || undefined,
             phone: w.customerPhone || w.phone || undefined,
+            email: w.customerEmail || undefined,
             createdAt: w.checkInAt,
           };
         }
@@ -142,7 +145,7 @@ const RecentCustomers: React.FC = () => {
         });
         for (const c of sortedCustomers) {
           if (seen.has(c.id)) continue;
-          recent.push({ id: c.id, firstName: c.firstName, lastName: c.lastName, phone: c.phone || c.phoneAlt, createdAt: c.createdAt });
+          recent.push({ id: c.id, firstName: c.firstName, lastName: c.lastName, phone: c.phone || c.phoneAlt, email: c.email, createdAt: c.createdAt });
           if (recent.length >= 8) break;
         }
       }
@@ -189,12 +192,12 @@ const RecentCustomers: React.FC = () => {
         <span className="font-bold text-sm">Recent Customers</span>
         <button onClick={() => load({ includeCustomers: true })} className="bg-zinc-700 text-xs px-2 py-1 rounded disabled:opacity-50" disabled={loading}>{loading ? '...' : 'Reload'}</button>
       </div>
-      <table className="w-full text-xs">
+      <table className="gb-recent-customers-table w-full table-fixed text-xs">
         <thead>
           <tr className="text-zinc-400">
-            <th className="text-left">Last Name</th>
-            <th className="text-left">First Name</th>
-            <th className="text-left">Phone</th>
+            <th className="w-[34%] text-left">Full Name</th>
+            <th className="w-[29%] text-left">Phone</th>
+            <th className="w-[37%] text-left">Email</th>
           </tr>
         </thead>
         <tbody>
@@ -219,9 +222,9 @@ const RecentCustomers: React.FC = () => {
           }
         }}
             >
-              <td className="py-1 pr-2">{c.lastName || ''}</td>
-              <td className="py-1 pr-2">{c.firstName || ''}</td>
-              <td className="py-1">{formatPhone(c.phone || '')}</td>
+              <td className="truncate py-1 pr-2" title={[c.firstName, c.lastName].filter(Boolean).join(' ')}>{[c.firstName, c.lastName].filter(Boolean).join(' ') || `Client #${c.id}`}</td>
+              <td className="truncate py-1 pr-2" title={formatPhone(c.phone || '')}>{formatPhone(c.phone || '')}</td>
+              <td className="truncate py-1" title={c.email || ''}>{c.email || ''}</td>
             </tr>
           ))}
         </tbody>

@@ -31,6 +31,7 @@ export type OrderCartRow = {
   itemType?: 'Part' | 'Product';
   purchaseOrderId?: number;
   inventoryId?: number;
+  estimatedDelivery?: string;
 };
 
 export type OrderCartGroup = {
@@ -210,6 +211,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         paymentDetail: payment.detail,
         taxExempt: item?.taxExempt === true,
         supplierTaxRate: Number(item?.supplierTaxRate ?? 8) || 8,
+        estimatedDelivery: String(item?.estimatedDelivery || item?.estDelivery || '').slice(0, 10),
       });
     });
   }
@@ -250,6 +252,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         paymentDetail: payment.detail,
         taxExempt: item?.vendorTaxExempt === true,
         supplierTaxRate: Number(item?.supplierTaxRate ?? 8) || 8,
+        estimatedDelivery: String(item?.estimatedDelivery || item?.estDelivery || '').slice(0, 10),
       });
     });
   }
@@ -292,6 +295,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
       itemType: record?.itemType === 'Product' ? 'Product' : 'Part',
       purchaseOrderId: Number(record?.id || 0),
       inventoryId: Number(record?.inventoryId || 0) || undefined,
+      estimatedDelivery: String(record?.estimatedDelivery || record?.estDelivery || '').slice(0, 10),
     });
   }
   return rows.sort((a, b) => a.distributor.localeCompare(b.distributor) || a.sourceType.localeCompare(b.sourceType) || a.sourceId - b.sourceId);

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.5.42 (2026-08-06)
+- Ticket Item Accounting: saves work-order and sale item edits immediately, including supplier cost, quantity, distributor, order URL, markup, tax status, SKU, model, condition, notes, and reorder quantity, without adding ticket-only custom items to the permanent inventory catalog.
+- End of Day Cart: adds distributor-wide and optional per-item estimated delivery dates, carries verified delivery details back to the source ticket, and mirrors expected arrivals into the synced calendar.
+- Client Updates: gives sales and consultations their own update actions and delivery history, including product ordered, shipping delay, product arrived, consultation reminders, schedule-change approval details, confirmations, and completion notices.
+- Consultation QR Codes: now download the consultation calendar event with a reminder one hour before the appointment instead of opening the repair update page.
+- Calendar: keeps an existing entry's type fixed, displays consultation email and address details, enlarges desktop notes, and enriches consultation details from the synced client record.
+- Mobile Clients: restructures Add Client and Search Client for phone-width fields and fixed-width name, phone, and email lists without horizontal overflow; consultation client creation stays focused on contact fields only.
+- Reporting: separates parts charged, parts cost, and labor charged, and adds editable sales and consultation commission settings with exact per-technician allocations.
+
 ## v0.5.41 (2026-08-06)
 - Android Notifications: makes the native permission handshake authoritative, recognizes permissions granted in Android Settings, and prevents Notification Settings from remaining stuck while checking.
 - End of Day Cart: removes the duplicate bottom cart summary, adds View Invoice actions, and clearly identifies unpaid or partially paid work-order and sale items.

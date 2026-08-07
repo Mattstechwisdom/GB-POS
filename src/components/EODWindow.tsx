@@ -5,11 +5,11 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows, itemFullCost, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
+import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
 const CONSULTATION_HOURLY_RATE = 75;
-const CONSULTATION_TECH_RATE = 25;
 const LOW_STOCK_DISMISSALS_KEY = 'gbpos:eod-low-stock-dismissals:v1';
 
 interface EodSettings {
@@ -106,13 +106,19 @@ function allocateSupplierTax(rows: OrderCartRow[], taxExempt: boolean) {
 function normalizeSaleItems(sale: any): Array<{ description: string; qty: number; price: number; category?: string; consultationHours?: number }> {
   const items = Array.isArray(sale?.items) ? sale.items : [];
   if (items.length) {
-    return items.map((it: any) => ({
-      description: (it?.description || it?.name || it?.title || '').toString(),
+    return items.map((it: any) => {
+      const description = (it?.description || it?.name || it?.title || '').toString();
+      const category = it?.category;
+      const isNonHourConsultationFee = isConsultationCategory(category)
+        && !(Number(it?.consultationHours) > 0)
+        && /(driver|distance|travel|fee)/i.test(description);
+      return {
+      description,
       qty: Number(it?.qty ?? it?.quantity ?? 1) || 1,
       price: Number(it?.price ?? it?.unitPrice ?? 0) || 0,
-      category: it?.category,
+      category: isNonHourConsultationFee ? 'Fee' : category,
       consultationHours: Number(it?.consultationHours ?? 0) || undefined,
-    }));
+    }; });
   }
   const desc = (sale?.itemDescription || sale?.description || '').toString();
   const qty = Number(sale?.quantity ?? 1) || 1;
@@ -587,7 +593,7 @@ function firstDateInKeys(record: any, keys: string[]): Date | null {
   return null;
 }
 
-function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number, commissionRate: number) {
+function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number, commissionRate: number, consultationTechHourlyRate: number) {
   const breakdown = computeSaleBreakdown(sale, commissionRate);
   const net = Number(breakdown.net || 0) || 0;
   const commissionableRatio = net > 0 ? Math.min(1, Math.max(0, (Number(breakdown.commissionableNet || 0) || 0) / net)) : 0;
@@ -599,8 +605,8 @@ function computeSaleCommissionInRange(sale: any, startMs: number, endMs: number,
   const commissionableCollected = round2(collected * commissionableRatio);
   const consultationCollected = round2(collected * consultationRatio);
   const salesCommission = round2(commissionableCollected * commissionRate);
-  const consultationPayout = round2(consultationCollected * (CONSULTATION_TECH_RATE / CONSULTATION_HOURLY_RATE));
   const consultationHoursCollected = round2(consultationCollected / CONSULTATION_HOURLY_RATE);
+  const consultationPayout = round2(consultationHoursCollected * consultationTechHourlyRate);
   const commission = round2(salesCommission + consultationPayout);
   const date = latestPaymentDateInRange(sale, startMs, endMs) || getTimelineDate(sale) || new Date(0);
 
@@ -733,6 +739,7 @@ const EODWindow: React.FC = () => {
   const [reportDayKey, setReportDayKey] = useState(() => new Date().toDateString());
   const [savedSettings, setSavedSettings] = useState<EodSettings>(defaultSettings);
   const [draftSettings, setDraftSettings] = useState<EodSettings>(defaultSettings);
+  const [commissionSettings, setCommissionSettings] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -744,6 +751,9 @@ const EODWindow: React.FC = () => {
   const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
   const [previewDeletedPurchaseKeys, setPreviewDeletedPurchaseKeys] = useState<Set<string>>(() => new Set());
   const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
+  const [deliveryByDistributor, setDeliveryByDistributor] = useState<Record<string, string>>({});
+  const [deliveryByRow, setDeliveryByRow] = useState<Record<string, string>>({});
+  const [splitDeliveryByDistributor, setSplitDeliveryByDistributor] = useState<Record<string, boolean>>({});
   const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
@@ -892,6 +902,7 @@ const EODWindow: React.FC = () => {
             ? api.dbGet('sales').catch(() => [])
             : Promise.resolve([]);
         const settingsPromise = api.dbGet ? api.dbGet('eodSettings').catch(() => []) : Promise.resolve([]);
+        const shopSettingsPromise = api.dbGet ? api.dbGet('settings').catch(() => []) : Promise.resolve([]);
         const customersPromise = api.dbGet ? api.dbGet('customers').catch(() => []) : Promise.resolve([]);
         const purchaseOrdersPromise = api.dbGet ? api.dbGet('purchaseOrders').catch(() => []) : Promise.resolve([]);
         const productsPromise = api.dbGet ? api.dbGet('products').catch(() => []) : Promise.resolve([]);
@@ -902,7 +913,7 @@ const EODWindow: React.FC = () => {
             ? api.dbGet('batchInfo').catch(() => null)
             : Promise.resolve(null);
 
-        const [wo, sa, stored, batch, customerRows, purchaseRows, productRows, vendorRows] = await Promise.all([woPromise, saPromise, settingsPromise, batchPromise, customersPromise, purchaseOrdersPromise, productsPromise, vendorsPromise]);
+        const [wo, sa, stored, shopSettingsRows, batch, customerRows, purchaseRows, productRows, vendorRows] = await Promise.all([woPromise, saPromise, settingsPromise, shopSettingsPromise, batchPromise, customersPromise, purchaseOrdersPromise, productsPromise, vendorsPromise]);
         if (disposed) return;
 
         setWorkOrders(Array.isArray(wo) ? wo : []);
@@ -917,6 +928,8 @@ const EODWindow: React.FC = () => {
           setSavedSettings(prev => ({ ...prev, ...storedSettings }));
           setDraftSettings(prev => ({ ...prev, ...storedSettings }));
         }
+        const shopSettings = Array.isArray(shopSettingsRows) ? shopSettingsRows[0] : shopSettingsRows;
+        setCommissionSettings(normalizeCommissionSettings(shopSettings?.commissionSettings));
 
         const batchRecord = Array.isArray(batch) ? batch[0] : batch;
         setBatchInfo(batchRecord || null);
@@ -1028,12 +1041,12 @@ const EODWindow: React.FC = () => {
     return { woTotals: wo, saTotals: sa, grandBilled, grandCollected, grandRemaining };
   }, [unified, rangeKey]);
 
-  const COMMISSION_RATE = 0.05;
+  const COMMISSION_RATE = commissionSettings.salesCommissionPercent / 100;
 
   const salesCommissionInRange = useMemo(() => {
     const min = commissionStart.getTime();
     const max = commissionEnd.getTime();
-    const rows = (sales || []).map(sa => computeSaleCommissionInRange(sa, min, max, COMMISSION_RATE)).filter(Boolean) as Array<{
+    const rows = (sales || []).map(sa => computeSaleCommissionInRange(sa, min, max, COMMISSION_RATE, commissionSettings.consultationTechHourlyRate)).filter(Boolean) as Array<{
       sale: any;
       date: Date;
       collected: number;
@@ -1047,7 +1060,7 @@ const EODWindow: React.FC = () => {
     }>;
     rows.sort((a, b) => b.date.getTime() - a.date.getTime());
     return rows;
-  }, [sales, commissionRangeKey]);
+  }, [sales, commissionRangeKey, commissionSettings]);
 
   const salesCategoryTotals = useMemo(() => {
     const map = new Map<string, { count: number; collected: number; commissionableCollected: number; consultationCollected: number; consultationPayout: number }>();
@@ -1065,7 +1078,7 @@ const EODWindow: React.FC = () => {
         prev.collected += collectedPortion;
         if (isConsultationCategory(cat)) {
           prev.consultationCollected += consultationPortion || collectedPortion;
-          prev.consultationPayout += (consultationPortion || collectedPortion) * (CONSULTATION_TECH_RATE / CONSULTATION_HOURLY_RATE);
+          prev.consultationPayout += row.consultationHoursCollected * commissionSettings.consultationTechHourlyRate * share;
         } else {
           prev.commissionableCollected += commissionablePortion || collectedPortion;
         }
@@ -1082,7 +1095,7 @@ const EODWindow: React.FC = () => {
     }));
     rows.sort((a, b) => b.collected - a.collected);
     return rows;
-  }, [salesCommissionInRange]);
+  }, [salesCommissionInRange, commissionSettings.consultationTechHourlyRate]);
 
   const commissionSummary = useMemo(() => {
     let commissionableNet = 0;
@@ -1106,19 +1119,32 @@ const EODWindow: React.FC = () => {
 
   const commissionByTechnician = useMemo(() => {
     const map = new Map<string, { salesCount: number; commissionableNet: number; salesCommission: number; consultationPayout: number; commission: number }>();
+    const splitTechnicians = selectedSalesCommissionTechnicians(technicians, commissionSettings);
+    const splitKeys = splitTechnicians.map((tech: any) => canonicalizeAssignedTo(technicianCommissionId(tech))).filter(Boolean);
     for (const row of salesCommissionInRange) {
-      const tech = canonicalizeAssignedTo(resolveAssignedTechnician(row.sale));
-      if (!tech) continue;
-      const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, salesCommission: 0, consultationPayout: 0, commission: 0 };
-      prev.salesCount += 1;
-      prev.commissionableNet += row.commissionableCollected;
-      prev.salesCommission += row.salesCommission;
-      prev.consultationPayout += row.consultationPayout;
-      prev.commission += row.commission;
-      map.set(tech, prev);
+      if (row.salesCommission > 0 && splitKeys.length) {
+        const commissionShares = allocateCommissionPool(row.salesCommission, splitKeys.length);
+        const perTechBase = round2(row.commissionableCollected / splitKeys.length);
+        splitKeys.forEach((tech, index) => {
+          const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, salesCommission: 0, consultationPayout: 0, commission: 0 };
+          const exactShare = commissionShares[index] || 0;
+          prev.salesCount += 1;
+          prev.commissionableNet += perTechBase;
+          prev.salesCommission += exactShare;
+          prev.commission += exactShare;
+          map.set(tech, prev);
+        });
+      }
+      if (row.consultationPayout > 0) {
+        const tech = canonicalizeAssignedTo(resolveAssignedTechnician(row.sale)) || 'unassigned';
+        const prev = map.get(tech) || { salesCount: 0, commissionableNet: 0, salesCommission: 0, consultationPayout: 0, commission: 0 };
+        prev.consultationPayout += row.consultationPayout;
+        prev.commission += row.consultationPayout;
+        map.set(tech, prev);
+      }
     }
     return map;
-  }, [salesCommissionInRange, techAliasToCanonical]);
+  }, [salesCommissionInRange, techAliasToCanonical, technicians, commissionSettings]);
 
   const technicianOperationalRows = useMemo(() => {
     const min = start.getTime();
@@ -1726,6 +1752,35 @@ const EODWindow: React.FC = () => {
     let updatedCount = 0;
     let emailCount = 0;
     const failures: string[] = [];
+    const deliveryForRow = (row: OrderCartRow) => String(
+      (splitDeliveryByDistributor[row.distributor] ? deliveryByRow[row.key] : deliveryByDistributor[row.distributor])
+      || row.estimatedDelivery
+      || '',
+    ).slice(0, 10);
+    const syncDeliveryCalendar = async (row: OrderCartRow, estimatedDelivery: string) => {
+      if (!estimatedDelivery || !api.dbGet || !api.dbAdd) return;
+      const all = await api.dbGet('calendarEvents').catch(() => []);
+      const sourceNote = `Purchase source: ${row.key}`;
+      const existing = (Array.isArray(all) ? all : []).find((event: any) => event?.category === 'parts' && event?.partsStatus === 'delivery' && (String(event?.sourceKey || '') === row.key || String(event?.notes || '').includes(sourceNote)));
+      const payload = {
+        ...(existing || {}),
+        date: estimatedDelivery,
+        title: `Expected: ${row.title}`,
+        partName: row.title,
+        category: 'parts',
+        partsStatus: 'delivery',
+        source: row.sourceType === 'workOrder' ? 'workorder' : row.sourceType,
+        sourceKey: row.key,
+        notes: sourceNote,
+        workOrderId: row.sourceType === 'workOrder' ? row.sourceId : undefined,
+        saleId: row.sourceType === 'sale' ? row.sourceId : undefined,
+        orderUrl: row.orderUrl || undefined,
+        customerName: row.customer,
+        updatedAt: now,
+      };
+      if (existing?.id != null && api.dbUpdate) await api.dbUpdate('calendarEvents', existing.id, payload);
+      else await api.dbAdd('calendarEvents', { ...payload, createdAt: now });
+    };
     try {
       const savedPurchaseRecords: any[] = [];
       const successfulPurchaseKeys = new Set<string>();
@@ -1734,6 +1789,7 @@ const EODWindow: React.FC = () => {
         const supplierTax = supplierTaxByRow.get(row.key) || 0;
         const taxExempt = distributorIsTaxExempt(row.distributor, purchaseGroups.find(group => group.distributor === row.distributor)?.rows || [row]);
         const finalTotalCost = round2(row.totalCost + supplierTax + additionalCost);
+        const estimatedDelivery = deliveryForRow(row);
         const ledgerPayload = {
           status: row.sourceType === 'inventory' ? 'processing' : 'checked_out',
           sourceType: row.sourceType,
@@ -1756,6 +1812,7 @@ const EODWindow: React.FC = () => {
           additionalCost,
           totalCost: finalTotalCost,
           paymentStatus: row.paymentStatus,
+          estimatedDelivery,
           checkedOutAt: now,
           updatedAt: now,
         };
@@ -1810,7 +1867,7 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
         });
         const updated = {
           ...current,
@@ -1825,6 +1882,7 @@ const EODWindow: React.FC = () => {
         try {
           const saved = api.update ? await api.update('workOrders', updated) : await api.dbUpdate?.('workOrders', current.id, updated);
           setWorkOrders((rows) => rows.map((row) => Number(row?.id) === Number(workOrderId) ? (saved || updated) : row));
+          for (const cartRow of selectedForWorkOrder) await syncDeliveryCalendar(cartRow, deliveryForRow(cartRow));
 
           const customer = customers.find((row) => Number(row?.id) === Number(current.customerId));
           const email = String(current.customerEmail || customer?.email || '').trim();
@@ -1857,12 +1915,13 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
         });
         const updated = { ...current, items, updatedAt: now };
         try {
           const saved = await api.dbUpdate?.('sales', current.id, updated);
           setSales(rows => rows.map(row => Number(row?.id) === Number(saleId) ? (saved || updated) : row));
+          for (const cartRow of selectedForSale) await syncDeliveryCalendar(cartRow, deliveryForRow(cartRow));
         } catch (error: any) {
           failures.push(`Sale #${saleId}: ${error?.message || error}`);
         }
@@ -1880,7 +1939,7 @@ const EODWindow: React.FC = () => {
     } finally {
       setPurchaseUpdateBusy(false);
     }
-  }, [additionalCostsByDistributor, customers, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, workOrders]);
+  }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
@@ -2872,11 +2931,17 @@ const EODWindow: React.FC = () => {
                           <button type="button" disabled={!group.rows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(group.rows)}>View Cart</button>
                           <button type="button" disabled={!group.checkoutUrl} className="rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-black disabled:opacity-40" onClick={() => openPurchaseUrl(group.checkoutUrl)}>{group.checkoutUrl ? group.checkoutLabel : 'Cart URL unavailable'}</button>
                         </div>
+                        <div className="grid gap-2 border-b border-zinc-800 bg-zinc-950/40 p-2 sm:grid-cols-[minmax(190px,280px)_1fr] sm:items-end">
+                          <label className="text-xs text-zinc-300">Estimated Delivery
+                            <input type="date" disabled={splitDeliveryByDistributor[group.distributor] === true} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm disabled:opacity-40" value={deliveryByDistributor[group.distributor] || group.rows.find(row => row.estimatedDelivery)?.estimatedDelivery || ''} onChange={event => setDeliveryByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} />
+                          </label>
+                          <label className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300"><input type="checkbox" className="h-4 w-4" checked={splitDeliveryByDistributor[group.distributor] === true} onChange={event => setSplitDeliveryByDistributor(current => ({ ...current, [group.distributor]: event.target.checked }))} />Items arrive on different dates</label>
+                        </div>
                         <div className="divide-y divide-zinc-800">
                           {group.rows.map(row => (
                             <div key={row.key} className={`gb-eod-cart-row grid gap-2 p-2 text-sm lg:items-center ${selectionActive ? 'grid-cols-[24px_minmax(0,1fr)] lg:grid-cols-[24px_minmax(220px,2fr)_64px_96px_88px_105px_115px_125px_88px_92px]' : 'grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(220px,2fr)_64px_96px_88px_105px_115px_125px_88px_92px]'}`}>
                               {selectionActive ? <input type="checkbox" className="h-4 w-4 shrink-0 self-center accent-[#BC13FE]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={selectedPurchaseRows.has(row.key)} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); if (event.target.checked) next.add(row.key); else next.delete(row.key); return next; })} aria-label={`Select ${row.title}`} /> : null}
-                              <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div><label className="gb-eod-cart-mobile-qty mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400 lg:hidden">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="gb-eod-cart-mobile-amounts mt-2 grid grid-cols-2 gap-2 text-xs lg:hidden"><div><span className="text-zinc-500">Cost incl. tax</span><div>{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged incl. tax</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`gb-eod-cart-mobile-payment mt-2 inline-block rounded border px-2 py-1 text-[11px] lg:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
+                              <div className="min-w-0"><div className="truncate font-medium" title={row.title}>{row.title}</div><div className="text-xs text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Inventory restock' : 'Manual purchase'} · {row.customer}</div>{splitDeliveryByDistributor[group.distributor] ? <label className="mt-2 block text-[11px] text-zinc-400">Estimated Delivery<input type="date" className="mt-1 block w-full max-w-48 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-white" value={deliveryByRow[row.key] || row.estimatedDelivery || ''} onChange={event => setDeliveryByRow(current => ({ ...current, [row.key]: event.target.value }))} /></label> : null}<label className="gb-eod-cart-mobile-qty mt-2 flex w-32 items-center gap-2 text-xs text-zinc-400 lg:hidden">Qty<input type="number" min="1" step="1" inputMode="numeric" className="min-w-0 w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label><div className="gb-eod-cart-mobile-amounts mt-2 grid grid-cols-2 gap-2 text-xs lg:hidden"><div><span className="text-zinc-500">Cost incl. tax</span><div>{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : 'Missing'}</div></div><div><span className="text-zinc-500">Charged incl. tax</span><div>{row.totalCharge > 0 ? formatCurrency(row.totalCharge) : 'Not client-linked'}</div></div></div><div className={`gb-eod-cart-mobile-payment mt-2 inline-block rounded border px-2 py-1 text-[11px] lg:hidden ${cartPaymentClass(row)}`} title={row.paymentDetail}>{cartPaymentLabel(row)}</div></div>
                               <label className="gb-eod-cart-desktop-cell hidden text-xs text-zinc-400 lg:block">Qty<input type="number" min="1" step="1" inputMode="numeric" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-white" value={quantityOverrides[row.key] ?? String(row.quantity)} onChange={event => setQuantityOverrides(current => ({ ...current, [row.key]: event.target.value }))} /></label>
                               <div className="gb-eod-cart-desktop-cell hidden text-right text-sm lg:block"><div className="text-[10px] text-zinc-500">Item cost</div>{row.hasCost ? formatCurrency(row.totalCost) : <span className="text-red-300">Missing</span>}</div>
                               <div className="gb-eod-cart-desktop-cell hidden text-right text-sm lg:block"><div className="text-[10px] text-zinc-500">Supplier tax</div>{formatCurrency(purchaseRowSupplierTax.get(row.key) || 0)}</div>
@@ -3084,7 +3149,7 @@ const EODWindow: React.FC = () => {
                             </div>
                           </div>
                         ) : null}
-                        <div className="text-[11px] text-zinc-500">Uses collected payments during {commissionLabel}. Non-consult sales pay {Math.round(COMMISSION_RATE * 100)}%. Consultations pay ${CONSULTATION_TECH_RATE} from each ${CONSULTATION_HOURLY_RATE} billed hour.</div>
+                        <div className="text-[11px] text-zinc-500">Uses collected payments during {commissionLabel}. Eligible sales contribute {commissionSettings.salesCommissionPercent}% to the shared pool. Consultations pay the assigned technician {formatCurrency(commissionSettings.consultationTechHourlyRate)} per logged hour.</div>
                       </div>
                       <div className="mt-2 space-y-2 text-sm">
                         <div className="flex items-center justify-between"><span className="text-zinc-300">Repair collected</span><span className="font-semibold">{formatCurrency(monthlyBatchSummary.workCollected)}</span></div>

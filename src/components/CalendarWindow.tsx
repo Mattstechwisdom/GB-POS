@@ -27,6 +27,8 @@ type CalendarEvent = {
   customerId?: number;
   customerName?: string;
   customerPhone?: string;
+  customerEmail?: string;
+  consultationAddress?: string;
   technician?: string;
   location?: string;
   // Weekly schedule (for category 'schedule')
@@ -312,8 +314,23 @@ const CalendarWindow: React.FC = () => {
     let alive = true;
     const refreshEvents = async () => {
       try {
-        const list = await (window as any).api.dbGet('calendarEvents');
-        if (alive && Array.isArray(list)) setEvents(list);
+        const [list, customers] = await Promise.all([
+          (window as any).api.dbGet('calendarEvents'),
+          (window as any).api.dbGet('customers').catch(() => []),
+        ]);
+        const customerById = new Map((Array.isArray(customers) ? customers : []).map((customer: any) => [Number(customer?.id || 0), customer]));
+        const enriched = (Array.isArray(list) ? list : []).map((event: CalendarEvent) => {
+          const customer: any = customerById.get(Number(event.customerId || 0));
+          if (!customer) return event;
+          return {
+            ...event,
+            customerEmail: event.customerEmail || customer.email || '',
+            customerPhone: event.customerPhone || customer.phone || '',
+            customerName: event.customerName || [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim(),
+            consultationAddress: event.consultationAddress || (event.category === 'consultation' ? event.location : '') || '',
+          };
+        });
+        if (alive) setEvents(enriched);
       } catch (e) { console.error('load calendar events failed', e); }
     };
     void refreshEvents();
@@ -956,6 +973,8 @@ const CalendarWindow: React.FC = () => {
               {viewing.technician ? <div><span>Assigned</span><strong>{viewing.technician}</strong></div> : null}
               {viewing.customerName ? <div><span>Client</span><strong>{viewing.customerName}</strong></div> : null}
               {viewing.customerPhone ? <div><span>Phone</span><strong>{formatPhone(viewing.customerPhone)}</strong></div> : null}
+              {viewing.customerEmail ? <div><span>Email</span><strong>{viewing.customerEmail}</strong></div> : null}
+              {viewing.category === 'consultation' && viewing.consultationAddress ? <div className="detail-wide"><span>Address</span><strong>{viewing.consultationAddress}</strong></div> : null}
               {viewing.location ? <div><span>Platform / location</span><strong>{viewing.location}</strong></div> : null}
               {viewing.partName ? <div><span>Part / product</span><strong>{viewing.partName}</strong></div> : null}
               {viewing.workOrderId ? <div><span>Work order</span><strong>#{viewing.workOrderId}</strong></div> : null}
@@ -1052,7 +1071,7 @@ const CalendarWindow: React.FC = () => {
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
             </h3>
             {/* Category selector */}
-            {!contentEditorLocked ? <div className="flex gap-2 mb-3">
+            {!contentEditorLocked && !editing.id ? <div className="flex gap-2 mb-3">
               {([
                 { key: 'parts', label: 'Parts/Products' },
                 { key: 'event', label: 'Events' },
@@ -1065,7 +1084,7 @@ const CalendarWindow: React.FC = () => {
                   onClick={() => setEditing({ ...editing, category: opt.key as any })}
                 >{opt.label}</button>
               ))}
-            </div> : null}
+            </div> : !contentEditorLocked ? <div className="mb-3 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><span className={`gb-calendar-event-icon ${calendarEventVisual(editing).color}`}>{calendarEventVisual(editing).short}</span><strong>{calendarEventVisual(editing).label}</strong></div> : null}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-zinc-400">Date</label>
@@ -1164,6 +1183,14 @@ const CalendarWindow: React.FC = () => {
                     <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.customerPhone || ''} onChange={e => setEditing({ ...editing, customerPhone: e.target.value })} />
                   </div>
                   <div>
+                    <label className="block text-xs text-zinc-400">Email</label>
+                    <input type="email" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.customerEmail || ''} onChange={e => setEditing({ ...editing, customerEmail: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400">Address</label>
+                    <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.consultationAddress || editing.location || ''} onChange={e => setEditing({ ...editing, consultationAddress: e.target.value, location: e.target.value })} />
+                  </div>
+                  <div>
                     <label className="block text-xs text-zinc-400">Technician</label>
                     <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.technician || ''} onChange={e => setEditing({ ...editing, technician: e.target.value })} />
                   </div>
@@ -1251,7 +1278,7 @@ const CalendarWindow: React.FC = () => {
               {/* Schedule entries are managed in Admin → Technicians and are not editable here */}
               <div className="col-span-2">
                 <label className="block text-xs text-zinc-400">Notes</label>
-                <textarea className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 h-20" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+                <textarea className="gb-calendar-notes w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[140px]" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-3">

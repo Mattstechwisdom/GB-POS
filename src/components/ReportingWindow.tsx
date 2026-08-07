@@ -4,6 +4,17 @@ import { listTechnicians } from '@/lib/admin';
 import { computeTotals } from '../lib/calc';
 import { dispatchOpenModal } from '@/lib/modalBus';
 import { itemFullCost } from '@/lib/orderAccounting';
+import {
+  DEFAULT_COMMISSION_SETTINGS,
+  allocateCommissionPool,
+  consultationCommission,
+  normalizeCommissionSettings,
+  salesCommissionPool,
+  selectedSalesCommissionTechnicians,
+  splitCommissionPool,
+  technicianCommissionId,
+  type CommissionSettings,
+} from '@/lib/commission';
 
 function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
   const d = new Date(date);
@@ -39,9 +50,6 @@ const PERIODS = [
   { key: 'month', label: 'Monthly' },
   { key: 'year', label: 'Yearly' },
 ] as const;
-
-const SALES_COMMISSION_RATE = 0.05;
-const CONSULTATION_TECH_RATE = 25;
 
 function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -130,7 +138,10 @@ function lineUnits(item: any) {
 }
 
 function consultationHours(item: any, sale: any) {
-  const direct = Number(item?.consultationHours ?? sale?.consultationHours);
+  const itemHours = Number(item?.consultationHours);
+  if (Number.isFinite(itemHours) && itemHours > 0) return itemHours;
+  if (Array.isArray(sale?.items) && sale.items.length) return 0;
+  const direct = Number(sale?.consultationHours);
   if (Number.isFinite(direct) && direct > 0) return direct;
   const qty = Number(item?.qty ?? item?.quantity);
   if (Number.isFinite(qty) && qty > 0) return qty;
@@ -175,10 +186,11 @@ function saleAssignedTechKey(sale: any) {
   return String(sale?.assignedTo || sale?.technician || sale?.technicianName || sale?.techName || '').trim().toLowerCase();
 }
 
-function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[], purchases: any[], monthValue: string) {
+function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[], purchases: any[], monthValue: string, commissionSettings: CommissionSettings) {
   const { start, end } = monthRange(monthValue);
   const activeTechs = (technicians || []).filter((tech: any) => tech && tech.active !== false);
-  const salesSplitTechs = activeTechs.length ? activeTechs : [{ id: 'unassigned-sales', nickname: 'Unassigned Sales Split' }];
+  const configuredSplitTechs = selectedSalesCommissionTechnicians(activeTechs, commissionSettings);
+  const salesSplitTechs = configuredSplitTechs.length ? configuredSplitTechs : [{ id: 'unassigned-sales', nickname: 'Unassigned Sales Split' }];
   const salesSplitCount = salesSplitTechs.length;
   const techTotals = new Map<string, {
     technician: string;
@@ -257,7 +269,7 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         const assignedKey = saleAssignedTechKey(sale);
         const assignedTech = activeTechs.find((tech: any) => technicianMatchKeys(tech).includes(assignedKey));
         const techLabel = assignedTech ? technicianDisplay(assignedTech) : (sale?.assignedTo || 'Unassigned');
-        const commission = roundMoney(hours * CONSULTATION_TECH_RATE);
+        const commission = consultationCommission(hours, commissionSettings);
         if (!assignedKey) missingConsultationAssignmentCount += 1;
         if (!(hours > 0)) missingConsultationHoursCount += 1;
         const techTotal = ensureTech(assignedKey || 'unassigned', techLabel);
@@ -270,7 +282,7 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
           Customer: sale?.customerName || '',
           Consultation: title,
           Hours: hours.toFixed(2),
-          'Hourly Payout': money(CONSULTATION_TECH_RATE),
+          'Hourly Payout': money(commissionSettings.consultationTechHourlyRate),
           'Commission Earned': money(commission),
           'Audit Flag': !assignedKey ? 'Missing assigned technician' : (!(hours > 0) ? 'Missing consultation hours' : ''),
         });
@@ -296,8 +308,9 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         ? (vendorSharePct === null ? null : roundMoney(soldNet - vendorPayout))
         : (cost === null ? null : roundMoney(soldNet - cost));
       const margin = profit === null || soldNet <= 0 ? null : roundMoney((profit / soldNet) * 100);
-      const commissionPool = roundMoney(soldNet * SALES_COMMISSION_RATE);
-      const perTechCommission = roundMoney(commissionPool / salesSplitCount);
+      const commissionPool = salesCommissionPool(soldNet, commissionSettings);
+      const commissionShares = allocateCommissionPool(commissionPool, salesSplitCount);
+      const perTechCommission = splitCommissionPool(commissionPool, salesSplitCount);
       physicalSalesBase = roundMoney(physicalSalesBase + soldNet);
       physicalSalesCommissionPool = roundMoney(physicalSalesCommissionPool + commissionPool);
       if (cost === null) {
@@ -311,11 +324,12 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         vendorProfitTotal = roundMoney(vendorProfitTotal + (profit || 0));
       }
 
-      for (const tech of salesSplitTechs) {
+      salesSplitTechs.forEach((tech, index) => {
         const total = ensureTech(technicianKey(tech), technicianDisplay(tech));
-        total.salesCommission = roundMoney(total.salesCommission + perTechCommission);
-        total.totalCommission = roundMoney(total.totalCommission + perTechCommission);
-      }
+        const exactShare = commissionShares[index] || 0;
+        total.salesCommission = roundMoney(total.salesCommission + exactShare);
+        total.totalCommission = roundMoney(total.totalCommission + exactShare);
+      });
 
       productRows.push({
         Date: date,
@@ -330,7 +344,8 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         'Vendor Owed': isConsignment ? (vendorSharePct === null ? 'Missing' : money(vendorPayout)) : '',
         'Gross Profit': profit === null ? 'Needs internal cost' : money(profit),
         'Margin %': margin === null ? 'Needs internal cost' : `${margin.toFixed(2)}%`,
-        'Commission Pool (5%)': money(commissionPool),
+        'Commission Rate': `${commissionSettings.salesCommissionPercent}%`,
+        'Commission Pool': money(commissionPool),
         'Per-Tech Sales Commission': money(perTechCommission),
         'Split Across Techs': salesSplitCount,
         'Audit Flag': isConsignment && vendorSharePct === null ? 'Missing vendor share percentage' : (!isConsignment && cost === null ? 'Missing internal cost' : ''),
@@ -375,9 +390,9 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
       supplierSpendParts,
       supplierSpendProducts,
       supplierSpendTotal: roundMoney(supplierSpendParts + supplierSpendProducts),
-      salesSplitWarning: !activeTechs.length
-        ? 'No active technicians were found, so sales commission is parked in Unassigned Sales Split.'
-        : (activeTechs.length !== 2 ? `Sales commission is split across ${salesSplitCount} active technician(s), not exactly 2.` : ''),
+      salesSplitWarning: !configuredSplitTechs.length
+        ? 'No selected active technicians were found, so sales commission is parked in Unassigned Sales Split.'
+        : '',
     },
   };
 }
@@ -401,6 +416,11 @@ const ReportingWindow: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [commissionSettings, setCommissionSettings] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
+  const [commissionSettingsRecordId, setCommissionSettingsRecordId] = useState<any>(null);
+  const [commissionDraft, setCommissionDraft] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
+  const [showCommissionSettings, setShowCommissionSettings] = useState(false);
+  const [savingCommissionSettings, setSavingCommissionSettings] = useState(false);
   const [csv, setCsv] = useState<string>('');
   const [topRepairs, setTopRepairs] = useState<Array<{title: string; count: number}>>([]);
   const [topSales, setTopSales] = useState<Array<{title: string; count: number}>>([]);
@@ -417,13 +437,19 @@ const ReportingWindow: React.FC = () => {
   useEffect(() => { (async () => {
     try {
       const wos = await (window as any).api.getWorkOrders();
-      const [sales, vendorRows, purchaseRows] = await Promise.all([
+      const [sales, vendorRows, purchaseRows, eodRows] = await Promise.all([
         (window as any).api.dbGet('sales').catch(() => []),
         (window as any).api.dbGet('vendors').catch(() => []),
         (window as any).api.dbGet('purchaseOrders').catch(() => []),
+        (window as any).api.dbGet('settings').catch(() => []),
       ]);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
+      const settingsRecord = Array.isArray(eodRows) ? eodRows[0] : null;
+      const loadedCommission = normalizeCommissionSettings(settingsRecord?.commissionSettings);
+      setCommissionSettings(loadedCommission);
+      setCommissionDraft(loadedCommission);
+      setCommissionSettingsRecordId(settingsRecord?.id ?? null);
       // Tag repairs and normalize sales
       const mappedWOs = (Array.isArray(wos) ? wos : []).map((w: any) => ({ ...w, kind: 'repair' as const }));
       const mappedSales = (Array.isArray(sales) ? sales : []).map((s: any) => {
@@ -513,6 +539,31 @@ const ReportingWindow: React.FC = () => {
       label: [t.firstName, t.lastName].filter(Boolean).join(' ') || t.nickname || `Tech ${t.id}`,
     }));
   }, [technicians]);
+
+  async function saveCommissionSettings() {
+    const api = (window as any).api;
+    const normalized = normalizeCommissionSettings(commissionDraft);
+    if (!normalized.salesCommissionTechnicianIds.length) {
+      alert('Select at least one technician to receive the shared sales commission.');
+      return;
+    }
+    setSavingCommissionSettings(true);
+    try {
+      if (commissionSettingsRecordId !== null && commissionSettingsRecordId !== undefined) {
+        await api.dbUpdate('settings', commissionSettingsRecordId, { commissionSettings: normalized, updatedAt: new Date().toISOString() });
+      } else {
+        const created = await api.dbAdd('settings', { commissionSettings: normalized, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        setCommissionSettingsRecordId(created?.id ?? null);
+      }
+      setCommissionSettings(normalized);
+      setCommissionDraft(normalized);
+      setShowCommissionSettings(false);
+    } catch (error: any) {
+      alert(error?.message || 'Commission settings could not be saved.');
+    } finally {
+      setSavingCommissionSettings(false);
+    }
+  }
 
   const weekdayTallies = useMemo(() => {
     // getDay(): 0=Sun..6=Sat; we will present Monday..Sunday
@@ -681,8 +732,19 @@ const ReportingWindow: React.FC = () => {
 
   const endOfMonthReport = useMemo(() => {
     const sales = data.filter((row: any) => row.kind === 'sale');
-    return buildEndOfMonthReport(sales, technicians, vendors, purchaseOrders, monthEndMonth);
-  }, [data, technicians, vendors, purchaseOrders, monthEndMonth]);
+    return buildEndOfMonthReport(sales, technicians, vendors, purchaseOrders, monthEndMonth, commissionSettings);
+  }, [data, technicians, vendors, purchaseOrders, monthEndMonth, commissionSettings]);
+
+  const monthRepairFinancials = useMemo(() => {
+    const { start, end } = monthRange(monthEndMonth);
+    return data
+      .filter((row: any) => row.kind === 'repair' && dateInRange(row.checkInAt || row.checkoutDate || row.createdAt, start, end))
+      .reduce((totals, row: any) => ({
+        partsCost: roundMoney(totals.partsCost + sumInternalCost(row)),
+        partsCharged: roundMoney(totals.partsCharged + (Number(row.partCosts) || 0)),
+        laborCharged: roundMoney(totals.laborCharged + (Number(row.laborCost) || 0)),
+      }), { partsCost: 0, partsCharged: 0, laborCharged: 0 });
+  }, [data, monthEndMonth]);
 
   function downloadEndOfMonthReport() {
     const report = endOfMonthReport;
@@ -690,6 +752,9 @@ const ReportingWindow: React.FC = () => {
       Month: report.monthLabel,
       'Physical Sales Lines': report.summary.salesCount,
       'Consultation Lines': report.summary.consultationCount,
+      'Parts Cost': money(monthRepairFinancials.partsCost),
+      'Parts Charged': money(monthRepairFinancials.partsCharged),
+      'Labor Charged': money(monthRepairFinancials.laborCharged),
       'Sales Commission Base': money(report.summary.physicalSalesBase),
       'Sales Commission Pool': money(report.summary.physicalSalesCommissionPool),
       'Known Internal Cost': money(report.summary.knownInternalCost),
@@ -701,6 +766,8 @@ const ReportingWindow: React.FC = () => {
       'Verified Supplier Spend Total': money(report.summary.supplierSpendTotal),
       'Total Commission': money(report.summary.totalCommission),
       'Sales Split Across Techs': report.summary.salesSplitCount,
+      'Sales Commission Rate': `${commissionSettings.salesCommissionPercent}%`,
+      'Consultation Hourly Commission': money(commissionSettings.consultationTechHourlyRate),
       'Missing Internal Cost Lines': report.summary.missingInternalCostCount,
       'Missing Consultation Assignment Lines': report.summary.missingConsultationAssignmentCount,
       'Missing Consultation Hour Lines': report.summary.missingConsultationHoursCount,
@@ -840,6 +907,21 @@ const ReportingWindow: React.FC = () => {
           <div className="text-xs text-zinc-500">Sales, repair intake, payments, and exportable summaries.</div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="px-3 py-2 bg-[#BC13FE] text-white rounded font-semibold hover:bg-[#a80ee0]"
+            onClick={() => {
+              setCommissionDraft({
+                ...commissionSettings,
+                salesCommissionTechnicianIds: commissionSettings.salesCommissionTechnicianIds.length
+                  ? commissionSettings.salesCommissionTechnicianIds
+                  : technicians.filter((row: any) => row?.active !== false).map(technicianCommissionId).filter(Boolean),
+              });
+              setShowCommissionSettings(true);
+            }}
+          >
+            Commission
+          </button>
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <span className="text-xs text-zinc-500">Reports</span>
             <select
@@ -872,6 +954,55 @@ const ReportingWindow: React.FC = () => {
           </button>
         </div>
       </div>
+      {showCommissionSettings && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3" onMouseDown={() => setShowCommissionSettings(false)}>
+          <section className="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border border-[#BC13FE]/70 bg-zinc-950 p-4 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <header className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
+              <div>
+                <h2 className="text-xl font-semibold text-white">Commission Settings</h2>
+                <p className="mt-1 text-xs text-zinc-400">Saved rules recalculate EOD and monthly reporting from the current sales and consultation records.</p>
+              </div>
+              <button type="button" aria-label="Close commission settings" className="px-2 py-1 text-zinc-400 hover:text-white" onClick={() => setShowCommissionSettings(false)}>x</button>
+            </header>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm text-zinc-300">Sales commission percentage
+                <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 focus-within:border-[#BC13FE]">
+                  <input type="number" min="0" max="100" step="0.01" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white outline-none" value={commissionDraft.salesCommissionPercent} onChange={event => setCommissionDraft(current => ({ ...current, salesCommissionPercent: Number(event.target.value) }))} />
+                  <span className="pr-3 text-zinc-500">%</span>
+                </div>
+              </label>
+              <label className="block text-sm text-zinc-300">Consultation commission per hour
+                <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 focus-within:border-[#BC13FE]">
+                  <span className="pl-3 text-zinc-500">$</span>
+                  <input type="number" min="0" max="1000" step="0.01" className="min-w-0 flex-1 bg-transparent px-2 py-2 text-white outline-none" value={commissionDraft.consultationTechHourlyRate} onChange={event => setCommissionDraft(current => ({ ...current, consultationTechHourlyRate: Number(event.target.value) }))} />
+                </div>
+              </label>
+            </div>
+            <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3">
+              <div className="text-sm font-semibold text-zinc-100">Split the sales commission pool between</div>
+              <div className="mt-1 text-xs text-zinc-500">Every eligible sale contributes {commissionDraft.salesCommissionPercent || 0}% to one pool. The pool is divided evenly among the checked technicians.</div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {technicians.filter((technician: any) => technician?.active !== false).map((technician: any) => {
+                  const id = technicianCommissionId(technician);
+                  const checked = commissionDraft.salesCommissionTechnicianIds.includes(id);
+                  return <label key={id} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 accent-[#BC13FE]" checked={checked} onChange={event => setCommissionDraft(current => ({ ...current, salesCommissionTechnicianIds: event.target.checked ? Array.from(new Set([...current.salesCommissionTechnicianIds, id])) : current.salesCommissionTechnicianIds.filter(value => value !== id) }))} />
+                    <span>{technicianDisplay(technician)}</span>
+                  </label>;
+                })}
+              </div>
+              {!technicians.length && <div className="mt-3 text-sm text-amber-300">Add technicians before configuring the split.</div>}
+            </div>
+            <div className="mt-4 rounded border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-100">
+              Consultation pricing remains $75 for the first hour and $50 for each additional hour. Commission uses the saved hours and pays only the technician assigned to that consultation at the hourly amount above.
+            </div>
+            <footer className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowCommissionSettings(false)}>Cancel</button>
+              <button type="button" disabled={savingCommissionSettings || !technicians.length} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void saveCommissionSettings()}>{savingCommissionSettings ? 'Saving...' : 'Save Commission Settings'}</button>
+            </footer>
+          </section>
+        </div>
+      )}
       {reportView === 'monthEnd' ? (
         <>
           <div className="bg-zinc-950 border border-zinc-800 rounded p-4 space-y-4">
@@ -903,7 +1034,19 @@ const ReportingWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-11 gap-3">
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Parts Cost</div>
+                <div className="mt-1 text-2xl font-bold text-amber-300">{money(monthRepairFinancials.partsCost)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Parts Charged</div>
+                <div className="mt-1 text-2xl font-bold">{money(monthRepairFinancials.partsCharged)}</div>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+                <div className="text-xs text-zinc-500">Labor Charged</div>
+                <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(monthRepairFinancials.laborCharged)}</div>
+              </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
                 <div className="text-xs text-zinc-500">Sales Commission Base</div>
                 <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.physicalSalesBase)}</div>
@@ -940,8 +1083,8 @@ const ReportingWindow: React.FC = () => {
 
             <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm text-zinc-300 space-y-2">
               <div className="font-semibold text-zinc-100">Audit Rules</div>
-              <div>Repairs are excluded from commission. Product sales commission is the saved product sale total after saved discounts multiplied by 5%, then split across active technicians.</div>
-              <div>Consultation commission is saved consultation hours multiplied by $25 and assigned to the saved technician on that sale.</div>
+              <div>Repairs are excluded from commission. Eligible sales contribute {commissionSettings.salesCommissionPercent}% of the saved sale total after discounts to one pool, split evenly across the technicians selected in Commission Settings.</div>
+              <div>Consultation commission is saved consultation hours multiplied by {money(commissionSettings.consultationTechHourlyRate)} and assigned only to the saved technician on that consultation.</div>
               <div>Internal cost is pulled only from saved line item cost values. Missing costs, missing hours, and missing technician assignments are flagged instead of estimated.</div>
               <div>Consignment payouts use the exact product vendor and saved vendor-share percentage. Wholesale parts distributors do not create vendor payouts.</div>
               <div>Supplier spend includes only distributor carts verified at checkout. It is a cash-spend audit value and is not subtracted from gross profit a second time.</div>
@@ -1025,7 +1168,7 @@ const ReportingWindow: React.FC = () => {
                       <td className="px-2 py-1 text-right">{row['Vendor Owed']}</td>
                       <td className="px-2 py-1 text-right">{row['Gross Profit']}</td>
                       <td className="px-2 py-1 text-right">{row['Margin %']}</td>
-                      <td className="px-2 py-1 text-right">{row['Commission Pool (5%)']}</td>
+                      <td className="px-2 py-1 text-right">{row['Commission Pool']}</td>
                       <td className="px-2 py-1 text-right">{row['Per-Tech Sales Commission']}</td>
                       <td className="px-2 py-1 text-yellow-200">{row['Audit Flag']}</td>
                     </tr>
@@ -1153,15 +1296,15 @@ const ReportingWindow: React.FC = () => {
           <div className="text-sm text-zinc-400">Revenue & Orders</div>
           <div className="mt-2 space-y-1">
             <div>Orders: <span className="font-semibold">{summary.orders}</span></div>
-            <div>Labor: <span className="font-semibold">${summary.labor.toFixed(2)}</span></div>
-            <div>Parts: <span className="font-semibold">${summary.parts.toFixed(2)}</span></div>
+            <div>Labor charged: <span className="font-semibold">${summary.labor.toFixed(2)}</span></div>
+            <div>Parts charged: <span className="font-semibold">${summary.parts.toFixed(2)}</span></div>
             <div>Revenue {excludeTax ? '(excl tax)' : '(incl tax)'}: <span className="font-semibold">${summary.revenue.toFixed(2)}</span></div>
           </div>
         </div>
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Cost & Profit</div>
           <div className="mt-2 space-y-1">
-            <div>Known internal cost: <span className="font-semibold">${summary.cost.toFixed(2)}</span></div>
+            <div>Parts / product cost: <span className="font-semibold">${summary.cost.toFixed(2)}</span></div>
             <div>Verified supplier spend: <span className="font-semibold text-amber-300">${summary.supplierSpend.toFixed(2)}</span></div>
             <div>Gross profit: <span className={`font-semibold ${summary.missingCost ? 'text-amber-300' : ''}`}>{summary.missingCost ? 'Needs internal cost' : `$${summary.profit.toFixed(2)}`}</span></div>
             <div>Margin: <span className={`font-semibold ${summary.missingCost ? 'text-amber-300' : ''}`}>{summary.missingCost ? 'Needs internal cost' : `${(summary.margin * 100).toFixed(1)}%`}</span></div>

@@ -1,0 +1,26 @@
+const assert = require('node:assert/strict');
+const esbuild = require('esbuild');
+const path = require('node:path');
+const fs = require('node:fs');
+
+const file = path.resolve('src/lib/commission.ts');
+const result = esbuild.buildSync({ entryPoints: [file], bundle: true, platform: 'node', format: 'cjs', write: false });
+const loadedModule = { exports: {} };
+new Function('module', 'exports', 'require', result.outputFiles[0].text)(loadedModule, loadedModule.exports, require);
+const c = loadedModule.exports;
+
+const techs = [{ id: 'matt', active: true }, { id: 'alex', active: true }, { id: 'sam', active: true }];
+const two = c.normalizeCommissionSettings({ salesCommissionPercent: 5, consultationTechHourlyRate: 25, salesCommissionTechnicianIds: ['matt', 'alex'] });
+assert.equal(c.salesCommissionPool(1000, two), 50);
+assert.equal(c.splitCommissionPool(50, c.selectedSalesCommissionTechnicians(techs, two).length), 25);
+const three = c.normalizeCommissionSettings({ salesCommissionPercent: 5, consultationTechHourlyRate: 25, salesCommissionTechnicianIds: ['matt', 'alex', 'sam'] });
+assert.equal(c.splitCommissionPool(60, c.selectedSalesCommissionTechnicians(techs, three).length), 20);
+assert.deepEqual(c.allocateCommissionPool(0.05, 2), [0.03, 0.02]);
+assert.equal(c.allocateCommissionPool(50, 3).reduce((sum, value) => sum + value, 0), 50);
+assert.equal(c.consultationCommission(3, two), 75);
+assert.deepEqual(c.selectedSalesCommissionTechnicians(techs, c.normalizeCommissionSettings({})).map(t => t.id), ['matt', 'alex', 'sam']);
+const reportingSource = fs.readFileSync(path.resolve('src/components/ReportingWindow.tsx'), 'utf8');
+const eodSource = fs.readFileSync(path.resolve('src/components/EODWindow.tsx'), 'utf8');
+assert.match(reportingSource, /Array\.isArray\(sale\?\.items\).*return 0;/s);
+assert.match(eodSource, /\(driver\|distance\|travel\|fee\)/);
+console.log('Commission settings and split calculations passed.');

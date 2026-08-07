@@ -7,7 +7,7 @@ type StatusOption = {
   key: string;
   label: string;
   tone: string;
-  detail?: 'date' | 'notes';
+  detail?: 'date' | 'notes' | 'dateNotes' | 'dateTimeNotes';
 };
 
 type UpdateHistoryRow = {
@@ -51,7 +51,16 @@ const SALE_STATUSES: StatusOption[] = [
   { key: 'pickup_reminder', label: 'Pickup Reminder', tone: 'cyan' },
   { key: 'manual_update', label: 'Send Update', tone: 'purple', detail: 'notes' },
   { key: 'product_ordered', label: 'Product Ordered', tone: 'amber', detail: 'date' },
-  { key: 'product_in_shop', label: 'Product In Shop', tone: 'green' },
+  { key: 'shipping_delayed', label: 'Shipping Delay', tone: 'orange', detail: 'dateNotes' },
+  { key: 'product_in_shop', label: 'Product Arrived', tone: 'green' },
+];
+
+const CONSULT_STATUSES: StatusOption[] = [
+  { key: 'consultation_reminder', label: 'Send Reminder', tone: 'cyan' },
+  { key: 'consultation_delayed', label: 'Request Schedule Change', tone: 'amber', detail: 'dateTimeNotes' },
+  { key: 'consultation_confirmed', label: 'Consultation Confirmed', tone: 'green' },
+  { key: 'consultation_complete', label: 'Consultation Complete', tone: 'green', detail: 'notes' },
+  { key: 'manual_update', label: 'Send Update', tone: 'purple', detail: 'notes' },
 ];
 
 function normalizeType(value: any): UpdateType {
@@ -90,12 +99,15 @@ function mapCloudRow(type: UpdateType, row: any): any {
       customerId: Number(row.legacy_customer_id || 0) || undefined,
       customerName: row.customer_name || '',
       customerPhone: row.customer_phone || '',
-      customerEmail: '',
-      status: row.parts_status || '',
-      productDescription: row.title || 'Consultation',
-      category: row.category || 'consultation',
-      statusUpdate: row.parts_status || '',
-      statusUpdatedAt: row.updated_at || '',
+      customerEmail: row.customer_email || '',
+      status: row.status || '',
+      productDescription: row.item_description || 'Consultation',
+      category: row.category || 'Consultation',
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: row.status_updated_at || row.updated_at || '',
+      appointmentDate: row.appointment_date || '',
+      appointmentTime: row.appointment_time || '',
+      consultationAddress: row.consultation_address || '',
     };
   }
   return {
@@ -162,13 +174,14 @@ function repairStatusLabel(key: string): string {
 function saleStatusLabel(key: string): string {
   const map: Record<string, string> = {
     product_ordered: 'Product Ordered',
-    product_in_shop: 'Product In Shop',
+    shipping_delayed: 'Shipping Delayed',
+    product_in_shop: 'Product Arrived',
     storage_fee: 'Storage Fee Notice',
   };
   return map[key] || '';
 }
 
-function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDate?: string; notes?: string }) {
+function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDate?: string; estimatedTime?: string; notes?: string }) {
   const now = new Date().toISOString();
   const isManual = option.key === 'manual_update';
   const patch: any = {
@@ -188,6 +201,12 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
   } else if (type === 'sale') {
     const saleStatus = saleStatusLabel(option.key);
     if (saleStatus && !isManual) patch.status = saleStatus;
+  } else if (type === 'consult' && !isManual) {
+    patch.status = option.label;
+    if (option.key === 'consultation_delayed') {
+      patch.appointmentDate = extra.estimatedDate || patch.appointmentDate;
+      patch.appointmentTime = extra.estimatedTime || patch.appointmentTime;
+    }
   }
   return patch;
 }
@@ -223,6 +242,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [error, setError] = useState('');
   const [openKey, setOpenKey] = useState<string>('');
   const [estimatedDate, setEstimatedDate] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState('');
   const [notes, setNotes] = useState('');
   const [savingKey, setSavingKey] = useState('');
   const [result, setResult] = useState<{
@@ -248,7 +268,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
     }
   }, []);
 
-  const options = type === 'sale' ? SALE_STATUSES : REPAIR_STATUSES;
+  const options = type === 'sale' ? SALE_STATUSES : type === 'consult' ? CONSULT_STATUSES : REPAIR_STATUSES;
   const quickOptions = options.filter((o) => o.key === 'pickup_reminder' || o.key === 'manual_update');
   const mainOptions = options.filter((o) => !quickOptions.some((q) => q.key === o.key));
 
@@ -265,7 +285,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       throw new Error('This QR token is expired.');
     }
     const nextType = normalizeType(tokenRes.data.record_type);
-    const table = nextType === 'sale' ? 'sales' : nextType === 'consult' ? 'calendar_events' : 'work_orders';
+    const table = nextType === 'sale' || nextType === 'consult' ? 'sales' : 'work_orders';
     const recordRes = await supabase
       .from(table)
       .select('*')
@@ -323,7 +343,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         setType(nextType);
         let nextRecord = initialRecord || null;
         if (!nextRecord && recordId && api) {
-          if (nextType === 'sale' && api.dbGet) {
+          if ((nextType === 'sale' || nextType === 'consult') && api.dbGet) {
             const list = await api.dbGet('sales').catch(() => []);
             nextRecord = Array.isArray(list) ? list.find((row: any) => Number(row?.id || 0) === Number(recordId)) : null;
           } else if (api.findWorkOrders) {
@@ -353,7 +373,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
   const loadHistory = useCallback(async () => {
     const legacyRecordId = Number(record?.id || recordId || 0) || 0;
-    if (!legacyRecordId || type === 'consult') {
+    if (!legacyRecordId) {
       setHistoryRows([]);
       return;
     }
@@ -397,7 +417,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
   const saveStatus = useCallback(async (option: StatusOption) => {
     if (!record) return;
-    const extra = { estimatedDate, notes };
+    const extra = { estimatedDate, estimatedTime, notes };
     setSavingKey(option.key);
     setResult(null);
     const controller = new AbortController();
@@ -420,6 +440,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
           recordId: Number(record?.id || recordId || 0) || undefined,
           statusKey: option.key,
           estimatedDate: extra.estimatedDate || undefined,
+          estimatedTime: extra.estimatedTime || undefined,
           notes: extra.notes || undefined,
           deliveryMode: selectedDelivery,
         }),
@@ -433,7 +454,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         setRecord(saved);
         onUpdated?.(saved);
         if (delivery?.statusSaved && api?.dbUpdate) {
-          const key = type === 'sale' ? 'sales' : 'workOrders';
+          const key = type === 'sale' || type === 'consult' ? 'sales' : 'workOrders';
           const patch = localPatch(type, option, extra);
           void api.dbUpdate(key, record.id, { ...record, ...patch })
             .then((localSaved: any) => {
@@ -446,7 +467,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
             });
         }
       } else if (delivery?.statusSaved && api?.dbUpdate) {
-        const key = type === 'sale' ? 'sales' : 'workOrders';
+        const key = type === 'sale' || type === 'consult' ? 'sales' : 'workOrders';
         const patch = localPatch(type, option, extra);
         const saved = await api.dbUpdate(key, record.id, { ...record, ...patch });
         setRecord(saved || { ...record, ...patch });
@@ -465,6 +486,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       });
       setOpenKey('');
       setEstimatedDate('');
+      setEstimatedTime('');
       setNotes('');
       void loadHistory();
     } catch (e: any) {
@@ -476,7 +498,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       window.clearTimeout(requestTimeout);
       setSavingKey('');
     }
-  }, [deliveryMode, estimatedDate, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);
+  }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);
 
   const exitUpdateScreen = useCallback(() => {
     if (onClose) {
@@ -515,9 +537,9 @@ const ClientUpdatePanel: React.FC<Props> = ({
         </button>
         {option.detail && open ? (
           <div className="gb-client-update-detail">
-            {option.detail === 'date' ? (
+            {option.detail === 'date' || option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? (
               <label>
-                <span>{option.key === 'waiting_part' ? 'Estimated arrival date' : 'Estimated delivery date'}</span>
+                <span>{option.key === 'consultation_delayed' ? 'Proposed consultation date' : option.key === 'waiting_part' ? 'Estimated arrival date' : 'Estimated delivery date'}</span>
                 <input type="date" value={estimatedDate} onChange={(event) => setEstimatedDate(event.target.value)} />
               </label>
             ) : (
@@ -526,6 +548,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
                 <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Type the update..." />
               </label>
             )}
+            {option.detail === 'dateTimeNotes' ? <label><span>Proposed consultation time</span><input type="time" value={estimatedTime} onChange={(event) => setEstimatedTime(event.target.value)} /></label> : null}
+            {option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? <label><span>{option.key === 'consultation_delayed' ? 'Reason or schedule details' : 'Shipping delay details'}</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={option.key === 'consultation_delayed' ? 'Explain the proposed change and ask the client to confirm...' : 'Explain the delay and the revised delivery expectation...'} /></label> : null}
             <button type="button" className="gb-client-update-send" disabled={!!savingKey} onClick={() => void saveStatus(option)}>
               {savingKey === option.key ? 'Saving...' : 'Save Update'}
             </button>
@@ -544,8 +568,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
             <h2>Update Client</h2>
           </div>
           <div className="gb-client-update-header-actions">
-            {type !== 'consult' ? (
-              <button
+            <button
                 type="button"
                 className={historyOpen ? 'gb-client-update-history-toggle active' : 'gb-client-update-history-toggle'}
                 onClick={() => {
@@ -556,7 +579,6 @@ const ClientUpdatePanel: React.FC<Props> = ({
               >
                 History
               </button>
-            ) : null}
             {onClose ? (
               <button type="button" className="gb-client-update-close" onClick={onClose} aria-label="Close update client">
                 x

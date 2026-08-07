@@ -28,11 +28,19 @@ export type SaleItemRow = {
   purchaseQueueRemovedAt?: string;
   purchaseQueueRemovalNotice?: string;
   purchaseQueueRemovalPaymentStatus?: string;
+  deviceModel?: string;
+  partCategory?: string;
+  distributorSku?: string;
+  markupPct?: number | string;
+  reorderQty?: number;
+  notes?: string;
+  taxExempt?: boolean;
 };
 
 interface Props {
   items: SaleItemRow[];
   onChange: (items: SaleItemRow[]) => void;
+  onCommit?: (items: SaleItemRow[]) => void | Promise<void>;
   showRequiredIndicator?: boolean;
 }
 
@@ -56,7 +64,7 @@ function lineTotalFor(row: Partial<SaleItemRow> | null | undefined) {
   return effectiveUnits(row) * (Number(row?.price) || 0);
 }
 
-const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicator }) => {
+const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequiredIndicator }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
@@ -198,6 +206,8 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
       price: 0,
       condition: 'New',
       inStock: true,
+      markupPct: 10,
+      reorderQty: 1,
       requiresOrder: false,
       orderStatus: 'in_stock',
     };
@@ -420,6 +430,36 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
               {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div> : null}
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <div>
+              <label className="block text-xs text-zinc-400">Device Model</label>
+              <input className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.deviceModel || ''} onChange={e => setEditing({ ...editing, deviceModel: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Part / Product Category</label>
+              <input className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.partCategory || ''} onChange={e => setEditing({ ...editing, partCategory: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Supplier SKU</label>
+              <input className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.distributorSku || ''} onChange={e => setEditing({ ...editing, distributorSku: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Markup %</label>
+              <input type="number" min="0" step="1" className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.markupPct ?? 10} onChange={e => setEditing({ ...editing, markupPct: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-400">Reorder / MOQ</label>
+              <input type="number" min="1" step="1" className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.reorderQty || 1} onChange={e => setEditing({ ...editing, reorderQty: Math.max(1, Math.round(Number(e.target.value || 1))) })} />
+            </div>
+            <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+              <input type="checkbox" checked={(editing.taxExempt ?? editing.vendorTaxExempt) === true} onChange={e => setEditing({ ...editing, taxExempt: e.target.checked, vendorTaxExempt: e.target.checked })} />
+              Supplier tax exempt
+            </label>
+            <div className="col-span-2">
+              <label className="block text-xs text-zinc-400">Item Notes</label>
+              <textarea className="w-full min-h-[64px] bg-zinc-900 rounded px-2 py-1" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+            </div>
+          </div>
           {isConsultationItem(editing) ? (
             <div className="mt-2 text-[11px] text-zinc-400">
               Consultation pricing is $75 for the first hour + $50 per additional hour. Technician payout is tracked separately in EOD reporting.
@@ -471,8 +511,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, showRequiredIndicato
                 }
                 const distributor = String(editing.distributor || '').trim() || derivePartVendorFromUrl(editing.productUrl);
                 const saved = { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
+                const nextItems = items.map(i => (i.id === editing.id ? saved : i));
                 setEditingError('');
-                onChange(items.map(i => (i.id === editing.id ? saved : i)));
+                onChange(nextItems);
+                void onCommit?.(nextItems);
                 // Keep editor open on the selected row
               }}
             >

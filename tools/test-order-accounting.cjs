@@ -25,6 +25,10 @@ assert.match(eodSource, /Warning: payment not taken/, 'Unpaid cart lines must di
 assert.match(workOrderItemsSource, /Supplier item cost/, 'Work-order supplier cost must live in the line-item editor.');
 assert.match(workOrderItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Work-order costs must exclude EOD checkout additions.');
 assert.match(saleItemsSource, /Shipping and supplier tax are added during EOD checkout/, 'Sale costs must follow the same EOD checkout accounting rule.');
+assert.match(workOrderItemsSource, /onCommit\?\.\(nextItems\)/, 'Work-order item edits must commit immediately so EOD reads the saved cost.');
+assert.match(saleItemsSource, /onCommit\?\.\(nextItems\)/, 'Sale item edits must commit immediately so EOD reads the saved cost.');
+assert.match(eodSource, /Items arrive on different dates/, 'The EOD cart must support split delivery dates.');
+assert.match(eodSource, /estimatedDelivery: deliveryForRow\(cartRow\)/, 'Checked-out cart lines must retain their selected estimated delivery date.');
 assert.doesNotMatch(workOrderSource, /<label[^>]*>Internal cost/, 'Parts Tracking must not own repair pricing fields.');
 assert.doesNotMatch(workOrderSource, /<label[^>]*>Order URL<\/label>/, 'Parts Tracking must not duplicate the line-item order URL.');
 
@@ -47,6 +51,7 @@ const workOrders = [{
     orderSourceUrl: 'https://www.phonelcdparts.com/parts/ps5-power-supply',
     requiresOrder: true,
     orderStatus: 'needed',
+    estimatedDelivery: '2026-08-12',
   }, {
     id: 'removed-part',
     repair: 'Removed Purchasing Task',
@@ -147,6 +152,7 @@ assert.equal(workOrder.totalCost, 100);
 assert.equal(workOrder.totalCharge, 120);
 assert.equal(workOrder.knownProfit, 20);
 assert.equal(workOrder.paymentStatus, 'paid');
+assert.equal(workOrder.estimatedDelivery, '2026-08-12', 'Saved line-item delivery dates must flow into the EOD cart.');
 
 const taxedWorkOrder = collectOrderCartRows([{
   ...workOrders[0],

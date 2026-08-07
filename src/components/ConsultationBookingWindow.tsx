@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
+import ClientUpdatePanel from '../workorders/ClientUpdatePanel';
 import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
 
@@ -222,6 +223,7 @@ export default function ConsultationBookingWindow() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<{ saleId: number; eventId?: number; customerName: string } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
 
   useEffect(() => {
     if (!done?.eventId) return;
@@ -499,6 +501,7 @@ export default function ConsultationBookingWindow() {
         customerId: customer!.id,
         customerName,
         customerPhone,
+        customerEmail: customer?.email || '',
         category: 'Consultation',
         items: saleItems,
         itemDescription: title.trim() || 'Consultation',
@@ -561,6 +564,7 @@ export default function ConsultationBookingWindow() {
   if (done) {
     return (
       <div className="min-h-screen bg-zinc-900 text-gray-100 flex items-center justify-center p-6">
+        {clientUpdateOpen ? <ClientUpdatePanel embedded recordType="consult" recordId={done.saleId} onClose={() => setClientUpdateOpen(false)} /> : null}
         <div className="text-center max-w-md">
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Consultation Booked</h1>
@@ -576,7 +580,7 @@ export default function ConsultationBookingWindow() {
           {qrDataUrl && (
             <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4 mb-4 inline-block">
               <img src={qrDataUrl} alt="Consultation QR" style={{ width: 160, height: 160, display: 'block', borderRadius: 8 }} />
-              <p className="text-xs text-zinc-400 mt-2">Scan to send reminder &amp; view details</p>
+              <p className="text-xs text-zinc-400 mt-2">Scan to add calendar reminder</p>
             </div>
           )}
           {!qrDataUrl && done.eventId && (
@@ -584,8 +588,9 @@ export default function ConsultationBookingWindow() {
           )}
 
           <p className="text-zinc-400 text-sm mb-6">
-            Added to calendar. Scan the QR code to send a consultation reminder email to the client.
+            Added to the synced calendar. Scanning downloads a calendar event with a reminder one hour before the consultation.
           </p>
+          <button type="button" onClick={() => setClientUpdateOpen(true)} className="mb-3 w-full rounded bg-[#BC13FE] px-6 py-2 font-semibold text-white hover:brightness-110">Update Client</button>
           {!isModalShell && (
             <button
               onClick={() => window.close()}
@@ -963,6 +968,7 @@ export default function ConsultationBookingWindow() {
         customer={null}
         closeAfterSave
         childDialog
+        compactCreate
         onClose={() => setShowCustomerCreator(false)}
         onSaved={(saved) => {
           const created = saved as Customer;

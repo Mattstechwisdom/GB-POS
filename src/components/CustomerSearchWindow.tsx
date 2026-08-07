@@ -135,9 +135,9 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   }, [ctxCustomer]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8">
-      <div className="flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]">
-        <div className="p-4 border-b border-zinc-700 flex items-center justify-between gap-3">
+    <div className="gb-customer-search-window fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8">
+      <div className="gb-customer-search-panel flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]">
+        <div className="gb-customer-search-header p-4 border-b border-zinc-700 flex items-center justify-between gap-3">
           <h2 className="font-bold text-lg">Customer Search</h2>
           {!isModalShell && (
             <button
@@ -150,7 +150,7 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
             </button>
           )}
         </div>
-        <div className="min-w-0 space-y-4 overflow-auto p-2 sm:p-4">
+        <div className="gb-customer-search-body min-w-0 space-y-4 overflow-auto p-2 sm:p-4">
           <CustomerSearchForm onSearch={handleSearch} />
           <CustomerTable
             customers={filtered}

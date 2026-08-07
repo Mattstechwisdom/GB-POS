@@ -74,6 +74,7 @@ jobs:
           npm run test:client-update-api
           npm run test:mobile-long-press
           npm run test:order-accounting
+          npm run test:commission
           npm run test:inventory-consumption
           npm run test:inventory-reorder
 

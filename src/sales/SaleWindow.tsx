@@ -8,6 +8,7 @@ import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
+import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 
 type SalePayload = {
   customerId?: number;
@@ -259,6 +260,7 @@ const SaleWindow: React.FC = () => {
   });
   const [errors, setErrors] = useState<string[]>([]);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
@@ -676,16 +678,17 @@ const SaleWindow: React.FC = () => {
     return true;
   }, [sale.items, (sale as any).itemDescription, (sale as any).quantity, (sale as any).price, (sale as any).id]);
 
-  function buildSaleRecordBase(): SaleRecord {
+  function buildSaleRecordBase(itemsOverride?: SaleItemRow[]): SaleRecord {
     const now = new Date().toISOString();
+    const recordItems = itemsOverride || sale.items || [];
     const record: SaleRecord = {
       ...sale,
       // legacy fields: mirror first row for compatibility
-      itemDescription: sale.items && sale.items[0] ? sale.items[0].description : (sale as any).itemDescription,
-      quantity: sale.items && sale.items[0] ? itemUnits(sale.items[0]) : (sale as any).quantity,
-      price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
-      consultationHours: sale.items && sale.items[0] && isConsultationItem(sale.items[0])
-        ? Number(sale.items[0].consultationHours ?? itemUnits(sale.items[0])) || undefined
+      itemDescription: recordItems[0] ? recordItems[0].description : (sale as any).itemDescription,
+      quantity: recordItems[0] ? itemUnits(recordItems[0]) : (sale as any).quantity,
+      price: recordItems[0] ? recordItems[0].price : (sale as any).price,
+      consultationHours: recordItems[0] && isConsultationItem(recordItems[0])
+        ? Number(recordItems[0].consultationHours ?? itemUnits(recordItems[0])) || undefined
         : (sale as any).consultationHours,
       // If inStock, null out order/delivery fields to avoid confusion
       orderedDate: sale.inStock ? null : sale.orderedDate || null,
@@ -695,7 +698,7 @@ const SaleWindow: React.FC = () => {
       createdAt: (sale as any).id ? (sale.createdAt || now) : now,
       updatedAt: now,
       total: total,
-      items: sale.items as any,
+      items: recordItems as any,
     } as SaleRecord;
     // Preserve original checkInAt for updates
     if ((sale as any).id) {
@@ -885,6 +888,22 @@ const SaleWindow: React.FC = () => {
     setSale(s => ({ ...s, items }));
   }, []);
 
+  const handleSaleItemsCommit = useCallback(async (items: SaleItemRow[]) => {
+    setSale(s => ({ ...s, items }));
+    const saleId = Number((sale as any).id || 0);
+    if (!saleId) return;
+    try {
+      const record = buildSaleRecordBase(items);
+      const saved = await window.api.dbUpdate('sales', saleId, { ...record, id: saleId });
+      if (saved) setSale(saved);
+      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+      try { window.opener?.postMessage({ type: 'sales:changed', customerId: record.customerId }, '*'); } catch {}
+    } catch (error) {
+      console.error('Immediate sale item save failed', error);
+      triggerWarningBanner('Item is still on screen but was not synced', 'Save the sale before closing and check your connection.');
+    }
+  }, [sale]);
+
   // Save shop address to DB and geocode it for future distance checks
   async function saveShopAddressToDB() {
     const addr = shopAddressInput.trim();
@@ -944,6 +963,20 @@ const SaleWindow: React.FC = () => {
 
   const renderSidebarActions = useCallback(() => (
     <>
+      <button
+        className="w-full px-3 py-2 bg-[#BC13FE]/20 border border-[#BC13FE]/70 rounded text-fuchsia-100 mb-1"
+        onClick={async () => {
+          try {
+            const saved = (sale as any).id ? sale : await persistSaleRecord();
+            if (!saved?.customerId) throw new Error('Select a client before opening updates.');
+            setClientUpdateOpen(true);
+          } catch (error: any) {
+            triggerWarningBanner('Could not open Update Client', error?.message || 'Save the sale and try again.');
+          }
+        }}
+      >
+        Update Client
+      </button>
       {/* Print Sales Form — tech copy with QR code */}
       {!((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
         <button
@@ -1506,6 +1539,8 @@ const SaleWindow: React.FC = () => {
         </div>
       )}
       <div className="gb-sale-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
+    <>
+    {clientUpdateOpen ? <ClientUpdatePanel embedded recordType={((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'consult' : 'sale'} recordId={Number((sale as any).id || 0)} initialRecord={sale} onClose={() => setClientUpdateOpen(false)} onUpdated={updated => setSale(current => ({ ...current, ...updated }))} /> : null}
     <WorkOrderSidebar
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
@@ -1783,6 +1818,7 @@ const SaleWindow: React.FC = () => {
             <SaleItemsTable
               items={(sale.items || []) as SaleItemRow[]}
               onChange={handleSaleItemsChange}
+              onCommit={handleSaleItemsCommit}
               showRequiredIndicator={itemsSectionNeedsAttention}
             />
 
@@ -1860,6 +1896,7 @@ const SaleWindow: React.FC = () => {
           <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
           <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
+      </>
       </div>
       <div className="gb-sale-action-bar fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
         <div className="text-xs text-zinc-500 min-h-[1.2rem]">Auto-save enabled</div>

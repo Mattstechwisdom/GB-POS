@@ -6,6 +6,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 process.env.GBPOS_CLIENT_UPDATE_DELIVERY_WAIT_MS = '50';
 
 const historyWrites = [];
+const salesPatches = [];
 let deliveryShouldComplete = true;
 global.fetch = async (url, options = {}) => {
   const method = String(options.method || 'GET').toUpperCase();
@@ -16,12 +17,21 @@ global.fetch = async (url, options = {}) => {
   if (value.endsWith('/auth/v1/user')) {
     body = { id: '00000000-0000-0000-0000-000000000001' };
   } else if (value.includes('/rest/v1/qr_status_tokens')) {
+    const consultationToken = value.includes('consult-token');
     body = [{
       id: '00000000-0000-0000-0000-000000000010',
       shop_id: '00000000-0000-0000-0000-000000000020',
-      record_type: 'repair',
-      legacy_record_id: 123,
+      record_type: consultationToken ? 'consult' : 'repair',
+      legacy_record_id: consultationToken ? 456 : 123,
     }];
+  } else if (value.includes('/rest/v1/calendar_events')) {
+    body = [{ legacy_id: 456, event_date: '2026-08-20', event_time: '14:00', end_time: '15:00', title: 'Console Consultation', location: '2822 Devine Street', notes: 'Bring the console.' }];
+  } else if (value.includes('/rest/v1/sales') && method === 'PATCH') {
+    const patch = JSON.parse(String(options.body || '{}'));
+    salesPatches.push(patch);
+    body = [{ id: '00000000-0000-0000-0000-000000000050', shop_id: '00000000-0000-0000-0000-000000000020', legacy_id: 456, legacy_customer_id: 77, customer_name: 'Test Client', customer_email: 'client@example.com', category: 'Consultation', item_description: 'Console Consultation', ...patch }];
+  } else if (value.includes('/rest/v1/sales')) {
+    body = [{ id: '00000000-0000-0000-0000-000000000050', shop_id: '00000000-0000-0000-0000-000000000020', legacy_id: 456, legacy_customer_id: 77, customer_name: 'Test Client', customer_email: 'client@example.com', category: 'Consultation', item_description: 'Console Consultation' }];
   } else if (value.includes('/rest/v1/work_orders') && method === 'PATCH') {
     body = [{
       id: '00000000-0000-0000-0000-000000000030',
@@ -147,6 +157,35 @@ async function invokeTextWithoutSession(statusKey) {
   return JSON.parse(raw);
 }
 
+async function invokePayload(payloadInput) {
+  const req = Readable.from([JSON.stringify(payloadInput)]);
+  req.url = '/api/client-updates/send';
+  req.method = 'POST';
+  req.headers = { authorization: 'Bearer test-user-token' };
+  let status = 0;
+  let raw = '';
+  const res = { headersSent: false, writableEnded: false, writeHead(nextStatus) { status = nextStatus; this.headersSent = true; }, end(value) { raw = String(value || ''); this.writableEnded = true; } };
+  assert.equal(await handleClientUpdateApi(req, res), true);
+  return { status, body: JSON.parse(raw) };
+}
+
+async function invokeConsultationReminder() {
+  const req = Readable.from([]);
+  req.url = '/api/consultation-reminder?token=consult-token';
+  req.method = 'GET';
+  req.headers = {};
+  let status = 0;
+  let headers = {};
+  let raw = '';
+  const res = { writeHead(nextStatus, nextHeaders) { status = nextStatus; headers = nextHeaders || {}; }, end(value) { raw = String(value || ''); } };
+  assert.equal(await handleClientUpdateApi(req, res), true);
+  assert.equal(status, 200);
+  assert.match(headers['Content-Type'], /text\/calendar/);
+  assert.match(raw, /BEGIN:VALARM/);
+  assert.match(raw, /TRIGGER:-PT1H/);
+  assert.match(raw, /SUMMARY:Console Consultation/);
+}
+
 (async () => {
   await testCorsPreflight();
   const sent = await invoke('diagnosis');
@@ -176,7 +215,16 @@ async function invokeTextWithoutSession(statusKey) {
   assert.equal(historyWrites[2].delivery_status, 'not_requested');
   assert.equal(historyWrites[2].message, text.textMessage);
 
-  console.log('Client update API tests passed (email outbox, delivered/queued states, and secure QR text preparation).');
+  const rescheduled = await invokePayload({ recordType: 'consult', recordId: 456, statusKey: 'consultation_delayed', estimatedDate: '2026-08-22', estimatedTime: '15:30', notes: 'Please confirm the new time.' });
+  assert.equal(rescheduled.status, 200);
+  assert.equal(rescheduled.body.ok, true);
+  assert.equal(salesPatches.at(-1).appointment_date, '2026-08-22');
+  assert.equal(salesPatches.at(-1).appointment_time, '15:30');
+  assert.match(historyWrites.at(-1).email_text, /Proposed date: 2026-08-22 at 15:30/);
+
+  await invokeConsultationReminder();
+
+  console.log('Client update API tests passed (email, text, sale/consultation updates, and reminder calendar downloads).');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

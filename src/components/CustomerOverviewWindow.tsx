@@ -13,9 +13,10 @@ interface Props {
   onSaved?: (c: Customer) => void;
   closeAfterSave?: boolean; // default: save closes the window
   childDialog?: boolean; // rendered inline inside another window's own dialog (hide standalone chrome)
+  compactCreate?: boolean; // client fields only for embedded booking flows
 }
 
-const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true, childDialog = false }) => {
+const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, closeAfterSave = true, childDialog = false, compactCreate = false }) => {
   const isModalShell = useMemo(() => {
     try { return childDialog || !!document.querySelector('[data-modal-shell="1"]'); } catch { return childDialog; }
   }, [childDialog]);
@@ -232,10 +233,10 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   return (
     <>
-    <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6">
-      <div className="bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
+    <div className={`gb-customer-overview-overlay fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6 ${isModalShell ? '' : 'is-child-dialog'}`}>
+      <div className="gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded w-[1300px] max-w-[95vw] max-h-[95vh] overflow-auto p-4">
         {/* Top toolbar with actions */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="gb-customer-overview-header flex items-center justify-between mb-3">
           <div className="text-lg font-semibold text-zinc-200">Customer Overview</div>
           <div className="flex items-center gap-2">
             <Button neon onClick={handleSave}>Save</Button>
@@ -251,8 +252,8 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
             )}
           </div>
         </div>
-        <div className="flex gap-4">
-          <div className="w-5/12">
+        <div className="gb-customer-overview-layout flex gap-4">
+          <div className={`gb-customer-overview-form ${compactCreate ? 'w-full' : 'w-5/12'}`}>
             <CustomerForm
               customer={local}
               onChange={c => {
@@ -262,9 +263,9 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
               }}
             />
           </div>
-          <div className="w-7/12 flex flex-col gap-3">
+          {!compactCreate ? <div className="gb-customer-overview-history w-7/12 flex flex-col gap-3">
             {/* Primary actions above filters */}
-            <div className="flex items-center gap-2 mb-1">
+            <div className={`gb-customer-primary-actions flex items-center gap-2 mb-1 ${!(local as any)?.id ? 'is-unsaved-client' : ''}`}>
               <Button
                 className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
@@ -281,7 +282,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
               >New Sale</Button>
             </div>
             {/* Filter toggle (smaller) with hover-highlight / solid-when-selected */}
-            <div className="flex items-center gap-2 mb-1">
+            <div className="gb-customer-history-filters flex items-center gap-2 mb-1">
               <button
                 className={`px-2 py-0.5 text-xs rounded border transition-colors ${historyMode==='workorders' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]'}`}
                 onClick={() => setHistoryMode('workorders')}
@@ -310,9 +311,9 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
             />
             {/* Completed Quotes: signed-off PDFs linked to this customer */}
             <CompletedQuotesPanel customer={local as any} />
-          </div>
+          </div> : null}
         </div>
-        <div className="flex items-center justify-between mt-4">
+        <div className="gb-customer-overview-footer flex items-center justify-between mt-4">
           <div className="flex flex-col gap-1">
             {!!errors.length && <div className="text-sm text-red-400">{errors.join(' · ')}</div>}
             {autoSaving && <div className="text-xs text-zinc-400 animate-pulse">Auto-saving…</div>}

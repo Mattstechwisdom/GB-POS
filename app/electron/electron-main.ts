@@ -6089,7 +6089,11 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
     .is('revoked_at', null)
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
-  if (existing.data?.token) return `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+  if (existing.data?.token) {
+    return type === 'consult'
+      ? `${getPublicAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
+      : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+  }
 
   let recordCloudId: string | null = null;
   try {
@@ -6119,7 +6123,9 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
       .select('token')
       .single();
     if (!inserted.error && inserted.data?.token) {
-      return `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
+      return type === 'consult'
+        ? `${getPublicAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
+        : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
       throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
@@ -6649,8 +6655,28 @@ async function handleQrRequest(req: any, res: any) {
     const enrichedEvent = { ...event, customerEmail, customerPhone };
 
     if (req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-      res.end(buildConsultPageHtml(enrichedEvent));
+      const icsEscape = (value: any) => String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+      const icsDate = (dateValue: any, timeValue: any) => `${String(dateValue || '').replace(/-/g, '')}T${String(timeValue || '09:00').replace(':', '').padEnd(4, '0')}00`;
+      const start = icsDate(enrichedEvent.date, enrichedEvent.time);
+      const end = icsDate(enrichedEvent.date, enrichedEvent.endTime || enrichedEvent.time || '10:00');
+      const calendar = [
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GadgetBoy POS//Consultation Reminder//EN',
+        'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+        `UID:consult-local-${eventId}@gadgetboypos`,
+        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,
+        `DTSTART:${start}`, `DTEND:${end}`,
+        `SUMMARY:${icsEscape(enrichedEvent.title || 'GadgetBoy Consultation')}`,
+        `LOCATION:${icsEscape(enrichedEvent.consultationAddress || enrichedEvent.location || '')}`,
+        `DESCRIPTION:${icsEscape(enrichedEvent.notes || 'Scheduled consultation with GadgetBoy Repair & Retail.')}`,
+        'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY',
+        'DESCRIPTION:Consultation begins in one hour', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR', '',
+      ].join('\r\n');
+      res.writeHead(200, {
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': `attachment; filename="GadgetBoy-Consultation-${eventId}.ics"`,
+        'Cache-Control': 'no-store',
+      });
+      res.end(calendar);
       return;
     }
 
