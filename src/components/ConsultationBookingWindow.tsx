@@ -578,6 +578,13 @@ export default function ConsultationBookingWindow() {
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Consultation Booked</h1>
           <p className="text-zinc-300 mb-1">Client: <span className="font-semibold">{done.customerName}</span></p>
+          <button
+            type="button"
+            onClick={() => setClientUpdateOpen(true)}
+            className="mb-3 mt-2 w-full rounded border border-[#BC13FE]/70 bg-[#BC13FE]/20 px-6 py-2 font-semibold text-fuchsia-100 hover:brightness-110"
+          >
+            Update Client
+          </button>
           <p className="text-zinc-300 mb-1">
             {date} at {time}{endTime ? ` – ${endTime}` : ''}
           </p>
@@ -599,7 +606,6 @@ export default function ConsultationBookingWindow() {
           <p className="text-zinc-400 text-sm mb-6">
             Added to the synced calendar. Scanning downloads a calendar event with a reminder one hour before the consultation.
           </p>
-          <button type="button" onClick={() => setClientUpdateOpen(true)} className="mb-3 w-full rounded bg-[#BC13FE] px-6 py-2 font-semibold text-white hover:brightness-110">Update Client</button>
           {!isModalShell && (
             <button
               onClick={() => window.close()}

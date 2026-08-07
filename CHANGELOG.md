@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## v0.5.45 (2026-08-07)
+- Consultation Client Updates: places the saved consultation's Update Client action directly beneath the client information on both desktop and mobile, matching the work-order workflow.
+
 ## v0.5.44 (2026-08-07)
 - Consultations: saves and displays `At Shop Location` wherever an in-shop consultation address appears, including new calendar entries and consultation printouts, while normalizing older blank or In-Store values without changing real at-home addresses.
 - Consultation Mobile Workflow: keeps Add New Client fields directly beneath client search, collapses them into the saved client card, removes the keyboard-blocking email suggestion list on that embedded form, and calculates the charge from hours while allowing a deliberate custom amount.

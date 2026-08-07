@@ -330,8 +330,9 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 3. Enter the date, start/end time or billable duration, purpose, assigned technician, and notes.
 4. Estimated Hours automatically calculates $75 for the first hour plus $50 for every additional hour. Amount Charged remains editable for an approved custom total; choose Use automatic to return to the standard calculation.
 5. Save the consultation.
-6. Confirm it appears on Calendar and under the client.
-7. At checkout, record the consultation sale/payment when applicable.
+6. After saving, use Update Client directly beneath the client information to send and record consultation status updates.
+7. Confirm it appears on Calendar and under the client.
+8. At checkout, record the consultation sale/payment when applicable.
 
 - Consultation commission is technician-specific.
 - Current reporting policy values logged consultation time at $25 per hour for technician commission.
