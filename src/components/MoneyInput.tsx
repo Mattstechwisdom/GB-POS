@@ -53,6 +53,7 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
   });
 
   const lastPropValueRef = useRef<number | undefined>(value);
+  const justFocusedRef = useRef(false);
 
   useEffect(() => {
     if (focused) return;
@@ -97,10 +98,22 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
       value={display}
       onFocus={(e) => {
         setFocused(true);
+        justFocusedRef.current = true;
+        // Default to select-all so typing/backspace replaces the whole value; a second click still places the caret normally.
+        const target = e.currentTarget;
+        window.setTimeout(() => { try { target.select(); } catch {} }, 0);
         rest.onFocus?.(e);
+      }}
+      onMouseUp={(e) => {
+        if (justFocusedRef.current) {
+          justFocusedRef.current = false;
+          e.preventDefault();
+        }
+        rest.onMouseUp?.(e);
       }}
       onBlur={(e) => {
         setFocused(false);
+        justFocusedRef.current = false;
         // Ensure we never leave a visually-invalid value behind.
         if (!allowEmpty && digits === '') commit('0');
         rest.onBlur?.(e);
@@ -115,9 +128,12 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
         if (k === 'Tab' || k === 'Enter' || k.startsWith('Arrow')) return;
         if (k === 'Home' || k === 'End') return;
 
+        const hasSelection = e.currentTarget.selectionStart !== e.currentTarget.selectionEnd;
+
         if (k === 'Backspace') {
           e.preventDefault();
-          commit(digits.slice(0, -1));
+          // Highlighted text (select-all, double-click, or drag-select) clears entirely instead of trimming one digit.
+          commit(hasSelection ? '' : digits.slice(0, -1));
           return;
         }
         if (k === 'Delete') {
@@ -128,6 +144,10 @@ const MoneyInput: React.FC<MoneyInputProps> = ({
 
         if (k.length === 1 && /\d/.test(k)) {
           e.preventDefault();
+          if (hasSelection) {
+            commit(k);
+            return;
+          }
           const next = (digits === '0' && !allowEmpty) ? k : (digits + k);
           commit(next);
           return;
