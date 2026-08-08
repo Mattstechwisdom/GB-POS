@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.51 (2026-08-08)
+- Windows Auto-Update: waits for the GadgetBoy POS process to fully exit before starting the downloaded NSIS installer, preventing the installer from trying to remove files still held open by the running app.
+
 ## v0.5.50 (2026-08-08)
 - Windows Auto-Update: uses a graceful, non-silent NSIS install handoff after the app begins closing, reducing installer failures when replacing older application files; the installer relaunches GadgetBoy POS after completing.
 
