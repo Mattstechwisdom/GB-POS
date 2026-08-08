@@ -1976,10 +1976,7 @@ async function installDownloadedUpdate() {
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
-      closeUpdateUi();
-      // NSIS handles the --updated handoff: it waits for the app process, replaces files,
-      // and relaunches GadgetBoy POS. Launch it through electron-updater so it survives quit.
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({

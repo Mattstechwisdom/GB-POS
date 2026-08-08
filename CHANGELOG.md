@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.54 (2026-08-08)
+- Windows Auto-Update: restores the original in-app updater behavior used before the recent update-install experiments.
+
 ## v0.5.53 (2026-08-08)
 - Windows Auto-Update: removes the external PowerShell handoff that could close the app without ever launching the installer. Updates now use electron-updater and NSIS's built-in update wait, replacement, and forced relaunch flow.
 
