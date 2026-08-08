@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.52 (2026-08-08)
+- Notifications: removes the redundant Close button; the existing window X remains the single close control.
+- New Client: places each contact-declined checkbox beside its phone or email field, with the Declined Info label directly beneath the checkbox.
+
 ## v0.5.51 (2026-08-08)
 - Windows Auto-Update: waits for the GadgetBoy POS process to fully exit before starting the downloaded NSIS installer, preventing the installer from trying to remove files still held open by the running app.
 

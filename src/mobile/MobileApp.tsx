@@ -346,7 +346,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'reporting': return <ReportingWindow />;
     case 'reportEmail': return <ReportEmailWindow />;
     case 'charts': return <ChartsWindow />;
-    case 'notifications': return <NotificationsWindow hideCloseButton />;
+    case 'notifications': return <NotificationsWindow />;
     case 'notificationSettings': return <NotificationSettingsWindow hideCloseButton />;
     case 'releaseForm': return <ReleaseFormWindow />;
     case 'customerReceipt': return <CustomerReceiptWindow />;

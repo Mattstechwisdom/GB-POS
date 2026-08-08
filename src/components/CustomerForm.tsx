@@ -87,35 +87,43 @@ const CustomerForm: React.FC<Props> = ({
         />
       </div>
       <div>
-        <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+        <div className="mb-1 min-h-4">
           <label className="block text-[12px] text-zinc-400">Phone</label>
-          {requireContactDecision ? <label className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-400"><input type="checkbox" aria-label="Phone contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedPhone} onChange={event => { const checked = event.target.checked; if (checked) update('phone', ''); onDeclinedPhoneChange?.(checked); }} />Declined</label> : null}
         </div>
-        <Input
-          value={local.phone || ''}
-          onChange={e => { onDeclinedPhoneChange?.(false); update('phone', formatPhoneTyping(e.target.value)); }}
-          onBlur={() => setPhoneTouched(true)}
-          inputMode="tel"
-          autoComplete="tel"
-          disabled={requireContactDecision && declinedPhone}
-        />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <Input
+              value={local.phone || ''}
+              onChange={e => { onDeclinedPhoneChange?.(false); update('phone', formatPhoneTyping(e.target.value)); }}
+              onBlur={() => setPhoneTouched(true)}
+              inputMode="tel"
+              autoComplete="tel"
+              disabled={requireContactDecision && declinedPhone}
+            />
+          </div>
+          {requireContactDecision ? <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] leading-tight text-zinc-400"><input type="checkbox" aria-label="Phone contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedPhone} onChange={event => { const checked = event.target.checked; if (checked) update('phone', ''); onDeclinedPhoneChange?.(checked); }} /><span>Declined Info</span></label> : null}
+        </div>
         {phoneTouched && local.phone && local.phone.replace(/\D/g, '').length !== 10 ? (
           <div className="mt-1 text-[11px] text-red-400">Phone should be 10 digits (###-###-####)</div>
         ) : null}
       </div>
       <div>
-        <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+        <div className="mb-1 min-h-4">
           <label className="block text-[12px] text-zinc-400">Email</label>
-          {requireContactDecision ? <label className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-400"><input type="checkbox" aria-label="Email contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedEmail} onChange={event => { const checked = event.target.checked; if (checked) update('email', ''); onDeclinedEmailChange?.(checked); }} />Declined</label> : null}
         </div>
-        <Input
-          value={local.email || ''}
-          onChange={e => { onDeclinedEmailChange?.(false); update('email', e.target.value); }}
-          list={keyboardSafeEmail ? undefined : emailListIdRef.current}
-          inputMode="email"
-          autoComplete="email"
-          disabled={requireContactDecision && declinedEmail}
-        />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <Input
+              value={local.email || ''}
+              onChange={e => { onDeclinedEmailChange?.(false); update('email', e.target.value); }}
+              list={keyboardSafeEmail ? undefined : emailListIdRef.current}
+              inputMode="email"
+              autoComplete="email"
+              disabled={requireContactDecision && declinedEmail}
+            />
+          </div>
+          {requireContactDecision ? <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] leading-tight text-zinc-400"><input type="checkbox" aria-label="Email contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedEmail} onChange={event => { const checked = event.target.checked; if (checked) update('email', ''); onDeclinedEmailChange?.(checked); }} /><span>Declined Info</span></label> : null}
+        </div>
         {!keyboardSafeEmail ? (
           <datalist id={emailListIdRef.current}>
             {emailSuggestions.map(s => (

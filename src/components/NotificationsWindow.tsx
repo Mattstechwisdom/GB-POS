@@ -48,7 +48,7 @@ function kindColor(kind: NotificationRecord['kind']) {
   return 'bg-red-500';
 }
 
-const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideCloseButton = false }) => {
+const NotificationsWindow: React.FC = () => {
   const [list, setList] = useState<NotificationRecord[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
@@ -263,22 +263,6 @@ const NotificationsWindow: React.FC<{ hideCloseButton?: boolean }> = ({ hideClos
           >
             {permissionChecking ? 'Checking...' : 'Settings'}
           </button>
-          {!hideCloseButton ? (
-            <button
-              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm"
-              onClick={async () => {
-                try {
-                  const api: any = (window as any).api;
-                  if (api?.closeSelfWindow) await api.closeSelfWindow({ focusMain: true });
-                  else window.close();
-                } catch {
-                  try { window.close(); } catch {}
-                }
-              }}
-            >
-              Close
-            </button>
-          ) : null}
         </div>
       </div>
 
