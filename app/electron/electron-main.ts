@@ -1976,7 +1976,10 @@ async function installDownloadedUpdate() {
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
-      autoUpdater.quitAndInstall(true, true);
+      // NSIS must replace files only after Electron has begun its normal quit sequence.
+      // Avoid silent mode so Windows can show a useful installer error if another process owns the install folder.
+      closeUpdateUi();
+      autoUpdater.quitAndInstall(false, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({
@@ -1984,7 +1987,7 @@ async function installDownloadedUpdate() {
         detail: `GadgetBoy POS could not apply the update. ${String(e?.message || e || 'Unknown update error.')}`,
       });
     }
-  }, 450);
+  }, 900);
 }
 
 async function promptToDownloadUpdate(info: any) {

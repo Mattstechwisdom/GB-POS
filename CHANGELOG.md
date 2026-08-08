@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.50 (2026-08-08)
+- Windows Auto-Update: uses a graceful, non-silent NSIS install handoff after the app begins closing, reducing installer failures when replacing older application files; the installer relaunches GadgetBoy POS after completing.
+
 ## v0.5.49 (2026-08-08)
 - Inventory: products now use saved Product Types instead of Device Types, including dynamic type filters; new listings no longer default to Phone.
 - Repair Parts: requires one Device Category and allows selecting multiple compatible devices within that category for a part.
