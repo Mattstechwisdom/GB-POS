@@ -7814,7 +7814,7 @@ ipcMain.handle('open-new-sale', async (event: any, payload: any) => {
   return { ok: true };
 });
 
-// IPC handler for opening a Quick Sale window (no customer required)
+// IPC handler for opening a Quick Checkout window (no customer required)
 ipcMain.handle('open-quick-sale', async (event: any) => {
   const parentFromSender = (() => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
@@ -7836,7 +7836,7 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: windowTitle('Quick Sale'),
+    title: windowTitle('Quick Checkout'),
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });

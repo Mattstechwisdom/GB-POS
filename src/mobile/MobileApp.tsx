@@ -424,7 +424,7 @@ function titleForModal(type: string) {
     customerOverview: 'Client',
     customerSearch: 'Clients',
     diagnosticTools: 'Diagnostic Tools',
-    quickSale: 'Quick Sale',
+    quickSale: 'Quick Checkout',
     consultation: 'Consultation',
     checkout: 'Checkout',
     devMenu: 'Developer Tools',
@@ -1087,7 +1087,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       </section>
 
       <nav className="mobile-quickbar" aria-label="Quick actions">
-        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Sale</button>
+        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Checkout</button>
         <button type="button" className="add-client" onClick={() => openModal('addClient')}>Add Client</button>
         <button type="button" className="search-client" onClick={() => openModal('customerSearch')}>Search Client</button>
       </nav>

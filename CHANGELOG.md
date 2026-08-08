@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.48 (2026-08-08)
+- Quick Checkout: replaces Quick Sale with an anonymous Sale or Repair checkout. Sale mode shows products; Repair mode searches the repair catalog and preserves part ordering details for End of Day purchasing.
+- Client actions: keeps the larger New Work Order and New Sale buttons after client details are saved on both desktop and mobile.
+
 ## v0.5.47 (2026-08-08)
 - EOD Purchasing Cart: adds a "Checkout Selected" button next to "Delete Selected" so a partial subset of a distributor's cart can be checked out, with an itemized receipt confirmation showing each item's cost before finalizing.
 - Price fields: clicking into a price field now selects the whole value by default (like a standard text field); a second click places the cursor, and highlighting text before Backspace or typing now clears/replaces the whole value instead of only trimming the last digit.

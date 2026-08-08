@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
 import SaleItemsTable, { SaleItemRow } from '@/sales/SaleItemsTable';
 
@@ -26,14 +26,46 @@ function newLineId(): string {
   }
 }
 
+function repairPrice(repair: any): number {
+  const partCost = Math.max(0, Number(repair?.partCost) || 0);
+  const laborCost = Math.max(0, Number(repair?.laborCost) || 0);
+  const markupPct = Math.max(0, Number(repair?.markupPct) || 0);
+  return round2(laborCost + partCost * (1 + markupPct / 100));
+}
+
 const QuickSaleWindow: React.FC = () => {
   const api = (window as any)?.api as any;
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
-  const [items, setItems] = useState<SaleItemRow[]>([]);
+  const [saleItems, setSaleItems] = useState<SaleItemRow[]>([]);
+  const [repairLines, setRepairLines] = useState<SaleItemRow[]>([]);
+  const [checkoutType, setCheckoutType] = useState<'sale' | 'repair'>('sale');
+  const [repairItems, setRepairItems] = useState<any[]>([]);
+  const [repairSearch, setRepairSearch] = useState('');
   const [taxed, setTaxed] = useState<boolean>(true);
   const [busy, setBusy] = useState<boolean>(false);
+
+  const items = checkoutType === 'sale' ? saleItems : repairLines;
+  const setItems = checkoutType === 'sale' ? setSaleItems : setRepairLines;
+
+  useEffect(() => {
+    if (!api?.dbGet) return;
+    api.dbGet('repairCategories')
+      .then((rows: any) => setRepairItems(Array.isArray(rows) ? rows : []))
+      .catch(() => setRepairItems([]));
+  }, [api]);
+
+  const visibleRepairItems = useMemo(() => {
+    const query = repairSearch.trim().toLowerCase();
+    const rows = repairItems.filter((repair) => {
+      if (!query) return true;
+      return [repair?.title, repair?.altDescription, repair?.repairCategory, repair?.category]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+    });
+    return rows.sort((a, b) => String(a?.repairCategory || '').localeCompare(String(b?.repairCategory || ''))
+      || String(a?.title || '').localeCompare(String(b?.title || '')));
+  }, [repairItems, repairSearch]);
 
   const subTotal = useMemo(() => round2(items.reduce((sum, item) => sum + itemTotal(item), 0)), [items]);
   const taxRate = taxed ? TAX_RATE : 0;
@@ -54,6 +86,25 @@ const QuickSaleWindow: React.FC = () => {
     } catch {
       try { window.close(); } catch {}
     }
+  }
+
+  function addRepair(repair: any) {
+    const description = String(repair?.title || repair?.altDescription || 'Repair').trim();
+    const row: SaleItemRow = {
+      id: newLineId(),
+      description,
+      qty: 1,
+      price: repairPrice(repair),
+      internalCost: Number(repair?.internalCost ?? repair?.partCost) || 0,
+      inStock: repair?.trackStock ? Number(repair?.stockCount) > 0 : !repair?.orderSourceUrl,
+      productUrl: String(repair?.orderSourceUrl || '').trim(),
+      category: 'Repair',
+      distributor: String(repair?.partSource || '').trim(),
+      trackStock: repair?.trackStock === true,
+      inventoryProductId: repair?.inventoryProductId,
+      ...(repair?.orderSourceUrl ? { requiresOrder: true, orderStatus: 'needed' } : {}),
+    } as SaleItemRow;
+    setRepairLines((current) => [...current, row].slice(0, 20));
   }
 
   async function handleCheckout() {
@@ -130,16 +181,17 @@ const QuickSaleWindow: React.FC = () => {
         createdAt: now,
         updatedAt: now,
         customerId: 0,
-        customerName: 'Quick Sale',
+        customerName: checkoutType === 'repair' ? 'Quick Repair' : 'Quick Sale',
         customerPhone: '',
-        itemDescription: firstItem?.description || 'Quick Sale',
+        itemDescription: firstItem?.description || (checkoutType === 'repair' ? 'Quick Repair' : 'Quick Sale'),
         quantity: firstItem ? itemUnits(firstItem) || 1 : 1,
         price: Number(firstItem?.price || 0) || 0,
         items: normalizedItems,
         inStock: normalizedItems.every((item) => !!item.inStock),
-        notes: 'Quick Sale',
+        notes: checkoutType === 'repair' ? 'Quick Checkout - Repair' : 'Quick Checkout - Sale',
+        quickCheckoutType: checkoutType,
         status: shouldClose ? 'closed' : 'open',
-        assignedTo: 'Quick Sale',
+        assignedTo: 'Quick Checkout',
         checkInAt: now,
         repairCompletionDate: null,
         checkoutDate: shouldClose ? now : null,
@@ -162,13 +214,13 @@ const QuickSaleWindow: React.FC = () => {
             receiptType: 'sale',
             id: created?.id,
             customerId: 0,
-            customerName: 'Quick Sale',
+            customerName: checkoutType === 'repair' ? 'Quick Repair' : 'Quick Sale',
             customerPhone: '',
             customerEmail: '',
             paymentType,
             payments,
-            productCategory: 'Retail',
-            productDescription: firstItem?.description || 'Quick Sale',
+            productCategory: checkoutType === 'repair' ? 'Repair' : 'Retail',
+            productDescription: firstItem?.description || (checkoutType === 'repair' ? 'Quick Repair' : 'Quick Sale'),
             items: normalizedItems.map((item) => ({
               id: item.id,
               description: item.description,
@@ -213,9 +265,9 @@ const QuickSaleWindow: React.FC = () => {
     return (
       <div className="min-h-screen bg-zinc-900 text-zinc-100 font-sans p-6">
         <div className="max-w-xl mx-auto bg-zinc-950/40 border border-zinc-800 rounded p-5">
-          <div className="text-xl font-bold text-[#39FF14]">Quick Sale</div>
+          <div className="text-xl font-bold text-[#39FF14]">Quick Checkout</div>
           <div className="text-sm text-zinc-300 mt-2">
-            Quick Sale requires the Electron desktop app (missing <code>window.api</code> bridge).
+            Quick Checkout requires the Electron desktop app (missing <code>window.api</code> bridge).
           </div>
         </div>
       </div>
@@ -226,8 +278,8 @@ const QuickSaleWindow: React.FC = () => {
     <div className="min-h-screen bg-zinc-900 text-zinc-100 font-sans">
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-[#39FF14]">Quick Sale</h1>
-          <div className="text-xs text-zinc-400">Create a sale without customer info</div>
+          <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>
+          <div className="text-xs text-zinc-400">Create a sale or repair checkout without customer info</div>
         </div>
         {!isModalShell && (
           <button className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf}>
@@ -237,7 +289,70 @@ const QuickSaleWindow: React.FC = () => {
       </div>
 
       <div className="p-4 grid grid-cols-1 gap-4">
-        <SaleItemsTable items={items} onChange={setItems} showRequiredIndicator={items.length === 0} />
+        <div className="flex items-center gap-1 self-start rounded border border-zinc-700 bg-zinc-950/40 p-1">
+          {(['sale', 'repair'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setCheckoutType(type)}
+              className={`px-4 py-2 rounded text-sm font-semibold ${checkoutType === type ? 'bg-[#39FF14] text-black' : 'text-zinc-300 hover:bg-zinc-800'}`}
+            >
+              {type === 'sale' ? 'Sale' : 'Repair'}
+            </button>
+          ))}
+        </div>
+
+        {checkoutType === 'sale' ? (
+          <SaleItemsTable items={items} onChange={setItems} showRequiredIndicator={items.length === 0} />
+        ) : (
+          <div className={`bg-zinc-900 border ${items.length === 0 ? 'border-red-500' : 'border-zinc-700'} rounded p-3 space-y-3`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Repair catalog{items.length === 0 && <span className="ml-1 text-red-500">*</span>}</h2>
+                <p className="text-xs text-zinc-400">Select repairs to add to this anonymous checkout.</p>
+              </div>
+              <input
+                value={repairSearch}
+                onChange={(event) => setRepairSearch(event.target.value)}
+                placeholder="Search repairs"
+                className="w-full sm:w-64 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto rounded border border-zinc-800">
+              {visibleRepairItems.length === 0 ? (
+                <p className="p-3 text-sm text-zinc-400">No matching repairs in the catalog.</p>
+              ) : visibleRepairItems.map((repair) => (
+                <button
+                  key={String(repair.id)}
+                  type="button"
+                  onClick={() => addRepair(repair)}
+                  className="flex w-full items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 hover:bg-zinc-800"
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-zinc-100">{repair.title || repair.altDescription || 'Untitled repair'}</span>
+                    <span className="block text-xs text-zinc-400">{repair.repairCategory || repair.category || 'Repair'}</span>
+                  </span>
+                  <span className="text-sm font-semibold text-[#39FF14]">${repairPrice(repair).toFixed(2)}</span>
+                </button>
+              ))}
+            </div>
+            {items.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setRepairLines((current) => current.filter((currentItem) => currentItem.id !== item.id))}
+                    className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 hover:border-red-400"
+                    title="Remove repair"
+                  >
+                    {item.description} x{item.qty}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="bg-zinc-950/40 border border-zinc-800 rounded p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
