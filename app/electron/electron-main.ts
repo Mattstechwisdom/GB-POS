@@ -115,6 +115,26 @@ function parseScrapedMoney(value: any): number | undefined {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
 }
 
+// schema.org microdata (`itemprop="price"`) is a strong, explicit signal used by most storefront platforms.
+function extractScrapedItempropPrice(html: string): number | undefined {
+  const withContent = html.match(/itemprop=["']price["'][^>]*content=["']([\d.,]+)["']/i)
+    || html.match(/content=["']([\d.,]+)["'][^>]*itemprop=["']price["']/i);
+  if (withContent?.[1]) return parseScrapedMoney(withContent[1]);
+  const inline = html.match(/itemprop=["']price["'][^>]*>\s*\$?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  return inline?.[1] ? parseScrapedMoney(inline[1]) : undefined;
+}
+
+// Look for a dollar amount inside an element whose class/id names it as the product price,
+// rather than matching the word "price" anywhere in the page's raw HTML/scripts (which can pick up
+// unrelated related-product carousels, analytics payloads, or upsell widgets).
+function extractScrapedClassPrice(html: string): number | undefined {
+  const re = /<[a-zA-Z]+\b[^>]*(?:class|id)=["'][^"']*\b(?:price|product-price|sale-price|current-price|our-price)\b[^"']*["'][^>]*>([\s\S]{0,200}?)<\/[a-zA-Z]+>/i;
+  const match = html.match(re);
+  if (!match) return undefined;
+  const amount = match[1].replace(/<[^>]+>/g, ' ').match(/\$?\s*([\d,]+(?:\.\d{1,2})?)/);
+  return amount?.[1] ? parseScrapedMoney(amount[1]) : undefined;
+}
+
 function findScrapedMeta(html: string, names: string[]): string {
   for (const name of names) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -176,6 +196,8 @@ function extractPartMetadataFromHtml(html: string, url: string) {
   const price =
     parseScrapedMoney(offer?.price) ||
     parseScrapedMoney(findScrapedMeta(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
+    extractScrapedItempropPrice(html) ||
+    extractScrapedClassPrice(html) ||
     parseScrapedMoney(html.match(/(?:price|salePrice|regularPrice)["']?\s*[:=]\s*["']?\$?(\d+(?:\.\d{1,2})?)/i)?.[1]);
   const description = decodeScrapedHtml(
     product?.description || findScrapedMeta(html, ['og:description', 'twitter:description', 'description'])
