@@ -1970,47 +1970,18 @@ async function startUpdateDownload() {
   }
 }
 
-function launchDownloadedUpdateAfterExit() {
-  const installerPath = String(autoUpdater?.installerPath || '').trim();
-  if (!installerPath || !fs.existsSync(installerPath)) {
-    throw new Error('The downloaded installer could not be found.');
-  }
-
-  const args = ['--updated', '--force-run'];
-  const installDirectory = String(autoUpdater?.installDirectory || '').trim();
-  if (installDirectory) args.push(`/D=${installDirectory}`);
-
-  // electron-updater starts NSIS before app.quit(), which can leave application files locked.
-  // This detached PowerShell handoff waits for this Electron process to exit before NSIS starts.
-  const escapePs = (value: string) => value.replace(/'/g, "''");
-  const script = [
-    `$installer = '${escapePs(installerPath)}'`,
-    `$args = @(${args.map((value) => `'${escapePs(value)}'`).join(', ')})`,
-    `Wait-Process -Id ${process.pid}`,
-    'Start-Sleep -Milliseconds 600',
-    'Start-Process -FilePath $installer -ArgumentList $args',
-  ].join('; ');
-  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-  const powershellPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const handoff = spawn(powershellPath, ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encodedScript], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  handoff.unref();
-}
-
 async function installDownloadedUpdate() {
   if (!autoUpdater) return;
   autoInstallAfterDownload = false;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
-      launchDownloadedUpdateAfterExit();
       closeUpdateUi();
-      app.quit();
+      // NSIS handles the --updated handoff: it waits for the app process, replaces files,
+      // and relaunches GadgetBoy POS. Launch it through electron-updater so it survives quit.
+      autoUpdater.quitAndInstall(false, true);
     } catch (e: any) {
-      try { console.error('[AutoUpdate] deferred installer handoff failed:', e?.message || e); } catch {}
+      try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({
         phase: 'error',
         detail: `GadgetBoy POS could not apply the update. ${String(e?.message || e || 'Unknown update error.')}`,

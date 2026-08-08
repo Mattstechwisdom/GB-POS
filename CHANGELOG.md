@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.53 (2026-08-08)
+- Windows Auto-Update: removes the external PowerShell handoff that could close the app without ever launching the installer. Updates now use electron-updater and NSIS's built-in update wait, replacement, and forced relaunch flow.
+
 ## v0.5.52 (2026-08-08)
 - Notifications: removes the redundant Close button; the existing window X remains the single close control.
 - New Client: places each contact-declined checkbox beside its phone or email field, with the Declined Info label directly beneath the checkbox.
