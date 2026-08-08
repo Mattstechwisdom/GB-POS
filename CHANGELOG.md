@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.49 (2026-08-08)
+- Inventory: products now use saved Product Types instead of Device Types, including dynamic type filters; new listings no longer default to Phone.
+- Repair Parts: requires one Device Category and allows selecting multiple compatible devices within that category for a part.
+- Toolbar: places End of Day Report beside Calendar and the compact unread-badged notification button, with responsive wrapping for narrow desktop widths.
+
 ## v0.5.48 (2026-08-08)
 - Quick Checkout: replaces Quick Sale with an anonymous Sale or Repair checkout. Sale mode shows products; Repair mode searches the repair catalog and preserves part ordering details for End of Day purchasing.
 - Client actions: keeps the larger New Work Order and New Sale buttons after client details are saved on both desktop and mobile.

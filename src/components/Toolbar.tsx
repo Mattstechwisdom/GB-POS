@@ -89,9 +89,9 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
 
   return (
     <>
-    <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-zinc-900 relative">
+    <div className="relative flex flex-wrap items-center justify-between gap-2 border-b border-zinc-700 bg-zinc-900 px-4 py-2">
       {/* Left side: Admin dropdown + action buttons */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         {/* Admin dropdown */}
         <div ref={adminRef} className="relative">
           <button
@@ -134,30 +134,33 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         >
           Consultation
         </button>
+      </div>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         <button
-          className="px-4 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
+          className="px-3 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
           onClick={() => dispatchOpenModal('eod')}
         >
           End of Day Report
         </button>
-      </div>
-      <div className="flex items-center gap-3">
         <button
-          className="relative px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={() => dispatchOpenModal('notifications')}
+          className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+          onClick={() => dispatchOpenModal('calendar')}
         >
-          Notifications
+          Calendar
+        </button>
+        <button
+          type="button"
+          className="relative flex h-9 w-9 items-center justify-center rounded border border-zinc-700 bg-zinc-800 text-lg font-bold text-zinc-100 hover:border-[#39FF14] hover:text-[#39FF14]"
+          onClick={() => dispatchOpenModal('notifications')}
+          aria-label="Open notifications"
+          title="Notifications"
+        >
+          <span aria-hidden="true">!</span>
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center border border-zinc-900">
               {unread > 99 ? '99+' : unread}
             </span>
           )}
-        </button>
-        <button
-          className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={() => dispatchOpenModal('calendar')}
-        >
-          Calendar
         </button>
         <button
           className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm flex items-center justify-center"

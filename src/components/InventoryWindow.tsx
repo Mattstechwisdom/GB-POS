@@ -47,7 +47,7 @@ function blankItem(mode: InventoryMode): InventoryItem {
   return {
     itemDescription: '',
     itemType: mode === 'parts' ? 'Part' : 'Product',
-    category: mode === 'parts' ? 'Phone' : 'Phone',
+    category: '',
     deviceModel: '',
     associatedDevices: [],
     partCategory: mode === 'parts' ? 'Screen' : '',
@@ -116,7 +116,6 @@ export default function InventoryWindow() {
   const [cartTotalCost, setCartTotalCost] = useState<number | undefined>(undefined);
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState('');
-  const [compatibleDeviceInput, setCompatibleDeviceInput] = useState('');
   const scrapeSequenceRef = useRef(0);
   const lastScrapedUrlRef = useRef('');
 
@@ -212,15 +211,10 @@ export default function InventoryWindow() {
 
   const deviceModels = useMemo(() => {
     const deviceType = String(editing.category || '').trim().toLowerCase();
-    const preferredModels = deviceCategories
-      .filter((row) => !deviceType || String(row?.title || '').trim().toLowerCase() === deviceType)
+    const models = deviceCategories
+      .filter((row) => deviceType && String(row?.title || '').trim().toLowerCase() === deviceType)
       .map((row) => String(row?.name || '').trim())
       .filter(Boolean);
-    const otherModels = deviceCategories
-      .filter((row) => deviceType && String(row?.title || '').trim().toLowerCase() !== deviceType)
-      .map((row) => String(row?.name || '').trim())
-      .filter(Boolean);
-    const models = [...preferredModels, ...otherModels];
     repairCategories
       .filter((row) => String(row?.type || row?.category || '').trim().toLowerCase() === deviceType)
       .map((row) => String(row?.model || row?.deviceModel || '').trim())
@@ -237,32 +231,22 @@ export default function InventoryWindow() {
     return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b));
   }, [deviceCategories, editing.associatedDevices, editing.category, items, repairCategories]);
 
-  const compatibleDeviceMatches = useMemo(() => {
-    const query = compatibleDeviceInput.trim().toLowerCase();
-    const selected = new Set((Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []).map((value) => String(value).toLowerCase()));
-    return deviceModels
-      .filter((model) => !selected.has(model.toLowerCase()))
-      .filter((model) => !query || model.toLowerCase().includes(query))
-      .slice(0, 10);
-  }, [compatibleDeviceInput, deviceModels, editing.associatedDevices]);
+  const productTypeOptions = useMemo(() => Array.from(new Set([
+    ...DEVICE_CATEGORY_OPTIONS,
+    ...items
+      .filter((item) => (item.itemType || 'Product') !== 'Part')
+      .map((item) => String(item.category || '').trim())
+      .filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b)), [items]);
 
-  const saveCompatibleDevice = (value = compatibleDeviceInput) => {
-    const model = String(value || '').trim();
-    if (!model) return;
-    setEditing((current) => ({
-      ...current,
-      deviceModel: current.deviceModel || model,
-      associatedDevices: Array.from(new Set([...(Array.isArray(current.associatedDevices) ? current.associatedDevices : []), model])),
-    }));
-    setCompatibleDeviceInput('');
-  };
-
-  const removeCompatibleDevice = (model: string) => {
-    setEditing((current) => {
-      const associatedDevices = (Array.isArray(current.associatedDevices) ? current.associatedDevices : []).filter((value) => value !== model);
-      return { ...current, associatedDevices, deviceModel: current.deviceModel === model ? (associatedDevices[0] || '') : current.deviceModel };
-    });
-  };
+  const partDeviceCategoryOptions = useMemo(() => Array.from(new Set([
+    ...DEVICE_CATEGORY_OPTIONS,
+    ...deviceCategories.map((row) => String(row?.title || '').trim()).filter(Boolean),
+    ...items
+      .filter((item) => (item.itemType || 'Product') === 'Part')
+      .map((item) => String(item.category || '').trim())
+      .filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b)), [deviceCategories, items]);
 
   const selectItem = (item: InventoryItem) => {
     const associatedDevices = Array.from(new Set([
@@ -279,7 +263,6 @@ export default function InventoryWindow() {
     setCartQuantity(quantity);
     setCartTotalCost(Number.isFinite(unitCost) ? unitCost * quantity : undefined);
     setCartMessage('');
-    setCompatibleDeviceInput('');
   };
 
   const startNew = () => {
@@ -289,7 +272,6 @@ export default function InventoryWindow() {
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
-    setCompatibleDeviceInput('');
   };
 
   const clearFields = () => {
@@ -299,7 +281,6 @@ export default function InventoryWindow() {
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
-    setCompatibleDeviceInput('');
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -327,6 +308,10 @@ export default function InventoryWindow() {
       alert(mode === 'parts' ? 'Part name is required.' : 'Product name is required.');
       return;
     }
+    if (!String(editing.category || '').trim()) {
+      alert(mode === 'parts' ? 'Device Category is required for repair parts.' : 'Product Type is required.');
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -338,8 +323,8 @@ export default function InventoryWindow() {
         ...editing,
         itemDescription: description,
         itemType: mode === 'parts' ? 'Part' : 'Product',
-        category: String(editing.category || 'Other').trim() || 'Other',
-        deviceModel: associatedDevices[0] || '',
+        category: String(editing.category || '').trim(),
+        deviceModel: mode === 'parts' ? (associatedDevices[0] || '') : '',
         associatedDevices,
         partCategory: mode === 'parts' ? (String(editing.partCategory || 'Other').trim() || 'Other') : '',
         condition: String(editing.condition || 'New').trim() || 'New',
@@ -498,7 +483,7 @@ export default function InventoryWindow() {
   }, []);
 
   const modeLabel = mode === 'parts' ? 'Repair Parts' : 'Products';
-  const categoryOptions = DEVICE_CATEGORY_OPTIONS;
+  const categoryOptions = mode === 'parts' ? partDeviceCategoryOptions : productTypeOptions;
   const conditionOptions = mode === 'parts' ? PART_CONDITIONS : PRODUCT_CONDITIONS;
 
   return (
@@ -542,14 +527,14 @@ export default function InventoryWindow() {
                 {filtersOpen ? (
                   <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded border border-zinc-700 bg-zinc-950 p-3 shadow-xl">
                     <label className="block">
-                      <span className="mb-1 block text-xs text-zinc-400">Device type</span>
+                      <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
                       <select
                         value={deviceFilter}
                         onChange={(event) => setDeviceFilter(event.target.value)}
                         className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                       >
-                        <option value="">All device types</option>
-                        {DEVICE_CATEGORY_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
+                        <option value="">{mode === 'parts' ? 'All device categories' : 'All product types'}</option>
+                        {categoryOptions.map((value) => <option key={value} value={value}>{value}</option>)}
                       </select>
                     </label>
                     <button
@@ -728,11 +713,13 @@ export default function InventoryWindow() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">Device Type</span>
+                <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
                 <input
                   list="inventory-device-types"
                   value={editing.category || ''}
-                  onChange={(event) => setEditing((current) => ({ ...current, category: event.target.value }))}
+                  onChange={(event) => setEditing((current) => mode === 'parts'
+                    ? { ...current, category: event.target.value, associatedDevices: [], deviceModel: '' }
+                    : { ...current, category: event.target.value })}
                   className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                 />
               </label>
@@ -741,36 +728,24 @@ export default function InventoryWindow() {
               </datalist>
 
               {mode === 'parts' ? (
-                <div className="relative block">
+                <label className="block">
                   <span className="mb-1 block text-xs text-zinc-400">Compatible Devices</span>
-                  <div className="flex min-w-0 gap-2">
-                    <input
-                      value={compatibleDeviceInput}
-                      onChange={(event) => setCompatibleDeviceInput(event.target.value)}
-                      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveCompatibleDevice(); } }}
-                      className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
-                      placeholder="Type an Xbox, PlayStation, phone, or other model"
-                    />
-                    <button type="button" onClick={() => saveCompatibleDevice()} disabled={!compatibleDeviceInput.trim()} className="shrink-0 rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black disabled:opacity-40">Save</button>
-                  </div>
-                  {compatibleDeviceInput.trim() && compatibleDeviceMatches.length ? (
-                    <div className="absolute left-0 right-0 z-30 mt-1 max-h-48 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl">
-                      {compatibleDeviceMatches.map((model) => (
-                        <button key={model} type="button" onClick={() => saveCompatibleDevice(model)} className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-800">{model}</button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {(editing.associatedDevices || []).length ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {(editing.associatedDevices || []).map((model) => (
-                        <span key={model} className="inline-flex max-w-full items-center gap-1 rounded border border-[#39FF14]/40 bg-[#39FF14]/10 px-2 py-1 text-xs text-[#b7ffab]">
-                          <span className="truncate">{model}</span>
-                          <button type="button" aria-label={`Remove ${model}`} onClick={() => removeCompatibleDevice(model)} className="text-zinc-400 hover:text-white">X</button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : <span className="mt-1 block text-[11px] text-zinc-500">Save one or more device models that can use this part.</span>}
-                </div>
+                  <select
+                    multiple
+                    value={Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []}
+                    onChange={(event) => {
+                      const associatedDevices = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
+                      setEditing((current) => ({ ...current, associatedDevices, deviceModel: associatedDevices[0] || '' }));
+                    }}
+                    disabled={!editing.category || deviceModels.length === 0}
+                    className="min-h-32 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]"
+                  >
+                    {deviceModels.map((model) => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-zinc-500">
+                    {!editing.category ? 'Select a device category first.' : deviceModels.length === 0 ? 'No devices are saved for this category yet.' : 'Select one or more devices, then save the part.'}
+                  </span>
+                </label>
               ) : null}
 
               {mode === 'parts' ? (
