@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.55 (2026-08-08)
+- Release checkpoint: packages the current GadgetBoy POS application with the original in-app updater behavior restored, for a clean manual-install baseline before the next update test.
+
 ## v0.5.54 (2026-08-08)
 - Windows Auto-Update: restores the original in-app updater behavior used before the recent update-install experiments.
 
