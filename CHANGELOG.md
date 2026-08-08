@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.5.47 (2026-08-08)
+- EOD Purchasing Cart: adds a "Checkout Selected" button next to "Delete Selected" so a partial subset of a distributor's cart can be checked out, with an itemized receipt confirmation showing each item's cost before finalizing.
+- Price fields: clicking into a price field now selects the whole value by default (like a standard text field); a second click places the cursor, and highlighting text before Backspace or typing now clears/replaces the whole value instead of only trimming the last digit.
+- Part/product URL scraping: improves price-detection accuracy across vendor sites so it is less likely to pick up an unrelated price from the page.
+- Android notifications: fixes Notification Settings getting stuck on "Saving..." if the cloud save stalled; notifications now show a branded subtitle, dismiss automatically when tapped, and use consistent icon/branding across all notification types.
 
 ## v0.5.46 (2026-08-07)
 - Mobile Home: replaces the bottom New WO and New Sale shortcuts with Quick Sale, Add Client, and Search Client, and removes those duplicate actions from the side drawer.
