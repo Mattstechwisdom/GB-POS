@@ -752,6 +752,7 @@ const EODWindow: React.FC = () => {
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
   const [selectingDistributors, setSelectingDistributors] = useState<Set<string>>(() => new Set());
   const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
+  const [checkoutCandidateRows, setCheckoutCandidateRows] = useState<OrderCartRow[] | null>(null);
   const [previewDeletedPurchaseKeys, setPreviewDeletedPurchaseKeys] = useState<Set<string>>(() => new Set());
   const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
   const [deliveryByDistributor, setDeliveryByDistributor] = useState<Record<string, string>>({});
@@ -2933,6 +2934,7 @@ const EODWindow: React.FC = () => {
                           {selectionActive ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" className="h-4 w-4 shrink-0 accent-[#BC13FE]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={allSelected} onChange={event => setSelectedPurchaseRows(current => { const next = new Set(current); group.rows.forEach(row => event.target.checked ? next.add(row.key) : next.delete(row.key)); return next; })} />Select all</label> : null}
                           {selectionActive ? <button type="button" disabled={!selectedGroupRows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(selectedGroupRows)}>Open Selected</button> : null}
                           {selectionActive ? <button type="button" disabled={!selectedGroupRows.length || purchaseUpdateBusy} className="rounded border border-red-500/70 bg-red-950/50 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-40" onClick={() => setDeleteCandidateRows(selectedGroupRows)}>Delete Selected</button> : null}
+                          {selectionActive ? <button type="button" disabled={!selectedGroupRows.length || purchaseUpdateBusy} className="rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-3 py-2 text-xs font-semibold text-[#39FF14] disabled:opacity-40" onClick={() => setCheckoutCandidateRows(selectedGroupRows)}>Checkout Selected</button> : null}
                           <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold"><input type="checkbox" className="h-4 w-4 shrink-0 accent-[#39FF14]" style={{ minWidth: 16, maxWidth: 16, minHeight: 16, maxHeight: 16 }} checked={groupAmounts.taxExempt} onChange={event => void updateDistributorTaxExempt(group.distributor, event.target.checked)} />Tax Exempt</label>
                           <button type="button" disabled={!group.rows.some(row => row.orderUrl)} className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs disabled:opacity-40" onClick={() => openPurchaseRows(group.rows)}>View Cart</button>
                           <button type="button" disabled={!group.checkoutUrl} className="rounded bg-amber-500 px-3 py-2 text-xs font-semibold text-black disabled:opacity-40" onClick={() => openPurchaseUrl(group.checkoutUrl)}>{group.checkoutUrl ? group.checkoutLabel : 'Cart URL unavailable'}</button>
@@ -2988,6 +2990,37 @@ const EODWindow: React.FC = () => {
                 </section>
               </div>
             ) : null}
+
+            {checkoutCandidateRows ? (() => {
+              const receiptRows = checkoutCandidateRows;
+              const receiptCostTotal = round2(receiptRows.reduce((sum, row) => sum + row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0), 0));
+              const receiptChargeTotal = round2(receiptRows.reduce((sum, row) => sum + row.totalCharge, 0));
+              const receiptHasMissingCost = receiptRows.some(row => !row.hasCost);
+              return (
+              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => setCheckoutCandidateRows(null)}>
+                <section className="w-full max-w-lg rounded-lg border border-[#39FF14]/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm selected checkout">
+                  <header><h3 className="text-xl font-semibold text-[#39FF14]">Confirm Checkout</h3><p className="mt-2 text-sm text-zinc-300">Review each item's cost before checking out {receiptRows.length} selected item{receiptRows.length === 1 ? '' : 's'}.</p></header>
+                  {receiptHasMissingCost ? <div className="mt-4 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-sm text-amber-100"><strong className="block text-amber-300">Missing cost</strong>Some selected items are missing a cost and will not be included in the total below.</div> : null}
+                  <div className="mt-4 max-h-64 space-y-2 overflow-auto rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">
+                    {receiptRows.map(row => (
+                      <div key={row.key} className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-2 last:border-0 last:pb-0">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-zinc-100" title={row.title}>{row.title}</div>
+                          <div className="text-zinc-500">{row.sourceType === 'workOrder' ? `WO #${row.sourceId}` : row.sourceType === 'sale' ? `Sale #${row.sourceId}` : row.sourceType === 'inventory' ? 'Restock' : 'Manual'} · Qty {row.quantity}</div>
+                        </div>
+                        <div className="shrink-0 text-right font-semibold text-zinc-100">{row.hasCost ? formatCurrency(row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0)) : <span className="text-red-300">Missing</span>}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm">
+                    <div><span className="text-zinc-500">Cost incl. tax</span><strong className="float-right">{formatCurrency(receiptCostTotal)}</strong></div>
+                    <div className="mt-1"><span className="text-zinc-500">Client charges</span><strong className="float-right">{formatCurrency(receiptChargeTotal)}</strong></div>
+                  </div>
+                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setCheckoutCandidateRows(null)}>Cancel</button><button type="button" disabled={purchaseUpdateBusy} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { const rows = checkoutCandidateRows; setCheckoutCandidateRows(null); void markSelectedPurchasesOrdered(rows || undefined); }}>{purchaseUpdateBusy ? 'Checking out...' : 'Checkout'}</button></footer>
+                </section>
+              </div>
+              );
+            })() : null}
 
             {showAddPurchase ? (
               <div className="fixed inset-0 z-[100200] flex items-center justify-center overflow-y-auto bg-black/85 p-3" onClick={() => setShowAddPurchase(false)}>
