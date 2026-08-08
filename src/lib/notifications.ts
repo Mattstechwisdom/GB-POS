@@ -298,11 +298,26 @@ async function ensureAndroidNotificationChannel() {
       id: 'gbpos-tech-alerts',
       name: 'GadgetBoy POS Alerts',
       description: 'Work order, sale, consultation, and shop reminders',
-      importance: 4,
-      visibility: 1,
+      importance: 4, // IMPORTANCE_HIGH: heads-up banner + sound
+      visibility: 1, // VISIBILITY_PUBLIC: full content on the lock screen
+      lightColor: '#39FF14',
     });
   } catch {
     // createChannel is Android-only; ignore unsupported platforms.
+  }
+}
+
+// Short branded line shown as the expanded-notification subtitle (summaryText).
+function kindLabel(kind: NotificationKind): string {
+  switch (kind) {
+    case 'consultation': return 'Consultation - GadgetBoy POS';
+    case 'parts_delivery': return 'Parts Delivery - GadgetBoy POS';
+    case 'event': return 'Event - GadgetBoy POS';
+    case 'tech_schedule': return 'Technician Schedule - GadgetBoy POS';
+    case 'daily_look': return 'Daily Look - GadgetBoy POS';
+    case 'work_order': return 'Work Order - GadgetBoy POS';
+    case 'sale': return 'Sale - GadgetBoy POS';
+    default: return 'GadgetBoy POS';
   }
 }
 
@@ -333,10 +348,12 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
           title,
           body,
           largeBody: body || title,
+          summaryText: kindLabel(rec.kind),
           channelId: 'gbpos-tech-alerts',
           smallIcon: 'gbpos_notification_icon',
           largeIcon: 'gbpos_notification_logo',
           iconColor: '#BC13FE',
+          autoCancel: true,
           extra: { gbposRecord: rec },
           schedule: { at: new Date(Date.now() + 250) },
         }],
@@ -393,7 +410,12 @@ export async function scheduleDeviceConsultationReminders(calendarInput?: any[],
       title: `Consultation reminder: ${customerName}`,
       body: `${time ? `${time} - ` : ''}${String(ev.title || 'Consultation').trim() || 'Consultation'}`,
       largeBody: `${customerName}${time ? ` at ${time}` : ''}${ev.customerPhone ? `\n${ev.customerPhone}` : ''}`,
+      summaryText: kindLabel('consultation'),
       channelId: 'gbpos-tech-alerts',
+      smallIcon: 'gbpos_notification_icon',
+      largeIcon: 'gbpos_notification_logo',
+      iconColor: '#BC13FE',
+      autoCancel: true,
       extra: {
         gbposRecord: {
           key,
@@ -616,13 +638,22 @@ export async function saveNotificationSettings(next: NotificationSettings): Prom
     purgeReadAfterDays: clamp(asNumber(next.purgeReadAfterDays, DEFAULT_SETTINGS.purgeReadAfterDays), 0, 365),
   };
 
-  const list = await api()?.dbGet?.('notificationSettings').catch(() => []);
+  const pendingList = api()?.dbGet?.('notificationSettings');
+  const list = pendingList
+    ? await withTimeout(Promise.resolve(pendingList), 8000, 'Cloud notification settings timed out.').catch(() => [])
+    : [];
   const first = Array.isArray(list) && list.length ? list[0] : null;
   if (first?.id != null) {
-    const updated = await api()?.dbUpdate?.('notificationSettings', first.id, { ...first, ...settings, updatedAt: nowIso() });
+    const pendingUpdate = api()?.dbUpdate?.('notificationSettings', first.id, { ...first, ...settings, updatedAt: nowIso() });
+    const updated = pendingUpdate
+      ? await withTimeout(Promise.resolve(pendingUpdate), 8000, 'Saving notification settings timed out.').catch(() => null)
+      : null;
     return { ...settings, ...(updated || {}) };
   }
-  const added = await api()?.dbAdd?.('notificationSettings', { ...settings, createdAt: nowIso(), updatedAt: nowIso() });
+  const pendingAdd = api()?.dbAdd?.('notificationSettings', { ...settings, createdAt: nowIso(), updatedAt: nowIso() });
+  const added = pendingAdd
+    ? await withTimeout(Promise.resolve(pendingAdd), 8000, 'Saving notification settings timed out.').catch(() => null)
+    : null;
   return { ...settings, ...(added || {}) };
 }
 
