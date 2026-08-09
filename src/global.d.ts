@@ -37,6 +37,7 @@ declare global {
     gidgetLocalStatus?: () => Promise<any>;
     gidgetLocalSetup?: () => Promise<any>;
     gidgetLocalGenerate?: (payload: any) => Promise<any>;
+    gidgetLocalPosContext?: (query: string) => Promise<any>;
     gidgetLocalCancel?: () => Promise<any>;
     onGidgetModelProgress?: (cb: (progress: any) => void) => () => void;
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;

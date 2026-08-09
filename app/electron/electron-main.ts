@@ -11,7 +11,7 @@ const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
 
-registerGidgetLocalIpc({ ipcMain, app });
+registerGidgetLocalIpc({ ipcMain, app, getLocalPosContext: buildGidgetLocalPosContext });
 
 let autoUpdater: any = null;
 try {
@@ -3230,6 +3230,108 @@ function readDb() {
     // Return empty WITHOUT setting dbCache — safe fallback that does not persist.
     return defaultDb();
   }
+}
+
+function gidgetRecordTotals(record: any) {
+  const number = (value: any) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+  };
+  const total = ['total', 'grandTotal', 'invoiceTotal', 'totalAmount', 'amountTotal']
+    .map(key => number(record?.[key]))
+    .find(value => value !== undefined) ?? 0;
+  const paid = ['amountPaid', 'paid', 'totalPaid', 'paidAmount', 'collected', 'amountCollected']
+    .map(key => number(record?.[key]))
+    .find(value => value !== undefined);
+  const remaining = ['remaining', 'balance', 'balanceDue', 'amountDue', 'due']
+    .map(key => number(record?.[key]))
+    .find(value => value !== undefined);
+  return {
+    total,
+    paid: paid ?? (remaining !== undefined ? Math.max(0, total - remaining) : 0),
+    remaining: remaining ?? Math.max(0, total - (paid ?? 0)),
+  };
+}
+
+function gidgetItemSummary(record: any) {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const labels = items
+    .map((item: any) => String(item?.description || item?.name || item?.itemDescription || '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  return labels.length ? labels.join(', ') : String(record?.productDescription || record?.productCategory || record?.itemDescription || '').trim() || 'No line items recorded';
+}
+
+function buildGidgetLocalPosContext(rawQuery: string) {
+  const query = String(rawQuery || '').toLowerCase().slice(0, 2000);
+  const db = readDb() || {};
+  const limit = 20;
+  const statusFilter = /\b(open|closed|complete|completed|waiting|diagnostic|part)\b/.exec(query)?.[1] || '';
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekStart = new Date(dayStart);
+  weekStart.setDate(dayStart.getDate() - dayStart.getDay());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodStart = /\b(today|this day)\b/.test(query) ? dayStart
+    : /\b(this week|weekly)\b/.test(query) ? weekStart
+      : /\b(this month|monthly)\b/.test(query) ? monthStart : null;
+  const words = query
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length >= 3 && !['what', 'which', 'show', 'find', 'with', 'from', 'that', 'this', 'have', 'were', 'today', 'week', 'weekly', 'month', 'monthly', 'many', 'check', 'checked', 'into', 'last', 'ticket', 'tickets', 'order', 'orders', 'sales', 'sale', 'client', 'clients', 'gidget'].includes(word))
+    .slice(0, 6);
+  const matches = (record: any) => {
+    if (periodStart) {
+      const recordedAt = new Date(record?.checkInDate || record?.checkedInAt || record?.createdAt || record?.created_at || record?.date || 0);
+      if (Number.isNaN(recordedAt.getTime()) || recordedAt < periodStart) return false;
+    }
+    const haystack = [record?.customerName, record?.name, record?.status, record?.repairStatus, record?.statusUpdate, record?.productDescription, record?.productCategory, record?.deviceName, record?.deviceModel, gidgetItemSummary(record)]
+      .join(' ')
+      .toLowerCase();
+    const status = `${record?.status || ''} ${record?.repairStatus || ''} ${record?.statusUpdate || ''}`.toLowerCase();
+    if (statusFilter && !status.includes(statusFilter)) return false;
+    return words.every(word => haystack.includes(word));
+  };
+  const summarize = (kind: 'work_order' | 'sale', record: any) => {
+    const totals = gidgetRecordTotals(record);
+    return {
+      type: kind,
+      id: record?.id ?? record?.ticketNumber ?? record?.invoiceNumber ?? 'unknown',
+      client: String(record?.customerName || record?.name || 'Client not recorded').slice(0, 100),
+      device_or_item: String(record?.deviceName || record?.deviceModel || record?.productDescription || record?.productCategory || 'Not recorded').slice(0, 120),
+      line_items: gidgetItemSummary(record).slice(0, 300),
+      status: String(record?.status || record?.repairStatus || 'Open').slice(0, 80),
+      checkout_date: record?.checkoutDate || null,
+      taken: totals.paid,
+      owed: totals.remaining,
+    };
+  };
+
+  if (/\b(stock|inventory|product|products|low stock)\b/.test(query)) {
+    const products = (Array.isArray(db.products) ? db.products : [])
+      .filter(matches)
+      .slice(0, limit)
+      .map((product: any) => ({
+        type: 'inventory',
+        id: product?.id ?? 'unknown',
+        item: String(product?.itemDescription || product?.name || product?.productName || 'Unnamed product').slice(0, 120),
+        category: String(product?.productCategory || product?.category || '').slice(0, 80),
+        stock_on_hand: Number(product?.stockCount ?? product?.quantity ?? 0) || 0,
+        low_stock_at: Number(product?.lowStockThreshold ?? 0) || 0,
+      }));
+    return { source: 'local_pos', mode: 'read_only', scope: 'inventory', result_count: products.length, records: products, privacy: 'Contact details, notes, credentials, and payment-card data are excluded.' };
+  }
+
+  const workOrders = (Array.isArray(db.workOrders) ? db.workOrders : []).filter(matches);
+  const sales = (Array.isArray(db.sales) ? db.sales : []).filter(matches);
+  const unclosedOnly = /\b(unclosed|unchecked|not checked out|open ticket|open tickets)\b/.test(query);
+  const filterUnclosed = (record: any) => !record?.checkoutDate || String(record?.status || '').toLowerCase() !== 'closed';
+  const resultWorkOrders = (unclosedOnly ? workOrders.filter(filterUnclosed) : workOrders).slice(0, limit).map((record: any) => summarize('work_order', record));
+  const resultSales = (unclosedOnly ? sales.filter(filterUnclosed) : sales).slice(0, limit).map((record: any) => summarize('sale', record));
+  const requestedSales = /\b(sale|sales|invoice|invoices)\b/.test(query);
+  const requestedWorkOrders = /\b(work order|workorder|repair|repairs|diagnostic|ticket|tickets)\b/.test(query);
+  const records = requestedSales && !requestedWorkOrders ? resultSales : requestedWorkOrders && !requestedSales ? resultWorkOrders : [...resultWorkOrders, ...resultSales].slice(0, limit);
+  return { source: 'local_pos', mode: 'read_only', scope: requestedSales && !requestedWorkOrders ? 'sales' : requestedWorkOrders && !requestedSales ? 'work_orders' : 'tickets', result_count: records.length, records, privacy: 'Contact details, notes, credentials, and payment-card data are excluded.' };
 }
 
 // Simple atomic write with a tiny in-process queue to serialize writes

@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('api', {
   gidgetLocalStatus: (): Promise<any> => ipcRenderer.invoke('gidget:localStatus'),
   gidgetLocalSetup: (): Promise<any> => ipcRenderer.invoke('gidget:localSetup'),
   gidgetLocalGenerate: (payload: any): Promise<any> => ipcRenderer.invoke('gidget:localGenerate', payload),
+  gidgetLocalPosContext: (query: string): Promise<any> => ipcRenderer.invoke('gidget:localPosContext', query),
   gidgetLocalCancel: (): Promise<any> => ipcRenderer.invoke('gidget:localCancel'),
   onGidgetModelProgress: (cb: (progress: any) => void) => {
     const handler = (_event: any, progress: any) => cb(progress);
