@@ -134,7 +134,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   const otherEvents = events.filter(ev => ev.category !== 'schedule');
 
   return (
-    <div className="p-2 h-full flex flex-col">
+    <div className="p-2 h-full min-h-0 flex flex-col overflow-hidden">
       <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
         <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
         <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>
@@ -143,7 +143,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       </div>
       
       {/* Schedule text display */}
-      <div className="flex-1 space-y-1">
+      <div className="flex-1 min-h-0 space-y-1 overflow-hidden">
         {scheduleEvents.map(ev => {
           const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
           const dayKey = dayNames[day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
@@ -969,28 +969,33 @@ const CalendarWindow: React.FC = () => {
         </div>
       </div>
 
-      {!isMobileCalendar || calendarView === 'month' ? <div className="gb-calendar-month flex-1 flex flex-col overflow-hidden">
+      {!isMobileCalendar || calendarView === 'month' ? <div className="gb-calendar-month flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="grid grid-cols-7 gap-1.5 bg-zinc-800 rounded-lg overflow-hidden">
           {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
             <div key={d} className="text-sm font-medium text-zinc-300 bg-zinc-800 px-2.5 py-2.5 text-center">{d}</div>
           ))}
         </div>
-        <div className="gb-calendar-month-grid grid grid-cols-7 gap-1.5 mt-1.5 flex-1 overflow-hidden" style={{ gridAutoRows: '1fr' }}>
+        <div
+          className="gb-calendar-month-grid grid grid-cols-7 gap-1.5 mt-1.5 flex-1 min-h-0 overflow-hidden"
+          style={{ gridTemplateRows: `repeat(${Math.ceil(monthDays.length / 7)}, minmax(0, 1fr))` }}
+        >
           {(() => { const todayStr = fmtDate(new Date()); return monthDays.map((day, idx) => {
             const key = fmtDate(day);
             const isCurrentMonth = day.getMonth() === current.getMonth();
             return (
-              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} rounded-lg border border-zinc-700 h-full`}>
-                <Cell
-                  day={day}
-                  events={eventsByDay[key] || []}
-                  notes={notesByDay[key] || []}
-                  notesVisible={filters.notes}
-                  onPick={onPick}
-                  onEdit={onEdit}
-                  onOpenNotes={openNotes}
-                  isToday={key === todayStr}
-                />
+              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} rounded-lg border border-zinc-700 h-full min-h-0 overflow-hidden`}>
+                {isCurrentMonth || isMobileCalendar ? (
+                  <Cell
+                    day={day}
+                    events={eventsByDay[key] || []}
+                    notes={notesByDay[key] || []}
+                    notesVisible={filters.notes}
+                    onPick={onPick}
+                    onEdit={onEdit}
+                    onOpenNotes={openNotes}
+                    isToday={key === todayStr}
+                  />
+                ) : null}
               </div>
             );
           }); })()}
@@ -998,45 +1003,73 @@ const CalendarWindow: React.FC = () => {
       </div> : null}
 
       {isMobileCalendar && calendarView === 'week' ? (
-        <div className="gb-calendar-week flex-1 overflow-y-auto">
-          {calendarDays.map((day) => {
-            const key = fmtDate(day);
-            const dayEvents = eventsByDay[key] || [];
-            const isToday = key === fmtDate(new Date());
-            return (
-              <section key={key} className={isToday ? 'is-today' : ''}>
-                <header>
-                  <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
-                    <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
-                    <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                    {isToday ? <em>Today</em> : null}
-                  </button>
-                  <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
-                </header>
-                <div className="gb-calendar-agenda-list">
-                  {dayEvents.map((event, index) => {
-                    const visual = calendarEventVisual(event);
-                    return (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="gb-calendar-week-filter">
+            <label>
+              <span>Week of</span>
+              <input
+                type="date"
+                value={fmtDate(current)}
+                aria-label="Choose a date to show its week"
+                onChange={(event) => {
+                  const selected = new Date(`${event.target.value}T12:00:00`);
+                  if (!Number.isNaN(selected.getTime())) setCurrent(selected);
+                }}
+              />
+            </label>
+          </div>
+          <div className="gb-calendar-week flex-1 min-h-0 overflow-y-auto">
+            {calendarDays.map((day) => {
+              const key = fmtDate(day);
+              const dayEvents = eventsByDay[key] || [];
+              const dayNotes = notesByDay[key] || [];
+              const isToday = key === fmtDate(new Date());
+              return (
+                <section key={key} className={isToday ? 'is-today' : ''}>
+                  <header>
+                    <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
+                      <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
+                      <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                      {isToday ? <em>Today</em> : null}
+                    </button>
+                    <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
+                  </header>
+                  <div className="gb-calendar-agenda-list">
+                    {dayEvents.map((event, index) => {
+                      const visual = calendarEventVisual(event);
+                      return (
+                        <button
+                          key={event.id || `${key}-${index}`}
+                          type="button"
+                          className={`gb-calendar-week-event type-${event.category || 'event'}`}
+                          aria-label={`${visual.label}: ${eventSummary(event)}`}
+                          onClick={() => setViewing(event)}
+                        >
+                          <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                          <span className="gb-calendar-event-copy">
+                            <strong>{eventSummary(event)}</strong>
+                            <small>{visual.label}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {filters.notes ? (
                       <button
-                        key={event.id || `${key}-${index}`}
                         type="button"
-                        className={`gb-calendar-week-event type-${event.category || 'event'}`}
-                        aria-label={`${visual.label}: ${eventSummary(event)}`}
-                        onClick={() => setViewing(event)}
+                        className={`gb-calendar-week-note${dayNotes.length ? ' has-notes' : ''}`}
+                        aria-label={dayNotes.length ? `${dayNotes.length} important note${dayNotes.length === 1 ? '' : 's'} for ${key}` : `Add an important note for ${key}`}
+                        title={dayNotes.length ? dayNotes.map(note => note.subject).filter(Boolean).join('\n') : 'Add an important note'}
+                        onClick={() => openNotes(day)}
                       >
-                        <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
-                        <span className="gb-calendar-event-copy">
-                          <strong>{eventSummary(event)}</strong>
-                          <small>{visual.label}</small>
-                        </span>
+                        {dayNotes.length ? `N${dayNotes.length}` : 'N'}
                       </button>
-                    );
-                  })}
-                  {!dayEvents.length ? <span aria-label="No scheduled activity">—</span> : null}
-                </div>
-              </section>
-            );
-          })}
+                    ) : null}
+                    {!dayEvents.length && (!filters.notes || !dayNotes.length) ? <span aria-label="No scheduled activity">—</span> : null}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -1100,7 +1133,7 @@ const CalendarWindow: React.FC = () => {
       )}
 
       {viewing && (
-        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
           <div className="gb-calendar-event-detail bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800">
               <div className="flex items-center gap-3 min-w-0">
@@ -1178,7 +1211,6 @@ const CalendarWindow: React.FC = () => {
                         onClick={() => {
                           setContentEditorLocked(true);
                           setEditing({ date, title: '', time: '', endTime: '', category: 'content', source: 'streaming', technician: '' });
-                          setContentScheduleOpen(false);
                         }}
                       >
                         +
@@ -1192,7 +1224,7 @@ const CalendarWindow: React.FC = () => {
                             key={entry.id || `${date}-${index}`}
                             type="button"
                             aria-label={`${visual.label}: ${eventSummary(entry)}`}
-                            onClick={() => { setContentScheduleOpen(false); setViewing(entry); }}
+                            onClick={() => setViewing(entry)}
                           >
                             <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
                             <span><strong>{eventSummary(entry)}</strong>{entry.location ? <small>{entry.location}</small> : null}</span>
@@ -1210,7 +1242,7 @@ const CalendarWindow: React.FC = () => {
       )}
 
       {editing && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 w-[520px]">
             <h3 className="font-semibold mb-2">
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}

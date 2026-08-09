@@ -2760,6 +2760,32 @@
     padding-right: 0.15rem;
   }
 
+  .gbpos-mobile .gb-calendar-week-filter {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 0.35rem;
+  }
+
+  .gbpos-mobile .gb-calendar-week-filter label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #d4d4d8;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-calendar-week-filter input {
+    min-height: 2rem;
+    border: 1px solid #52525b;
+    border-radius: 5px;
+    background: #18181b;
+    color: #f4f4f5;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.78rem;
+  }
+
   .gbpos-mobile .gb-calendar-week > section,
   .gbpos-mobile .gb-calendar-day-sections > section {
     margin-bottom: 0.28rem;
@@ -2863,6 +2889,29 @@
     padding: 0 !important;
     border: 0 !important;
     background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week-note {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 2rem !important;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 !important;
+    border: 1px solid #52525b !important;
+    border-radius: 6px;
+    background: #27272a !important;
+    color: #d4d4d8;
+    font-size: 0.65rem;
+    font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-week-note.has-notes {
+    border-color: #fbbf24 !important;
+    background: rgba(251, 191, 36, 0.18) !important;
+    color: #fef3c7;
   }
 
   .gbpos-mobile .gb-calendar-week .gb-calendar-event-icon {

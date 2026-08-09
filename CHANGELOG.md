@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.57 (2026-08-08)
+- Calendar: keeps the Streaming/Content Schedule open while viewing or adding content entries, and keeps desktop month grids within the window with adjacent-month date positions blank.
+- Mobile Calendar: adds a weekly date picker that jumps to the selected date's week, preserves the full cross-month week range, and adds compact per-day Important Notes access.
+- Windows Auto-Update: release retains the verified v0.5.55 update-install behavior without updater changes.
+
 ## v0.5.56 (2026-08-08)
 - Calendar: adds filterable Important Notes with a Notes button on every monthly date cell, hoverable note subjects, and daily subject/body note creation and management.
 - Windows Auto-Update: release is packaged from the verified v0.5.55 updater baseline without changing its update-install flow.
