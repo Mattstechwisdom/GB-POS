@@ -825,10 +825,10 @@ const CalendarWindow: React.FC = () => {
   }, [current]);
 
   return (
-    <div className="gb-calendar-window p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
-      <div className="gb-calendar-header flex items-center justify-between mb-3">
-        <h2 className="text-2xl font-semibold">Calendar - Schedule Management</h2>
-        <div className="gb-calendar-controls flex items-center gap-2">
+    <div className="gb-calendar-window box-border p-4 bg-zinc-900 text-gray-100 h-[100dvh] max-h-[100dvh] min-h-0 flex flex-col overflow-hidden">
+      <div className="gb-calendar-header flex shrink-0 flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
+        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button
             className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
             onClick={() => setContentScheduleOpen(true)}
@@ -870,8 +870,8 @@ const CalendarWindow: React.FC = () => {
       </div>
 
       {/* Event Type Filters */}
-      <div className="gb-calendar-filters mb-2 p-2 bg-zinc-800 rounded-lg">
-        <div className="flex items-center gap-3 text-sm">
+      <div className="gb-calendar-filters shrink-0 mb-2 p-2 bg-zinc-800 rounded-lg">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-zinc-400 font-medium">Show:</span>
           
           <label className="flex items-center gap-2 cursor-pointer">

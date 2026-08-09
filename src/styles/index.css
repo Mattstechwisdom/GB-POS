@@ -31,6 +31,47 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   --neon-purple: #BC13FE;
 }
 
+.gb-calendar-window {
+  block-size: 100dvh;
+  max-block-size: 100dvh;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.gb-calendar-window > .gb-calendar-month,
+.gb-calendar-window > .gb-calendar-week,
+.gb-calendar-window > .gb-calendar-day {
+  min-block-size: 0;
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .gb-calendar-window {
+    padding: 0.75rem;
+  }
+
+  .gb-calendar-header {
+    align-items: flex-start;
+  }
+
+  .gb-calendar-header h2 {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+
+  .gb-calendar-controls {
+    max-width: 100%;
+  }
+
+  .gb-calendar-filters > div {
+    gap: 0.45rem 0.75rem;
+  }
+
+  .gb-calendar-month > .grid:first-child > div {
+    padding: 0.45rem 0.25rem;
+    font-size: 0.75rem;
+  }
+}
+
 .gb-icon-button {
   width: 2.25rem;
   min-width: 2.25rem;

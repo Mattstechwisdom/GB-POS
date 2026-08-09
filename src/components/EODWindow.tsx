@@ -706,6 +706,31 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
   };
 }
 
+function recordLineItems(record: any): string {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const labels = items
+    .map((item: any) => String(item?.description || item?.name || item?.itemDescription || '').trim())
+    .filter(Boolean);
+  return labels.length ? labels.join(', ') : 'No line items recorded';
+}
+
+function recordDeviceName(record: any): string {
+  return String(
+    record?.deviceName
+    || record?.deviceModel
+    || record?.productDescription
+    || record?.productCategory
+    || record?.deviceType
+    || ''
+  ).trim() || 'Device not recorded';
+}
+
+function hasRepairCompleteUpdate(record: any): boolean {
+  const update = String(record?.statusUpdate || '').trim();
+  const repairStatus = String(record?.repairStatus || '').trim();
+  return /^repair complete$/i.test(update) || /^(complete|completed|repair complete)$/i.test(repairStatus);
+}
+
 type UnifiedRow = {
   kind: 'work' | 'sale';
   id: any;
@@ -2416,6 +2441,51 @@ const EODWindow: React.FC = () => {
     };
   }, [sales, unified, workOrders]);
 
+  const unclosedTickets = useMemo(() => {
+    type UnclosedTicket = {
+      kind: UnifiedRow['kind'];
+      id: any;
+      customerName: string;
+      deviceName: string;
+      lineItems: string;
+      paid: number;
+      remaining: number;
+      reasons: string[];
+      repairCompleteSent: boolean;
+    };
+    const tickets: UnclosedTicket[] = [];
+    const addTicket = (kind: UnifiedRow['kind'], record: any) => {
+      const row = normalizeRow(kind, record);
+      if (!row) return;
+      const status = String(row.status || '').trim().toLowerCase();
+      const checkedOut = !!row.checkoutDate && status === 'closed';
+      if (checkedOut) return;
+
+      const repairCompleteSent = kind === 'work' && hasRepairCompleteUpdate(record);
+      const reasons: string[] = [];
+      if (kind === 'work' && row.diagnosticLike && row.paid <= 0.01) reasons.push('Diagnostic fee not taken');
+      if (row.paid > 0.01) reasons.push('Payment taken without checkout');
+      if (repairCompleteSent) reasons.push('Repair Complete update sent while still open');
+      if (!reasons.length) return;
+
+      tickets.push({
+        kind,
+        id: row.id,
+        customerName: row.customerName || 'Client not recorded',
+        deviceName: kind === 'work' ? recordDeviceName(record) : 'Sale',
+        lineItems: recordLineItems(record),
+        paid: row.paid,
+        remaining: row.remaining,
+        reasons,
+        repairCompleteSent,
+      });
+    };
+
+    (workOrders || []).forEach(workOrder => addTicket('work', workOrder));
+    (sales || []).forEach(sale => addTicket('sale', sale));
+    return tickets.sort((left, right) => Number(right.paid) - Number(left.paid));
+  }, [sales, workOrders]);
+
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
 
   const listMeta = useMemo(() => {
@@ -2816,6 +2886,34 @@ const EODWindow: React.FC = () => {
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
                 </div>
+                <section className={`rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className={`text-sm font-semibold ${unclosedTickets.length ? 'text-red-200' : 'text-[#39FF14]'}`}>Unclosed Tickets</h4>
+                      <p className="text-[11px] text-zinc-400">Paid diagnostic, work order, and sale records that still need checkout review.</p>
+                    </div>
+                    <span className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${unclosedTickets.length ? 'border-red-500/50 bg-red-950/50 text-red-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{unclosedTickets.length}</span>
+                  </div>
+                  {unclosedTickets.length ? (
+                    <div className="mt-2 max-h-48 overflow-y-auto rounded border border-red-900/50">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="sticky top-0 bg-zinc-950 text-zinc-400">
+                          <tr><th className="px-2 py-1.5 font-medium">Client / device</th><th className="px-2 py-1.5 font-medium">Items</th><th className="px-2 py-1.5 text-right font-medium">Taken</th><th className="px-2 py-1.5 text-right font-medium">Owed</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          {unclosedTickets.map(ticket => (
+                            <tr key={`${ticket.kind}-${String(ticket.id)}`} className={ticket.repairCompleteSent ? 'bg-red-950/30' : ''}>
+                              <td className="px-2 py-1.5 align-top"><div className="font-semibold text-zinc-100">{ticket.customerName}</div><div className="text-zinc-400">{ticket.kind === 'work' ? ticket.deviceName : 'Sale'} · #{String(ticket.id)}</div><div className="mt-0.5 text-amber-200">{ticket.reasons.join(' · ')}</div></td>
+                              <td className="max-w-36 px-2 py-1.5 align-top text-zinc-300">{ticket.lineItems}</td>
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-[#39FF14]">{formatCurrency(ticket.paid)}</td>
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-amber-200">{formatCurrency(ticket.remaining)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : <p className="mt-2 text-[11px] text-zinc-400">No paid or diagnostic tickets require checkout review.</p>}
+                </section>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
                   <button

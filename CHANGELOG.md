@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.58 (2026-08-09)
+- End of Day Report: adds an Unclosed Tickets reconciliation section for diagnostic work orders, paid-but-unchecked-out work orders and sales, and Repair Complete client updates sent before a work order is closed.
+- Responsive layout: bounds Calendar to the dynamic desktop viewport, reflows its controls and filters in portrait windows, and improves app-shell modal, loading, and table-pane sizing for narrow or rotated displays.
+- Renderer: adds a standalone CSS module declaration so stylesheet side-effect imports resolve correctly in TypeScript.
+- Windows Auto-Update: release retains the verified v0.5.55 update-install behavior without updater changes.
+
 ## v0.5.57 (2026-08-08)
 - Calendar: keeps the Streaming/Content Schedule open while viewing or adding content entries, and keeps desktop month grids within the window with adjacent-month date positions blank.
 - Mobile Calendar: adds a weekly date picker that jumps to the selected date's week, preserves the full cross-month week range, and adds compact per-day Important Notes access.

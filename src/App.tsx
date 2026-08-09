@@ -99,7 +99,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12 pt-12"
+      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12"
       style={{ zIndex }}
       data-modal-shell="1"
     >
@@ -129,7 +129,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
         )}
       </div>
       <React.Suspense fallback={
-        <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
+        <div className="flex min-h-[100dvh] items-center justify-center text-zinc-500">Loading…</div>
       }>
         <ModalContent type={entry.type} onClose={onClose} />
       </React.Suspense>
@@ -615,7 +615,7 @@ const AppInner: React.FC<{
         </aside>
         <main className="flex-1 min-w-0 flex flex-col">
           <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} />
-          <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
             {mode === 'workorders' && (
               <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
             )}
