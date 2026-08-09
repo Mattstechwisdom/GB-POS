@@ -45,6 +45,14 @@ type CalendarEvent = {
   };
 };
 
+type CalendarNote = {
+  id?: number;
+  date: string;
+  subject: string;
+  body: string;
+  createdAt?: string;
+};
+
 function calendarEventVisual(ev: CalendarEvent) {
   if (ev.category === 'content') {
     const streaming = ev.source === 'streaming';
@@ -85,8 +93,8 @@ function addDays(d: Date, days: number) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; isToday?: boolean }>
-  = ({ day, events, onPick, onEdit, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, onPick, onEdit, onOpenNotes, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -181,6 +189,16 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; onPick: (day: Date) =
           })}
         </div>
       )}
+      {notesVisible && (
+        <button
+          type="button"
+          onClick={() => onOpenNotes(day)}
+          title={notes.length ? notes.map(note => note.subject).filter(Boolean).join('\n') : 'No notes for this day. Click to add one.'}
+          className={`mt-2 min-h-9 w-full border rounded px-2 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'border-amber-400/70 bg-amber-400/15 text-amber-100 hover:bg-amber-400/25' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+        >
+          Notes{notes.length ? ` (${notes.length})` : ''}
+        </button>
+      )}
     </div>
   );
 };
@@ -196,6 +214,10 @@ const CalendarWindow: React.FC = () => {
   const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
   const [isMobileCalendar, setIsMobileCalendar] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
+  const [notesDate, setNotesDate] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
+  const [noteSaving, setNoteSaving] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
@@ -217,6 +239,7 @@ const CalendarWindow: React.FC = () => {
     events: true,
     consultation: true,
     content: true,
+    notes: true,
   });
 
   useEffect(() => {
@@ -319,6 +342,14 @@ const CalendarWindow: React.FC = () => {
   // Load events on open
   useEffect(() => {
     let alive = true;
+    const refreshNotes = async () => {
+      try {
+        const list = await (window as any).api.dbGet('calendarNotes');
+        if (alive && Array.isArray(list)) setCalendarNotes(list);
+      } catch (error) {
+        console.error('load calendar notes failed', error);
+      }
+    };
     const refreshEvents = async () => {
       try {
         const [list, customers] = await Promise.all([
@@ -345,8 +376,10 @@ const CalendarWindow: React.FC = () => {
       } catch (e) { console.error('load calendar events failed', e); }
     };
     void refreshEvents();
+    void refreshNotes();
     // Live updates
     const off = (window as any).api.onCalendarEventsChanged?.(() => { void refreshEvents(); });
+    const offNotes = (window as any).api.onCalendarNotesChanged?.(() => { void refreshNotes(); });
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refreshEvents();
     }, 30_000);
@@ -357,6 +390,7 @@ const CalendarWindow: React.FC = () => {
     return () => {
       alive = false;
       if (off) off();
+      if (offNotes) offNotes();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
@@ -454,6 +488,52 @@ const CalendarWindow: React.FC = () => {
     
     return map;
   }, [calendarDays, events, filters, techs]);
+
+  const notesByDay = useMemo(() => {
+    const map: Record<string, CalendarNote[]> = {};
+    for (const note of calendarNotes) {
+      const key = String(note?.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+      if (!map[key]) map[key] = [];
+      map[key].push(note);
+    }
+    for (const list of Object.values(map)) {
+      list.sort((left, right) => String(left.createdAt || '').localeCompare(String(right.createdAt || '')));
+    }
+    return map;
+  }, [calendarNotes]);
+
+  function openNotes(day: Date) {
+    setNotesDate(fmtDate(day));
+    setNoteDraft({ subject: '', body: '' });
+  }
+
+  async function saveNote() {
+    const date = String(notesDate || '').slice(0, 10);
+    const subject = noteDraft.subject.trim();
+    const body = noteDraft.body.trim();
+    if (!date || !subject || !body || noteSaving) return;
+    setNoteSaving(true);
+    try {
+      const added = await (window as any).api.dbAdd('calendarNotes', { date, subject, body, createdAt: new Date().toISOString() });
+      if (added) setCalendarNotes(list => [...list, added]);
+      setNoteDraft({ subject: '', body: '' });
+    } catch (error) {
+      console.error('save calendar note failed', error);
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
+  async function deleteNote(note: CalendarNote) {
+    if (!note.id) return;
+    try {
+      const deleted = await (window as any).api.dbDelete('calendarNotes', note.id);
+      if (deleted) setCalendarNotes(list => list.filter(item => item.id !== note.id));
+    } catch (error) {
+      console.error('delete calendar note failed', error);
+    }
+  }
 
   // Build a simple grouping key for parts events to relate deliveries to an order
   function partsGroupKey(ev: CalendarEvent) {
@@ -859,16 +939,29 @@ const CalendarWindow: React.FC = () => {
             </div>
           </label>
 
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-amber-400"
+              checked={filters.notes}
+              onChange={(event) => setFilters(previous => ({ ...previous, notes: event.target.checked }))}
+            />
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-amber-400 rounded text-black text-xs flex items-center justify-center font-bold">N</div>
+              <span className="text-sm text-zinc-300">Important Notes</span>
+            </div>
+          </label>
+
           <div className="ml-3 flex gap-2">
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true })}
+              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true, notes: true })}
             >
               Select All
             </button>
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false })}
+              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false, notes: false })}
             >
               Clear All
             </button>
@@ -891,8 +984,11 @@ const CalendarWindow: React.FC = () => {
                 <Cell
                   day={day}
                   events={eventsByDay[key] || []}
+                  notes={notesByDay[key] || []}
+                  notesVisible={filters.notes}
                   onPick={onPick}
                   onEdit={onEdit}
+                  onOpenNotes={openNotes}
                   isToday={key === todayStr}
                 />
               </div>
@@ -964,6 +1060,44 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       ) : null}
+
+      {notesDate && (
+        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
+          <div className="bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[90vh] flex flex-col p-4">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-xl font-semibold">Important Notes</h3>
+                <div className="text-sm text-zinc-400">{new Date(`${notesDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
+              </div>
+              <button type="button" className="gb-icon-button" aria-label="Close notes" onClick={() => setNotesDate(null)}>X</button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto space-y-2 pr-1">
+              {(notesByDay[notesDate] || []).length === 0 ? (
+                <div className="text-sm text-zinc-500 py-3">No important notes for this day yet.</div>
+              ) : (notesByDay[notesDate] || []).map(note => (
+                <div key={note.id || `${note.subject}-${note.createdAt}`} className="border border-amber-400/30 bg-amber-400/10 rounded p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="font-semibold text-amber-100">{note.subject}</div>
+                    <button type="button" className="text-xs text-zinc-400 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button>
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-200 whitespace-pre-wrap">{note.body}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <div className="font-semibold text-sm mb-2">Add New Note</div>
+              <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
+              <textarea className="w-full mt-2 h-24 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 resize-y" placeholder="Note" value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setNotesDate(null)}>Close</button>
+                <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
+                  {noteSaving ? 'Saving...' : 'Add New Note'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewing && (
         <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">

@@ -207,6 +207,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('calendarEvents:changed', handler);
     return () => ipcRenderer.removeListener('calendarEvents:changed', handler);
   },
+  onCalendarNotesChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('calendarNotes:changed', handler);
+    return () => ipcRenderer.removeListener('calendarNotes:changed', handler);
+  },
   onNotificationsChanged: (cb: () => void) => {
     const handler = () => cb();
     ipcRenderer.on('notifications:changed', handler);

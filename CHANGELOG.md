@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.56 (2026-08-08)
+- Calendar: adds filterable Important Notes with a Notes button on every monthly date cell, hoverable note subjects, and daily subject/body note creation and management.
+- Windows Auto-Update: release is packaged from the verified v0.5.55 updater baseline without changing its update-install flow.
+
 ## v0.5.55 (2026-08-08)
 - Release checkpoint: packages the current GadgetBoy POS application with the original in-app updater behavior restored, for a clean manual-install baseline before the next update test.
 

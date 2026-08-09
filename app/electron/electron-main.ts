@@ -3143,6 +3143,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
+  calendarNotes: 'calendarNotes:changed',
   timeEntries: 'timeEntries:changed',
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
@@ -3176,7 +3177,7 @@ function scheduleCollectionChanged(key: string) {
 let dbCache: any | null = null;
 
 function defaultDb() {
-  return { customers: [], workOrders: [] };
+  return { customers: [], workOrders: [], calendarNotes: [] };
 }
 
 function readDb() {
@@ -8049,6 +8050,7 @@ const BACKUP_COLLECTION_KEYS = [
   'workOrders',
   'sales',
   'calendarEvents',
+  'calendarNotes',
   'deviceCategories',
   'productCategories',
   'products',
