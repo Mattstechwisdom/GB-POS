@@ -173,6 +173,8 @@ declare global {
       openNotificationSettings?: () => void;
       getNotificationPermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
       requestNotificationPermission?: () => 'requested' | 'granted' | 'denied' | 'unsupported';
+      getMicrophonePermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
+      requestMicrophonePermission?: () => 'requested' | 'granted' | 'denied' | 'unsupported';
       downloadAndInstallApk?: (url: string, fileName?: string) => void;
       downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
     };

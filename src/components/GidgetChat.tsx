@@ -5,6 +5,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { publicAsset } from '../lib/publicAsset';
 import { supabase } from '../lib/supabase';
 import { cancelGidgetWork, generateWithGidget, getLocalGidgetPosContext, gidgetLocalStatus, setupGidgetModel, subscribeGidgetProgress, type GidgetModelProgress } from '../lib/gidgetLocalEngine';
+import { requestMicrophonePermission } from '../lib/platformPermissions';
 import GidgetVoiceSphere from './GidgetVoiceSphere';
 import './GidgetChat.css';
 
@@ -141,6 +142,16 @@ export default function GidgetChat({ open, onClose }: Props) {
       setDeviceStatus(String(error?.message || 'Audio devices could not be read.'));
     }
   }, [gidgetSettings.microphoneId]);
+
+  const requestGidgetMicrophonePermission = useCallback(async () => {
+    const permission = await requestMicrophonePermission();
+    setDeviceStatus(permission === 'granted'
+      ? 'Microphone access is allowed for GadgetBoy POS.'
+      : permission === 'denied'
+        ? 'Microphone access is blocked by the operating system. Enable it in the device app permissions, then retry.'
+        : 'The microphone permission request did not complete. Try again after checking device permissions.');
+    if (permission === 'granted') await refreshAudioDevices();
+  }, [refreshAudioDevices]);
 
   useEffect(() => {
     if (!open) return;
@@ -550,7 +561,7 @@ export default function GidgetChat({ open, onClose }: Props) {
             <div className="gidget-settings-content">
               <section><h3>Access</h3><label><input type="checkbox" checked={gidgetSettings.allowLocalPos} onChange={(event) => updateGidgetSettings({ allowLocalPos: event.target.checked })} /> Read local POS summaries</label><p>Gidget receives capped, read-only ticket, sales, and inventory summaries. It never receives passwords, contact details, notes, or payment-card data.</p><label><input type="checkbox" checked={gidgetSettings.allowOnlineResearch} onChange={(event) => updateGidgetSettings({ allowOnlineResearch: event.target.checked })} /> Allow online research</label><p>Optional web context is sent to the local model after blocked sources are removed. Keep this off for fully offline use.</p><label><input type="checkbox" checked={gidgetSettings.saveCloudHistory} onChange={(event) => updateGidgetSettings({ saveCloudHistory: event.target.checked })} /> Save cloud conversation history</label><p>Only available while signed in. Turning it off keeps new conversations in the current device session.</p></section>
               <section><h3>Blocked URLs</h3><textarea value={gidgetSettings.blockedUrlPatterns} onChange={(event) => updateGidgetSettings({ blockedUrlPatterns: event.target.value })} rows={4} placeholder={'example.com\nuntrusted-source.example'} /><p>One hostname or URL fragment per line. Matches are removed before web context reaches Gidget.</p></section>
-              <section><h3>Voice Dictation</h3><label>Microphone<select value={gidgetSettings.microphoneId} onChange={(event) => updateGidgetSettings({ microphoneId: event.target.value })}><option value="">System default</option>{microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><label>Speaker<select value={gidgetSettings.speakerId} onChange={(event) => updateGidgetSettings({ speakerId: event.target.value })}><option value="">System default</option>{speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><button type="button" onClick={() => void refreshAudioDevices(true)}>Refresh audio devices</button><p>{deviceStatus || 'Voice dictation uses the platform speech service. Speech output follows the operating-system default speaker because browser speech synthesis cannot safely route to a selected device.'}</p></section>
+              <section><h3>Voice Dictation</h3><label>Microphone<select value={gidgetSettings.microphoneId} onChange={(event) => updateGidgetSettings({ microphoneId: event.target.value })}><option value="">System default</option>{microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><label>Speaker<select value={gidgetSettings.speakerId} onChange={(event) => updateGidgetSettings({ speakerId: event.target.value })}><option value="">System default</option>{speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><button type="button" onClick={() => void requestGidgetMicrophonePermission()}>Request microphone access</button><button type="button" onClick={() => void refreshAudioDevices(true)}>Refresh audio devices</button><p>{deviceStatus || 'Voice dictation uses the platform speech service. Speech output follows the operating-system default speaker because browser speech synthesis cannot safely route to a selected device.'}</p></section>
             </div>
           </div>
         ) : historyOpen ? (

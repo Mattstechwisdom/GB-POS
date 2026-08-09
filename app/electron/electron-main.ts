@@ -30,6 +30,16 @@ try {
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 
+function isTrustedRendererPermissionRequest(requestingUrl: string) {
+  try {
+    const url = new URL(String(requestingUrl || ''));
+    return url.protocol === 'file:'
+      || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
 function isExternalUrl(url: string, sourceUrl?: string) {
   try {
     const u = String(url || '').trim();
@@ -7541,9 +7551,14 @@ ipcMain.handle('qr:getServerInfo', async () => {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
-    session.defaultSession.setPermissionCheckHandler((_webContents: any, permission: string) => permission === 'notifications');
-    session.defaultSession.setPermissionRequestHandler((_webContents: any, permission: string, callback: (allowed: boolean) => void) => {
-      callback(permission === 'notifications');
+    session.defaultSession.setPermissionCheckHandler((_webContents: any, permission: string, requestingOrigin: string) => {
+      return permission === 'notifications'
+        || (permission === 'media' && isTrustedRendererPermissionRequest(requestingOrigin));
+    });
+    session.defaultSession.setPermissionRequestHandler((webContents: any, permission: string, callback: (allowed: boolean) => void, details: any) => {
+      const requestedMedia = Array.isArray(details?.mediaTypes) ? details.mediaTypes : [];
+      const allowsMicrophone = permission === 'media' && requestedMedia.includes('audio');
+      callback(permission === 'notifications' || (allowsMicrophone && isTrustedRendererPermissionRequest(webContents?.getURL?.())));
     });
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();

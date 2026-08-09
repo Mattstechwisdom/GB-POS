@@ -35,9 +35,12 @@ public class MainActivity extends BridgeActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 4501;
     private static final String NOTIFICATION_PERMISSION_PREFS = "gbpos_notification_permissions";
     private static final String NOTIFICATION_PERMISSION_REQUESTED = "post_notifications_requested";
+    private static final String MICROPHONE_PERMISSION_REQUESTED = "record_audio_requested";
     private File pendingUpdateApk;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
+    private ActivityResultLauncher<String> microphonePermissionLauncher;
     private volatile boolean notificationPermissionRequestInFlight = false;
+    private volatile boolean microphonePermissionRequestInFlight = false;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -49,6 +52,14 @@ public class MainActivity extends BridgeActivity {
                 notificationPermissionRequestInFlight = false;
                 rememberNotificationPermissionRequested();
                 dispatchNotificationPermissionResult(granted ? "granted" : "denied");
+            }
+        );
+        microphonePermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            granted -> {
+                microphonePermissionRequestInFlight = false;
+                rememberMicrophonePermissionRequested();
+                dispatchMicrophonePermissionResult(granted ? "granted" : "denied");
             }
         );
         if (getBridge() != null && getBridge().getWebView() != null) {
@@ -114,6 +125,49 @@ public class MainActivity extends BridgeActivity {
                 } catch (Exception ignored) {
                     notificationPermissionRequestInFlight = false;
                     dispatchNotificationPermissionResult("denied");
+                }
+            });
+            return "requested";
+        }
+
+        @JavascriptInterface
+        public String getMicrophonePermissionStatus() {
+            if (microphonePermissionRequestInFlight) return "prompt";
+            boolean granted = ContextCompat.checkSelfPermission(
+                MainActivity.this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED;
+            if (granted) return "granted";
+            boolean requested = MainActivity.this.getSharedPreferences(
+                NOTIFICATION_PERMISSION_PREFS,
+                Context.MODE_PRIVATE
+            ).getBoolean(MICROPHONE_PERMISSION_REQUESTED, false);
+            return requested ? "denied" : "prompt";
+        }
+
+        @JavascriptInterface
+        public String requestMicrophonePermission() {
+            String current = getMicrophonePermissionStatus();
+            if ("granted".equals(current)) {
+                dispatchMicrophonePermissionResult("granted");
+                return "granted";
+            }
+            if ("denied".equals(current) || microphonePermissionRequestInFlight) return current;
+            microphonePermissionRequestInFlight = true;
+            MainActivity.this.runOnUiThread(() -> {
+                try {
+                    if (microphonePermissionLauncher != null) {
+                        microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+                    } else {
+                        ActivityCompat.requestPermissions(
+                            MainActivity.this,
+                            new String[]{Manifest.permission.RECORD_AUDIO},
+                            NOTIFICATION_PERMISSION_REQUEST_CODE + 1
+                        );
+                    }
+                } catch (Exception ignored) {
+                    microphonePermissionRequestInFlight = false;
+                    dispatchMicrophonePermissionResult("denied");
                 }
             });
             return "requested";
@@ -289,11 +343,16 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != NOTIFICATION_PERMISSION_REQUEST_CODE) return;
-        notificationPermissionRequestInFlight = false;
-        rememberNotificationPermissionRequested();
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        dispatchNotificationPermissionResult(granted ? "granted" : "denied");
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            notificationPermissionRequestInFlight = false;
+            rememberNotificationPermissionRequested();
+            dispatchNotificationPermissionResult(granted ? "granted" : "denied");
+        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE + 1) {
+            microphonePermissionRequestInFlight = false;
+            rememberMicrophonePermissionRequested();
+            dispatchMicrophonePermissionResult(granted ? "granted" : "denied");
+        }
     }
 
     private void dispatchNotificationPermissionResult(String permission) {
@@ -307,11 +366,29 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    private void dispatchMicrophonePermissionResult(String permission) {
+        runOnUiThread(() -> {
+            if (getBridge() != null) {
+                getBridge().triggerWindowJSEvent(
+                    "gbpos:android-microphone-permission-result",
+                    "{\"permission\":" + JSONObject.quote(permission) + "}"
+                );
+            }
+        });
+    }
+
     private void rememberNotificationPermissionRequested() {
         getSharedPreferences(
             NOTIFICATION_PERMISSION_PREFS,
             Context.MODE_PRIVATE
         ).edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED, true).apply();
+    }
+
+    private void rememberMicrophonePermissionRequested() {
+        getSharedPreferences(
+            NOTIFICATION_PERMISSION_PREFS,
+            Context.MODE_PRIVATE
+        ).edit().putBoolean(MICROPHONE_PERMISSION_REQUESTED, true).apply();
     }
 
     private boolean canInstallPackages() {

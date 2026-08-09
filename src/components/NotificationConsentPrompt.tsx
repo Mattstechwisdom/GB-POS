@@ -30,7 +30,7 @@ const NotificationConsentPrompt: React.FC = () => {
     void (async () => {
       try {
         const settings = await loadDeviceNotificationSettings();
-        if (!forcePreview && settings.permission === 'granted') {
+        if (!forcePreview && (settings.permission === 'granted' || settings.permission === 'denied')) {
           try { localStorage.setItem(CONSENT_KEY, 'acknowledged'); } catch {}
           return;
         }
