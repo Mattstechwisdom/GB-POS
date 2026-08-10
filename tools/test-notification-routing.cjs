@@ -14,6 +14,7 @@ const consentPrompt = read('src/components/NotificationConsentPrompt.tsx');
 const notificationsWindow = read('src/components/NotificationsWindow.tsx');
 const mobileApp = read('src/mobile/MobileApp.tsx');
 const notificationSettingsWindow = read('src/components/NotificationSettingsWindow.tsx');
+const calendarWindow = read('src/components/CalendarWindow.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions');
@@ -41,6 +42,8 @@ assert.match(manifest, /android\.permission\.RECORD_AUDIO/);
 assert.match(activity, /getMicrophonePermissionStatus/);
 assert.match(activity, /requestMicrophonePermission/);
 assert.match(activity, /gbpos:android-microphone-permission-result/);
+assert.match(activity, /dispatchNotificationPermissionResult\(notificationPermissionStatus\(\)\)/);
+assert.match(activity, /return requested \? "denied" : "prompt"/);
 assert.match(calendar, /calendarEventId/);
 assert.match(calendar, /setViewing\(target\)/);
 assert.match(electronMain, /notifications:native-clicked/);
@@ -54,5 +57,8 @@ assert.match(notificationsWindow, /mobileView === 'settings'\)/);
 assert.match(notificationsWindow, /setMobileView\('settings'\);\s*return;/);
 assert.match(notificationSettingsWindow, /Promise\.allSettled/);
 assert.doesNotMatch(notificationSettingsWindow, /Waiting for device/);
+assert.match(calendarWindow, /calendarPreferences/);
+assert.match(calendarWindow, /Calendar Colors/);
+assert.match(calendarWindow, /gb-calendar-period-arrow/);
 
 console.log('Notification permission and destination routing checks passed.');

@@ -716,7 +716,7 @@ async function waitForAndroidBridgePermissionResult(): Promise<DeviceNotificatio
       window.clearInterval(pollTimer);
       window.removeEventListener('gbpos:android-notification-permission-result', onResult as EventListener);
       reject(new Error('Android did not finish the notification permission request.'));
-    }, 20_000);
+    }, 8_000);
     const finish = (next: string) => {
       if (next !== 'granted' && next !== 'denied') return;
       window.clearTimeout(timeout);

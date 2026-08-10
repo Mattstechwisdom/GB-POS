@@ -53,23 +53,45 @@ type CalendarNote = {
   createdAt?: string;
 };
 
-function calendarEventVisual(ev: CalendarEvent) {
+type CalendarColors = {
+  schedule: string;
+  partsOrdered: string;
+  partsDelivery: string;
+  event: string;
+  consultation: string;
+  streaming: string;
+  content: string;
+  notes: string;
+};
+
+const DEFAULT_CALENDAR_COLORS: CalendarColors = {
+  schedule: '#39FF14',
+  partsOrdered: '#3B82F6',
+  partsDelivery: '#22C55E',
+  event: '#EF4444',
+  consultation: '#EAB308',
+  streaming: '#D946EF',
+  content: '#22D3EE',
+  notes: '#FBBF24',
+};
+
+function calendarEventVisual(ev: CalendarEvent, colors: CalendarColors = DEFAULT_CALENDAR_COLORS) {
   if (ev.category === 'content') {
     const streaming = ev.source === 'streaming';
     return {
       short: streaming ? 'LIVE' : 'REC',
       letter: streaming ? 'V' : 'R',
-      color: streaming ? 'bg-fuchsia-500' : 'bg-cyan-400',
+      color: streaming ? colors.streaming : colors.content,
       label: streaming ? 'Streaming' : 'Content recording',
     };
   }
-  if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: 'bg-yellow-500', label: 'Consultation' };
+  if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: colors.consultation, label: 'Consultation' };
   if (ev.category === 'parts') {
     const delivery = ev.partsStatus === 'delivery' || !ev.partsStatus;
-    return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? 'bg-green-500' : 'bg-blue-500', label: delivery ? 'Expected delivery' : 'Part ordered' };
+    return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? colors.partsDelivery : colors.partsOrdered, label: delivery ? 'Expected delivery' : 'Part ordered' };
   }
-  if (ev.category === 'schedule') return { short: 'SHIFT', letter: 'S', color: 'bg-[#39FF14]', label: 'Technician schedule' };
-  return { short: 'EVENT', letter: 'E', color: 'bg-red-500', label: 'Event' };
+  if (ev.category === 'schedule') return { short: 'SHIFT', letter: 'S', color: colors.schedule, label: 'Technician schedule' };
+  return { short: 'EVENT', letter: 'E', color: colors.event, label: 'Event' };
 }
 
 function fmtDate(d: Date) {
@@ -93,21 +115,21 @@ function addDays(d: Date, days: number) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, onPick, onEdit, onOpenNotes, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, colors, onPick, onEdit, onOpenNotes, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
-    if (ev.category === 'event') return { letter: 'E', color: 'bg-red-500', title: `${formatTime12FromHHmm(ev.time || '')} ${ev.title}`.trim() };
+    if (ev.category === 'event') return { letter: 'E', color: colors.event, title: `${formatTime12FromHHmm(ev.time || '')} ${ev.title}`.trim() };
     if (ev.category === 'parts') {
       const status = ev.partsStatus || 'ordered';
       const isSale = ev.source === 'sale';
-      const colorDelivery = isSale ? 'bg-teal-500' : 'bg-green-500';
-      const colorOrdered = isSale ? 'bg-teal-500' : 'bg-blue-500';
+      const colorDelivery = isSale ? colors.content : colors.partsDelivery;
+      const colorOrdered = isSale ? colors.content : colors.partsOrdered;
       if (status === 'delivery') return { letter: 'D', color: colorDelivery, title: `${formatTime12FromHHmm(ev.time || '')} Est. Delivery ${ev.partName || ev.title || ''}`.trim() };
       return { letter: 'O', color: colorOrdered, title: `${formatTime12FromHHmm(ev.time || '')} Ordered ${ev.partName || ev.title || ''}`.trim() };
     }
-    if (ev.category === 'consultation') return { letter: 'C', color: 'bg-yellow-500', title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
+    if (ev.category === 'consultation') return { letter: 'C', color: colors.consultation, title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
     if (ev.category === 'content') {
       const visual = calendarEventVisual(ev);
       return { letter: visual.letter, color: visual.color, title: `${formatTime12FromHHmm(ev.time || '')} ${visual.label}: ${ev.title || ''}`.trim() };
@@ -119,15 +141,15 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       const daySchedule = ev.schedule?.[dayKey];
       
       if (daySchedule?.off) {
-        return { letter: 'X', color: 'bg-gray-500', title: `${ev.technician} - Off` };
+        return { letter: 'X', color: '#71717A', title: `${ev.technician} - Off` };
       } else if (daySchedule?.start && daySchedule?.end) {
         const startTime = formatTime12FromHHmm(daySchedule.start);
         const endTime = formatTime12FromHHmm(daySchedule.end);
-        return { letter: 'T', color: 'bg-[#39FF14]', title: `${ev.technician}: ${startTime} - ${endTime}` };
+        return { letter: 'T', color: colors.schedule, title: `${ev.technician}: ${startTime} - ${endTime}` };
       }
       return null; // No schedule for this day
     }
-    return { letter: ev.title?.[0]?.toUpperCase?.() || '?', color: 'bg-zinc-500', title: ev.title || '' };
+    return { letter: ev.title?.[0]?.toUpperCase?.() || '?', color: '#71717A', title: ev.title || '' };
   }
   // Separate schedule and other events
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
@@ -159,7 +181,8 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
               <div
                 key={ev.id || ev.title + ev.date}
                 onClick={() => onEdit(ev)}
-                className="text-xs text-[#39FF14] cursor-pointer hover:text-[#32E610] transition-colors font-medium whitespace-nowrap"
+                className="text-xs cursor-pointer hover:brightness-125 transition-colors font-medium whitespace-nowrap"
+                style={{ color: colors.schedule }}
                 title={`${ev.technician}: ${startTime} - ${endTime}`}
               >
                 {nickname}: {startTime} - {endTime}
@@ -181,7 +204,8 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
                 key={ev.id || ev.title + ev.date}
                 title={b.title}
                 onClick={() => onEdit(ev)}
-                className={`w-5 h-5 rounded-md ${b.color} text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105`}
+                className="w-5 h-5 rounded-md text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105"
+                style={{ backgroundColor: b.color }}
               >
                 {b.letter}
               </div>
@@ -194,7 +218,8 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
           type="button"
           onClick={() => onOpenNotes(day)}
           title={notes.length ? notes.map(note => note.subject).filter(Boolean).join('\n') : 'No notes for this day. Click to add one.'}
-          className={`mt-2 min-h-9 w-full border rounded px-2 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'border-amber-400/70 bg-amber-400/15 text-amber-100 hover:bg-amber-400/25' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+          className={`mt-2 min-h-9 w-full border rounded px-2 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'text-black hover:brightness-110' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+          style={notes.length ? { borderColor: colors.notes, backgroundColor: colors.notes } : undefined}
         >
           Notes{notes.length ? ` (${notes.length})` : ''}
         </button>
@@ -226,6 +251,10 @@ const CalendarWindow: React.FC = () => {
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
   const [dailyLookAssignedTo, setDailyLookAssignedTo] = useState<string>('');
+  const [calendarColors, setCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
+  const [savedCalendarColors, setSavedCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
+  const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
+  const [calendarSettingsSaving, setCalendarSettingsSaving] = useState(false);
   // For adding multiple estimated delivery dates in one go (parts only)
   const [deliveryDates, setDeliveryDates] = useState<string[]>([]);
   const [deliveryDateInput, setDeliveryDateInput] = useState<string>('');
@@ -241,6 +270,38 @@ const CalendarWindow: React.FC = () => {
     content: true,
     notes: true,
   });
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await (window as any).api.dbGet('calendarPreferences');
+        const stored = Array.isArray(rows) ? rows[0] : null;
+        if (!active || !stored?.colors || typeof stored.colors !== 'object') return;
+        const colors = { ...DEFAULT_CALENDAR_COLORS, ...stored.colors };
+        setCalendarColors(colors);
+        setSavedCalendarColors(colors);
+      } catch {
+        // Calendar presentation uses defaults until preferences can be read.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const saveCalendarColors = async () => {
+    setCalendarSettingsSaving(true);
+    try {
+      const rows = await (window as any).api.dbGet('calendarPreferences');
+      const existing = Array.isArray(rows) ? rows[0] : null;
+      const payload = { ...(existing || {}), colors: calendarColors, updatedAt: new Date().toISOString() };
+      if (existing?.id != null) await (window as any).api.dbUpdate('calendarPreferences', existing.id, payload);
+      else await (window as any).api.dbAdd('calendarPreferences', { ...payload, createdAt: new Date().toISOString() });
+      setSavedCalendarColors(calendarColors);
+      setCalendarSettingsOpen(false);
+    } finally {
+      setCalendarSettingsSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!editing) setNotesExpanded(false);
@@ -830,6 +891,12 @@ const CalendarWindow: React.FC = () => {
         <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
         <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button
+            className="gb-calendar-settings px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+            onClick={() => { setCalendarColors(savedCalendarColors); setCalendarSettingsOpen(true); }}
+          >
+            Settings
+          </button>
+          <button
             className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
             onClick={() => setContentScheduleOpen(true)}
           >
@@ -845,11 +912,11 @@ const CalendarWindow: React.FC = () => {
           >
             Daily Look
           </button>
-          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
+          <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
           <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
             {periodLabel}
           </div>
-          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
+          <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
         </div>
       </div>
 
@@ -882,7 +949,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, schedule: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-[#39FF14] rounded text-black text-xs flex items-center justify-center font-bold">S</div>
+              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.schedule }}>S</div>
               <span className="text-sm text-zinc-300">Schedules</span>
             </div>
           </label>
@@ -895,7 +962,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, parts: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-blue-500 rounded text-black text-xs flex items-center justify-center font-bold">O</div>
+              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.partsOrdered }}>O</div>
               <span className="text-sm text-zinc-300">Orders/Parts</span>
             </div>
           </label>
@@ -908,7 +975,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, events: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-red-500 rounded text-white text-xs flex items-center justify-center font-bold">E</div>
+              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.event }}>E</div>
               <span className="text-sm text-zinc-300">Events</span>
             </div>
           </label>
@@ -921,7 +988,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, consultation: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-yellow-500 rounded text-black text-xs flex items-center justify-center font-bold">C</div>
+              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.consultation }}>C</div>
               <span className="text-sm text-zinc-300">Consultations</span>
             </div>
           </label>
@@ -934,7 +1001,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, content: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-fuchsia-500 rounded text-white text-[9px] flex items-center justify-center font-bold">V</div>
+              <div className="w-4 h-4 rounded text-black text-[9px] flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.streaming }}>V</div>
               <span className="text-sm text-zinc-300">Content</span>
             </div>
           </label>
@@ -947,7 +1014,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(event) => setFilters(previous => ({ ...previous, notes: event.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-amber-400 rounded text-black text-xs flex items-center justify-center font-bold">N</div>
+              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.notes }}>N</div>
               <span className="text-sm text-zinc-300">Important Notes</span>
             </div>
           </label>
@@ -990,6 +1057,7 @@ const CalendarWindow: React.FC = () => {
                     events={eventsByDay[key] || []}
                     notes={notesByDay[key] || []}
                     notesVisible={filters.notes}
+                    colors={calendarColors}
                     onPick={onPick}
                     onEdit={onEdit}
                     onOpenNotes={openNotes}
@@ -1036,7 +1104,7 @@ const CalendarWindow: React.FC = () => {
                   </header>
                   <div className="gb-calendar-agenda-list">
                     {dayEvents.map((event, index) => {
-                      const visual = calendarEventVisual(event);
+                      const visual = calendarEventVisual(event, calendarColors);
                       return (
                         <button
                           key={event.id || `${key}-${index}`}
@@ -1045,7 +1113,7 @@ const CalendarWindow: React.FC = () => {
                           aria-label={`${visual.label}: ${eventSummary(event)}`}
                           onClick={() => setViewing(event)}
                         >
-                          <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                          <span className="gb-calendar-event-icon" style={{ backgroundColor: visual.color }}>{visual.short}</span>
                           <span className="gb-calendar-event-copy">
                             <strong>{eventSummary(event)}</strong>
                             <small>{visual.label}</small>
@@ -1132,15 +1200,40 @@ const CalendarWindow: React.FC = () => {
         </div>
       )}
 
+      {calendarSettingsOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
+          <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[88vh] overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Colors</h3><p className="text-sm text-zinc-400">Choose colors for entries, filters, and technician shifts.</p></div>
+              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setCalendarSettingsOpen(false); }}>X</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                ['schedule', 'Technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['notes', 'Important notes'],
+              ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => (
+                <label key={key} className="flex items-center justify-between gap-3 border border-zinc-700 bg-zinc-800 rounded p-3">
+                  <span className="text-sm font-medium">{label}</span>
+                  <input type="color" value={calendarColors[key]} aria-label={`${label} color`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} />
+                </label>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-between gap-2">
+              <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setCalendarColors(DEFAULT_CALENDAR_COLORS)}>Restore defaults</button>
+              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarColors(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save colors'}</button></div>
+            </div>
+          </section>
+        </div>
+      )}
+
       {viewing && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
           <div className="gb-calendar-event-detail bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800">
               <div className="flex items-center gap-3 min-w-0">
-                <span className={`gb-calendar-event-icon ${calendarEventVisual(viewing).color}`}>{calendarEventVisual(viewing).short}</span>
+                <span className="gb-calendar-event-icon" style={{ backgroundColor: calendarEventVisual(viewing, calendarColors).color }}>{calendarEventVisual(viewing, calendarColors).short}</span>
                 <div className="min-w-0">
-                  <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing).label}</div>
-                  <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing).label}</h3>
+                  <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing, calendarColors).label}</div>
+                  <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing, calendarColors).label}</h3>
                 </div>
               </div>
               <button type="button" className="gb-icon-button" aria-label="Close event details" onClick={() => setViewing(null)}>X</button>

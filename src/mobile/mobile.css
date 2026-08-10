@@ -2587,7 +2587,7 @@
 
   .gbpos-mobile .gb-calendar-controls {
     display: grid !important;
-    grid-template-columns: 2.5rem minmax(7.5rem, auto) 2.5rem !important;
+    grid-template-columns: minmax(3.25rem, 1fr) minmax(8rem, 1.25fr) minmax(3.25rem, 1fr) !important;
     gap: 0.35rem !important;
     flex-wrap: nowrap !important;
   }
@@ -2599,11 +2599,27 @@
 
   .gbpos-mobile .gb-calendar-content-schedule {
     grid-column: 1 / -1;
+    order: 1;
     min-height: 2.75rem !important;
     font-weight: 800;
+    text-align: center;
+  }
+
+  .gbpos-mobile .gb-calendar-settings {
+    grid-column: 1 / -1;
+    order: 2;
+    justify-self: center;
+    min-width: 8.5rem;
+  }
+
+  .gbpos-mobile .gb-calendar-period-arrow {
+    order: 3;
+    min-height: 3rem !important;
+    font-size: 1.3rem;
   }
 
   .gbpos-mobile .gb-calendar-period {
+    order: 3;
     width: auto !important;
     font-size: 0.78rem !important;
     white-space: nowrap;

@@ -70,15 +70,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            boolean granted = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED;
-            dispatchNotificationPermissionResult(granted ? "granted" : "denied");
-        } else {
-            dispatchNotificationPermissionResult("granted");
-        }
+        dispatchNotificationPermissionResult(notificationPermissionStatus());
         if (pendingUpdateApk != null && canInstallPackages()) {
             File apkFile = pendingUpdateApk;
             pendingUpdateApk = null;
@@ -89,18 +81,7 @@ public class MainActivity extends BridgeActivity {
     public class GBPosAndroidBridge {
         @JavascriptInterface
         public String getNotificationPermissionStatus() {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted";
-            if (notificationPermissionRequestInFlight) return "prompt";
-            boolean granted = ContextCompat.checkSelfPermission(
-                MainActivity.this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED;
-            if (granted) return "granted";
-            boolean requested = MainActivity.this.getSharedPreferences(
-                NOTIFICATION_PERMISSION_PREFS,
-                Context.MODE_PRIVATE
-            ).getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false);
-            return requested ? "denied" : "prompt";
+            return notificationPermissionStatus();
         }
 
         @JavascriptInterface
@@ -364,6 +345,21 @@ public class MainActivity extends BridgeActivity {
                 );
             }
         });
+    }
+
+    private String notificationPermissionStatus() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "granted";
+        if (notificationPermissionRequestInFlight) return "prompt";
+        boolean granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED;
+        if (granted) return "granted";
+        boolean requested = getSharedPreferences(
+            NOTIFICATION_PERMISSION_PREFS,
+            Context.MODE_PRIVATE
+        ).getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false);
+        return requested ? "denied" : "prompt";
     }
 
     private void dispatchMicrophonePermissionResult(String permission) {
