@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Process;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -356,11 +357,27 @@ public class MainActivity extends BridgeActivity {
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED;
         if (granted) return "granted";
+        if (notificationPermissionWasDecidedByAndroid()) return "denied";
         boolean requested = getSharedPreferences(
             NOTIFICATION_PERMISSION_PREFS,
             Context.MODE_PRIVATE
         ).getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false);
         return requested ? "denied" : "prompt";
+    }
+
+    private boolean notificationPermissionWasDecidedByAndroid() {
+        try {
+            int flags = getPackageManager().getPermissionFlags(
+                Manifest.permission.POST_NOTIFICATIONS,
+                getPackageName(),
+                Process.myUserHandle()
+            );
+            int userDecisionFlags = PackageManager.FLAG_PERMISSION_USER_SET
+                | PackageManager.FLAG_PERMISSION_USER_FIXED;
+            return (flags & userDecisionFlags) != 0;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void dispatchMicrophonePermissionResult(String permission) {

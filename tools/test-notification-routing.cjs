@@ -37,6 +37,8 @@ assert.match(activity, /notificationPermissionRequestInFlight = true/);
 assert.match(activity, /if \(notificationPermissionRequestInFlight\) return "prompt"/);
 assert.match(activity, /if \("denied"\.equals\(current\)\)/);
 assert.match(activity, /ActivityCompat\.requestPermissions\([\s\S]*Manifest\.permission\.POST_NOTIFICATIONS/);
+assert.match(activity, /notificationPermissionWasDecidedByAndroid/);
+assert.match(activity, /PackageManager\.FLAG_PERMISSION_USER_SET/);
 assert.match(notifications, /waitForAndroidBridgePermissionResult.*getNotificationPermissionStatus/s);
 assert.match(notifications, /isNativeAndroid\s*&& typeof window\.GBPosAndroid\?\.requestNotificationPermission/);
 assert.match(notifications, /permission === 'prompt'/);
