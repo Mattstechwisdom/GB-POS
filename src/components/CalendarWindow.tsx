@@ -120,6 +120,14 @@ function addDays(d: Date, days: number) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
+function activeShiftEvents(day: Date, events: CalendarEvent[]) {
+  const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
+  return events.filter((event) => {
+    const shift = event.category === 'schedule' ? event.schedule?.[dayKey] : null;
+    return Boolean(shift && !shift.off && (shift.start || shift.end));
+  });
+}
+
 const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
   = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onEdit, onOpenNotes, isToday }) => {
   const dayNum = day.getDate();
@@ -252,6 +260,7 @@ const CalendarWindow: React.FC = () => {
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
+  const [shiftDay, setShiftDay] = useState<string | null>(null);
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
@@ -1095,6 +1104,8 @@ const CalendarWindow: React.FC = () => {
               const key = fmtDate(day);
               const dayEvents = eventsByDay[key] || [];
               const dayNotes = notesByDay[key] || [];
+              const activeShifts = activeShiftEvents(day, dayEvents);
+              const nonShiftEvents = dayEvents.filter((event) => event.category !== 'schedule');
               const isToday = key === fmtDate(new Date());
               return (
                 <section key={key} className={isToday ? 'is-today' : ''}>
@@ -1107,7 +1118,8 @@ const CalendarWindow: React.FC = () => {
                     <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
                   </header>
                   <div className="gb-calendar-agenda-list">
-                    {dayEvents.map((event, index) => {
+                    {activeShifts.length ? <button type="button" className="gb-calendar-week-shifts" aria-label={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'} for ${key}`} onClick={() => setShiftDay(key)}><span style={{ backgroundColor: calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
+                    {nonShiftEvents.map((event, index) => {
                       const visual = calendarEventVisual(event, calendarColors);
                       return (
                         <button
@@ -1133,10 +1145,10 @@ const CalendarWindow: React.FC = () => {
                         title={dayNotes.length ? dayNotes.map(note => note.subject).filter(Boolean).join('\n') : 'Add an important note'}
                         onClick={() => openNotes(day)}
                       >
-                        {dayNotes.length ? `N${dayNotes.length}` : 'N'}
+                        <span>N</span>{dayNotes.length ? <strong>{dayNotes.length}</strong> : null}
                       </button>
                     ) : null}
-                    {!dayEvents.length && (!filters.notes || !dayNotes.length) ? <span aria-label="No scheduled activity">—</span> : null}
+                    {!activeShifts.length && !nonShiftEvents.length && (!filters.notes || !dayNotes.length) ? <span aria-label="No scheduled activity">—</span> : null}
                   </div>
                 </section>
               );
@@ -1203,6 +1215,20 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {shiftDay && (() => {
+        const day = new Date(`${shiftDay}T12:00:00`);
+        const shifts = activeShiftEvents(day, eventsByDay[shiftDay] || []);
+        const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
+        return <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
+          <section className="gb-calendar-shifts-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] flex flex-col p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-shifts-title">
+            <div className="flex items-start justify-between gap-3 mb-4"><div><h3 id="calendar-shifts-title" className="text-xl font-semibold">Active Shifts</h3><div className="text-sm text-zinc-400">{day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div><button type="button" className="gb-icon-button" aria-label="Close active shifts" onClick={() => setShiftDay(null)}>X</button></div>
+            <div className="min-h-0 overflow-y-auto space-y-2 pr-1">
+              {shifts.map((event, index) => { const shift = event.schedule?.[dayKey]; return <div key={event.id || `${event.technician}-${index}`} className="flex items-center justify-between gap-3 border border-zinc-700 bg-zinc-800 rounded p-3"><strong>{event.technician || 'Technician'}</strong><span className="text-sm text-zinc-300">{formatTime12FromHHmm(shift?.start || '')} - {formatTime12FromHHmm(shift?.end || '')}</span></div>; })}
+            </div>
+          </section>
+        </div>;
+      })()}
 
       {calendarSettingsOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
