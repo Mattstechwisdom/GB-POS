@@ -55,6 +55,10 @@ const NotificationConsentPrompt: React.FC = () => {
     setRequesting(true);
     setError('');
     setDenied(false);
+    const releaseUiTimer = window.setTimeout(() => {
+      setRequesting(false);
+      setError('Android did not show the permission request. You can continue using GadgetBoy POS or open Android settings to enable notifications.');
+    }, 10_000);
     try {
       const settings = await requestDeviceNotificationPermission();
       if (settings.permission === 'granted') {
@@ -73,6 +77,7 @@ const NotificationConsentPrompt: React.FC = () => {
     } catch (requestError: any) {
       setError(requestError?.message || 'Notification permission could not be requested.');
     } finally {
+      window.clearTimeout(releaseUiTimer);
       setRequesting(false);
     }
   };
@@ -93,10 +98,10 @@ const NotificationConsentPrompt: React.FC = () => {
           <button type="button" className="allow" onClick={() => void allowNotifications()} disabled={requesting}>
             {requesting ? `Waiting for ${isAndroid ? 'Android' : 'Windows'}...` : 'Allow notifications'}
           </button>
-          {denied ? (
+          {(denied || (isAndroid && error)) ? (
             <button type="button" onClick={() => void openDeviceNotificationSystemSettings()}>Open device settings</button>
           ) : (
-            <button type="button" onClick={() => { rememberDecision(); setVisible(false); }} disabled={requesting}>Not now</button>
+            <button type="button" onClick={() => { rememberDecision(); setVisible(false); }}>Not now</button>
           )}
         </div>
         <small>You can change notification categories later from Notifications.</small>

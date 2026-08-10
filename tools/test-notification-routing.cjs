@@ -55,6 +55,8 @@ assert.match(electronMain, /permission === 'media' && isTrustedRendererPermissio
 assert.match(electronMain, /requestedMedia\.includes\('audio'\)/);
 assert.match(consentPrompt, /if \(!forcePreview && \(settings\.permission === 'granted' \|\| settings\.permission === 'denied'\)\)/);
 assert.match(consentPrompt, /localStorage\.setItem\(CONSENT_KEY, 'acknowledged'\)/);
+assert.match(consentPrompt, /Android did not show the permission request/);
+assert.doesNotMatch(consentPrompt, /setVisible\(false\); \}\} disabled=\{requesting\}/);
 const openNotifications = mobileApp.slice(mobileApp.indexOf('const openNotifications'), mobileApp.indexOf('useEffect(() =>', mobileApp.indexOf('const openNotifications')));
 assert.doesNotMatch(openNotifications, /requestDeviceNotificationPermission/);
 assert.match(notificationsWindow, /mobileView === 'settings'\)/);
