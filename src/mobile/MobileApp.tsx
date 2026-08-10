@@ -1198,7 +1198,6 @@ function MobileDrawer(props: {
   });
   const technicianTools = [
     ['technicians', 'Technicians'],
-    ['calendar', 'Calendar'],
     ['diagnosticTools', 'Diagnostic Tools'],
   ] as const;
   const adminTools = [
@@ -1209,9 +1208,9 @@ function MobileDrawer(props: {
     ['dataTools', 'Data Tools'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
-  const handleOpenModal = (type: string) => {
+  const handleOpenModal = (type: string, payload?: any) => {
     onClose();
-    onOpenModal(type);
+    onOpenModal(type, payload);
   };
 
   if (!open) return null;
@@ -1235,6 +1234,8 @@ function MobileDrawer(props: {
         </div>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
+          <DrawerButton label="Calendar" onClick={() => handleOpenModal('calendar')} />
+          <DrawerButton label="Daily Look" onClick={() => handleOpenModal('calendar', { dailyLook: true })} />
           {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 

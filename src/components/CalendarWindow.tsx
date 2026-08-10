@@ -229,11 +229,11 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
 };
 
 const CalendarWindow: React.FC = () => {
+  const calendarPayload = useMemo(() => consumeWindowPayload('calendar'), []);
   const targetEventId = useMemo(() => {
-    const payload = consumeWindowPayload('calendar');
     const queryId = new URLSearchParams(window.location.search).get('calendarEventId');
-    return Number(payload?.calendarEventId || queryId || 0) || 0;
-  }, []);
+    return Number(calendarPayload?.calendarEventId || queryId || 0) || 0;
+  }, [calendarPayload]);
   const targetOpenedRef = useRef(false);
   const [current, setCurrent] = useState<Date>(new Date());
   const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
@@ -248,7 +248,7 @@ const CalendarWindow: React.FC = () => {
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
-  const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
+  const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
   const [dailyLookAssignedTo, setDailyLookAssignedTo] = useState<string>('');
   const [calendarColors, setCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
@@ -888,35 +888,27 @@ const CalendarWindow: React.FC = () => {
   return (
     <div className="gb-calendar-window box-border p-4 bg-zinc-900 text-gray-100 h-[100dvh] max-h-[100dvh] min-h-0 flex flex-col overflow-hidden">
       <div className="gb-calendar-header flex shrink-0 flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
-        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
-          <button
-            className="gb-calendar-settings px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-            onClick={() => { setCalendarColors(savedCalendarColors); setCalendarSettingsOpen(true); }}
-          >
-            Settings
-          </button>
+        <div className="gb-calendar-title-actions flex min-w-0 flex-wrap items-center gap-2">
+          <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
           <button
             className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
             onClick={() => setContentScheduleOpen(true)}
           >
             Streaming/Content Schedule
           </button>
-          <button
-            className="gb-calendar-daily-look px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-            onClick={() => {
-              setDailyLookDate(fmtDate(new Date()));
-              setDailyLookAssignedTo('');
-              setDailyLookOpen(true);
-            }}
-          >
-            Daily Look
-          </button>
+        </div>
+        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
           <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
             {periodLabel}
           </div>
           <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
+          <button
+            className="gb-calendar-settings px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+            onClick={() => { setCalendarColors(savedCalendarColors); setCalendarSettingsOpen(true); }}
+          >
+            Settings
+          </button>
         </div>
       </div>
 

@@ -2585,6 +2585,18 @@
     line-height: 1.2 !important;
   }
 
+  .gbpos-mobile .gb-calendar-title-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.5rem;
+  }
+
+  .gbpos-mobile .gb-calendar-title-actions .gb-calendar-content-schedule {
+    min-height: 2.75rem !important;
+    font-weight: 800;
+    text-align: center;
+  }
+
   .gbpos-mobile .gb-calendar-controls {
     display: grid !important;
     grid-template-columns: minmax(3.25rem, 1fr) minmax(8rem, 1.25fr) minmax(3.25rem, 1fr) !important;
@@ -2595,14 +2607,6 @@
   .gbpos-mobile .gb-calendar-controls > button {
     min-height: 2.5rem;
     padding: 0.35rem !important;
-  }
-
-  .gbpos-mobile .gb-calendar-content-schedule {
-    grid-column: 1 / -1;
-    order: 1;
-    min-height: 2.75rem !important;
-    font-weight: 800;
-    text-align: center;
   }
 
   .gbpos-mobile .gb-calendar-settings {

@@ -15,6 +15,7 @@ const notificationsWindow = read('src/components/NotificationsWindow.tsx');
 const mobileApp = read('src/mobile/MobileApp.tsx');
 const notificationSettingsWindow = read('src/components/NotificationSettingsWindow.tsx');
 const calendarWindow = read('src/components/CalendarWindow.tsx');
+const toolbar = read('src/components/Toolbar.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions');
@@ -60,5 +61,10 @@ assert.doesNotMatch(notificationSettingsWindow, /Waiting for device/);
 assert.match(calendarWindow, /calendarPreferences/);
 assert.match(calendarWindow, /Calendar Colors/);
 assert.match(calendarWindow, /gb-calendar-period-arrow/);
+assert.match(calendarWindow, /Boolean\(calendarPayload\?\.dailyLook\)/);
+assert.match(calendarWindow, /gb-calendar-title-actions/);
+assert.doesNotMatch(calendarWindow, /gb-calendar-daily-look/);
+assert.match(toolbar, /dispatchOpenModal\('calendar', \{ dailyLook: true \}\)/);
+assert.match(mobileApp, /handleOpenModal\('calendar', \{ dailyLook: true \}\)/);
 
 console.log('Notification permission and destination routing checks passed.');
