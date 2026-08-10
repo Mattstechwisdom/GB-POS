@@ -745,8 +745,7 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
   if (
     isNativeAndroid
     && typeof window.GBPosAndroid?.requestNotificationPermission === 'function'
-    && permission !== 'granted'
-    && permission !== 'unsupported'
+    && permission === 'prompt'
   ) {
     try {
       const requestState = String(window.GBPosAndroid.requestNotificationPermission() || '').toLowerCase();
@@ -759,12 +758,13 @@ async function performDeviceNotificationPermissionRequest(): Promise<DeviceNotif
   }
 
   // Some older APK shells do not expose the custom bridge. Use Capacitor's
-  // plugin there, and also retry through it if the bridge produced no result.
+  // plugin only when no direct Android bridge is available; two concurrent
+  // runtime permission requests can prevent Android from displaying either UI.
   if (
     isNativeAndroid
     && native?.requestPermissions
-    && permission !== 'granted'
-    && permission !== 'unsupported'
+    && permission === 'prompt'
+    && typeof window.GBPosAndroid?.requestNotificationPermission !== 'function'
   ) {
     try {
       const status: any = await withTimeout(

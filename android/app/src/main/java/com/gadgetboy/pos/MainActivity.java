@@ -91,18 +91,19 @@ public class MainActivity extends BridgeActivity {
                 dispatchNotificationPermissionResult("granted");
                 return "granted";
             }
+            if ("denied".equals(current)) {
+                dispatchNotificationPermissionResult("denied");
+                return "denied";
+            }
+            if (notificationPermissionRequestInFlight) return "requested";
             notificationPermissionRequestInFlight = true;
             MainActivity.this.runOnUiThread(() -> {
                 try {
-                    if (notificationPermissionLauncher != null) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
-                    } else {
-                        ActivityCompat.requestPermissions(
-                            MainActivity.this,
-                            new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                            NOTIFICATION_PERMISSION_REQUEST_CODE
-                        );
-                    }
+                    ActivityCompat.requestPermissions(
+                        MainActivity.this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST_CODE
+                    );
                 } catch (Exception ignored) {
                     notificationPermissionRequestInFlight = false;
                     dispatchNotificationPermissionResult("denied");
