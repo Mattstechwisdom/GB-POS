@@ -132,6 +132,7 @@ async function main() {
   await importWorkOrders(shopId, customerMap, workOrderMap);
   await linkWorkOrderAddOnSales(shopId, workOrderMap, saleMap);
   await importCalendarEvents(shopId, customerMap, workOrderMap, saleMap);
+  await importCalendarNotes(shopId);
   await importPayloadTable(shopId, 'invoices', collections.invoices, mapPayloadOnly);
   await importPayments(shopId, customerMap, workOrderMap, saleMap);
   await importTimeEntries(shopId, staffMap);
@@ -478,6 +479,19 @@ async function importCalendarEvents(shopId, customerMap, workOrderMap, saleMap) 
   await upsert('calendar_events', rows, 'shop_id,legacy_id');
 }
 
+async function importCalendarNotes(shopId) {
+  const rows = arr(collections.calendarNotes).map((note) => ({
+    shop_id: shopId,
+    legacy_id: intId(note.id),
+    note_date: dateOnly(note.date),
+    subject: str(note.subject),
+    body: str(note.body),
+    legacy_created_at: toIso(note.createdAt),
+    legacy_updated_at: toIso(note.updatedAt),
+  })).filter((row) => row.legacy_id !== null);
+  await upsert('calendar_notes', rows, 'shop_id,legacy_id');
+}
+
 async function importPayments(shopId, customerMap, workOrderMap, saleMap) {
   const rows = arr(collections.payments).map((p) => ({
     shop_id: shopId,
@@ -641,6 +655,7 @@ async function verifyCounts(shopId) {
     ['sales', counts.sales],
     ['quotes', counts.quotes],
     ['calendar_events', counts.calendarEvents],
+    ['calendar_notes', counts.calendarNotes],
     ['device_categories', counts.deviceCategories],
     ['products', counts.products],
     ['repair_categories', counts.repairCategories],

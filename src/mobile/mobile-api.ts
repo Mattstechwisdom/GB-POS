@@ -18,6 +18,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   workOrders: 'work_orders',
   sales: 'sales',
   calendarEvents: 'calendar_events',
+  calendarNotes: 'calendar_notes',
   deviceCategories: 'device_categories',
   productCategories: 'product_categories',
   products: 'products',
@@ -50,6 +51,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
+  calendarNotes: 'calendarNotes:changed',
   timeEntries: 'timeEntries:changed',
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
@@ -411,6 +413,17 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'calendarNotes') {
+    return {
+      id,
+      date: row.note_date || '',
+      subject: row.subject || '',
+      body: row.body || '',
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -801,6 +814,19 @@ function toCloudRow(key: string, item: any): any | null {
       model: toCloudString(item.model),
       track_stock: toCloudBool(item.trackStock),
       inventory_product_id: toCloudIntId(item.inventoryProductId),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'calendarNotes') {
+    const legacy_id = toCloudIntId(item.id);
+    if (legacy_id === null) return null;
+    return {
+      shop_id,
+      legacy_id,
+      note_date: toCloudDateOnly(item.date),
+      subject: toCloudString(item.subject),
+      body: toCloudString(item.body),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -1864,6 +1890,7 @@ function makeApi() {
     onQuotesChanged: 'quotes:changed',
     onPartSourcesChanged: 'partSources:changed',
     onCalendarEventsChanged: 'calendarEvents:changed',
+    onCalendarNotesChanged: 'calendarNotes:changed',
     onNotificationsChanged: 'notifications:changed',
     onNotificationSettingsChanged: 'notificationSettings:changed',
     onTimeEntriesChanged: 'timeEntries:changed',

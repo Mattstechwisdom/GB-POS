@@ -462,10 +462,16 @@ const CalendarWindow: React.FC = () => {
     const off = (window as any).api.onCalendarEventsChanged?.(() => { void refreshEvents(); });
     const offNotes = (window as any).api.onCalendarNotesChanged?.(() => { void refreshNotes(); });
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshEvents();
+      if (document.visibilityState === 'visible') {
+        void refreshEvents();
+        void refreshNotes();
+      }
     }, 30_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refreshEvents();
+      if (document.visibilityState === 'visible') {
+        void refreshEvents();
+        void refreshNotes();
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
