@@ -17,8 +17,17 @@ import {
   type CommissionSettings,
 } from '@/lib/commission';
 
-function startOfPeriod(date: Date, period: 'day' | 'week' | 'month' | 'year') {
-  const d = new Date(date);
+function reportDate(value: any): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+  if (typeof value === 'number' || typeof value === 'string') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function startOfPeriod(value: any, period: 'day' | 'week' | 'month' | 'year') {
+  const d = reportDate(value) || new Date(0);
   if (period === 'day') {
     d.setHours(0,0,0,0);
   } else if (period === 'week') {
@@ -62,8 +71,8 @@ function money(value: number | null | undefined) {
 }
 
 function dateOnly(value: any) {
-  const d = new Date(value || 0);
-  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  const d = reportDate(value);
+  return d ? d.toISOString().slice(0, 10) : '';
 }
 
 function monthRange(monthValue: string) {
@@ -78,11 +87,13 @@ function monthRange(monthValue: string) {
   return { start, end };
 }
 
-function dateInRange(value: any, start: Date, end: Date) {
-  const d = new Date(value || 0);
-  if (Number.isNaN(d.getTime())) return false;
+function dateInRange(value: any, start: any, end: any) {
+  const d = reportDate(value);
+  const startDate = reportDate(start);
+  const endDate = reportDate(end);
+  if (!d || !startDate || !endDate) return false;
   const t = d.getTime();
-  return t >= start.getTime() && t <= end.getTime();
+  return t >= startDate.getTime() && t <= endDate.getTime();
 }
 
 function todayInputValue() {
@@ -637,8 +648,9 @@ const ReportingWindow: React.FC = () => {
         taxRate: Number(w.taxRate || 0),
         amountPaid: Number(w.amountPaid || 0),
       });
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
-      const bucket = startOfPeriod(d, period).toISOString().slice(0,10);
+      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
+      const periodStart = startOfPeriod(d, period);
+      const bucket = periodStart.toISOString().slice(0,10);
       const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 };
   const labor = Number(w.laborCost || 0);
   const parts = Number(w.partCosts || 0);
@@ -661,8 +673,8 @@ const ReportingWindow: React.FC = () => {
       map.set(bucket, prev);
     }
     for (const purchase of filteredPurchases) {
-      const d = new Date(purchaseReportDate(purchase));
-      const bucket = startOfPeriod(d, period).toISOString().slice(0,10);
+      const periodStart = startOfPeriod(purchaseReportDate(purchase), period);
+      const bucket = periodStart.toISOString().slice(0,10);
       const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 };
       prev.supplierSpend += verifiedPurchaseTotal(purchase);
       map.set(bucket, prev);
