@@ -930,16 +930,14 @@ function cloudRecordKeyForQrType(type: 'repair' | 'sale' | 'consult'): string {
   return 'workOrders';
 }
 
-function getHostedAppUrl(): string {
-  const envUrl = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || '').trim();
-  if (envUrl) return envUrl.replace(/\/+$/, '');
-  try {
-    const origin = String(window.location.origin || '').trim();
-    if (/^https?:\/\//i.test(origin)) return origin.replace(/\/+$/, '');
-  } catch {
-    // ignore
-  }
-  return 'https://gb-pos-production.up.railway.app';
+function getQrStatusFunctionBase(): string {
+  const supabaseUrl = String(cloudSession?.supabaseUrl || (import.meta as any)?.env?.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  if (!supabaseUrl) throw new Error('Supabase is not configured for cloud QR status links.');
+  return `${supabaseUrl}/functions/v1/qr-status`;
+}
+
+function getQrStatusFunctionUrl(token: string): string {
+  return `${getQrStatusFunctionBase()}?token=${encodeURIComponent(token)}`;
 }
 
 function makeQrToken(): string {
@@ -966,9 +964,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {
-    return type === 'consult'
-      ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
-      : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
+    return getQrStatusFunctionUrl(existing.data.token);
   }
 
   const recordKey = cloudRecordKeyForQrType(type);
@@ -999,9 +995,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
       .select('token')
       .single();
     if (!inserted.error && inserted.data?.token) {
-      return type === 'consult'
-        ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
-        : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
+        return getQrStatusFunctionUrl(inserted.data.token);
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
       throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
@@ -1851,7 +1845,7 @@ function makeApi() {
       }
     },
     qrGetDataUrl: async () => ({ ok: false, error: 'QR generation is desktop-only.' }),
-    qrGetServerInfo: async () => ({ ok: true, hostUrl: getHostedAppUrl(), ipUrl: getHostedAppUrl() }),
+    qrGetServerInfo: async () => ({ ok: true, hostUrl: getQrStatusFunctionBase(), ipUrl: getQrStatusFunctionBase() }),
   };
 
   for (const method of Object.keys(API_TO_MODAL)) {
