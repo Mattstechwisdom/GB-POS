@@ -18,7 +18,6 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
-import NotificationConsentPrompt from './components/NotificationConsentPrompt';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
@@ -647,7 +646,6 @@ const AppInner: React.FC<{
       ))}
       <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
       <PlatformPermissionHandshake />
-      <NotificationConsentPrompt />
     </div>
   );
 };

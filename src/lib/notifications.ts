@@ -321,9 +321,9 @@ function kindLabel(kind: NotificationKind): string {
   }
 }
 
-async function sendDeviceNotification(rec: NotificationRecord, settings?: DeviceNotificationSettings) {
+async function sendDeviceNotification(rec: NotificationRecord, settings?: DeviceNotificationSettings): Promise<boolean> {
   const deviceSettings = settings || await loadDeviceNotificationSettings();
-  if (!channelEnabledForKind(deviceSettings, rec.kind)) return;
+  if (!channelEnabledForKind(deviceSettings, rec.kind)) return false;
   const title = String(rec.title || 'GadgetBoy POS').trim();
   const body = String(rec.message || '').trim();
   const id = notificationIdForKey(rec.key || `${rec.kind}:${title}:${rec.eventAt || rec.createdAt}`);
@@ -332,7 +332,7 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
   if (typeof desktopApi?.notificationSendNative === 'function') {
     try {
       const result = await desktopApi.notificationSendNative({ title, body, key: rec.key, record: rec });
-      if (result?.ok) return;
+      if (result?.ok) return true;
     } catch {
       // Fall through to mobile or browser notification delivery.
     }
@@ -355,10 +355,10 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
           iconColor: '#BC13FE',
           autoCancel: true,
           extra: { gbposRecord: rec },
-          schedule: { at: new Date(Date.now() + 250) },
+          schedule: { at: new Date(Date.now() + 2_000), allowWhileIdle: true },
         }],
       });
-      return;
+      return true;
     } catch {
       // fall through to browser API
     }
@@ -367,10 +367,12 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
       new Notification(title, { body, tag: rec.key, icon: publicAsset('logo.png') });
+      return true;
     } catch {
       // ignore
     }
   }
+  return false;
 }
 
 export async function scheduleDeviceConsultationReminders(calendarInput?: any[], settingsInput?: DeviceNotificationSettings): Promise<void> {
@@ -660,14 +662,17 @@ export async function saveNotificationSettings(next: NotificationSettings): Prom
 export async function loadDeviceNotificationSettings(): Promise<DeviceNotificationSettings> {
   const stored = loadJson<Partial<DeviceNotificationSettings>>(DEVICE_SETTINGS_KEY, {});
   const permission = await getDeviceNotificationPermission();
+  const enabled = permission === 'granted' && !(stored.enabled === false && stored.enabledAt)
+    ? true
+    : !!stored.enabled;
   const storedEnabledAtMs = stored.enabledAt ? new Date(stored.enabledAt).getTime() : Number.NaN;
-  const enabledAt = stored.enabled && permission === 'granted'
+  const enabledAt = enabled && permission === 'granted'
     ? (Number.isFinite(storedEnabledAtMs) ? stored.enabledAt : nowIso())
     : stored.enabledAt;
   const settings: DeviceNotificationSettings = {
     ...DEFAULT_DEVICE_SETTINGS,
     ...stored,
-    enabled: !!stored.enabled,
+    enabled,
     permission,
     enabledAt,
     consultationReminders: stored.consultationReminders !== false,
@@ -912,14 +917,13 @@ export async function openDeviceNotificationSystemSettings(): Promise<boolean> {
 export async function sendTestDeviceNotification(): Promise<boolean> {
   const settings = await loadDeviceNotificationSettings();
   if (!settings.enabled || settings.permission !== 'granted') return false;
-  await sendDeviceNotification({
+  return sendDeviceNotification({
     key: `device-test:${Date.now()}`,
     kind: 'daily_look',
     title: 'GadgetBoy POS',
     message: 'Notifications are enabled on this device.',
     createdAt: nowIso(),
   }, { ...settings, dailyLook: true });
-  return true;
 }
 
 export async function listNotifications(): Promise<NotificationRecord[]> {

@@ -445,6 +445,9 @@ export default function ConsultationBookingWindow() {
       let effectiveDriverFee = 0;
       if (locationType === 'athome') {
         const res = await computeDistanceFee(fullAddress);
+        if (res.miles == null) {
+          throw new Error('We could not verify the at-home address and driver fee. Check the address and try again before saving.');
+        }
         effectiveDriverFee = res.fee;
         setDistanceMiles(res.miles);
         setDistanceFeeApplied(res.feeApplied);

@@ -14,7 +14,6 @@ import {
 } from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
-import NotificationConsentPrompt from '../components/NotificationConsentPrompt';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
@@ -652,7 +651,6 @@ const MobileAppRuntime: React.FC = () => {
     <PaginationProvider pageSize={30}>
       <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
       <MobileUpdateCheck checkKey={updateCheckKey} delayMs={900} />
-      <NotificationConsentPrompt />
     </PaginationProvider>
   );
 };

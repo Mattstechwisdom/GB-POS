@@ -287,12 +287,14 @@ const NotificationSettingsWindow: React.FC<{ embedded?: boolean; hideCloseButton
                   setSendingTest(true);
                   try {
                     const sent = await sendTestDeviceNotification();
-                    setPermissionMessage(sent ? 'Test notification sent to this device.' : 'Enable alerts on this device before sending a test.');
+                    setPermissionMessage(sent ? 'Test notification scheduled for this device.' : 'Android could not schedule the test notification. Confirm alerts are allowed in device settings, then try again.');
+                  } catch {
+                    setPermissionMessage('Android could not schedule the test notification. Confirm alerts are allowed in device settings, then try again.');
                   } finally {
                     setSendingTest(false);
                   }
                 }}
-              >{sendingTest ? 'Sending...' : 'Send test notification'}</button>
+              >{sendingTest ? 'Scheduling...' : 'Send test notification'}</button>
             </div>
           ) : (
             <div className="mt-3 text-xs text-zinc-400">Choose Allow notifications and accept the operating-system request. Your alert checklist will appear here after access is allowed.</div>
