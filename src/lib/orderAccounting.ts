@@ -149,6 +149,12 @@ function salePayment(record: any): { status: OrderCartPaymentStatus; detail: str
 
 function needsWorkOrderPurchase(item: any, record: any) {
   if (item?.purchaseQueueRemovedAt) return false;
+  const hasPhysicalPart = item?.requiresOrder === true
+    || item?.inventoryProductId != null
+    || item?.trackStock === true
+    || Number(item?.parts || 0) > 0
+    || Boolean(String(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '').trim());
+  if (!hasPhysicalPart) return false;
   const url = String(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '').trim();
   const requiresOrder = item?.requiresOrder === true || (!!url && item?.requiresOrder !== false);
   const status = String(item?.orderStatus || (record?.partsOrderDate ? 'ordered' : 'needed')).toLowerCase();
@@ -217,6 +223,9 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
   }
 
   for (const record of Array.isArray(sales) ? sales : []) {
+    const quickSale = Number(record?.customerId) === 0
+      && /^(quick sale|quick repair)$/i.test(String(record?.customerName || '').trim());
+    if (quickSale) continue;
     const items = Array.isArray(record?.items) ? record.items : [];
     const payment = salePayment(record);
     items.forEach((item: any, itemIndex: number) => {

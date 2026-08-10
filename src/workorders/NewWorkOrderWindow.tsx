@@ -1222,13 +1222,20 @@ const NewWorkOrderWindow: React.FC = () => {
     setPartsTrackingUrlEditing(!trackingUrl);
   }, [loaded, wo.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const isPhysicalPartsItem = useCallback((item: any) => Boolean(
+    item?.requiresOrder === true
+    || item?.inventoryProductId != null
+    || item?.trackStock === true
+    || Number(item?.parts || 0) > 0
+    || String(item?.orderSourceUrl || item?.productUrl || '').trim(),
+  ), []);
+
   const primaryPartsItem = useMemo(() => {
     const rows = Array.isArray(wo.items) ? wo.items : [];
-    return rows.find((item: any) => String(item?.orderSourceUrl || '').trim())
-      || rows.find((item: any) => Number(item?.parts || 0) > 0)
-      || rows[0]
+    return rows.find((item: any) => isPhysicalPartsItem(item) && String(item?.orderSourceUrl || '').trim())
+      || rows.find((item: any) => isPhysicalPartsItem(item))
       || null;
-  }, [wo.items]);
+  }, [isPhysicalPartsItem, wo.items]);
 
   const updatePrimaryPartsItem = useCallback((patch: Partial<WorkOrderItemRow>) => {
     setWo(w => {
@@ -1357,14 +1364,14 @@ const NewWorkOrderWindow: React.FC = () => {
   }, []);
 
   const handleOpenOrderUrl = useCallback(async () => {
-    const url = normalizeMaybeUrl((wo as any).partsOrderUrl || partsOrderUrlDraft);
+    const url = normalizeMaybeUrl((wo as any).partsOrderUrl || partsOrderUrlDraft || primaryPartsItem?.orderSourceUrl);
     if (!url) return;
     try {
       if ((window as any).api?.openUrl) await (window as any).api.openUrl(url);
       else if ((window as any).api?.openExternal) await (window as any).api.openExternal(url);
       else window.open(url, '_blank', 'noopener,noreferrer');
     } catch {}
-  }, [wo, partsOrderUrlDraft]);
+  }, [wo, partsOrderUrlDraft, primaryPartsItem]);
 
   const handleOpenTrackingUrl = useCallback(async () => {
     const url = normalizeMaybeUrl((wo as any).partsTrackingUrl || partsTrackingUrlDraft);
@@ -2178,7 +2185,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
   // (removed legacy printCustomerReceipt stub in favor of shared HTML builder)
   const partsSourceSummary = useMemo(() => {
-    const rows = (wo.items || []).filter((item: any) => item?.partSource || item?.orderSourceUrl);
+    const rows = (wo.items || []).filter((item: any) => isPhysicalPartsItem(item) && (item?.partSource || item?.orderSourceUrl));
     if (!rows.length) return '';
     const sourceNames = Array.from(new Set(
       rows
@@ -2187,7 +2194,7 @@ const NewWorkOrderWindow: React.FC = () => {
     ));
     if (sourceNames.length) return sourceNames.slice(0, 2).join(', ');
     return `${rows.length} repair ${rows.length === 1 ? 'item' : 'items'} with saved order info`;
-  }, [wo.items]);
+  }, [isPhysicalPartsItem, wo.items]);
 
   if (!loaded) {
     return <div className="p-4 text-zinc-200">Loading work order...</div>;
@@ -2380,18 +2387,18 @@ const NewWorkOrderWindow: React.FC = () => {
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
           {/* Delivery tracking only. Pricing and supplier details live on each line item. */}
-          <div className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-3">
-            <div className="gb-wo-parts-header">
+          <details className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-3">
+            <summary className="gb-wo-parts-header cursor-pointer list-none">
               <div>
                 <h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4>
-                <div className="text-[11px] text-zinc-500">Delivery dates and carrier tracking only. Edit a repair line for cost, pricing, supplier, or its order URL.</div>
+                <div className="text-[11px] text-zinc-500">{primaryPartsItem ? 'Delivery dates and carrier tracking for physical parts only.' : 'No physical parts are attached to this repair.'}</div>
               </div>
               {partsSourceSummary ? (
                 <div className="gb-wo-parts-source-pill" title={partsSourceSummary}>
                   {partsSourceSummary}
                 </div>
               ) : null}
-            </div>
+            </summary>
             {primaryPartsItem ? (
               <div className="gb-wo-parts-meta-row">
                 <div className="gb-wo-parts-meta-main" title={primaryPartsItem.repair || ''}>{primaryPartsItem.repair || 'Selected repair item'}</div>
@@ -2416,6 +2423,19 @@ const NewWorkOrderWindow: React.FC = () => {
                   value={(wo as any).partsEstDelivery ? String((wo as any).partsEstDelivery).substring(0, 10) : ''}
                   onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null, partsOrdered: Boolean((w as any).partsOrderDate || e.target.value || (w as any).partsOrderUrl || (w as any).partsTrackingUrl) }))}
                 />
+              </div>
+              <div className="gb-wo-parts-url-field">
+                <label className="block text-xs text-zinc-400">Part URL</label>
+                {String((wo as any).partsOrderUrl || primaryPartsItem?.orderSourceUrl || '').trim() ? (
+                  <button
+                    type="button"
+                    className="gb-wo-parts-link-button mt-1"
+                    onClick={handleOpenOrderUrl}
+                    title={String((wo as any).partsOrderUrl || primaryPartsItem?.orderSourceUrl || '')}
+                  >
+                    Open Part URL
+                  </button>
+                ) : <div className="mt-1 text-xs text-zinc-500">No part URL saved</div>}
               </div>
               <div className="gb-wo-parts-url-field">
                 <label className="block text-xs text-zinc-400">Tracking URL</label>
@@ -2457,6 +2477,8 @@ const NewWorkOrderWindow: React.FC = () => {
                     }}
                   />
                 )}
+                {(wo as any).partsTrackingNumber ? <div className="mt-2 text-xs text-zinc-400">Tracking number: <span className="text-zinc-200">{(wo as any).partsTrackingNumber}</span></div> : null}
+                {(wo as any).partsTrackingUnavailable ? <div className="mt-2 text-xs text-zinc-400">Distributor did not provide tracking.</div> : null}
               </div>
               <div className="gb-wo-parts-notes-field">
                 <label className="block text-xs text-zinc-400">Delivery notes</label>
@@ -2484,7 +2506,7 @@ const NewWorkOrderWindow: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </details>
           <NotesPanel
             notes={wo.internalNotes || ''}
             log={wo.internalNotesLog || []}

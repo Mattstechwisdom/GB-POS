@@ -1830,6 +1830,7 @@ const SaleWindow: React.FC = () => {
             <div className="gb-sale-url-grid col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
+                {(sale as any).partsOrderUrl ? <button type="button" className="mb-2 rounded border border-[#39FF14]/60 bg-[#39FF14]/10 px-3 py-1.5 text-xs font-semibold text-[#39FF14]" onClick={() => { const url = String((sale as any).partsOrderUrl); if ((window as any).api?.openUrl) void (window as any).api.openUrl(url); else if ((window as any).api?.openExternal) void (window as any).api.openExternal(url); else window.open(url, '_blank', 'noopener,noreferrer'); }}>Open Part URL</button> : null}
                 <input
                   className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
                   placeholder="https://..."
@@ -1840,6 +1841,7 @@ const SaleWindow: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Tracking URL</label>
+                {(sale as any).partsTrackingUrl ? <button type="button" className="mb-2 rounded border border-sky-400/60 bg-sky-400/10 px-3 py-1.5 text-xs font-semibold text-sky-200" onClick={() => { const url = String((sale as any).partsTrackingUrl); if ((window as any).api?.openUrl) void (window as any).api.openUrl(url); else if ((window as any).api?.openExternal) void (window as any).api.openExternal(url); else window.open(url, '_blank', 'noopener,noreferrer'); }}>Open Tracking URL</button> : null}
                 <input
                   className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
                   placeholder="https://..."
@@ -1847,6 +1849,8 @@ const SaleWindow: React.FC = () => {
                   disabled={!!sale.inStock}
                   onChange={e => setSale(s => ({ ...s, partsTrackingUrl: e.target.value }))}
                 />
+                {(sale as any).partsTrackingNumber ? <div className="mt-2 text-xs text-zinc-400">Tracking number: <span className="text-zinc-200">{(sale as any).partsTrackingNumber}</span></div> : null}
+                {(sale as any).partsTrackingUnavailable ? <div className="mt-2 text-xs text-zinc-400">Distributor did not provide tracking.</div> : null}
               </div>
             </div>
           <div className="gb-sale-notes col-span-2">

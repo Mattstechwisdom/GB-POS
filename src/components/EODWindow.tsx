@@ -783,6 +783,8 @@ const EODWindow: React.FC = () => {
   const [deliveryByDistributor, setDeliveryByDistributor] = useState<Record<string, string>>({});
   const [deliveryByRow, setDeliveryByRow] = useState<Record<string, string>>({});
   const [splitDeliveryByDistributor, setSplitDeliveryByDistributor] = useState<Record<string, boolean>>({});
+  const [trackingByDistributor, setTrackingByDistributor] = useState<Record<string, string>>({});
+  const [trackingNoneByDistributor, setTrackingNoneByDistributor] = useState<Record<string, boolean>>({});
   const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
@@ -1786,6 +1788,11 @@ const EODWindow: React.FC = () => {
       || row.estimatedDelivery
       || '',
     ).slice(0, 10);
+    const trackingForRow = (row: OrderCartRow) => {
+      const raw = String(trackingByDistributor[row.distributor] || '').trim();
+      const trackingUrl = /^https?:\/\//i.test(raw) ? normalizePartOrderUrl(raw) : '';
+      return { trackingUrl, trackingNumber: trackingUrl ? '' : raw, trackingUnavailable: trackingNoneByDistributor[row.distributor] === true };
+    };
     const syncDeliveryCalendar = async (row: OrderCartRow, estimatedDelivery: string) => {
       if (!estimatedDelivery || !api.dbGet || !api.dbAdd) return;
       const all = await api.dbGet('calendarEvents').catch(() => []);
@@ -1804,6 +1811,9 @@ const EODWindow: React.FC = () => {
         workOrderId: row.sourceType === 'workOrder' ? row.sourceId : undefined,
         saleId: row.sourceType === 'sale' ? row.sourceId : undefined,
         orderUrl: row.orderUrl || undefined,
+        trackingUrl: trackingForRow(row).trackingUrl || undefined,
+        trackingNumber: trackingForRow(row).trackingNumber || undefined,
+        trackingUnavailable: trackingForRow(row).trackingUnavailable,
         customerName: row.customer,
         updatedAt: now,
       };
@@ -1819,6 +1829,7 @@ const EODWindow: React.FC = () => {
         const taxExempt = distributorIsTaxExempt(row.distributor, purchaseGroups.find(group => group.distributor === row.distributor)?.rows || [row]);
         const finalTotalCost = round2(row.totalCost + supplierTax + additionalCost);
         const estimatedDelivery = deliveryForRow(row);
+        const tracking = trackingForRow(row);
         const ledgerPayload = {
           status: row.sourceType === 'inventory' ? 'processing' : 'checked_out',
           sourceType: row.sourceType,
@@ -1842,6 +1853,9 @@ const EODWindow: React.FC = () => {
           totalCost: finalTotalCost,
           paymentStatus: row.paymentStatus,
           estimatedDelivery,
+          trackingUrl: tracking.trackingUrl,
+          trackingNumber: tracking.trackingNumber,
+          trackingUnavailable: tracking.trackingUnavailable,
           checkedOutAt: now,
           updatedAt: now,
         };
@@ -1896,13 +1910,20 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
+          const tracking = trackingForRow(cartRow);
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow), ...tracking };
         });
+        const shipment = selectedForWorkOrder[0];
+        const tracking = trackingForRow(shipment);
         const updated = {
           ...current,
           items,
           partsOrdered: true,
           partsOrderDate: current.partsOrderDate || date,
+          partsEstDelivery: current.partsEstDelivery || deliveryForRow(shipment) || null,
+          partsTrackingUrl: tracking.trackingUrl || current.partsTrackingUrl || '',
+          partsTrackingNumber: tracking.trackingNumber || current.partsTrackingNumber || '',
+          partsTrackingUnavailable: tracking.trackingUnavailable,
           repairStatus: 'Part Ordered',
           statusUpdate: 'Part Ordered',
           statusUpdatedAt: now,
@@ -1944,9 +1965,12 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
+          const tracking = trackingForRow(cartRow);
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow), ...tracking };
         });
-        const updated = { ...current, items, updatedAt: now };
+        const shipment = selectedForSale[0];
+        const tracking = trackingForRow(shipment);
+        const updated = { ...current, items, orderedDate: current.orderedDate || date, estimatedDeliveryDate: current.estimatedDeliveryDate || deliveryForRow(shipment) || null, partsTrackingUrl: tracking.trackingUrl || current.partsTrackingUrl || '', partsTrackingNumber: tracking.trackingNumber || current.partsTrackingNumber || '', partsTrackingUnavailable: tracking.trackingUnavailable, updatedAt: now };
         try {
           const saved = await api.dbUpdate?.('sales', current.id, updated);
           setSales(rows => rows.map(row => Number(row?.id) === Number(saleId) ? (saved || updated) : row));
@@ -1968,7 +1992,7 @@ const EODWindow: React.FC = () => {
     } finally {
       setPurchaseUpdateBusy(false);
     }
-  }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, workOrders]);
+  }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, trackingByDistributor, trackingNoneByDistributor, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
@@ -3147,7 +3171,8 @@ const EODWindow: React.FC = () => {
                   <div className="space-y-2">
                     {purchaseGroups.map(group => {
                       const amounts = purchaseGroupAmounts.get(group.distributor);
-                      return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} · {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>;
+                      const verified = verifiedDistributors.has(group.distributor);
+                      return <div key={group.distributor} className="rounded border border-zinc-700 bg-zinc-900 p-3"><label className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verified} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} Â· {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>{verified ? <div className="mt-3 grid gap-2 border-t border-zinc-800 pt-3 sm:grid-cols-2"><label className="text-xs text-zinc-300">Expected delivery<input type="date" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm" value={deliveryByDistributor[group.distributor] || group.rows.find(row => row.estimatedDelivery)?.estimatedDelivery || ''} onChange={event => setDeliveryByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></label><label className="text-xs text-zinc-300">Tracking URL or number<input className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm disabled:opacity-40" placeholder="https://... or tracking number" disabled={trackingNoneByDistributor[group.distributor] === true} value={trackingByDistributor[group.distributor] || ''} onChange={event => setTrackingByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></label><label className="flex items-center gap-2 text-xs text-zinc-300 sm:col-span-2"><input type="checkbox" checked={trackingNoneByDistributor[group.distributor] === true} onChange={event => { const unavailable = event.target.checked; setTrackingNoneByDistributor(current => ({ ...current, [group.distributor]: unavailable })); if (unavailable) setTrackingByDistributor(current => ({ ...current, [group.distributor]: '' })); }} />No tracking is available from this distributor</label></div> : null}</div>;
                     })}
                   </div>
                   <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + (purchaseGroupAmounts.get(group.distributor)?.checkoutTotal || 0), 0))}</strong></div>
