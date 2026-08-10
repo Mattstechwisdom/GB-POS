@@ -34,7 +34,7 @@ const GIDGET_SETTINGS_KEY = 'gbpos:gidget:settings:v1';
 const DEFAULT_SETTINGS: GidgetSettings = {
   allowLocalPos: true,
   allowOnlineResearch: false,
-  saveCloudHistory: false,
+  saveCloudHistory: true,
   blockedUrlPatterns: '',
   microphoneId: '',
   speakerId: '',
@@ -49,9 +49,7 @@ const STARTERS = [
 
 function contextEndpoint() {
   const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').replace(/\/+$/, '');
-  if (configured) return `${configured}/api/gidget/context`;
-  const hosted = ['http:', 'https:'].includes(window.location.protocol) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-  return hosted ? `${window.location.origin}/api/gidget/context` : 'https://gb-pos-production.up.railway.app/api/gidget/context';
+  return configured ? `${configured}/api/gidget/context` : '';
 }
 
 function messageId() {
@@ -83,6 +81,12 @@ function isBlockedSource(url: string, patterns: string) {
   const value = String(url || '').toLowerCase();
   return patterns.split(/[\n,]/).map(pattern => pattern.trim().toLowerCase()).filter(Boolean)
     .some(pattern => value.includes(pattern));
+}
+
+const SENSITIVE_MEMORY = /\b(password|passcode|pin\s*(?:code)?|social security|ssn|credit card|debit card|cvv|routing number|account number|unlock code|device code|apple id|google account|client email|client phone|customer email|customer phone)\b/i;
+
+function memoryTerms(content: string) {
+  return new Set(String(content || '').toLowerCase().match(/[a-z0-9]{3,}/g) || []);
 }
 
 export default function GidgetChat({ open, onClose }: Props) {
@@ -265,6 +269,33 @@ export default function GidgetChat({ open, onClose }: Props) {
     return data.id as string;
   }, [conversationId, gidgetSettings.saveCloudHistory, shopContext]);
 
+  const loadMemoryContext = useCallback(async (content: string, activeConversationId: string | null) => {
+    if (!gidgetSettings.saveCloudHistory || !shopContext) return null;
+    const terms = memoryTerms(content);
+    const { data } = await supabase.from('gidget_memories')
+      .select('id,content,updated_at')
+      .eq('shop_id', shopContext.shopId)
+      .eq('user_id', shopContext.userId)
+      .order('updated_at', { ascending: false })
+      .limit(120);
+    const relevant = (data || [])
+      .map((memory: any) => ({ ...memory, score: [...terms].reduce((total, term) => total + (String(memory.content || '').toLowerCase().includes(term) ? 1 : 0), 0) }))
+      .sort((a: any, b: any) => b.score - a.score || String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+      .slice(0, 16);
+    const remembered = content.match(/\b(?:remember|retain|learn|save)\s+(?:that\s+)?(.{3,1000})$/i)?.[1]?.replace(/\s+/g, ' ').trim();
+    if (!remembered) return { relevant };
+    if (SENSITIVE_MEMORY.test(remembered)) return { relevant, saved: false, reason: 'That information may contain private or security-sensitive data and was not retained.' };
+    const existing = (data || []).find((memory: any) => String(memory.content || '') === remembered);
+    if (existing) return { relevant, saved: true, already_saved: true, content: remembered };
+    const { error } = await supabase.from('gidget_memories').insert({
+      shop_id: shopContext.shopId,
+      user_id: shopContext.userId,
+      content: remembered,
+      source_conversation_id: activeConversationId || null,
+    });
+    return { relevant, saved: !error, content: remembered, reason: error?.message || undefined };
+  }, [gidgetSettings.saveCloudHistory, shopContext]);
+
   const speak = useCallback((content: string) => {
     if (!voiceOpenRef.current) return;
     if (nativeVoice) {
@@ -317,9 +348,10 @@ export default function GidgetChat({ open, onClose }: Props) {
       let context: any = null;
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      if (gidgetSettings.allowOnlineResearch && token) {
+      const onlineResearchEndpoint = contextEndpoint();
+      if (gidgetSettings.allowOnlineResearch && token && onlineResearchEndpoint) {
         try {
-          const response = await fetch(contextEndpoint(), {
+          const response = await fetch(onlineResearchEndpoint, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             signal: controller.signal,
@@ -343,6 +375,7 @@ export default function GidgetChat({ open, onClose }: Props) {
         context = { records: localContext.records, web_sources: [] };
       }
       if (!context) context = { records: null, web_sources: [] };
+      context.memory_result = await loadMemoryContext(content, activeConversationId).catch(() => null);
       const body = await generateWithGidget({
         ...context,
         messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
@@ -358,6 +391,9 @@ export default function GidgetChat({ open, onClose }: Props) {
       await refreshHistory();
     } catch (error: any) {
       if (error?.name === 'AbortError' || controller.signal.aborted) return;
+      if (/local model|node-llama|llama/i.test(String(error?.message || ''))) {
+        void gidgetLocalStatus().then((status) => setModelState(status)).catch(() => undefined);
+      }
       const errorMessage: ChatMessage = { id: messageId(), role: 'assistant', content: friendlyError(error), error: true, source };
       setMessages((current) => [...current, errorMessage]);
       if (source === 'voice') speak(errorMessage.content);
@@ -366,7 +402,7 @@ export default function GidgetChat({ open, onClose }: Props) {
       setSending(false);
       if (source === 'voice' && !window.speechSynthesis?.speaking) setVoiceStatus('Listening');
     }
-  }, [draft, ensureConversation, gidgetSettings.allowLocalPos, gidgetSettings.allowOnlineResearch, gidgetSettings.blockedUrlPatterns, messages, modelState.ready, persistMessage, refreshHistory, sending, shopContext, speak, voiceStatus]);
+  }, [draft, ensureConversation, gidgetSettings.allowLocalPos, gidgetSettings.allowOnlineResearch, gidgetSettings.blockedUrlPatterns, loadMemoryContext, messages, modelState.ready, persistMessage, refreshHistory, sending, shopContext, speak, voiceStatus]);
   sendRef.current = send;
 
   const stopVoice = useCallback(() => {

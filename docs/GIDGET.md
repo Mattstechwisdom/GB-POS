@@ -10,9 +10,10 @@ Gidget runs an open-source GGUF model inside the installed application. No Ollam
 - Android downloads Qwen3 1.7B Q4_K_M (approximately 1.3 GB) on first use and runs it through native llama.cpp.
 - Downloads use HTTPS and are checked against the expected SHA-256 digest before the model is loaded.
 - Models remain in private application storage and are not included in cloud backups.
+- A verified model is only treated as ready after its native runtime initializes successfully. If initialization fails, Gidget removes the optional download and prompts for a clean retry instead of leaving the 2.5 GB file behind.
 - `GBPOS_TIMEZONE` is optional and defaults to `America/New_York`.
 
-Railway authenticates the user and supplies privacy-minimized, read-only POS context. It does not run the language model and does not receive generated answers.
+The installed desktop app supplies privacy-minimized, read-only POS context locally. It does not run the language model remotely or transmit generated answers.
 
 ## Web research
 
@@ -21,6 +22,7 @@ For repair questions, the secure context service can search a restricted list of
 ## Knowledge and history
 
 - The newest 30 full conversations remain in each signed-in user's history.
+- Conversation history is backed up to Supabase by default when the technician is signed in; the setting can be turned off for device-only sessions.
 - Older conversations are removed automatically.
 - Durable knowledge is separate from chat history and remains available after its source chat expires.
 - Gidget only saves durable knowledge when the technician explicitly asks it to remember, retain, learn, or save something.

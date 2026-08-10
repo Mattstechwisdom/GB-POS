@@ -61,6 +61,23 @@ async function isVerified(app: any) {
   }
 }
 
+async function clearModelCache(app: any, error: any, sender?: any) {
+  try { await loadedModel?.dispose?.(); } catch {}
+  loadedModel = null;
+  try { await llamaRuntime?.llama?.dispose?.(); } catch {}
+  llamaRuntime = null;
+  try { fs.rmSync(modelPath(app), { force: true }); } catch {}
+  try { fs.rmSync(verifiedPath(app), { force: true }); } catch {}
+  state = {
+    status: 'error',
+    progress: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    error: `Gidget could not start the local model. The optional model download was removed so you can retry. ${String(error?.message || error || '').trim()}`.trim(),
+  };
+  if (sender) emit(sender);
+}
+
 function requestDownload(url: string, destination: string, sender: any, redirects = 0): Promise<void> {
   return new Promise((resolve, reject) => {
     if (redirects > 6) return reject(new Error('The model download redirected too many times.'));
@@ -124,17 +141,24 @@ async function ensureDownloaded(app: any, sender: any) {
   }
 }
 
-async function getModel(app: any) {
+async function getModel(app: any, sender?: any) {
   if (loadedModel) return loadedModel;
   if (!(await isVerified(app))) throw new Error('Gidget needs to finish its one-time model setup.');
   state = { ...state, status: 'loading', progress: 100 };
-  if (!llamaRuntime) {
-    const module = await dynamicImport('node-llama-cpp');
-    llamaRuntime = { module, llama: await module.getLlama({ gpu: 'auto', progressLogs: false }) };
+  if (sender) emit(sender);
+  try {
+    if (!llamaRuntime) {
+      const module = await dynamicImport('node-llama-cpp');
+      llamaRuntime = { module, llama: await module.getLlama({ gpu: 'auto', progressLogs: false }) };
+    }
+    loadedModel = await llamaRuntime.llama.loadModel({ modelPath: modelPath(app) });
+    state = { ...state, status: 'ready', progress: 100, error: undefined };
+    if (sender) emit(sender);
+    return loadedModel;
+  } catch (error: any) {
+    await clearModelCache(app, error, sender);
+    throw new Error(state.error);
   }
-  loadedModel = await llamaRuntime.llama.loadModel({ modelPath: modelPath(app) });
-  state = { ...state, status: 'ready', progress: 100 };
-  return loadedModel;
 }
 
 function buildPrompt(messages: any[], records: any, memoryResult: any, webSources: any[]) {
@@ -157,15 +181,15 @@ export function registerGidgetLocalIpc({ ipcMain, app, getLocalPosContext }: { i
   for (const channel of ['gidget:localStatus', 'gidget:localSetup', 'gidget:localGenerate', 'gidget:localCancel', 'gidget:localPosContext']) {
     try { ipcMain.removeHandler(channel); } catch {}
   }
-  ipcMain.handle('gidget:localStatus', async () => ({
-    ok: true,
-    ready: await isVerified(app),
-    model: MODEL,
-    ...state,
-  }));
+  ipcMain.handle('gidget:localStatus', async (event: any) => {
+    if (await isVerified(app) && !loadedModel) {
+      try { await getModel(app, event.sender); } catch {}
+    }
+    return { ok: true, ready: !!loadedModel, model: MODEL, ...state };
+  });
   ipcMain.handle('gidget:localSetup', async (event: any) => {
     const file = await ensureDownloaded(app, event.sender);
-    await getModel(app);
+    await getModel(app, event.sender);
     return { ok: true, ready: true, path: file, model: MODEL };
   });
   ipcMain.handle('gidget:localPosContext', async (_event: any, query: any) => {
@@ -176,8 +200,8 @@ export function registerGidgetLocalIpc({ ipcMain, app, getLocalPosContext }: { i
       return { ok: false, error: error?.message || 'Local POS context could not be read.' };
     }
   });
-  ipcMain.handle('gidget:localGenerate', async (_event: any, payload: any) => {
-    const model = await getModel(app);
+  ipcMain.handle('gidget:localGenerate', async (event: any, payload: any) => {
+    const model = await getModel(app, event.sender);
     const context = await model.createContext({ contextSize: 4096 });
     const sequence = context.getSequence();
     const session = new llamaRuntime.module.LlamaChatSession({
