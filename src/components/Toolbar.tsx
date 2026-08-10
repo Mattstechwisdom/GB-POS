@@ -144,7 +144,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </button>
         <button
           className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
-          onClick={() => dispatchOpenModal('calendar', { dailyLook: true })}
+          onClick={() => dispatchOpenModal('dailyLook')}
         >
           Daily Look
         </button>

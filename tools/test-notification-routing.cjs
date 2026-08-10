@@ -17,6 +17,7 @@ const notificationSettingsWindow = read('src/components/NotificationSettingsWind
 const calendarWindow = read('src/components/CalendarWindow.tsx');
 const toolbar = read('src/components/Toolbar.tsx');
 const consultationBookingWindow = read('src/components/ConsultationBookingWindow.tsx');
+const dailyLookWindow = read('src/components/DailyLookWindow.tsx');
 
 const bridgeRequest = notifications.indexOf("typeof window.GBPosAndroid?.requestNotificationPermission === 'function'");
 const pluginRequest = notifications.indexOf('native?.requestPermissions');
@@ -41,9 +42,13 @@ assert.match(activity, /ActivityCompat\.requestPermissions\([\s\S]*Manifest\.per
 assert.match(activity, /scheduleStartupPermissionRequests/);
 assert.match(activity, /requestLocationPermissionInternal/);
 assert.match(activity, /Manifest\.permission\.ACCESS_FINE_LOCATION/);
+assert.match(activity, /postDeviceNotification/);
+assert.match(activity, /NotificationManagerCompat\.from\(this\)/);
+assert.match(activity, /ALERT_CHANNEL_ID/);
 assert.match(notifications, /schedule: \{ at: new Date\(Date\.now\(\) \+ 2_000\), allowWhileIdle: true \}/);
 assert.match(notifications, /permission === 'granted' && !\(stored\.enabled === false && stored\.enabledAt\)/);
 assert.match(notifications, /async function sendDeviceNotification[\s\S]*Promise<boolean>/);
+assert.match(notifications, /window\.GBPosAndroid\?\.postDeviceNotification/);
 assert.match(notifications, /waitForAndroidBridgePermissionResult.*getNotificationPermissionStatus/s);
 assert.match(notifications, /isNativeAndroid\s*&& typeof window\.GBPosAndroid\?\.requestNotificationPermission/);
 assert.match(notifications, /permission === 'prompt'/);
@@ -78,8 +83,9 @@ assert.match(calendarWindow, /gb-calendar-period-arrow/);
 assert.match(calendarWindow, /Boolean\(calendarPayload\?\.dailyLook\)/);
 assert.match(calendarWindow, /gb-calendar-title-actions/);
 assert.doesNotMatch(calendarWindow, /gb-calendar-daily-look/);
-assert.match(toolbar, /dispatchOpenModal\('calendar', \{ dailyLook: true \}\)/);
-assert.match(mobileApp, /handleOpenModal\('calendar', \{ dailyLook: true \}\)/);
+assert.match(toolbar, /dispatchOpenModal\('dailyLook'\)/);
+assert.match(mobileApp, /handleOpenModal\('dailyLook'\)/);
+assert.match(dailyLookWindow, /dispatchOpenModal\('calendar', \{ calendarEventId: event.id \}\)/);
 assert.doesNotMatch(mobileApp, /NotificationConsentPrompt/);
 assert.match(consultationBookingWindow, /if \(res\.miles == null\)[\s\S]*verify the at-home address and driver fee/);
 

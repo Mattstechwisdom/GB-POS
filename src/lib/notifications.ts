@@ -338,6 +338,16 @@ async function sendDeviceNotification(rec: NotificationRecord, settings?: Device
     }
   }
 
+  if (typeof window.GBPosAndroid?.postDeviceNotification === 'function') {
+    try {
+      const result = window.GBPosAndroid.postDeviceNotification(title, body);
+      if (result === 'posted') return true;
+      if (result === 'permission-denied' || result === 'notifications-disabled' || result === 'channel-disabled') return false;
+    } catch {
+      // Fall through to the Capacitor plugin if the direct Android bridge is unavailable.
+    }
+  }
+
   const native = await getLocalNotificationsPlugin();
   if (native?.schedule) {
     try {

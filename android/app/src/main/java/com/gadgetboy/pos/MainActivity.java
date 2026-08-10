@@ -2,6 +2,9 @@ package com.gadgetboy.pos;
 
 import android.Manifest;
 import android.app.DownloadManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -20,6 +23,8 @@ import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
 
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.activity.result.ActivityResultLauncher;
@@ -39,6 +44,8 @@ public class MainActivity extends BridgeActivity {
     private static final String NOTIFICATION_PERMISSION_REQUESTED = "post_notifications_requested";
     private static final String MICROPHONE_PERMISSION_REQUESTED = "record_audio_requested";
     private static final String LOCATION_PERMISSION_REQUESTED = "location_requested";
+    private static final String ALERT_CHANNEL_ID = "gbpos-tech-alerts";
+    private static final int ALERT_NOTIFICATION_ID = 8101;
     private File pendingUpdateApk;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     private ActivityResultLauncher<String> microphonePermissionLauncher;
@@ -209,6 +216,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String postDeviceNotification(String rawTitle, String rawBody) {
+            return postDeviceNotificationInternal(rawTitle, rawBody);
+        }
+
+        @JavascriptInterface
         public void downloadAndInstallApk(String rawUrl, String rawFileName) {
             MainActivity.this.runOnUiThread(() -> {
                 try {
@@ -352,6 +364,57 @@ public class MainActivity extends BridgeActivity {
                 requestLocationPermissionInternal();
             }
         });
+    }
+
+    private String postDeviceNotificationInternal(String rawTitle, String rawBody) {
+        if (!"granted".equals(notificationPermissionStatus())) return "permission-denied";
+        try {
+            NotificationManagerCompat manager = NotificationManagerCompat.from(this);
+            if (!manager.areNotificationsEnabled()) return "notifications-disabled";
+            ensureAlertNotificationChannel();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationManager systemManager = getSystemService(NotificationManager.class);
+                NotificationChannel channel = systemManager == null ? null : systemManager.getNotificationChannel(ALERT_CHANNEL_ID);
+                if (channel == null || channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return "channel-disabled";
+            }
+            String title = rawTitle == null || rawTitle.trim().isEmpty() ? "GadgetBoy POS" : rawTitle.trim();
+            String body = rawBody == null ? "" : rawBody.trim();
+            Intent launchIntent = new Intent(this, MainActivity.class);
+            launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setSmallIcon(getResources().getIdentifier("gbpos_notification_icon", "drawable", getPackageName()))
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent);
+            manager.notify(ALERT_NOTIFICATION_ID, builder.build());
+            return "posted";
+        } catch (Exception ignored) {
+            return "error";
+        }
+    }
+
+    private void ensureAlertNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        NotificationChannel channel = new NotificationChannel(
+            ALERT_CHANNEL_ID,
+            "GadgetBoy POS Alerts",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Work order, sale, consultation, and shop reminders");
+        channel.enableLights(true);
+        manager.createNotificationChannel(channel);
     }
 
     private String locationPermissionStatus() {

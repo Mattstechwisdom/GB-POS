@@ -24,6 +24,7 @@ import PlatformPermissionHandshake from './components/PlatformPermissionHandshak
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
 const SaleWindow                = React.lazy(() => import('./sales/SaleWindow'));
 const CalendarWindow            = React.lazy(() => import('./components/CalendarWindow'));
+const DailyLookWindow           = React.lazy(() => import('./components/DailyLookWindow'));
 const ClockInWindow             = React.lazy(() => import('./components/ClockInWindow'));
 const QuoteGeneratorWindow      = React.lazy(() => import('./components/QuoteGeneratorWindow'));
 const EODWindow                 = React.lazy(() => import('./components/EODWindow'));
@@ -143,6 +144,7 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'newWorkOrder':           return <NewWorkOrderWindow />;
     case 'newSale':                return <SaleWindow />;
     case 'calendar':               return <CalendarWindow />;
+    case 'dailyLook':              return <DailyLookWindow />;
     case 'clockIn':                return <ClockInWindow />;
     case 'quoteGenerator':         return <QuoteGeneratorWindow />;
     case 'eod':                    return <EODWindow />;

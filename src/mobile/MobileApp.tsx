@@ -19,6 +19,7 @@ import { installMobileLongPressContextMenu } from './longPressContextMenu';
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
 const CalendarWindow = React.lazy(() => import('../components/CalendarWindow'));
+const DailyLookWindow = React.lazy(() => import('../components/DailyLookWindow'));
 const ClockInWindow = React.lazy(() => import('../components/ClockInWindow'));
 const QuoteGeneratorWindow = React.lazy(() => import('../components/QuoteGeneratorWindow'));
 const EODWindow = React.lazy(() => import('../components/EODWindow'));
@@ -322,6 +323,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'newWorkOrder': return <NewWorkOrderWindow />;
     case 'newSale': return <SaleWindow />;
     case 'calendar': return <CalendarWindow />;
+    case 'dailyLook': return <DailyLookWindow />;
     case 'clockIn': return <ClockInWindow />;
     case 'quoteGenerator': return <QuoteGeneratorWindow />;
     case 'eod': return <EODWindow />;
@@ -411,6 +413,7 @@ function titleForModal(type: string) {
     newWorkOrder: 'Work Order',
     newSale: 'Sale',
     calendar: 'Calendar',
+    dailyLook: 'Daily Look',
     clockIn: 'Clock In',
     quoteGenerator: 'Quote Generator',
     eod: 'Reports',
@@ -1233,7 +1236,7 @@ function MobileDrawer(props: {
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
           <DrawerButton label="Calendar" onClick={() => handleOpenModal('calendar')} />
-          <DrawerButton label="Daily Look" onClick={() => handleOpenModal('calendar', { dailyLook: true })} />
+          <DrawerButton label="Daily Look" onClick={() => handleOpenModal('dailyLook')} />
           {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
