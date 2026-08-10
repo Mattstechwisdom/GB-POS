@@ -33,6 +33,17 @@ function reportDate(value: any): Date | null {
   return null;
 }
 
+function reportTimestamp(value: any): number | null {
+  const date = reportDate(value);
+  if (!date) return null;
+  try {
+    const timestamp = Date.prototype.getTime.call(date);
+    return Number.isNaN(timestamp) ? null : timestamp;
+  } catch {
+    return null;
+  }
+}
+
 function startOfPeriod(value: any, period: 'day' | 'week' | 'month' | 'year') {
   const d = reportDate(value) || new Date(0);
   if (period === 'day') {
@@ -95,12 +106,11 @@ function monthRange(monthValue: string) {
 }
 
 function dateInRange(value: any, start: any, end: any) {
-  const d = reportDate(value);
-  const startDate = reportDate(start);
-  const endDate = reportDate(end);
-  if (!d || !startDate || !endDate) return false;
-  const t = d.getTime();
-  return t >= startDate.getTime() && t <= endDate.getTime();
+  const timestamp = reportTimestamp(value);
+  const startTimestamp = reportTimestamp(start);
+  const endTimestamp = reportTimestamp(end);
+  if (timestamp === null || startTimestamp === null || endTimestamp === null) return false;
+  return timestamp >= startTimestamp && timestamp <= endTimestamp;
 }
 
 function todayInputValue() {

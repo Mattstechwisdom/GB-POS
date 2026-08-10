@@ -128,8 +128,8 @@ function activeShiftEvents(day: Date, events: CalendarEvent[]) {
   });
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onEdit, onOpenNotes, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onEdit, onOpenNotes, onOpenShifts, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -167,44 +167,21 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   // Separate schedule and other events
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
   const otherEvents = events.filter(ev => ev.category !== 'schedule');
+  const activeShifts = activeShiftEvents(day, scheduleEvents);
 
   return (
     <div className="p-2 h-full min-h-0 flex flex-col overflow-hidden">
       <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
-        <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
+          {activeShifts.length ? <button type="button" className="shrink-0 inline-flex items-center gap-1 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-1.5 py-0.5 text-[11px] font-bold text-[#d9ffd2] hover:bg-[#39FF14]/20" title={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#39FF14] text-[8px] text-zinc-950">S</span>{activeShifts.length}</button> : null}
+        </div>
         <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>
           + Add
         </button>
       </div>
       
-      {/* Schedule text display */}
-      <div className="flex-1 min-h-0 space-y-1 overflow-hidden">
-        {scheduleEvents.map(ev => {
-          const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-          const dayKey = dayNames[day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
-          const daySchedule = ev.schedule?.[dayKey];
-          
-          // Only show if working (not off day and has times)
-          if (daySchedule && !daySchedule.off && daySchedule.start && daySchedule.end) {
-            const startTime = formatTime12FromHHmm(daySchedule.start);
-            const endTime = formatTime12FromHHmm(daySchedule.end);
-            const nickname = ev.technician?.split(' ')[0] || ev.technician; // Get first name or nickname
-            
-            return (
-              <div
-                key={ev.id || ev.title + ev.date}
-                onClick={() => onEdit(ev)}
-                className="text-xs cursor-pointer hover:brightness-125 transition-colors font-medium whitespace-nowrap"
-                style={{ color: technicianColors[ev.technician || ''] || colors.schedule }}
-                title={`${ev.technician}: ${startTime} - ${endTime}`}
-              >
-                {nickname}: {startTime} - {endTime}
-              </div>
-            );
-          }
-          return null;
-        })}
-      </div>
+      <div className="flex-1 min-h-0" />
       
       {/* Other event icons at bottom */}
       {otherEvents.length > 0 && (
@@ -255,6 +232,7 @@ const CalendarWindow: React.FC = () => {
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
   const [notesDate, setNotesDate] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
@@ -593,6 +571,7 @@ const CalendarWindow: React.FC = () => {
   function openNotes(day: Date) {
     setNotesDate(fmtDate(day));
     setNoteDraft({ subject: '', body: '' });
+    setEditingNoteId(null);
   }
 
   async function saveNote() {
@@ -602,9 +581,13 @@ const CalendarWindow: React.FC = () => {
     if (!date || !subject || !body || noteSaving) return;
     setNoteSaving(true);
     try {
-      const added = await (window as any).api.dbAdd('calendarNotes', { date, subject, body, createdAt: new Date().toISOString() });
-      if (added) setCalendarNotes(list => [...list, added]);
+      const existing = editingNoteId === null ? null : calendarNotes.find(note => Number(note.id) === editingNoteId);
+      const saved = existing
+        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
+        : await (window as any).api.dbAdd('calendarNotes', { date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      if (saved) setCalendarNotes(list => existing ? list.map(note => Number(note.id) === Number(saved.id) ? saved : note) : [...list, saved]);
       setNoteDraft({ subject: '', body: '' });
+      setEditingNoteId(null);
     } catch (error) {
       console.error('save calendar note failed', error);
     } finally {
@@ -1080,6 +1063,7 @@ const CalendarWindow: React.FC = () => {
                     onPick={onPick}
                     onEdit={onEdit}
                     onOpenNotes={openNotes}
+                    onOpenShifts={(day) => setShiftDay(fmtDate(day))}
                     isToday={key === todayStr}
                   />
                 ) : null}
@@ -1201,20 +1185,21 @@ const CalendarWindow: React.FC = () => {
                 <div key={note.id || `${note.subject}-${note.createdAt}`} className="border border-amber-400/30 bg-amber-400/10 rounded p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="font-semibold text-amber-100">{note.subject}</div>
-                    <button type="button" className="text-xs text-zinc-400 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button>
+                    <div className="flex items-center gap-3"><button type="button" className="text-xs text-amber-200 hover:text-amber-100" onClick={() => { setEditingNoteId(Number(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}>Edit</button><button type="button" className="text-xs text-zinc-400 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button></div>
                   </div>
                   <div className="mt-1 text-sm text-zinc-200 whitespace-pre-wrap">{note.body}</div>
                 </div>
               ))}
             </div>
             <div className="mt-4 border-t border-zinc-800 pt-4">
-              <div className="font-semibold text-sm mb-2">Add New Note</div>
+              <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
               <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
               <textarea className="w-full mt-2 h-24 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 resize-y" placeholder="Note" value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
               <div className="mt-3 flex justify-end gap-2">
+                {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
                 <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setNotesDate(null)}>Close</button>
                 <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
-                  {noteSaving ? 'Saving...' : 'Add New Note'}
+                  {noteSaving ? 'Saving...' : editingNoteId === null ? 'Add New Note' : 'Save Note'}
                 </button>
               </div>
             </div>

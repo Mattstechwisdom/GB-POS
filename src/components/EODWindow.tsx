@@ -349,7 +349,12 @@ const DATE_KEYS = [
 function parseDateValue(value: any): Date | null {
   if (value === null || value === undefined || value === '') return null;
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+    try {
+      const timestamp = Date.prototype.getTime.call(value);
+      return Number.isNaN(timestamp) ? null : new Date(timestamp);
+    } catch {
+      return null;
+    }
   }
   if (typeof value === 'number') {
     const normalized = value > 1e12 ? value : value * 1000;
