@@ -2,12 +2,14 @@ export interface CommissionSettings {
   salesCommissionPercent: number;
   consultationTechHourlyRate: number;
   salesCommissionTechnicianIds: string[];
+  consultationCommissionTechnicianIds: string[];
 }
 
 export const DEFAULT_COMMISSION_SETTINGS: CommissionSettings = {
   salesCommissionPercent: 5,
   consultationTechHourlyRate: 25,
   salesCommissionTechnicianIds: [],
+  consultationCommissionTechnicianIds: [],
 };
 
 function finiteBetween(value: unknown, fallback: number, min: number, max: number) {
@@ -24,6 +26,11 @@ export function normalizeCommissionSettings(value: any): CommissionSettings {
         .map((id: unknown) => String(id || '').trim())
         .filter(Boolean),
     )),
+    consultationCommissionTechnicianIds: Array.from(new Set(
+      (Array.isArray(value?.consultationCommissionTechnicianIds) ? value.consultationCommissionTechnicianIds : [])
+        .map((id: unknown) => String(id || '').trim())
+        .filter(Boolean),
+    )),
   };
 }
 
@@ -36,6 +43,11 @@ export function selectedSalesCommissionTechnicians(technicians: any[], settings:
   const selected = new Set(settings.salesCommissionTechnicianIds.map(String));
   if (!selected.size) return active;
   return active.filter(tech => selected.has(technicianCommissionId(tech)));
+}
+
+export function technicianReceivesConsultationCommission(technician: any, settings: CommissionSettings) {
+  const selected = new Set(settings.consultationCommissionTechnicianIds.map(String));
+  return !selected.size || selected.has(technicianCommissionId(technician));
 }
 
 export function salesCommissionPool(salesTotal: number, settings: CommissionSettings) {

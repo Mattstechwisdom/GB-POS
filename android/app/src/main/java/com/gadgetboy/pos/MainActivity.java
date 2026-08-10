@@ -11,7 +11,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Process;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -37,11 +38,13 @@ public class MainActivity extends BridgeActivity {
     private static final String NOTIFICATION_PERMISSION_PREFS = "gbpos_notification_permissions";
     private static final String NOTIFICATION_PERMISSION_REQUESTED = "post_notifications_requested";
     private static final String MICROPHONE_PERMISSION_REQUESTED = "record_audio_requested";
+    private static final String LOCATION_PERMISSION_REQUESTED = "location_requested";
     private File pendingUpdateApk;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     private ActivityResultLauncher<String> microphonePermissionLauncher;
     private volatile boolean notificationPermissionRequestInFlight = false;
     private volatile boolean microphonePermissionRequestInFlight = false;
+    private volatile boolean startupPermissionRequestScheduled = false;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -72,11 +75,24 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         dispatchNotificationPermissionResult(notificationPermissionStatus());
+        scheduleStartupPermissionRequests();
         if (pendingUpdateApk != null && canInstallPackages()) {
             File apkFile = pendingUpdateApk;
             pendingUpdateApk = null;
             installDownloadedApk(apkFile);
         }
+    }
+
+    private void scheduleStartupPermissionRequests() {
+        if (startupPermissionRequestScheduled) return;
+        startupPermissionRequestScheduled = true;
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (notificationPermissionStatus().equals("prompt")) {
+                requestNotificationPermissionInternal();
+            } else if (locationPermissionStatus().equals("prompt")) {
+                requestLocationPermissionInternal();
+            }
+        }, 900);
     }
 
     public class GBPosAndroidBridge {
@@ -97,19 +113,20 @@ public class MainActivity extends BridgeActivity {
                 return "denied";
             }
             if (notificationPermissionRequestInFlight) return "requested";
-            notificationPermissionRequestInFlight = true;
-            MainActivity.this.runOnUiThread(() -> {
-                try {
-                    ActivityCompat.requestPermissions(
-                        MainActivity.this,
-                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        NOTIFICATION_PERMISSION_REQUEST_CODE
-                    );
-                } catch (Exception ignored) {
-                    notificationPermissionRequestInFlight = false;
-                    dispatchNotificationPermissionResult("denied");
-                }
-            });
+            requestNotificationPermissionInternal();
+            return "requested";
+        }
+
+        @JavascriptInterface
+        public String getLocationPermissionStatus() {
+            return locationPermissionStatus();
+        }
+
+        @JavascriptInterface
+        public String requestLocationPermission() {
+            String current = locationPermissionStatus();
+            if (!"prompt".equals(current)) return current;
+            requestLocationPermissionInternal();
             return "requested";
         }
 
@@ -323,6 +340,39 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void requestNotificationPermissionInternal() {
+        if (notificationPermissionRequestInFlight || !"prompt".equals(notificationPermissionStatus())) return;
+        notificationPermissionRequestInFlight = true;
+        runOnUiThread(() -> {
+            try {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
+            } catch (Exception ignored) {
+                notificationPermissionRequestInFlight = false;
+                dispatchNotificationPermissionResult("denied");
+                requestLocationPermissionInternal();
+            }
+        });
+    }
+
+    private String locationPermissionStatus() {
+        boolean granted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        if (granted) return "granted";
+        boolean requested = getSharedPreferences(NOTIFICATION_PERMISSION_PREFS, Context.MODE_PRIVATE).getBoolean(LOCATION_PERMISSION_REQUESTED, false);
+        return requested ? "denied" : "prompt";
+    }
+
+    private void requestLocationPermissionInternal() {
+        if (!"prompt".equals(locationPermissionStatus())) return;
+        runOnUiThread(() -> {
+            try {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, NOTIFICATION_PERMISSION_REQUEST_CODE + 2);
+            } catch (Exception ignored) {
+                rememberLocationPermissionRequested();
+            }
+        });
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -331,10 +381,13 @@ public class MainActivity extends BridgeActivity {
             notificationPermissionRequestInFlight = false;
             rememberNotificationPermissionRequested();
             dispatchNotificationPermissionResult(granted ? "granted" : "denied");
+            requestLocationPermissionInternal();
         } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE + 1) {
             microphonePermissionRequestInFlight = false;
             rememberMicrophonePermissionRequested();
             dispatchMicrophonePermissionResult(granted ? "granted" : "denied");
+        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE + 2) {
+            rememberLocationPermissionRequested();
         }
     }
 
@@ -357,27 +410,11 @@ public class MainActivity extends BridgeActivity {
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED;
         if (granted) return "granted";
-        if (notificationPermissionWasDecidedByAndroid()) return "denied";
         boolean requested = getSharedPreferences(
             NOTIFICATION_PERMISSION_PREFS,
             Context.MODE_PRIVATE
         ).getBoolean(NOTIFICATION_PERMISSION_REQUESTED, false);
         return requested ? "denied" : "prompt";
-    }
-
-    private boolean notificationPermissionWasDecidedByAndroid() {
-        try {
-            int flags = getPackageManager().getPermissionFlags(
-                Manifest.permission.POST_NOTIFICATIONS,
-                getPackageName(),
-                Process.myUserHandle()
-            );
-            int userDecisionFlags = PackageManager.FLAG_PERMISSION_USER_SET
-                | PackageManager.FLAG_PERMISSION_USER_FIXED;
-            return (flags & userDecisionFlags) != 0;
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     private void dispatchMicrophonePermissionResult(String permission) {
@@ -403,6 +440,10 @@ public class MainActivity extends BridgeActivity {
             NOTIFICATION_PERMISSION_PREFS,
             Context.MODE_PRIVATE
         ).edit().putBoolean(MICROPHONE_PERMISSION_REQUESTED, true).apply();
+    }
+
+    private void rememberLocationPermissionRequested() {
+        getSharedPreferences(NOTIFICATION_PERMISSION_PREFS, Context.MODE_PRIVATE).edit().putBoolean(LOCATION_PERMISSION_REQUESTED, true).apply();
     }
 
     private boolean canInstallPackages() {

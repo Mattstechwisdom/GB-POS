@@ -11,6 +11,7 @@ import {
   normalizeCommissionSettings,
   salesCommissionPool,
   selectedSalesCommissionTechnicians,
+  technicianReceivesConsultationCommission,
   splitCommissionPool,
   technicianCommissionId,
   type CommissionSettings,
@@ -269,7 +270,9 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         const assignedKey = saleAssignedTechKey(sale);
         const assignedTech = activeTechs.find((tech: any) => technicianMatchKeys(tech).includes(assignedKey));
         const techLabel = assignedTech ? technicianDisplay(assignedTech) : (sale?.assignedTo || 'Unassigned');
-        const commission = consultationCommission(hours, commissionSettings);
+        const commission = assignedTech && !technicianReceivesConsultationCommission(assignedTech, commissionSettings)
+          ? 0
+          : consultationCommission(hours, commissionSettings);
         if (!assignedKey) missingConsultationAssignmentCount += 1;
         if (!(hours > 0)) missingConsultationHoursCount += 1;
         const techTotal = ensureTech(assignedKey || 'unassigned', techLabel);
@@ -916,6 +919,7 @@ const ReportingWindow: React.FC = () => {
                 salesCommissionTechnicianIds: commissionSettings.salesCommissionTechnicianIds.length
                   ? commissionSettings.salesCommissionTechnicianIds
                   : technicians.filter((row: any) => row?.active !== false).map(technicianCommissionId).filter(Boolean),
+                consultationCommissionTechnicianIds: commissionSettings.consultationCommissionTechnicianIds,
               });
               setShowCommissionSettings(true);
             }}
@@ -992,6 +996,20 @@ const ReportingWindow: React.FC = () => {
                 })}
               </div>
               {!technicians.length && <div className="mt-3 text-sm text-amber-300">Add technicians before configuring the split.</div>}
+            </div>
+            <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3">
+              <div className="text-sm font-semibold text-zinc-100">Pay consultation commission to</div>
+              <div className="mt-1 text-xs text-zinc-500">Leave all unchecked to pay the technician assigned to each consultation. Check one or more names to limit consultation commission to those technicians.</div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {technicians.filter((technician: any) => technician?.active !== false).map((technician: any) => {
+                  const id = technicianCommissionId(technician);
+                  const checked = commissionDraft.consultationCommissionTechnicianIds.includes(id);
+                  return <label key={`consultation-${id}`} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 accent-[#BC13FE]" checked={checked} onChange={event => setCommissionDraft(current => ({ ...current, consultationCommissionTechnicianIds: event.target.checked ? Array.from(new Set([...current.consultationCommissionTechnicianIds, id])) : current.consultationCommissionTechnicianIds.filter(value => value !== id) }))} />
+                    <span>{technicianDisplay(technician)}</span>
+                  </label>;
+                })}
+              </div>
             </div>
             <div className="mt-4 rounded border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-100">
               Consultation pricing remains $75 for the first hour and $50 for each additional hour. Commission uses the saved hours and pays only the technician assigned to that consultation at the hourly amount above.
