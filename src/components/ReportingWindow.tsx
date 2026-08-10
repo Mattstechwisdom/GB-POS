@@ -18,10 +18,17 @@ import {
 } from '@/lib/commission';
 
 function reportDate(value: any): Date | null {
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
-  if (typeof value === 'number' || typeof value === 'string') {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
+  try {
+    if (value instanceof Date) {
+      const timestamp = Date.prototype.getTime.call(value);
+      return Number.isNaN(timestamp) ? null : new Date(timestamp);
+    }
+    if (typeof value === 'number' || typeof value === 'string') {
+      const date = new Date(value);
+      return Number.isNaN(Date.prototype.getTime.call(date)) ? null : date;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -497,7 +504,7 @@ const ReportingWindow: React.FC = () => {
 
   const filtered = useMemo(() => {
     if (!data?.length) return [] as any[];
-    const fromDate = from ? new Date(from) : null;
+    const fromDate = from ? reportDate(from) : null;
     const toDate = to ? endOfInputDate(to) : null;
     return data.filter(w => {
       if (w.kind === 'repair' && !includeRepairs) return false;
@@ -507,8 +514,8 @@ const ReportingWindow: React.FC = () => {
         const amtPaid = Number((w as any).amountPaid || 0);
         if (amtPaid <= 0) return false;
       }
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
-      if (isNaN(d.getTime())) return false;
+      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
+      if (!d) return false;
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
       if (tech) {
@@ -521,12 +528,12 @@ const ReportingWindow: React.FC = () => {
   }, [data, from, to, tech, includeRepairs, includeSales, onlyPaid]);
 
   const filteredPurchases = useMemo(() => {
-    const fromDate = from ? new Date(from) : null;
+    const fromDate = from ? reportDate(from) : null;
     const toDate = to ? endOfInputDate(to) : null;
     return purchaseOrders.filter((purchase) => {
       if (purchase?.status !== 'checked_out') return false;
-      const date = new Date(purchaseReportDate(purchase));
-      if (Number.isNaN(date.getTime())) return false;
+      const date = reportDate(purchaseReportDate(purchase));
+      if (!date) return false;
       if (fromDate && date < fromDate) return false;
       if (toDate && date > toDate) return false;
       return true;
@@ -585,7 +592,8 @@ const ReportingWindow: React.FC = () => {
     const counts: Record<string, { orders: number; revenue: number }> = {};
     for (const n of names) counts[n] = { orders: 0, revenue: 0 };
     for (const w of filtered) {
-      const d = new Date(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt || 0);
+      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
+      if (!d) continue;
       const name = names[d.getDay()];
       const totals = computeTotals({
         laborCost: Number(w.laborCost || 0),
