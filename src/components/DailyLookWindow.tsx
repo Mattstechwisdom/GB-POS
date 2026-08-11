@@ -17,6 +17,14 @@ type CalendarEvent = {
   source?: string;
 };
 
+type CalendarNote = {
+  id?: number | string;
+  date: string;
+  subject: string;
+  body: string;
+  createdAt?: string;
+};
+
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -44,27 +52,43 @@ export default function DailyLookWindow() {
   const [date, setDate] = useState(today);
   const [technician, setTechnician] = useState('');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [notes, setNotes] = useState<CalendarNote[]>([]);
   const [techs, setTechs] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       const api: any = window.api;
-      const [calendarEvents, technicians] = await Promise.all([
+      const [calendarEvents, calendarNotes, technicians] = await Promise.all([
         api?.dbGet?.('calendarEvents').catch(() => []),
+        api?.dbGet?.('calendarNotes').catch(() => []),
         api?.dbGet?.('technicians').catch(() => []),
       ]);
       if (!active) return;
       setEvents(Array.isArray(calendarEvents) ? calendarEvents : []);
+      setNotes(Array.isArray(calendarNotes) ? calendarNotes : []);
       setTechs(Array.isArray(technicians) ? technicians.filter((item: any) => item?.active !== false) : []);
     })();
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const api: any = window.api;
+    const reload = async () => {
+      const rows = await api?.dbGet?.('calendarNotes').catch(() => []);
+      setNotes(Array.isArray(rows) ? rows : []);
+    };
+    return api?.onCalendarNotesChanged?.(() => { void reload(); });
   }, []);
 
   const groups = useMemo(() => {
     const dayEvents = events.filter((event) => event.date === date && (!technician || event.technician === technician));
     return groupOrder.map((name) => ({ name, items: dayEvents.filter((event) => groupFor(event) === name) }));
   }, [date, events, technician]);
+
+  const dayNotes = useMemo(() => notes
+    .filter((note) => String(note.date || '').slice(0, 10) === date)
+    .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || ''))), [date, notes]);
 
   const openCalendarEntry = (event: CalendarEvent) => {
     if (event.id != null) dispatchOpenModal('calendar', { calendarEventId: event.id });
@@ -86,6 +110,10 @@ export default function DailyLookWindow() {
         </div>
       </header>
       <div className="mx-auto mt-4 grid w-full max-w-6xl grid-cols-1 gap-3 lg:grid-cols-2">
+        <section className="min-w-0 border border-amber-400/30 bg-amber-400/5 p-3 lg:col-span-2">
+          <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-amber-100">Important Notes</h2><span className="text-xs text-amber-200/70">{dayNotes.length}</span></div>
+          {dayNotes.length ? <div className="grid gap-2 md:grid-cols-2">{dayNotes.map((note) => <article key={String(note.id)} className="min-w-0 border-l-2 border-amber-400 bg-zinc-900 px-3 py-2"><strong className="block break-words font-medium text-amber-100">{note.subject}</strong><p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-300">{note.body}</p></article>)}</div> : <p className="text-sm text-zinc-500">No important notes for this day.</p>}
+        </section>
         {groups.map(({ name, items }) => (
           <section key={name} className="min-w-0 border border-zinc-800 bg-zinc-950/40 p-3">
             <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">{name}</h2><span className="text-xs text-zinc-500">{items.length}</span></div>

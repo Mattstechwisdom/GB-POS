@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.78 (2026-08-11)
+- Calendar Notes: uses collision-resistant IDs and authenticated Supabase Realtime sync so important daily notes remain available across Windows and Android installations.
+- Daily Look / Journal: includes each day's important notes and adds a mobile Technician Journal that gathers calendar notes, work-order repair journals, and sale notes without changing the underlying records.
+- Notes Layout: adds a wide two-pane desktop notes workspace with a compact touch-friendly mobile layout for selecting and reading multiple notes from one day.
+- End of Day: makes unclosed-ticket lists taller and opens their source work order or sale on double-click or Enter.
+- Purchasing Cart: clears stale selection state after partial checkout, normalizes synced date values that previously crashed Cart/EOD, and adds URL price refresh with explicit Keep Changes or Revert review before any saved cost is updated.
+
 ## v0.5.58 (2026-08-09)
 - End of Day Report: adds an Unclosed Tickets reconciliation section for diagnostic work orders, paid-but-unchecked-out work orders and sales, and Repair Complete client updates sent before a work order is closed.
 - Responsive layout: bounds Calendar to the dynamic desktop viewport, reflows its controls and filters in portrait windows, and improves app-shell modal, loading, and table-pane sizing for narrow or rotated displays.

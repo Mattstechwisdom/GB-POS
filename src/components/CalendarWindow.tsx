@@ -46,11 +46,12 @@ type CalendarEvent = {
 };
 
 type CalendarNote = {
-  id?: number;
+  id?: number | string;
   date: string;
   subject: string;
   body: string;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 type CalendarColors = {
@@ -232,7 +233,7 @@ const CalendarWindow: React.FC = () => {
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
   const [notesDate, setNotesDate] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
-  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
@@ -581,11 +582,11 @@ const CalendarWindow: React.FC = () => {
     if (!date || !subject || !body || noteSaving) return;
     setNoteSaving(true);
     try {
-      const existing = editingNoteId === null ? null : calendarNotes.find(note => Number(note.id) === editingNoteId);
+      const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === editingNoteId);
       const saved = existing
         ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
-        : await (window as any).api.dbAdd('calendarNotes', { date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (saved) setCalendarNotes(list => existing ? list.map(note => Number(note.id) === Number(saved.id) ? saved : note) : [...list, saved]);
+        : await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      if (saved) setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
       setNoteDraft({ subject: '', body: '' });
       setEditingNoteId(null);
     } catch (error) {
@@ -1164,13 +1165,14 @@ const CalendarWindow: React.FC = () => {
             {filters.parts ? <section><h3>Parts Ordered <span>{dailyLookData.partsOrdered.length}</span></h3>{dailyLookData.partsOrdered.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsOrdered.length ? <p>No parts ordered.</p> : null}</section> : null}
             {filters.events ? <section><h3>Events <span>{dailyLookData.eventItems.length}</span></h3>{dailyLookData.eventItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.eventItems.length ? <p>No events.</p> : null}</section> : null}
             {filters.content ? <section><h3>Streaming/Content <span>{dailyLookData.contentItems.length}</span></h3>{dailyLookData.contentItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => setViewing(item)}>{eventSummary(item)}</button>)}{!dailyLookData.contentItems.length ? <p>No content sessions.</p> : null}</section> : null}
+            {filters.notes ? <section><h3>Important Notes <span>{(notesByDay[dailyLookData.ymd] || []).length}</span></h3>{(notesByDay[dailyLookData.ymd] || []).map((note) => <button key={String(note.id)} type="button" onClick={() => { setNotesDate(dailyLookData.ymd); setEditingNoteId(String(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}><strong>{note.subject}</strong><span className="block text-xs text-zinc-400">{note.body}</span></button>)}{!(notesByDay[dailyLookData.ymd] || []).length ? <p>No important notes.</p> : null}</section> : null}
           </div>
         </div>
       ) : null}
 
       {notesDate && (
-        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
-          <div className="bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[90vh] flex flex-col p-4">
+        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3" onClick={() => setNotesDate(null)}>
+          <div className="calendar-notes-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[1040px] h-[min(82vh,720px)] flex flex-col p-4" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-xl font-semibold">Important Notes</h3>
@@ -1178,30 +1180,26 @@ const CalendarWindow: React.FC = () => {
               </div>
               <button type="button" className="gb-icon-button" aria-label="Close notes" onClick={() => setNotesDate(null)}>X</button>
             </div>
-            <div className="flex-1 min-h-0 overflow-auto space-y-2 pr-1">
-              {(notesByDay[notesDate] || []).length === 0 ? (
-                <div className="text-sm text-zinc-500 py-3">No important notes for this day yet.</div>
-              ) : (notesByDay[notesDate] || []).map(note => (
-                <div key={note.id || `${note.subject}-${note.createdAt}`} className="border border-amber-400/30 bg-amber-400/10 rounded p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-semibold text-amber-100">{note.subject}</div>
-                    <div className="flex items-center gap-3"><button type="button" className="text-xs text-amber-200 hover:text-amber-100" onClick={() => { setEditingNoteId(Number(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}>Edit</button><button type="button" className="text-xs text-zinc-400 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button></div>
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-200 whitespace-pre-wrap">{note.body}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 border-t border-zinc-800 pt-4">
-              <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
-              <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
-              <textarea className="w-full mt-2 h-24 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 resize-y" placeholder="Note" value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
-              <div className="mt-3 flex justify-end gap-2">
+            <div className="calendar-notes-workspace grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px] gap-3">
+              <section className="calendar-note-reader min-h-0 flex flex-col rounded border border-zinc-700 bg-zinc-950/50 p-3">
+                <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
+                <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
+                <textarea className="mt-2 min-h-0 flex-1 w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed" placeholder="Write the important note..." value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
+                <div className="mt-3 flex justify-end gap-2">
                 {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
-                <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setNotesDate(null)}>Close</button>
                 <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
                   {noteSaving ? 'Saving...' : editingNoteId === null ? 'Add New Note' : 'Save Note'}
                 </button>
-              </div>
+                </div>
+              </section>
+              <aside className="calendar-note-list min-h-0 overflow-y-auto rounded border border-zinc-700 bg-zinc-950/50 p-2">
+                {(notesByDay[notesDate] || []).length === 0 ? <div className="text-sm text-zinc-500 p-2">No notes for this day yet.</div> : (notesByDay[notesDate] || []).map(note => (
+                  <div key={String(note.id)} className={`mb-2 rounded border p-2 ${String(note.id) === editingNoteId ? 'border-amber-400 bg-amber-400/15' : 'border-zinc-700 bg-zinc-900'}`}>
+                    <button type="button" className="w-full text-left" onClick={() => { setEditingNoteId(String(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}><strong className="block truncate text-sm text-amber-100">{note.subject}</strong><span className="mt-1 block line-clamp-3 whitespace-pre-wrap text-xs text-zinc-400">{note.body}</span></button>
+                    <button type="button" className="mt-2 text-xs text-zinc-500 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button>
+                  </div>
+                ))}
+              </aside>
             </div>
           </div>
         </div>

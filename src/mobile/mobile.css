@@ -65,6 +65,63 @@
   grid-template-columns: 1.25rem minmax(0, 1fr) !important;
 }
 
+.gbpos-mobile .calendar-notes-dialog {
+  width: min(100%, 42rem);
+  height: min(88dvh, 46rem);
+  max-width: 100%;
+  padding: 0.75rem;
+}
+
+.gbpos-mobile .calendar-notes-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(7rem, 32%) minmax(0, 1fr);
+}
+
+.gbpos-mobile .calendar-note-list {
+  grid-row: 1;
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.gbpos-mobile .calendar-note-list > div {
+  min-width: 10rem;
+  max-width: 13rem;
+}
+
+.gbpos-mobile .calendar-note-reader {
+  grid-row: 2;
+  padding: 0.75rem;
+}
+
+.gbpos-mobile .journal-window {
+  height: 100%;
+  padding: 0.75rem;
+}
+
+.gbpos-mobile .journal-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.gbpos-mobile .journal-days {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.gbpos-mobile .journal-days > button {
+  flex: 0 0 6.5rem;
+  margin-bottom: 0;
+}
+
+.gbpos-mobile .journal-entry-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(6rem, 30%);
+}
+
 .gbpos-mobile .gb-eod-cart-desktop-cell {
   display: none !important;
 }

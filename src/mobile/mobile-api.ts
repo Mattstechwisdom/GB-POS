@@ -819,8 +819,8 @@ function toCloudRow(key: string, item: any): any | null {
     };
   }
   if (key === 'calendarNotes') {
-    const legacy_id = toCloudIntId(item.id);
-    if (legacy_id === null) return null;
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
     return {
       shop_id,
       legacy_id,
@@ -1486,7 +1486,7 @@ async function cloudDbDelete(key: string, legacyId: any, queueOnFailure = true):
   const table = CLOUD_TABLE_BY_KEY[key];
   if (!table) return deleteLocalOnly(key, legacyId);
   const session = requireCloudSession();
-  const id = key === 'repairCategories' || key === 'technicians' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   try {
     let q = supabase.from(table).delete().eq('shop_id', session.shopId);

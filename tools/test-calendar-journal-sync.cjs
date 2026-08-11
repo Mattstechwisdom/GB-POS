@@ -1,0 +1,40 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+const migration = read('supabase/migrations/20260811012322_sync_calendar_notes_and_journal.sql');
+const electron = read('app/electron/electron-main.ts');
+const preload = read('app/electron/preload.ts');
+const mobileApi = read('src/mobile/mobile-api.ts');
+const calendar = read('src/components/CalendarWindow.tsx');
+const journal = read('src/components/JournalWindow.tsx');
+const mobileApp = read('src/mobile/MobileApp.tsx');
+const eod = read('src/components/EODWindow.tsx');
+
+assert.match(migration, /create table if not exists public\.calendar_notes/i, 'Calendar notes need a cloud table.');
+assert.match(migration, /unique \(shop_id, legacy_id\)/i, 'Calendar note upserts need a stable per-shop conflict key.');
+assert.match(migration, /enable row level security/i, 'Calendar notes must use RLS.');
+assert.match(migration, /alter publication supabase_realtime add table public\.calendar_notes/i, 'Calendar note changes must stream to other devices.');
+assert.match(electron, /calendarNotes:\s*'calendar_notes'/, 'Desktop must map calendar notes to Supabase.');
+assert.match(mobileApi, /calendarNotes:\s*'calendar_notes'/, 'Mobile must map calendar notes to Supabase.');
+assert.match(preload, /onCalendarNotesChanged/, 'Desktop preload must expose note-change events.');
+assert.match(mobileApi, /onCalendarNotesChanged:\s*'calendarNotes:changed'/, 'Mobile API must expose note-change events.');
+assert.match(calendar, /id:\s*crypto\.randomUUID\(\)/, 'New notes need collision-resistant cross-device IDs.');
+assert.match(calendar, /Important Notes <span>\{\(notesByDay\[dailyLookData\.ymd\]/, 'Calendar Daily Look must include important notes.');
+assert.match(read('src/components/DailyLookWindow.tsx'), /dbGet\?\.\('calendarNotes'\)/, 'Standalone Daily Look must load important notes.');
+assert.match(calendar, /Streaming\/Content Schedule/, 'Adding notes must preserve the content schedule.');
+assert.match(calendar, /calendarView === 'week'/, 'Adding notes must preserve the mobile weekly calendar.');
+assert.match(journal, /calendarNotes/, 'Journal must read calendar notes.');
+assert.match(journal, /internalNotesLog/, 'Journal must include work-order repair notes.');
+assert.match(journal, /sales/, 'Journal must include sale notes.');
+assert.match(mobileApp, /Journal/, 'Technician Tools must expose Journal on mobile.');
+assert.match(eod, /Refresh Cart/, 'Purchasing cart must expose price refresh.');
+assert.match(eod, /Keep Changes/, 'Refreshed prices must require explicit confirmation.');
+assert.match(eod, /Checkout Selected/, 'Technicians must be able to check out only selected cart rows.');
+assert.match(eod, /setSelectedPurchaseRows\(current => new Set\(Array\.from\(current\)\.filter\(key => activeKeys\.has\(key\)\)\)\)/, 'Checked-out rows must be pruned from selection state.');
+assert.match(eod, /onDoubleClick=\{\(\) => \{ void handleRowOpen\(row\); \}\}/, 'EOD ticket rows must open invoices on double-click.');
+assert.match(eod, /value instanceof Date \? value : parseDateValue\(value\)/, 'EOD date filters must normalize synced string timestamps before using Date methods.');
+
+console.log('Calendar note sync, Journal, and EOD cart regression checks passed.');

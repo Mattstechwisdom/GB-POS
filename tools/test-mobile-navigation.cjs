@@ -6,7 +6,7 @@ const source = fs.readFileSync(path.resolve('src/mobile/MobileApp.tsx'), 'utf8')
 const quickbar = source.match(/<nav className="mobile-quickbar"[\s\S]*?<\/nav>/)?.[0] || '';
 const drawer = source.match(/function MobileDrawer[\s\S]*?function DiagnosticToolsWindow/)?.[0] || '';
 
-assert.match(quickbar, /openModal\('quickSale'\)[\s\S]*Quick Sale/, 'Mobile quick bar must open Quick Sale.');
+assert.match(quickbar, /openModal\('quickSale'\)[\s\S]*Quick (?:Sale|Checkout)/, 'Mobile quick bar must open the quick checkout workflow.');
 assert.match(quickbar, /openModal\('addClient'\)[\s\S]*Add Client/, 'Mobile quick bar must open Add Client.');
 assert.match(quickbar, /openModal\('customerSearch'\)[\s\S]*Search Client/, 'Mobile quick bar must open Search Client.');
 assert.doesNotMatch(quickbar, /newWorkOrder|New WO|newSale|New Sale/, 'Mobile quick bar must not include New WO or New Sale.');

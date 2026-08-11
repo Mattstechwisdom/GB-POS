@@ -82,6 +82,7 @@ jobs:
           npm run test:distributor-url
           npm run test:inventory-consumption
           npm run test:inventory-reorder
+          npm run test:calendar-journal-sync
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

@@ -148,6 +148,7 @@ declare global {
       onPartSourcesChanged: (cb: () => void) => () => void;
   onTechniciansChanged: (cb: () => void) => () => void;
   onCalendarEventsChanged: (cb: () => void) => () => void;
+  onCalendarNotesChanged: (cb: () => void) => () => void;
   onNotificationsChanged: (cb: () => void) => () => void;
   onNotificationSettingsChanged: (cb: () => void) => () => void;
   onTimeEntriesChanged: (cb: () => void) => () => void;

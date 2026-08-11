@@ -514,7 +514,8 @@ function paymentEventDate(p: any): Date | null {
   return parseDateValue(p?.at ?? p?.date ?? p?.createdAt ?? p?.timestamp ?? null);
 }
 
-function isDateWithin(date: Date | null, startMs: number, endMs: number) {
+function isDateWithin(value: unknown, startMs: number, endMs: number) {
+  const date = value instanceof Date ? value : parseDateValue(value);
   if (!date) return false;
   const ts = date.getTime();
   return ts >= startMs && ts <= endMs;
@@ -780,6 +781,8 @@ const EODWindow: React.FC = () => {
   const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
+  const [cartRefreshBusy, setCartRefreshBusy] = useState(false);
+  const [cartPriceReview, setCartPriceReview] = useState<Array<{ key: string; title: string; previousUnitCost: number; nextUnitCost: number }> | null>(null);
   const [selectingDistributors, setSelectingDistributors] = useState<Set<string>>(() => new Set());
   const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
   const [checkoutCandidateRows, setCheckoutCandidateRows] = useState<OrderCartRow[] | null>(null);
@@ -1471,6 +1474,15 @@ const EODWindow: React.FC = () => {
     [isCartLayoutPreview, previewDeletedPurchaseKeys, previewLowStockCartIds, purchaseOrders, quantityOverrides, sales, workOrders],
   );
   const purchaseGroups = useMemo(() => groupOrderCartRows(partsPurchaseQueue), [partsPurchaseQueue]);
+
+  useEffect(() => {
+    const activeKeys = new Set(partsPurchaseQueue.map(row => row.key));
+    const activeDistributors = new Set(purchaseGroups.map(group => group.distributor));
+    setSelectedPurchaseRows(current => new Set(Array.from(current).filter(key => activeKeys.has(key))));
+    setSelectingDistributors(current => new Set(Array.from(current).filter(distributor => activeDistributors.has(distributor))));
+    setCheckoutCandidateRows(current => { const next = current?.filter(row => activeKeys.has(row.key)) || []; return next.length ? next : null; });
+    setDeleteCandidateRows(current => { const next = current?.filter(row => activeKeys.has(row.key)) || []; return next.length ? next : null; });
+  }, [partsPurchaseQueue, purchaseGroups]);
   const lowStockInventory = useMemo(() => {
     const source = isCartLayoutPreview
       ? [
@@ -2037,6 +2049,101 @@ const EODWindow: React.FC = () => {
     if (row.sourceType === 'workOrder') await api.openNewWorkOrder?.({ workOrderId: row.sourceId });
     else if (row.sourceType === 'sale') await api.openNewSale?.({ id: row.sourceId });
   }, []);
+
+  const refreshCartPrices = useCallback(async () => {
+    const rows = partsPurchaseQueue.filter(row => row.orderUrl);
+    if (!rows.length || cartRefreshBusy) {
+      if (!rows.length) setPurchaseUpdateMessage('No cart items have an Order URL to refresh.');
+      return;
+    }
+    setCartRefreshBusy(true);
+    setCartPriceReview(null);
+    setPurchaseUpdateMessage('Checking current supplier item pages...');
+    try {
+      if (isCartLayoutPreview) {
+        const first = rows[0];
+        setCartPriceReview([{ key: first.key, title: first.title, previousUnitCost: first.unitCost, nextUnitCost: round2(first.unitCost + 2.5) }]);
+        setPurchaseUpdateMessage('Preview: one supplier price changed. Review it before keeping changes.');
+        return;
+      }
+      const results = await Promise.allSettled(rows.map(async row => ({ row, metadata: await scrapePartUrl(row.orderUrl) })));
+      const changes = results.flatMap(result => {
+        if (result.status !== 'fulfilled') return [];
+        const next = Number(result.value.metadata?.price);
+        const row = result.value.row;
+        if (!Number.isFinite(next) || next < 0 || Math.abs(next - row.unitCost) < 0.005) return [];
+        return [{ key: row.key, title: row.title, previousUnitCost: row.unitCost, nextUnitCost: round2(next) }];
+      });
+      setCartPriceReview(changes);
+      setPurchaseUpdateMessage(changes.length
+        ? `${changes.length} supplier price change${changes.length === 1 ? '' : 's'} found. Choose Keep Changes or Revert.`
+        : 'Refresh complete. No readable supplier item prices changed. Shipping, tax, and signed-in distributor cart totals still require checkout review.');
+    } catch (error: any) {
+      setPurchaseUpdateMessage(`Cart refresh could not finish: ${error?.message || error}`);
+    } finally {
+      setCartRefreshBusy(false);
+    }
+  }, [cartRefreshBusy, isCartLayoutPreview, partsPurchaseQueue]);
+
+  const keepRefreshedCartPrices = useCallback(async () => {
+    if (!cartPriceReview?.length) return;
+    if (isCartLayoutPreview) {
+      setCartPriceReview(null);
+      setPurchaseUpdateMessage('Preview: refreshed prices accepted without saving records.');
+      return;
+    }
+    const api = (window as any).api || {};
+    const reviewByKey = new Map(cartPriceReview.map(change => [change.key, change]));
+    const rows = partsPurchaseQueue.filter(row => reviewByKey.has(row.key));
+    setCartRefreshBusy(true);
+    try {
+      const savedWorkOrders: any[] = [];
+      for (const sourceId of Array.from(new Set(rows.filter(row => row.sourceType === 'workOrder').map(row => row.sourceId)))) {
+        const record = workOrders.find(item => Number(item?.id) === Number(sourceId));
+        if (!record) continue;
+        const updated = { ...record, items: (Array.isArray(record.items) ? record.items : []).map((item: any, index: number) => {
+          const row = rows.find(candidate => candidate.sourceType === 'workOrder' && candidate.sourceId === sourceId && candidate.itemIndex === index);
+          const change = row ? reviewByKey.get(row.key) : null;
+          return change ? { ...item, internalCost: change.nextUnitCost, cost: change.nextUnitCost } : item;
+        }), updatedAt: new Date().toISOString() };
+        const saved = api.update ? await api.update('workOrders', updated) : await api.dbUpdate?.('workOrders', sourceId, updated);
+        if (!saved) throw new Error(`WO #${sourceId} did not save.`);
+        savedWorkOrders.push(saved);
+      }
+      const savedSales: any[] = [];
+      for (const sourceId of Array.from(new Set(rows.filter(row => row.sourceType === 'sale').map(row => row.sourceId)))) {
+        const record = sales.find(item => Number(item?.id) === Number(sourceId));
+        if (!record) continue;
+        const updated = { ...record, items: (Array.isArray(record.items) ? record.items : []).map((item: any, index: number) => {
+          const row = rows.find(candidate => candidate.sourceType === 'sale' && candidate.sourceId === sourceId && candidate.itemIndex === index);
+          const change = row ? reviewByKey.get(row.key) : null;
+          return change ? { ...item, internalCost: change.nextUnitCost, cost: change.nextUnitCost } : item;
+        }), updatedAt: new Date().toISOString() };
+        const saved = await api.dbUpdate?.('sales', sourceId, updated);
+        if (!saved) throw new Error(`Sale #${sourceId} did not save.`);
+        savedSales.push(saved);
+      }
+      const savedPurchases: any[] = [];
+      for (const row of rows.filter(candidate => candidate.purchaseOrderId)) {
+        const change = reviewByKey.get(row.key);
+        const record = purchaseOrders.find(item => Number(item?.id) === Number(row.purchaseOrderId));
+        if (!change || !record) continue;
+        const saved = await api.dbUpdate?.('purchaseOrders', record.id, { ...record, unitCost: change.nextUnitCost, updatedAt: new Date().toISOString() });
+        if (!saved) throw new Error(`${row.title} purchasing record did not save.`);
+        savedPurchases.push(saved);
+      }
+      if (savedWorkOrders.length) setWorkOrders(current => current.map(record => savedWorkOrders.find(saved => Number(saved?.id) === Number(record?.id)) || record));
+      if (savedSales.length) setSales(current => current.map(record => savedSales.find(saved => Number(saved?.id) === Number(record?.id)) || record));
+      if (savedPurchases.length) setPurchaseOrders(current => current.map(record => savedPurchases.find(saved => Number(saved?.id) === Number(record?.id)) || record));
+      setCartPriceReview(null);
+      setPurchaseUpdateMessage(`${cartPriceReview.length} refreshed supplier price${cartPriceReview.length === 1 ? '' : 's'} saved and synced.`);
+    } catch (error: any) {
+      setPurchaseUpdateMessage(`Refreshed prices were not fully saved: ${error?.message || error}`);
+    } finally {
+      setCartRefreshBusy(false);
+    }
+  }, [cartPriceReview, isCartLayoutPreview, partsPurchaseQueue, purchaseOrders, sales, workOrders]);
+
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -2924,14 +3031,14 @@ const EODWindow: React.FC = () => {
                     <span className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${unclosedTickets.length ? 'border-red-500/50 bg-red-950/50 text-red-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{unclosedTickets.length}</span>
                   </div>
                   {unclosedTickets.length ? (
-                    <div className="mt-2 max-h-48 overflow-y-auto rounded border border-red-900/50">
+                    <div className="mt-2 max-h-72 overflow-y-auto rounded border border-red-900/50">
                       <table className="w-full text-left text-[11px]">
                         <thead className="sticky top-0 bg-zinc-950 text-zinc-400">
                           <tr><th className="px-2 py-1.5 font-medium">Client / device</th><th className="px-2 py-1.5 font-medium">Items</th><th className="px-2 py-1.5 text-right font-medium">Taken</th><th className="px-2 py-1.5 text-right font-medium">Owed</th></tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800">
                           {unclosedTickets.map(ticket => (
-                            <tr key={`${ticket.kind}-${String(ticket.id)}`} className={ticket.repairCompleteSent ? 'bg-red-950/30' : ''}>
+                            <tr key={`${ticket.kind}-${String(ticket.id)}`} className={`${ticket.repairCompleteSent ? 'bg-red-950/30' : ''} cursor-pointer hover:bg-zinc-800/70`} title="Double-click to open invoice" onDoubleClick={() => { void handleRowOpen({ kind: ticket.kind, id: ticket.id } as UnifiedRow); }}>
                               <td className="px-2 py-1.5 align-top"><div className="font-semibold text-zinc-100">{ticket.customerName}</div><div className="text-zinc-400">{ticket.kind === 'work' ? ticket.deviceName : 'Sale'} · #{String(ticket.id)}</div><div className="mt-0.5 text-amber-200">{ticket.reasons.join(' · ')}</div></td>
                               <td className="max-w-36 px-2 py-1.5 align-top text-zinc-300">{ticket.lineItems}</td>
                               <td className="px-2 py-1.5 text-right align-top tabular-nums text-[#39FF14]">{formatCurrency(ticket.paid)}</td>
@@ -3030,7 +3137,7 @@ const EODWindow: React.FC = () => {
                       <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
                       <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Line-item cost excludes supplier tax, shipping, and checkout fees; those are calculated here.</p>
                     </div>
-                    <div className="flex items-center gap-2"><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
+                    <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={cartRefreshBusy || !partsPurchaseQueue.some(row => row.orderUrl)} className="rounded border border-[#BC13FE]/70 bg-[#BC13FE]/15 px-3 py-2 text-xs font-semibold text-fuchsia-100 disabled:opacity-40" onClick={() => { void refreshCartPrices(); }}>{cartRefreshBusy ? 'Refreshing...' : 'Refresh Cart'}</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
                   </header>
 
                   <div className="gb-eod-cart-summary grid grid-cols-2 gap-2 border-b border-zinc-800 p-3 sm:grid-cols-5 lg:p-4">
@@ -3043,6 +3150,7 @@ const EODWindow: React.FC = () => {
 
                   <div className="space-y-2 p-2 sm:p-3">
                     {purchaseUpdateMessage ? <div className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">{purchaseUpdateMessage}</div> : null}
+                    {cartPriceReview?.length ? <div className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/10 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><strong className="text-sm text-fuchsia-100">Supplier price review</strong><div className="text-xs text-zinc-400">Current item-page prices changed. Nothing is saved until Keep Changes is selected.</div></div><div className="flex gap-2"><button type="button" className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs" onClick={() => { setCartPriceReview(null); setPurchaseUpdateMessage('Refreshed supplier prices reverted.'); }}>Revert</button><button type="button" disabled={cartRefreshBusy} className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black disabled:opacity-40" onClick={() => { void keepRefreshedCartPrices(); }}>Keep Changes</button></div></div><div className="mt-3 grid gap-1 sm:grid-cols-2">{cartPriceReview.map(change => <div key={change.key} className="flex items-center justify-between gap-3 rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs"><span className="truncate">{change.title}</span><span className="shrink-0"><span className="text-zinc-500 line-through">{formatCurrency(change.previousUnitCost)}</span><span className="ml-2 font-semibold text-fuchsia-100">{formatCurrency(change.nextUnitCost)}</span></span></div>)}</div></div> : null}
                     {purchaseGroups.map(group => {
                       const selectedGroupRows = group.rows.filter(row => selectedPurchaseRows.has(row.key));
                       const allSelected = selectedGroupRows.length === group.rows.length && group.rows.length > 0;
@@ -3515,7 +3623,7 @@ const EODWindow: React.FC = () => {
 
             {listMeta ? (
               <div className="fixed inset-0 z-[100090] flex items-center justify-center bg-black/75 p-3" onClick={() => setActiveList(null)}>
-              <div className="flex max-h-[88vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.7)]" role="dialog" aria-modal="true" aria-label={listMeta.title} onClick={(event) => event.stopPropagation()}>
+              <div className="flex h-[94vh] max-h-[94vh] w-full max-w-[1280px] flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.7)]" role="dialog" aria-modal="true" aria-label={listMeta.title} onClick={(event) => event.stopPropagation()}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold">{listMeta.title}</h3>
@@ -3546,7 +3654,9 @@ const EODWindow: React.FC = () => {
                           <tr
                             key={`${row.kind}-${row.id}`}
                             className="hover:bg-zinc-800/50 cursor-pointer transition-colors"
-                            onClick={() => { void handleRowOpen(row); }}
+                            onDoubleClick={() => { void handleRowOpen(row); }}
+                            tabIndex={0}
+                            onKeyDown={(event) => { if (event.key === 'Enter') void handleRowOpen(row); }}
                           >
                             <td className="py-2 pr-4">
                               <div className="font-mono text-xs text-zinc-200">{row.id}</div>

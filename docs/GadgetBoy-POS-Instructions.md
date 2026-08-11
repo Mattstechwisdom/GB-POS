@@ -352,6 +352,14 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Streaming / Content Schedule is a separate weekly schedule for names, times, stream type/game, filming, and content work.
 - Content schedule Add contains only content/streaming fields, not repair or consultation categories.
 
+### Important Notes, Daily Look, and Technician Journal
+
+1. Open Calendar and choose Notes on the correct day.
+2. On desktop, use the large left editor to write the note and the right-hand list to switch between multiple notes saved for that day. On mobile, the list stacks above the editor.
+3. Important notes sync through Supabase and appear on every signed-in Windows or Android installation.
+4. Open Daily Look to see the selected day's important notes beside schedules, consultations, orders, deliveries, events, and content work.
+5. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
+
 ## 17. Technicians and Time
 
 - Create one technician record per actual technician.
@@ -427,6 +435,13 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 10. Leave Tax Exempt unchecked unless the shop's account with that distributor is actually exempt. The POS adds South Carolina's 8% supplier sales tax when it is unchecked.
 11. Enter Additional Costs only for shipping or other checkout fees shown at that distributor's final checkout. Supplier tax is calculated separately; do not enter it again.
 12. Verify that Cost incl. tax, Charged incl. tax, supplier tax, client tax, and the distributor checkout total match the saved transaction and supplier checkout before payment.
+
+### Refresh Saved Supplier Prices
+
+1. Choose Refresh Cart to re-read the saved Order URL for each pending line.
+2. Review every old and new price shown. No cost changes are saved during the scan.
+3. Choose Keep Changes only after the supplier item pages match what the shop expects, or choose Revert to discard the scan.
+4. Refresh Cart reads public item-page prices. It cannot verify an authenticated distributor cart, shipping, account discounts, or final tax; confirm those values on the supplier checkout page and record shipping or fees under Additional Costs.
 
 ### Remove an Item from the Purchasing Cart
 

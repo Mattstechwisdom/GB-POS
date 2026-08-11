@@ -4343,8 +4343,8 @@ function toCloudRow(key: string, item: any): any | null {
     };
   }
   if (key === 'calendarNotes') {
-    const legacy_id = toCloudIntId(item.id);
-    if (legacy_id === null) return null;
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
     return {
       shop_id,
       legacy_id,
@@ -4686,7 +4686,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
-  const id = key === 'repairCategories' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'calendarNotes' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
@@ -4699,7 +4699,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories') return toCloudTextId(item.id);
+  if (key === 'repairCategories' || key === 'calendarNotes') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 
