@@ -16,7 +16,8 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar';
+  businessKind?: 'federalHoliday' | 'scTaxFreeWeekend' | 'daylightSaving' | 'estimatedTaxDeadline';
   saleId?: number;
   notes?: string;
   // Optional linkage
@@ -63,11 +64,23 @@ type CalendarColors = {
   streaming: string;
   content: string;
   notes: string;
+  federalHoliday: string;
+  scTaxFreeWeekend: string;
+  daylightSaving: string;
+  estimatedTaxDeadline: string;
+};
+
+type BusinessCalendarSettings = {
+  federalHolidays: boolean;
+  scTaxFreeWeekend: boolean;
+  daylightSaving: boolean;
+  estimatedTaxDeadlines: boolean;
 };
 
 type CalendarPreferences = {
   colors?: Partial<CalendarColors>;
   technicianColors?: Record<string, string>;
+  businessCalendar?: Partial<BusinessCalendarSettings>;
 };
 
 const DEFAULT_CALENDAR_COLORS: CalendarColors = {
@@ -79,9 +92,107 @@ const DEFAULT_CALENDAR_COLORS: CalendarColors = {
   streaming: '#D946EF',
   content: '#22D3EE',
   notes: '#FBBF24',
+  federalHoliday: '#F43F5E',
+  scTaxFreeWeekend: '#22C55E',
+  daylightSaving: '#38BDF8',
+  estimatedTaxDeadline: '#FB923C',
 };
 
+const DEFAULT_BUSINESS_CALENDAR_SETTINGS: BusinessCalendarSettings = {
+  federalHolidays: true,
+  scTaxFreeWeekend: true,
+  daylightSaving: true,
+  estimatedTaxDeadlines: false,
+};
+
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, nth: number) {
+  const first = new Date(year, month, 1, 12, 0, 0, 0);
+  return new Date(year, month, 1 + ((7 + weekday - first.getDay()) % 7) + ((nth - 1) * 7), 12, 0, 0, 0);
+}
+
+function lastWeekdayOfMonth(year: number, month: number, weekday: number) {
+  const last = new Date(year, month + 1, 0, 12, 0, 0, 0);
+  return new Date(year, month, last.getDate() - ((7 + last.getDay() - weekday) % 7), 12, 0, 0, 0);
+}
+
+function observedFederalDate(date: Date) {
+  if (date.getDay() === 6) return addDays(date, -1);
+  if (date.getDay() === 0) return addDays(date, 1);
+  return date;
+}
+
+function federalHolidayDates(year: number) {
+  return [
+    { title: "New Year's Day", actual: new Date(year, 0, 1, 12) },
+    { title: 'Martin Luther King Jr. Day', actual: nthWeekdayOfMonth(year, 0, 1, 3) },
+    { title: "Washington's Birthday", actual: nthWeekdayOfMonth(year, 1, 1, 3) },
+    { title: 'Memorial Day', actual: lastWeekdayOfMonth(year, 4, 1) },
+    { title: 'Juneteenth National Independence Day', actual: new Date(year, 5, 19, 12) },
+    { title: 'Independence Day', actual: new Date(year, 6, 4, 12) },
+    { title: 'Labor Day', actual: nthWeekdayOfMonth(year, 8, 1, 1) },
+    { title: 'Columbus Day', actual: nthWeekdayOfMonth(year, 9, 1, 2) },
+    { title: 'Veterans Day', actual: new Date(year, 10, 11, 12) },
+    { title: 'Thanksgiving Day', actual: nthWeekdayOfMonth(year, 10, 4, 4) },
+    { title: 'Christmas Day', actual: new Date(year, 11, 25, 12) },
+  ].map(item => ({ ...item, observed: observedFederalDate(item.actual) }));
+}
+
+function nextBusinessDay(date: Date, federalObserved: Set<string>) {
+  let result = new Date(date);
+  while (result.getDay() === 0 || result.getDay() === 6 || federalObserved.has(fmtDate(result))) result = addDays(result, 1);
+  return result;
+}
+
+function buildBusinessCalendarEvents(years: number[], settings: BusinessCalendarSettings): CalendarEvent[] {
+  const entries: CalendarEvent[] = [];
+  const uniqueYears = Array.from(new Set(years));
+  for (const year of uniqueYears) {
+    const federal = federalHolidayDates(year);
+    if (settings.federalHolidays) {
+      federal.forEach(({ title, actual, observed }) => entries.push({
+        date: fmtDate(observed),
+        title: `${title}${fmtDate(actual) === fmtDate(observed) ? '' : ' (observed)'}`,
+        category: 'event', source: 'business-calendar', businessKind: 'federalHoliday',
+        notes: 'Federal holiday. Confirm shop hours before publishing a closure.',
+      }));
+    }
+    if (settings.scTaxFreeWeekend) {
+      const friday = nthWeekdayOfMonth(year, 7, 5, 1);
+      [0, 1, 2].forEach(offset => entries.push({
+        date: fmtDate(addDays(friday, offset)),
+        title: `SC Tax-Free Weekend${offset === 0 ? ' begins' : offset === 2 ? ' ends' : ''}`,
+        category: 'event', source: 'business-calendar', businessKind: 'scTaxFreeWeekend',
+        notes: 'South Carolina annual sales tax holiday. Confirm eligible products and reporting guidance with SCDOR.',
+      }));
+    }
+    if (settings.daylightSaving) {
+      entries.push({ date: fmtDate(nthWeekdayOfMonth(year, 2, 0, 2)), title: 'Daylight Saving Time begins', time: '02:00', category: 'event', source: 'business-calendar', businessKind: 'daylightSaving', notes: 'Clocks move forward one hour at 2:00 AM local time.' });
+      entries.push({ date: fmtDate(nthWeekdayOfMonth(year, 10, 0, 1)), title: 'Daylight Saving Time ends', time: '02:00', category: 'event', source: 'business-calendar', businessKind: 'daylightSaving', notes: 'Clocks move back one hour at 2:00 AM local time.' });
+    }
+    if (settings.estimatedTaxDeadlines) {
+      const observed = new Set(federal.map(item => fmtDate(item.observed)));
+      const deadlines = [
+        { date: new Date(year, 0, 15, 12), title: 'Estimated tax payment due (Q4 prior year)' },
+        { date: new Date(year, 3, 15, 12), title: 'Estimated tax payment due (Q1)' },
+        { date: new Date(year, 5, 15, 12), title: 'Estimated tax payment due (Q2)' },
+        { date: new Date(year, 8, 15, 12), title: 'Estimated tax payment due (Q3)' },
+      ];
+      deadlines.forEach(item => entries.push({ date: fmtDate(nextBusinessDay(item.date, observed)), title: item.title, category: 'event', source: 'business-calendar', businessKind: 'estimatedTaxDeadline', notes: 'General calendar-year reminder only. Verify the applicable deadline with your accountant or current IRS guidance.' }));
+    }
+  }
+  return entries;
+}
+
 function calendarEventVisual(ev: CalendarEvent, colors: CalendarColors = DEFAULT_CALENDAR_COLORS) {
+  if (ev.businessKind) {
+    const businessVisuals = {
+      federalHoliday: { short: 'HOL', letter: 'H', color: colors.federalHoliday, label: 'Federal holiday' },
+      scTaxFreeWeekend: { short: 'SC', letter: 'T', color: colors.scTaxFreeWeekend, label: 'SC tax-free weekend' },
+      daylightSaving: { short: 'DST', letter: 'D', color: colors.daylightSaving, label: 'Daylight saving time' },
+      estimatedTaxDeadline: { short: 'TAX', letter: '$', color: colors.estimatedTaxDeadline, label: 'Tax reminder' },
+    };
+    return businessVisuals[ev.businessKind];
+  }
   if (ev.category === 'content') {
     const streaming = ev.source === 'streaming';
     return {
@@ -134,6 +245,10 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
+    if (ev.businessKind) {
+      const visual = calendarEventVisual(ev, colors);
+      return { letter: visual.letter, color: visual.color, title: visual.label + ': ' + ev.title };
+    }
     if (ev.category === 'event') return { letter: 'E', color: colors.event, title: `${formatTime12FromHHmm(ev.time || '')} ${ev.title}`.trim() };
     if (ev.category === 'parts') {
       const status = ev.partsStatus || 'ordered';
@@ -248,6 +363,8 @@ const CalendarWindow: React.FC = () => {
   const [savedCalendarColors, setSavedCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
   const [technicianColors, setTechnicianColors] = useState<Record<string, string>>({});
   const [savedTechnicianColors, setSavedTechnicianColors] = useState<Record<string, string>>({});
+  const [businessCalendar, setBusinessCalendar] = useState<BusinessCalendarSettings>(DEFAULT_BUSINESS_CALENDAR_SETTINGS);
+  const [savedBusinessCalendar, setSavedBusinessCalendar] = useState<BusinessCalendarSettings>(DEFAULT_BUSINESS_CALENDAR_SETTINGS);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
   const [calendarSettingsSaving, setCalendarSettingsSaving] = useState(false);
   // For adding multiple estimated delivery dates in one go (parts only)
@@ -270,15 +387,23 @@ const CalendarWindow: React.FC = () => {
     let active = true;
     void (async () => {
       try {
-        const rows = await (window as any).api.dbGet('calendarPreferences');
-        const stored = Array.isArray(rows) ? rows[0] as CalendarPreferences | null : null;
-        if (!active || !stored?.colors || typeof stored.colors !== 'object') return;
-        const colors = { ...DEFAULT_CALENDAR_COLORS, ...stored.colors };
+        const [settingsRows, legacyRows] = await Promise.all([
+          (window as any).api.dbGet('settings').catch(() => []),
+          (window as any).api.dbGet('calendarPreferences').catch(() => []),
+        ]);
+        const shopSettings = Array.isArray(settingsRows) ? settingsRows[0] : null;
+        const legacy = Array.isArray(legacyRows) ? legacyRows[0] : null;
+        const stored = (shopSettings?.calendarPreferences || legacy) as CalendarPreferences | null;
+        if (!active || !stored) return;
+        const colors = { ...DEFAULT_CALENDAR_COLORS, ...(stored.colors && typeof stored.colors === 'object' ? stored.colors : {}) };
         setCalendarColors(colors);
         setSavedCalendarColors(colors);
         const savedTechnicians = stored?.technicianColors && typeof stored.technicianColors === 'object' ? stored.technicianColors : {};
         setTechnicianColors(savedTechnicians);
         setSavedTechnicianColors(savedTechnicians);
+        const savedBusiness = { ...DEFAULT_BUSINESS_CALENDAR_SETTINGS, ...(stored?.businessCalendar && typeof stored.businessCalendar === 'object' ? stored.businessCalendar : {}) };
+        setBusinessCalendar(savedBusiness);
+        setSavedBusinessCalendar(savedBusiness);
       } catch {
         // Calendar presentation uses defaults until preferences can be read.
       }
@@ -286,16 +411,19 @@ const CalendarWindow: React.FC = () => {
     return () => { active = false; };
   }, []);
 
-  const saveCalendarColors = async () => {
+  const saveCalendarSettings = async () => {
     setCalendarSettingsSaving(true);
     try {
-      const rows = await (window as any).api.dbGet('calendarPreferences');
+      const rows = await (window as any).api.dbGet('settings');
       const existing = Array.isArray(rows) ? rows[0] : null;
-      const payload = { ...(existing || {}), colors: calendarColors, technicianColors, updatedAt: new Date().toISOString() };
-      if (existing?.id != null) await (window as any).api.dbUpdate('calendarPreferences', existing.id, payload);
-      else await (window as any).api.dbAdd('calendarPreferences', { ...payload, createdAt: new Date().toISOString() });
+      const now = new Date().toISOString();
+      const calendarPreferences = { colors: calendarColors, technicianColors, businessCalendar, updatedAt: now };
+      const payload = { ...(existing || {}), calendarPreferences, updatedAt: now };
+      if (existing?.id != null) await (window as any).api.dbUpdate('settings', existing.id, payload);
+      else await (window as any).api.dbAdd('settings', { ...payload, id: 1, createdAt: now });
       setSavedCalendarColors(calendarColors);
       setSavedTechnicianColors(technicianColors);
+      setSavedBusinessCalendar(businessCalendar);
       setCalendarSettingsOpen(false);
     } finally {
       setCalendarSettingsSaving(false);
@@ -504,6 +632,11 @@ const CalendarWindow: React.FC = () => {
     return Array.from({ length: 7 }, (_, index) => addDays(start, index));
   }, [calendarView, current, isMobileCalendar, monthDays]);
 
+  const businessCalendarEvents = useMemo(() => buildBusinessCalendarEvents(
+    [current.getFullYear() - 1, current.getFullYear(), current.getFullYear() + 1],
+    businessCalendar,
+  ), [businessCalendar, current]);
+
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     
@@ -522,6 +655,14 @@ const CalendarWindow: React.FC = () => {
           if (!map[k]) map[k] = [];
           map[k].push(ev);
         }
+      }
+    }
+
+    if (filters.events) {
+      for (const ev of businessCalendarEvents) {
+        const k = ev.date;
+        if (!map[k]) map[k] = [];
+        map[k].push(ev);
       }
     }
     
@@ -553,7 +694,7 @@ const CalendarWindow: React.FC = () => {
     }
     
     return map;
-  }, [calendarDays, events, filters, techs]);
+  }, [businessCalendarEvents, calendarDays, events, filters, techs]);
 
   const notesByDay = useMemo(() => {
     const map: Record<string, CalendarNote[]> = {};
@@ -629,6 +770,11 @@ const CalendarWindow: React.FC = () => {
     setDeliveryDateInput('');
   }
   function onEdit(ev: CalendarEvent) {
+    if (ev.source === 'business-calendar') {
+      setEditing(null);
+      setViewing(ev);
+      return;
+    }
     setContentEditorLocked(false);
     setViewing(null);
     setEditing(ev);
@@ -836,7 +982,7 @@ const CalendarWindow: React.FC = () => {
     }
     schedules.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const todays = (Array.isArray(events) ? events : []).filter(e => String(e?.date || '').slice(0, 10) === ymd);
+    const todays = [...(Array.isArray(events) ? events : []), ...businessCalendarEvents].filter(e => String(e?.date || '').slice(0, 10) === ymd);
     const consultations = todays
       .filter(e => e.category === 'consultation')
       .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
@@ -856,7 +1002,7 @@ const CalendarWindow: React.FC = () => {
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
 
     return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered };
-  }, [dailyLookDate, dailyLookAssignedTo, events, techs]);
+  }, [businessCalendarEvents, dailyLookDate, dailyLookAssignedTo, events, techs]);
 
   useEffect(() => {
     if (isMobileCalendar && calendarView === 'day') setDailyLookDate(fmtDate(current));
@@ -915,7 +1061,7 @@ const CalendarWindow: React.FC = () => {
           <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
           <button
             className="gb-calendar-settings px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-            onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(true); }}
+            onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarSettingsOpen(true); }}
           >
             Settings
           </button>
@@ -1220,28 +1366,45 @@ const CalendarWindow: React.FC = () => {
       })()}
 
       {calendarSettingsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
-          <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[88vh] overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Settings</h3><p className="text-sm text-zinc-400">Manage appearance and technician shift colors.</p></div>
-              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(false); }}>X</button>
+        <div className="gb-calendar-settings-layer fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
+          <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[860px] max-h-[90vh] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
+            <div className="gb-calendar-settings-header flex items-center justify-between gap-3 border-b border-zinc-700 p-4">
+              <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Settings</h3><p className="text-sm text-zinc-400">Choose business dates, calendar colors, and technician shift colors.</p></div>
+              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarSettingsOpen(false); }}>X</button>
             </div>
-            <details className="rounded border border-zinc-700 bg-zinc-950" open>
-              <summary className="cursor-pointer px-3 py-2 font-semibold">Appearance colors</summary>
-              <div className="grid grid-cols-1 gap-2 border-t border-zinc-800 p-3 sm:grid-cols-2">{([
-                ['schedule', 'Default technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['notes', 'Important notes'],
-              ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => <div key={key} className="flex min-w-0 items-center gap-2 rounded border border-zinc-700 bg-zinc-800 p-2"><input className="h-9 w-10 shrink-0 cursor-pointer bg-transparent" type="color" value={calendarColors[key]} aria-label={`${label} custom color`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span><button type="button" className="shrink-0 text-xs text-zinc-400 hover:text-white" onClick={() => setCalendarColors(colors => ({ ...colors, [key]: DEFAULT_CALENDAR_COLORS[key] }))}>Default</button></div>)}</div>
-            </details>
-            <details className="mt-3 rounded border border-zinc-700 bg-zinc-950">
-              <summary className="cursor-pointer px-3 py-2 font-semibold">Technician shift colors</summary>
-              <div className="space-y-2 border-t border-zinc-800 p-3">
-                {techs.filter((tech: any) => tech?.active !== false).map((tech: any) => { const name = technicianDisplayName(tech); return <div key={tech.id || name} className="flex min-w-0 items-center gap-2 rounded border border-zinc-700 bg-zinc-800 p-2"><input className="h-9 w-10 shrink-0 cursor-pointer bg-transparent" type="color" value={technicianColors[name] || calendarColors.schedule} aria-label={`${name} custom shift color`} onChange={(event) => setTechnicianColors(colors => ({ ...colors, [name]: event.target.value }))} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span><button type="button" className="shrink-0 text-xs text-zinc-400 hover:text-white" onClick={() => setTechnicianColors(colors => { const next = { ...colors }; delete next[name]; return next; })}>Default</button></div>; })}
-                {!techs.length ? <p className="text-sm text-zinc-500">Add technicians in Admin to assign individual shift colors.</p> : null}
-              </div>
-            </details>
-            <div className="mt-5 flex justify-between gap-2">
+            <div className="gb-calendar-settings-body min-h-0 overflow-y-auto p-4">
+              <section className="gb-calendar-settings-section">
+                <div className="gb-calendar-settings-section-title"><div><strong>Business Calendar</strong><span>Show useful dates without creating editable calendar records.</span></div></div>
+                <div className="gb-business-calendar-options">
+                  {([
+                    ['federalHolidays', 'U.S. federal holidays', 'Observed federal holiday dates and shop-hours reminders.'],
+                    ['scTaxFreeWeekend', 'South Carolina tax-free weekend', 'The annual 72-hour sales tax holiday beginning the first Friday in August.'],
+                    ['daylightSaving', 'Daylight saving time changes', 'Spring-forward and fall-back reminders at 2:00 AM local time.'],
+                    ['estimatedTaxDeadlines', 'Estimated tax payment reminders', 'General quarterly reminders; verify applicability with your accountant.'],
+                  ] as Array<[keyof BusinessCalendarSettings, string, string]>).map(([key, label, detail]) => (
+                    <label key={key}><input type="checkbox" checked={businessCalendar[key]} onChange={(event) => setBusinessCalendar(settings => ({ ...settings, [key]: event.target.checked }))} /><span><strong>{label}</strong><small>{detail}</small></span></label>
+                  ))}
+                </div>
+              </section>
+
+              <details className="gb-calendar-settings-section" open>
+                <summary>Calendar Color Wheels</summary>
+                <div className="gb-calendar-color-grid">{([
+                  ['schedule', 'Default technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['notes', 'Important notes'], ['federalHoliday', 'Federal holidays'], ['scTaxFreeWeekend', 'SC tax-free weekend'], ['daylightSaving', 'Daylight saving time'], ['estimatedTaxDeadline', 'Tax reminders'],
+                ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => <div key={key} className="gb-calendar-color-row"><input className="gb-calendar-color-wheel" type="color" value={calendarColors[key]} aria-label={`${label} color wheel`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} /><span>{label}</span><button type="button" onClick={() => setCalendarColors(colors => ({ ...colors, [key]: DEFAULT_CALENDAR_COLORS[key] }))}>Default</button></div>)}</div>
+              </details>
+
+              <details className="gb-calendar-settings-section">
+                <summary>Technician Shift Color Wheels</summary>
+                <div className="gb-calendar-color-grid technician-colors">
+                  {techs.filter((tech: any) => tech?.active !== false).map((tech: any) => { const name = technicianDisplayName(tech); return <div key={tech.id || name} className="gb-calendar-color-row"><input className="gb-calendar-color-wheel" type="color" value={technicianColors[name] || calendarColors.schedule} aria-label={`${name} shift color wheel`} onChange={(event) => setTechnicianColors(colors => ({ ...colors, [name]: event.target.value }))} /><span>{name}</span><button type="button" onClick={() => setTechnicianColors(colors => { const next = { ...colors }; delete next[name]; return next; })}>Default</button></div>; })}
+                  {!techs.length ? <p className="text-sm text-zinc-500">Add technicians in Admin to assign individual shift colors.</p> : null}
+                </div>
+              </details>
+            </div>
+            <div className="gb-calendar-settings-footer flex justify-between gap-2 border-t border-zinc-700 p-4">
               <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setCalendarColors(DEFAULT_CALENDAR_COLORS)}>Restore defaults</button>
-              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarColors(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save settings'}</button></div>
+              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarSettings(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save settings'}</button></div>
             </div>
           </section>
         </div>

@@ -1710,3 +1710,316 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 .gb-sale-mobile-checkout {
   display: none;
 }
+
+.gb-calendar-settings-section {
+  display: block;
+  margin-bottom: 0.75rem;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  background: #111114;
+}
+
+.gb-calendar-settings-section > summary,
+.gb-calendar-settings-section-title {
+  min-height: 46px;
+  padding: 0.7rem 0.85rem;
+  color: #f4f4f5;
+  font-weight: 800;
+}
+
+.gb-calendar-settings-section > summary {
+  cursor: pointer;
+}
+
+.gb-calendar-settings-section-title span {
+  display: block;
+  margin-top: 0.15rem;
+  color: #a1a1aa;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.gb-business-calendar-options,
+.gb-calendar-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  border-top: 1px solid #27272a;
+  padding: 0.75rem;
+}
+
+.gb-business-calendar-options > label {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  border: 1px solid #3f3f46;
+  border-radius: 5px;
+  background: #18181b;
+  padding: 0.7rem;
+  cursor: pointer;
+}
+
+.gb-business-calendar-options input {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  accent-color: #39ff14;
+}
+
+.gb-business-calendar-options strong,
+.gb-business-calendar-options small {
+  display: block;
+  letter-spacing: 0;
+}
+
+.gb-business-calendar-options strong {
+  font-size: 0.82rem;
+}
+
+.gb-business-calendar-options small {
+  margin-top: 0.25rem;
+  color: #a1a1aa;
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.gb-calendar-color-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  border: 1px solid #3f3f46;
+  border-radius: 5px;
+  background: #18181b;
+  padding: 0.55rem 0.65rem;
+}
+
+.gb-calendar-color-wheel {
+  width: 2.35rem;
+  height: 2.35rem;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid #71717a;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.gb-calendar-color-wheel::-webkit-color-swatch-wrapper { padding: 0; }
+.gb-calendar-color-wheel::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.gb-calendar-color-wheel::-moz-color-swatch { border: 0; border-radius: 50%; }
+
+.gb-calendar-color-row > span {
+  overflow: hidden;
+  font-size: 0.79rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-calendar-color-row > button {
+  border: 0;
+  background: transparent;
+  color: #a1a1aa;
+  font-size: 0.69rem;
+}
+
+.gb-calendar-color-row > button:hover { color: white; }
+
+/* Technicians use the compact card workflow on desktop as well as mobile. */
+.gb-technicians-window {
+  width: min(96vw, 1380px) !important;
+  max-width: none !important;
+  max-height: min(92vh, 980px) !important;
+  overflow-x: hidden !important;
+}
+
+.gb-technicians-header {
+  position: sticky;
+  top: -1rem;
+  z-index: 5;
+  gap: 1rem;
+  margin: -1rem -1rem 0.85rem !important;
+  border-bottom: 1px solid #27272a;
+  background: rgba(24, 24, 27, 0.97);
+  padding: 0.85rem 1rem;
+}
+
+.gb-technicians-toolbar button {
+  min-height: 2.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.gb-tech-mobile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 31rem), 1fr));
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.gb-tech-empty {
+  grid-column: 1 / -1;
+  padding: 2rem 1rem;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  text-align: center;
+}
+
+.gb-tech-card {
+  display: grid;
+  min-width: 0;
+  gap: 0.65rem;
+  overflow: hidden;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  background: #18181b;
+  padding: 0.75rem;
+}
+
+.gb-tech-card-header,
+.gb-tech-schedule > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.gb-tech-card-header h4 {
+  margin: 0;
+  color: #f4f4f5;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.gb-tech-card-header p {
+  margin: 0.1rem 0 0;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+}
+
+.gb-tech-edit {
+  min-width: 3.8rem;
+  min-height: 2.2rem;
+  border: 1px solid #52525b;
+  border-radius: 4px;
+  background: #27272a;
+  color: #f4f4f5;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.gb-tech-contact {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.4rem;
+}
+
+.gb-tech-contact a {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+  border: 1px solid #27272a;
+  background: #09090b;
+  color: inherit;
+  padding: 0.45rem 0.55rem;
+  text-decoration: none;
+}
+
+.gb-tech-contact span {
+  color: #71717a;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.gb-tech-contact strong {
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-tech-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.gb-tech-actions button {
+  min-width: 0;
+  min-height: 2.25rem;
+  border: 1px solid #52525b;
+  border-radius: 4px;
+  background: #27272a;
+  color: #f4f4f5;
+  padding: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.gb-tech-actions .verify { border-color: #2563eb; background: #1d4ed8; }
+.gb-tech-actions .analytics { border-color: #a855f7; background: #7e22ce; }
+.gb-tech-actions .danger { border-color: #991b1b; background: rgba(127, 29, 29, 0.72); }
+
+.gb-tech-message {
+  border: 1px solid #52525b;
+  background: #27272a;
+  color: #e4e4e7;
+  padding: 0.5rem;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.gb-tech-schedule {
+  overflow: hidden;
+  border: 1px solid #3f3f46;
+  background: #09090b;
+}
+
+.gb-tech-schedule > summary {
+  min-height: 2.65rem;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+  list-style: none;
+  color: #f4f4f5;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.gb-tech-schedule > summary::-webkit-details-marker { display: none; }
+.gb-tech-schedule > summary::after { content: "+"; color: #39ff14; font-size: 1.15rem; }
+.gb-tech-schedule[open] > summary::after { content: "-"; }
+
+.gb-tech-schedule-hint {
+  margin-left: auto;
+  margin-right: 0.55rem;
+  color: #71717a;
+  font-size: 0.67rem;
+  font-weight: 500;
+}
+
+.gb-tech-schedule .gb-schedule-editor {
+  border-width: 1px 0 0 !important;
+  border-radius: 0 !important;
+}
+
+.gb-tech-delete {
+  justify-self: end;
+  border: 0;
+  background: transparent;
+  color: #f87171;
+  font-size: 0.7rem;
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .gb-technicians-window { width: 98vw !important; }
+  .gb-technicians-header { align-items: flex-start !important; }
+  .gb-technicians-toolbar { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gb-tech-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.81 (2026-08-11)
+- Technicians: replaces the oversized desktop table with compact, dynamically sized technician cards while preserving contact actions, passcodes, time verification, analytics, schedules, and deletion controls.
+- Responsive Windows: establishes explicit portrait and landscape layouts for mobile daughter windows, with shared width containment to prevent controls and sections from bleeding off-screen.
+- Calendar Settings: adds color-wheel controls and optional federal holidays, South Carolina tax-free weekend, daylight-saving changes, and estimated-tax reminders without creating editable shop records.
+- Desktop Navigation Preview: refines the compact side navigation, main-page filters, client actions, and actionable notification rail for continued layout testing.
+- Windows Installer: restores the per-user, non-elevated installer configuration used by the in-app update flow.
+
 ## v0.5.80 (2026-08-11)
 - Main List: identifies consultation sales as Consultation in the Type column, using the compact CONS label on narrow mobile screens.
 - Technician Sync: makes Windows read and write the same Supabase staff profiles and protected technician passcodes as Android instead of falling back to a device-local technician list.

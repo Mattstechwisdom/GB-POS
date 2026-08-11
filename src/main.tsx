@@ -3,6 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 import { publicAsset } from './lib/publicAsset';
 import { focusNextFocusable } from './lib/focusNextFocusable';
+import { installMobileApi } from './mobile/mobile-api';
+
+if (typeof window !== 'undefined') {
+	const params = new URLSearchParams(window.location.search);
+	if (params.get('desktopNavPreview') === '1' && !(window as any).api) {
+		installMobileApi();
+	}
+}
 
 const App = lazy(() => import('./App'));
 const CalendarWindow = lazy(() => import('./components/CalendarWindow'));
@@ -54,6 +62,8 @@ const DataPathGate = lazy(() => import('./components/DataPathGate'));
 declare global {
 	interface Window {
 		__lastRepairSelected?: any;
+		__gbposErrorHandlerInstalled?: boolean;
+		__gbposReactRoot?: ReturnType<typeof createRoot>;
 	}
 }
 
@@ -82,20 +92,24 @@ function applyVersionToDocumentTitle() {
 }
 
 if (typeof window !== 'undefined') {
-	window.addEventListener('error', (ev: any) => {
-		try {
-			document.body.innerHTML = '';
-			const pre = document.createElement('pre');
-			pre.style.color = 'salmon';
-			pre.style.whiteSpace = 'pre-wrap';
-			// Ensure we stringify errors safely for display
-			const errMsg = ev?.message || ev?.error?.message || ev;
-			pre.textContent = `Uncaught error: ${String(errMsg)}` + (ev?.error?.stack ? '\n' + String(ev.error.stack) : '');
-			document.body.appendChild(pre);
-		} catch (e) {
-			// ignore
-		}
-	});
+	if (!window.__gbposErrorHandlerInstalled) {
+		window.__gbposErrorHandlerInstalled = true;
+		window.addEventListener('error', (ev: any) => {
+			try {
+				const existing = document.getElementById('gbpos-runtime-error');
+				existing?.remove();
+				const pre = document.createElement('pre');
+				pre.id = 'gbpos-runtime-error';
+				pre.setAttribute('role', 'alert');
+				pre.style.cssText = 'position:fixed;inset:auto 16px 16px 16px;z-index:2147483647;max-height:40vh;overflow:auto;margin:0;padding:12px;border:1px solid #ef4444;background:#18181b;color:#fca5a5;white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;';
+				const errMsg = ev?.message || ev?.error?.message || ev;
+				pre.textContent = `Uncaught error: ${String(errMsg)}` + (ev?.error?.stack ? '\n' + String(ev.error.stack) : '');
+				document.body.appendChild(pre);
+			} catch {
+				// Keep the mounted React tree intact even when error reporting fails.
+			}
+		});
+	}
 }
 
 if (typeof window !== 'undefined') {
@@ -391,7 +405,8 @@ try {
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
-	const root = createRoot(rootEl);
+	const root = window.__gbposReactRoot || createRoot(rootEl);
+	window.__gbposReactRoot = root;
 	
 	if (showDeviceCategories) {
 		renderWithSuspense(root, <DeviceCategoriesWindow />);

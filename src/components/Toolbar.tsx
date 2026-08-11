@@ -3,7 +3,17 @@ import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar, syncNotificationsFromRecords } from '@/lib/notifications';
 import { dispatchOpenModal } from '@/lib/modalBus';
 
-const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void; keyword?: string; onKeywordChange?: (v: string) => void }> = ({ mode, onModeChange, keyword = '', onKeywordChange }) => {
+const Toolbar: React.FC<{
+  mode: 'workorders' | 'sales' | 'all';
+  onModeChange: (m: 'workorders' | 'sales' | 'all') => void;
+  keyword?: string;
+  onKeywordChange?: (v: string) => void;
+  drawerMode?: boolean;
+  onOpenMenu?: () => void;
+  onOpenNotifications?: () => void;
+  onSearchClient?: () => void;
+  onAddClient?: () => void;
+}> = ({ mode, onModeChange, keyword = '', onKeywordChange, drawerMode = false, onOpenMenu, onOpenNotifications, onSearchClient, onAddClient }) => {
 
   const [isFull, setIsFull] = useState<boolean>(false);
   const [appVersion, setAppVersion] = useState<string>('');
@@ -89,9 +99,20 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
 
   return (
     <>
-    <div className="relative flex flex-wrap items-center justify-between gap-2 border-b border-zinc-700 bg-zinc-900 px-4 py-2">
+    <div className={`relative flex flex-wrap items-center justify-between gap-2 border-b border-zinc-700 bg-zinc-900 px-4 py-2${drawerMode ? ' desktop-preview-toolbar' : ''}`}>
+      {drawerMode ? (
+        <div className="desktop-preview-brand">
+          <button type="button" className="desktop-preview-menu-button" onClick={onOpenMenu} aria-label="Open navigation menu" title="Menu">
+            <span /><span /><span />
+          </button>
+          <div>
+            <strong>GADGETBOY POS</strong>
+            {appVersion ? <span>v{appVersion}</span> : null}
+          </div>
+        </div>
+      ) : null}
       {/* Left side: Admin dropdown + action buttons */}
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <div className={drawerMode ? 'hidden' : 'flex min-w-0 flex-1 flex-wrap items-center gap-2'}>
         {/* Admin dropdown */}
         <div ref={adminRef} className="relative">
           <button
@@ -136,28 +157,28 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </button>
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        <button
+        {!drawerMode ? <button
           className="px-3 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
           onClick={() => dispatchOpenModal('eod')}
         >
           End of Day Report
-        </button>
-        <button
+        </button> : null}
+        {!drawerMode ? <button
           className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
           onClick={() => dispatchOpenModal('dailyLook')}
         >
           Daily Look
-        </button>
-        <button
+        </button> : null}
+        {!drawerMode ? <button
           className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
           onClick={() => dispatchOpenModal('calendar')}
         >
           Calendar
-        </button>
-        <button
+        </button> : null}
+        {!drawerMode ? <button
           type="button"
           className="relative flex h-9 w-9 items-center justify-center rounded border border-zinc-700 bg-zinc-800 text-lg font-bold text-zinc-100 hover:border-[#39FF14] hover:text-[#39FF14]"
-          onClick={() => dispatchOpenModal('notifications')}
+          onClick={() => onOpenNotifications ? onOpenNotifications() : dispatchOpenModal('notifications')}
           aria-label="Open notifications"
           title="Notifications"
         >
@@ -167,7 +188,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
               {unread > 99 ? '99+' : unread}
             </span>
           )}
-        </button>
+        </button> : null}
         <button
           className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm flex items-center justify-center"
           title={isFull ? 'Exit full screen' : 'Enter full screen'}
@@ -186,6 +207,14 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
      </div>
    </div>
    {/* Keyword search — full-width row below toolbar buttons */}
+   {drawerMode ? (
+     <div className="desktop-preview-client-row">
+       <div className="desktop-preview-client-actions">
+         <button type="button" className="search" onClick={onSearchClient}>Search Client</button>
+         <button type="button" className="add" onClick={onAddClient}>Add Client</button>
+       </div>
+     </div>
+   ) : null}
    <div className="px-4 py-1.5 border-b border-zinc-700 bg-zinc-900 flex items-center gap-2">
      <input
        type="text"

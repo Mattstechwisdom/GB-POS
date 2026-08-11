@@ -78,7 +78,7 @@ assert.match(notificationSettingsWindow, /Promise\.allSettled/);
 assert.doesNotMatch(notificationSettingsWindow, /Waiting for device/);
 assert.match(calendarWindow, /calendarPreferences/);
 assert.match(calendarWindow, /Calendar Settings/);
-assert.match(calendarWindow, /Technician shift colors/);
+assert.match(calendarWindow, /Technician shift colors/i);
 assert.match(calendarWindow, /gb-calendar-period-arrow/);
 assert.match(calendarWindow, /Boolean\(calendarPayload\?\.dailyLook\)/);
 assert.match(calendarWindow, /gb-calendar-title-actions/);

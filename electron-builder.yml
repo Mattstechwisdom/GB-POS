@@ -25,10 +25,16 @@ win:
   target:
     - nsis
   icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
 nsis:
   include: build/installer-options.nsh
   oneClick: false
   perMachine: false
+  # GadgetBoy POS installs per-user and updates silently in place. Do not
+  # invoke the NSIS elevation helper or request an administrator prompt.
+  allowElevation: false
+  packElevateHelper: false
+  runAfterFinish: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   installerIcon: build/icon.ico

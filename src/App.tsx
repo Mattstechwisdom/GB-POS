@@ -10,6 +10,7 @@ import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
 import GidgetChat from './components/GidgetChat';
+import DesktopNotificationDrawer from './components/DesktopNotificationDrawer';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
@@ -20,6 +21,8 @@ import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
+import { publicAsset } from './lib/publicAsset';
+import './styles/desktop-nav-preview.css';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
@@ -44,6 +47,8 @@ const ReportEmailWindow         = React.lazy(() => import('./components/ReportEm
 const ChartsWindow              = React.lazy(() => import('./components/ChartsWindow'));
 const NotificationsWindow       = React.lazy(() => import('./components/NotificationsWindow'));
 const NotificationSettingsWindow = React.lazy(() => import('./components/NotificationSettingsWindow'));
+const JournalWindow             = React.lazy(() => import('./components/JournalWindow'));
+const TechniciansWindow         = React.lazy(() => import('./components/TechniciansWindow'));
 const ReleaseFormWindow         = React.lazy(() => import('./workorders/ReleaseFormWindow'));
 const CustomerReceiptWindow     = React.lazy(() => import('./workorders/CustomerReceiptWindow'));
 const ProductFormWindow         = React.lazy(() => import('./sales/ProductFormWindow'));
@@ -165,6 +170,14 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'charts':                 return <ChartsWindow />;
     case 'notifications':          return <NotificationsWindow />;
     case 'notificationSettings':   return <NotificationSettingsWindow />;
+    case 'journal':                return <JournalWindow />;
+    case 'technicians':            return <TechniciansWindow onClose={onClose} />;
+    case 'diagnosticTools':        return (
+      <section className="mx-auto mt-12 max-w-3xl border border-zinc-700 bg-zinc-950 p-8">
+        <h2 className="text-2xl font-bold text-blue-300">Diagnostic Tools</h2>
+        <p className="mt-3 text-zinc-400">This workspace is ready for symptom checklists, electrical test references, intake helpers, and field diagnostics.</p>
+      </section>
+    );
     case 'releaseForm':            return <ReleaseFormWindow />;
     case 'customerReceipt':        return <CustomerReceiptWindow />;
     case 'productForm':            return <ProductFormWindow />;
@@ -483,6 +496,28 @@ const AppInner: React.FC<{
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [gidgetOpen, setGidgetOpen] = useState(false);
+  const desktopNavPreview = new URLSearchParams(window.location.search).get('desktopNavPreview') === '1';
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(desktopNavPreview);
+  const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopNavPreview);
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
+  const [desktopNotificationsOpen, setDesktopNotificationsOpen] = useState(false);
+  const desktopFiltersRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!desktopNavPreview || !desktopFiltersOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!desktopFiltersRef.current?.contains(event.target as Node)) setDesktopFiltersOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDesktopFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [desktopFiltersOpen, desktopNavPreview]);
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -605,10 +640,101 @@ const AppInner: React.FC<{
     setKeyword('');
   };
 
+  const closeDesktopDrawer = () => {
+    setDesktopDrawerOpen(false);
+    setDesktopDrawerPinned(false);
+  };
+
+  const openDrawerModal = (type: string, payload?: any) => {
+    closeDesktopDrawer();
+    openModal(type, payload);
+  };
+
   return (
-    <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
-      <div className="flex flex-1">
-        <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
+    <div className={`bg-zinc-900 min-h-screen text-white flex flex-col relative${desktopNavPreview ? ' desktop-nav-preview' : ''}`}>
+      {desktopNavPreview ? (
+        <>
+          <div
+            className="desktop-drawer-hotspot"
+            onMouseEnter={() => setDesktopDrawerOpen(true)}
+            aria-hidden="true"
+          />
+          {desktopDrawerOpen ? (
+            <div className="desktop-drawer-layer">
+              <button type="button" className="desktop-drawer-scrim" onClick={closeDesktopDrawer} aria-label="Close navigation menu" />
+              <aside
+                className="desktop-drawer"
+                onMouseLeave={() => {
+                  if (!desktopDrawerPinned) setDesktopDrawerOpen(false);
+                }}
+              >
+                <header className="desktop-drawer-header">
+                  <div className="desktop-drawer-close-row">
+                    <button type="button" className="desktop-drawer-close" onClick={closeDesktopDrawer} aria-label="Close navigation menu">x</button>
+                  </div>
+                  <button type="button" className="desktop-drawer-brand" onClick={() => setGidgetOpen(true)} title="Open Gidget">
+                    <img src={publicAsset('logo.png')} alt="GadgetBoy" />
+                  </button>
+                </header>
+
+                <div className="desktop-drawer-priority">
+                  <button type="button" className="eod" onClick={() => openDrawerModal('eod')}>
+                    <span>End of Day Report</span><small>Review today and purchasing</small>
+                  </button>
+                  <button type="button" className="daily" onClick={() => openDrawerModal('dailyLook')}>
+                    <span>Daily Look</span><small>Schedule, notes and priorities</small>
+                  </button>
+                </div>
+
+                <div className="desktop-drawer-primary">
+                  <button type="button" className="quote" onClick={() => openDrawerModal('quoteGenerator')}>Generate Quote</button>
+                  <button type="button" className="consult" onClick={() => openDrawerModal('consultation')}>Consultation</button>
+                  <button type="button" className="checkout" onClick={() => openDrawerModal('quickSale')}>Quick Checkout</button>
+                </div>
+
+                <details className="desktop-drawer-section" open>
+                  <summary>Technician Tools <span>+</span></summary>
+                  <div>
+                    <button type="button" onClick={() => openDrawerModal('calendar')}>Calendar</button>
+                    <button type="button" onClick={() => openDrawerModal('clockIn')}>Clock In / Out</button>
+                    <button type="button" onClick={() => openDrawerModal('technicians')}>Technicians</button>
+                    <button type="button" onClick={() => openDrawerModal('journal')}>Journal</button>
+                    <button type="button" onClick={() => openDrawerModal('diagnosticTools')}>Diagnostic Tools</button>
+                  </div>
+                </details>
+
+                <details className="desktop-drawer-section admin">
+                  <summary>Admin <span>+</span></summary>
+                  <div>
+                    <button type="button" onClick={() => openDrawerModal('repairCategories')}>Devices / Repairs</button>
+                    <button type="button" onClick={() => openDrawerModal('inventory')}>Inventory</button>
+                    <button type="button" onClick={() => openDrawerModal('vendors')}>Distributors / Vendors</button>
+                    <button type="button" onClick={() => openDrawerModal('reporting')}>Reporting</button>
+                    <button type="button" onClick={() => openDrawerModal('dataTools')}>Data Tools</button>
+                    <button type="button" onClick={() => openDrawerModal('devMenu')}>Dev Menu</button>
+                  </div>
+                </details>
+
+                <footer className="desktop-drawer-footer">
+                  <button type="button" onClick={onSignOut}>Sign out</button>
+                </footer>
+              </aside>
+            </div>
+          ) : null}
+          <DesktopNotificationDrawer
+            open={desktopNotificationsOpen}
+            onOpen={() => {
+              setDesktopDrawerOpen(false);
+              setDesktopDrawerPinned(false);
+              setDesktopFiltersOpen(false);
+              setDesktopNotificationsOpen(true);
+            }}
+            onClose={() => setDesktopNotificationsOpen(false)}
+          />
+        </>
+      ) : null}
+      <div className={`flex flex-1${desktopNavPreview ? ' desktop-preview-workspace' : ''}`}>
+        {!desktopNavPreview ? <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
@@ -634,9 +760,74 @@ const AppInner: React.FC<{
           <div>
             <RecentCustomers />
           </div>
-        </aside>
+        </aside> : null}
         <main className="flex-1 min-w-0 flex flex-col">
-          <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} />
+          <Toolbar
+            mode={mode}
+            onModeChange={setMode}
+            keyword={keyword}
+            onKeywordChange={setKeyword}
+            drawerMode={desktopNavPreview}
+            onOpenMenu={() => {
+              setDesktopNotificationsOpen(false);
+              setDesktopFiltersOpen(false);
+              setDesktopDrawerPinned(true);
+              setDesktopDrawerOpen(true);
+            }}
+            onOpenNotifications={() => {
+              setDesktopDrawerOpen(false);
+              setDesktopDrawerPinned(false);
+              setDesktopFiltersOpen(false);
+              setDesktopNotificationsOpen(true);
+            }}
+            onSearchClient={() => openModal('customerSearch')}
+            onAddClient={() => openModal('customerOverview', 0)}
+          />
+          {desktopNavPreview ? (
+            <div className="desktop-preview-tabs" aria-label="Record type">
+              <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
+              <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button>
+              <div className="desktop-preview-filter-control" ref={desktopFiltersRef}>
+                <button
+                  type="button"
+                  className={`filters${desktopFiltersOpen ? ' active-filter-menu' : ''}`}
+                  aria-expanded={desktopFiltersOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setDesktopNotificationsOpen(false);
+                    setDesktopFiltersOpen(open => !open);
+                  }}
+                >Filters</button>
+                {desktopFiltersOpen ? (
+                  <div className="desktop-preview-filter-menu" role="dialog" aria-label="List filters">
+                    <header>
+                      <strong>Filter Activity</strong>
+                      <button type="button" onClick={() => setDesktopFiltersOpen(false)} aria-label="Close filters">x</button>
+                    </header>
+                    <SidebarFilters
+                      technicianFilter={technicianFilter}
+                      onTechnicianFilterChange={setTechnicianFilter}
+                      statusFilter={statusFilter}
+                      onStatusFilterChange={setStatusFilter}
+                      dateFrom={dateFrom}
+                      dateTo={dateTo}
+                      onDateFromChange={setDateFrom}
+                      onDateToChange={setDateTo}
+                      mode={mode}
+                      invoiceQuery={invoiceQuery}
+                      onInvoiceQueryChange={setInvoiceQuery}
+                      woQuery={woQuery}
+                      onWoQueryChange={setWoQuery}
+                      onClear={handleClear}
+                      onRefresh={() => setRefreshKey(refreshKey + 1)}
+                      navigationShell
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <div className="flex-1 min-h-0 overflow-auto">
             {mode === 'workorders' && (
               <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
@@ -733,8 +924,8 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     refreshTechs();
     refreshCustomers();
     const api = (window as any).api;
-    const offCustomers = api.onCustomersChanged?.(() => refreshCustomers());
-    const offTechs = api.onTechniciansChanged?.(() => refreshTechs());
+    const offCustomers = api?.onCustomersChanged?.(() => refreshCustomers());
+    const offTechs = api?.onTechniciansChanged?.(() => refreshTechs());
     return () => { try { offCustomers && offCustomers(); } catch {} try { offTechs && offTechs(); } catch {} };
   }, []);
 

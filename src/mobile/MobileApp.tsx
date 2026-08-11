@@ -1254,11 +1254,11 @@ function MobileDrawer(props: {
       <button type="button" className="mobile-drawer-scrim" onClick={onClose} aria-label="Close menu" />
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">
+          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
           <div>
             <strong>{profileName || 'Shop Access'}</strong>
             <span>{role} session</span>
           </div>
-          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
         </header>
 
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">

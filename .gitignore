@@ -23,6 +23,7 @@ build/GadgetBoy-POS-Instructions.pdf
 
 # Temporary release artifacts
 release-v023-test/
+/tmp/
 
 # OS
 .DS_Store

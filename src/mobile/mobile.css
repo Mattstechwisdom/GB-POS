@@ -728,7 +728,7 @@
 
 .mobile-drawer-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.75rem;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
   gap: 0.75rem;
   align-items: center;
 }
@@ -3451,6 +3451,131 @@
     max-width: 76rem;
     margin-left: auto;
     margin-right: auto;
+  }
+}
+
+@media (max-width: 820px) {
+  .gbpos-mobile .gb-calendar-settings-layer {
+    align-items: stretch !important;
+    padding: 0 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-settings-dialog {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 100dvh !important;
+    border-width: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-settings-header {
+    min-height: 4rem;
+    padding: 0.65rem 0.75rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-settings-header h3 { font-size: 1rem !important; }
+  .gbpos-mobile .gb-calendar-settings-header p { font-size: 0.68rem !important; }
+  .gbpos-mobile .gb-calendar-settings-body { padding: 0.55rem !important; }
+
+  .gbpos-mobile .gb-business-calendar-options,
+  .gbpos-mobile .gb-calendar-color-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.4rem;
+    padding: 0.5rem;
+  }
+
+  .gbpos-mobile .gb-business-calendar-options > label {
+    min-height: 3.35rem;
+    padding: 0.55rem;
+  }
+
+  .gbpos-mobile .gb-calendar-color-row {
+    grid-template-columns: 2.8rem minmax(0, 1fr) auto;
+    min-height: 3.2rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .gbpos-mobile .gb-calendar-color-wheel {
+    width: 2.55rem;
+    height: 2.55rem;
+  }
+
+  .gbpos-mobile .gb-calendar-settings-footer {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 0.55rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-settings-footer > div {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gbpos-mobile .gb-calendar-settings-footer button {
+    min-height: 2.65rem;
+  }
+}
+
+/* Shared mobile window contract: one portrait layout and one landscape layout. */
+.gbpos-mobile,
+.gbpos-mobile *,
+.mobile-modal-shell,
+.mobile-modal-shell * {
+  box-sizing: border-box;
+}
+
+.mobile-modal-content,
+.mobile-modal-content > *,
+.gbpos-mobile [data-modal-shell="1"],
+.gbpos-mobile [data-modal-shell="1"] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (orientation: portrait) {
+  .mobile-modal-shell {
+    width: 100vw;
+    height: 100dvh;
+  }
+
+  .mobile-modal-content {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .gbpos-mobile .gb-tech-mobile-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (orientation: landscape) {
+  .mobile-modal-shell {
+    width: 100vw;
+    height: 100dvh;
+  }
+
+  .mobile-modal-bar {
+    min-height: calc(env(safe-area-inset-top) + 3.45rem);
+    align-items: center;
+    padding-top: calc(env(safe-area-inset-top) + 0.35rem);
+    padding-bottom: 0.35rem;
+  }
+
+  .mobile-modal-content {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .gbpos-mobile .gb-tech-mobile-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .gbpos-mobile .gb-technicians-toolbar .gb-tech-add {
+    grid-column: auto;
   }
 }
 

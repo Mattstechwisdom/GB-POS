@@ -185,7 +185,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
           </div>
         </div>
 
-        {!isMobileLayout ? <div className="gb-tech-desktop-table border border-zinc-800 rounded overflow-hidden overflow-x-auto">
+        {false ? <div className="gb-tech-desktop-table border border-zinc-800 rounded overflow-hidden overflow-x-auto">
           <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-zinc-800 text-zinc-400">
               <tr>
@@ -343,7 +343,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                   <details className="gb-tech-schedule">
                     <summary>
                       <span>Weekly Schedule</span>
-                      <span className="gb-tech-schedule-hint">Tap to edit</span>
+                      <span className="gb-tech-schedule-hint">{isMobileLayout ? 'Tap' : 'Click'} to edit</span>
                     </summary>
                     <ScheduleEditor
                       tech={tech}
