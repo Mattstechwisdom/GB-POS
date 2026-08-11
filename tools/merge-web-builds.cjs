@@ -15,7 +15,7 @@ if (!fs.existsSync(path.join(mobileDir, 'mobile.html'))) {
 fs.copyFileSync(path.join(mobileDir, 'mobile.html'), path.join(desktopDir, 'mobile.html'));
 fs.cpSync(path.join(mobileDir, 'assets'), path.join(desktopDir, 'assets'), { recursive: true, force: true });
 for (const name of fs.readdirSync(mobileDir)) {
-  if (name === 'index.html' || name === 'mobile.html' || name === 'assets' || name === 'runtime-env.js') continue;
+  if (name === 'index.html' || name === 'mobile.html' || name === 'assets') continue;
   fs.cpSync(path.join(mobileDir, name), path.join(desktopDir, name), { recursive: true, force: true });
 }
 console.log('Merged desktop and mobile web builds into dist/.');

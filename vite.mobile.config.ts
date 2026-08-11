@@ -39,6 +39,7 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY || ''),
       'import.meta.env.VITE_SHOP_LOGIN_USERNAME': JSON.stringify(env.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz'),
       'import.meta.env.VITE_SHOP_LOGIN_EMAIL': JSON.stringify(env.VITE_SHOP_LOGIN_EMAIL || ''),
+      'import.meta.env.VITE_PUBLIC_APP_URL': JSON.stringify(env.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS'),
     },
     plugins: [
       react(),

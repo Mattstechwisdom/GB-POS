@@ -211,18 +211,18 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
   return patch;
 }
 
-function clientUpdateApiUrl() {
-  const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').trim();
-  if (configured) return `${configured.replace(/\/+$/, '')}/api/client-updates/send`;
-  try {
-    const origin = String(window.location.origin || '').trim();
-    if (/^https:\/\//i.test(origin) && !/localhost|127\.0\.0\.1/i.test(origin)) {
-      return `${origin.replace(/\/+$/, '')}/api/client-updates/send`;
-    }
-  } catch {
-    // Desktop file URLs and local previews use the hosted delivery endpoint.
+async function invokeClientUpdate(body: Record<string, unknown>) {
+  const request = supabase.functions.invoke('client-updates', { body });
+  const timeout = new Promise<never>((_, reject) => {
+    window.setTimeout(() => reject(new DOMException('Supabase did not respond in time.', 'AbortError')), 25_000);
+  });
+  const { data, error } = await Promise.race([request, timeout]);
+  if (error) {
+    const contextBody = (error as any)?.context?.body;
+    throw new Error(String(contextBody?.error || (error as any)?.message || 'Client update failed.'));
   }
-  return 'https://gb-pos-production.up.railway.app/api/client-updates/send';
+  if (!data?.ok) throw new Error(String(data?.error || 'Client update failed.'));
+  return data;
 }
 
 const ClientUpdatePanel: React.FC<Props> = ({
@@ -420,34 +420,22 @@ const ClientUpdatePanel: React.FC<Props> = ({
     const extra = { estimatedDate, estimatedTime, notes };
     setSavingKey(option.key);
     setResult(null);
-    const controller = new AbortController();
-    const requestTimeout = window.setTimeout(() => controller.abort(), 25_000);
     try {
       const api: any = (window as any).api;
       const sessionResult = await supabase.auth.getSession();
       const accessToken = sessionResult.data.session?.access_token || '';
-      if (!accessToken && !token) throw new Error('Your login session expired. Sign in again before sending an update.');
+      if (!accessToken) throw new Error('Your login session expired. Sign in again before sending an update.');
       const selectedDelivery: DeliveryMode = isMobileApp ? deliveryMode : 'email';
-      const response = await fetch(clientUpdateApiUrl(), {
-        method: 'POST',
-        headers: {
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token: token || undefined,
-          recordType: type,
-          recordId: Number(record?.id || recordId || 0) || undefined,
-          statusKey: option.key,
-          estimatedDate: extra.estimatedDate || undefined,
-          estimatedTime: extra.estimatedTime || undefined,
-          notes: extra.notes || undefined,
-          deliveryMode: selectedDelivery,
-        }),
-        signal: controller.signal,
+      const delivery = await invokeClientUpdate({
+        token: token || undefined,
+        recordType: type,
+        recordId: Number(record?.id || recordId || 0) || undefined,
+        statusKey: option.key,
+        estimatedDate: extra.estimatedDate || undefined,
+        estimatedTime: extra.estimatedTime || undefined,
+        notes: extra.notes || undefined,
+        deliveryMode: selectedDelivery,
       });
-      const delivery = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(delivery?.error || `Client update request failed (${response.status}).`);
 
       if (delivery?.record) {
         const saved = mapCloudRow(type, delivery.record);
@@ -495,7 +483,6 @@ const ClientUpdatePanel: React.FC<Props> = ({
         : (e?.message || String(e));
       setResult({ ok: false, message, deliveryStatus: 'failed', statusSaved: false });
     } finally {
-      window.clearTimeout(requestTimeout);
       setSavingKey('');
     }
   }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);

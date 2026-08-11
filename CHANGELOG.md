@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.79 (2026-08-11)
+- Hosting: removes the Railway server, runtime configuration, and deployment files; the public mobile and QR experience now deploys to GitHub Pages without a recurring hosting bill.
+- Shared Data: keeps Windows and Android records synchronized directly through Supabase, preserving the existing shop database and offline queue behavior.
+- Client Updates: routes authenticated work-order, sale, and consultation updates through Supabase Edge Functions, with status history and Gmail app-password delivery handled server-side.
+- QR Codes: creates opaque Supabase tokens and opens the free GitHub Pages client-update or consultation-reminder page, so printed QR codes continue to work when the shop PC is off.
+- Consultation Reminders: adds a public, minimal-data reminder page that downloads a one-hour-prior calendar reminder without exposing Supabase service credentials.
+- Distributor URLs: identifies only the distributor from pasted URLs; product scraping and Railway-dependent autofill have been removed.
+- Gidget: keeps local POS and repair-assistant capabilities while removing the Railway-hosted API fallback.
+
 ## v0.5.78 (2026-08-11)
 - Calendar Notes: uses collision-resistant IDs and authenticated Supabase Realtime sync so important daily notes remain available across Windows and Android installations.
 - Daily Look / Journal: includes each day's important notes and adds a mobile Technician Journal that gathers calendar notes, work-order repair journals, and sale notes without changing the underlying records.

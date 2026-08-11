@@ -236,14 +236,6 @@ export default function ConsultationBookingWindow() {
           const result = await api?.qrGetStatusUrl?.('consult', done.eventId);
           if (result?.ok && result.url) qrUrl = result.url;
         } catch { /* QR helper unavailable */ }
-        if (!qrUrl) {
-          const ipRes = await fetch('http://localhost:7777/ip');
-          if (ipRes.ok) {
-            const j = await ipRes.json();
-            const baseUrl = String(j?.ipUrl || (j?.ip ? `http://${j.ip}:7777` : '')).trim();
-            if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/consult/${done.eventId}`;
-          }
-        }
         if (qrUrl) {
           const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
           if (alive) setQrDataUrl(dataUrl);

@@ -145,8 +145,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ### If Update Buttons Do Not Work
 
-1. Confirm the QR page loaded from the production Railway URL.
-2. Confirm runtime Supabase values are present.
+1. Confirm the QR page loaded from the GadgetBoy POS GitHub Pages URL.
+2. Confirm the installed app can connect to Supabase.
 3. Confirm the client has a valid email or phone.
 4. Retry from Update Client inside the POS.
 5. Check ticket History to determine whether the status saved even if delivery failed.
@@ -167,7 +167,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 1. Find the correct part on the distributor website.
 2. Paste the HTTPS order URL into Parts Tracking.
-3. Allow URL reading to fill supported title, distributor, and cost fields.
+3. The POS identifies the distributor from the URL. Enter and verify the part title and cost manually.
 4. Verify every scraped value against the source page before saving.
 5. Use the default 10 percent markup or choose/enter the approved markup.
 6. Confirm the resulting sold price. The customer sees the sold price, not internal cost.
@@ -667,15 +667,15 @@ Use this directory as a map of the POS. Detailed operating steps remain in the e
 
 1. Confirm internet access.
 2. Close and reopen the app once.
-3. On Windows, open the production web URL to confirm Railway responds.
-4. Confirm runtime environment values exist in Railway.
+3. On Windows, open the GadgetBoy POS GitHub Pages URL to confirm the public app responds.
+4. Check GitHub Actions for the latest Pages deployment and confirm the Supabase project is available.
 5. Check Dev Menu > Environment Info and App Health Scan.
 6. Do not restore or clear data merely to fix a loading screen.
 
 ### Missing Supabase Environment Values
 
 - Local development requires the expected VITE_SUPABASE values in .env.local.
-- Railway requires production variables and runtime-env.js generation.
+- GitHub Pages builds require the public Supabase URL and publishable key in GitHub Actions variables or secrets.
 - GitHub Actions requires matching repository secrets/variables for packaged builds.
 - Never use the service-role secret as a publishable client key.
 
@@ -717,7 +717,7 @@ Use this directory as a map of the POS. Detailed operating steps remain in the e
 
 ### QR Page Opens but Buttons Fail
 
-- Verify Railway production is healthy and runtime-env.js contains non-empty public Supabase values.
+- Verify the GitHub Pages deployment is healthy and the Supabase `qr-status` and `client-updates` Edge Functions are active.
 - Confirm the ticket ID exists in the shared database.
 - Try Update Client inside the app.
 - Check update History before retrying.
@@ -796,7 +796,7 @@ When reporting a problem, include:
 - Exact error text.
 - Whether another device shows the same problem.
 - Whether Sync Now changes the result.
-- Railway deployment status for web/QR failures.
+- GitHub Pages deployment and Supabase Edge Function status for web/QR failures.
 - A screenshot with private information obscured.
 
 Do not send passwords, PINs, Supabase keys, signing keys, payment-card information, or entire customer backups in a support message.

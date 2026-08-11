@@ -305,17 +305,7 @@ export async function printSaleReleaseForm(
   try {
     const result = await window.api?.qrGetStatusUrl?.('sale', recordId);
     if (result?.ok && result.url) qrUrl = result.url;
-  } catch { /* use the local status server fallback */ }
-  if (!qrUrl) {
-    try {
-      const ipRes = await fetch('http://localhost:7777/ip');
-      if (ipRes.ok) {
-        const json = await ipRes.json();
-        const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
-        if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/sale/${recordId}`;
-      }
-    } catch { /* handled below */ }
-  }
+  } catch { /* handled below */ }
   if (!qrUrl) throw new Error('The sale update QR link could not be created. Check the cloud connection and try again.');
   const QRCode = (await import('qrcode')).default;
   const dataUrl: string = await QRCode.toDataURL(qrUrl, {

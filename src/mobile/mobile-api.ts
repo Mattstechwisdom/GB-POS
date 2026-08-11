@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { dispatchOpenModal } from '../lib/modalBus';
 import { storeWindowPayload } from '../lib/windowPayload';
-import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
+import { Capacitor } from '@capacitor/core';
 import { getCloudEmailStatus, sendCloudEmail } from '../lib/cloudEmail';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
@@ -413,6 +413,12 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -742,6 +748,12 @@ function toCloudRow(key: string, item: any): any | null {
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -963,7 +975,13 @@ function getQrStatusFunctionBase(): string {
 }
 
 function getQrStatusFunctionUrl(token: string): string {
-  return `${getQrStatusFunctionBase()}?token=${encodeURIComponent(token)}`;
+  const configured = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
+  return `${configured}/?clientUpdateToken=${encodeURIComponent(token)}`;
+}
+
+function getConsultationQrUrl(token: string): string {
+  const configured = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
+  return `${configured}/consultation.html?token=${encodeURIComponent(token)}`;
 }
 
 function makeQrToken(): string {
@@ -990,7 +1008,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {
-    return getQrStatusFunctionUrl(existing.data.token);
+    return type === 'consult' ? getConsultationQrUrl(existing.data.token) : getQrStatusFunctionUrl(existing.data.token);
   }
 
   const recordKey = cloudRecordKeyForQrType(type);
@@ -1021,7 +1039,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
       .select('token')
       .single();
     if (!inserted.error && inserted.data?.token) {
-        return getQrStatusFunctionUrl(inserted.data.token);
+        return type === 'consult' ? getConsultationQrUrl(inserted.data.token) : getQrStatusFunctionUrl(inserted.data.token);
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
       throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
@@ -1725,57 +1743,7 @@ function makeApi() {
     scrapePartUrl: async (rawUrl: string) => {
       const url = normalizePartOrderUrl(rawUrl);
       if (!url) return { ok: false, error: 'Missing URL.' };
-      if (Capacitor.getPlatform() !== 'android') return null;
-      const readFallback = async () => {
-        if (!CapacitorHttp?.get) return null;
-        const parsed = new URL(url);
-        const suffix = `${parsed.host}${parsed.pathname}${parsed.search}`;
-        const source = await Promise.any([
-          `https://r.jina.ai/https://${suffix}`,
-          `https://r.jina.ai/http://${suffix}`,
-        ].map(async (readerUrl) => {
-          const readerRes = await CapacitorHttp.get({
-            url: readerUrl,
-            responseType: 'text',
-            connectTimeout: 25000,
-            readTimeout: 25000,
-            headers: { Accept: 'text/plain', 'User-Agent': 'GadgetBoy-POS/1.0 product metadata reader' },
-          });
-          if (readerRes.status < 200 || readerRes.status >= 300) throw new Error(`Product reader failed (${readerRes.status}).`);
-          return typeof readerRes.data === 'string' ? readerRes.data : JSON.stringify(readerRes.data || '');
-        }));
-        return extractPartMetadataFromReader(source, url);
-      };
-      try {
-        if (CapacitorHttp?.get) {
-          const nativeRes = await CapacitorHttp.get({
-            url,
-            responseType: 'text',
-            connectTimeout: 12000,
-            readTimeout: 12000,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36 GBPOS/1.0',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            },
-          });
-          if (nativeRes.status < 200 || nativeRes.status >= 300) {
-            return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${nativeRes.status}` };
-          }
-          const html = typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data || '');
-          const metadata = extractPartMetadataFromHtml(html, url);
-          return metadata.ok ? metadata : await readFallback() || metadata;
-        }
-        const res = await fetch(url, { credentials: 'omit' });
-        if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
-        const html = await res.text();
-        return extractPartMetadataFromHtml(html, url);
-      } catch (error: any) {
-        try {
-          return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
-        } catch {
-          return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
-        }
-      }
+      return { ok: true, url, vendor: derivePartVendorFromUrl(url) };
     },
     openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer');

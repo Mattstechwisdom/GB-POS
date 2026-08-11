@@ -14,7 +14,7 @@ const shopLoginUsername = runtimeConfig?.VITE_SHOP_LOGIN_USERNAME || import.meta
 const shopLoginEmail = runtimeConfig?.VITE_SHOP_LOGIN_EMAIL || import.meta.env.VITE_SHOP_LOGIN_EMAIL || '';
 
 if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error('Missing Supabase environment values. Check Railway variables or .env.local.');
+  throw new Error('Missing Supabase environment values. Check the release build settings or .env.local.');
 }
 
 export const supabase = createClient(supabaseUrl, supabasePublishableKey);

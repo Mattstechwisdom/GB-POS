@@ -394,14 +394,6 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
         const result = await window.api?.qrGetStatusUrl?.(type, recordId);
         if (result?.ok && result.url) qrUrl = result.url;
       } catch { /* QR helper unavailable */ }
-      if (!qrUrl) {
-        const ipRes = await fetch('http://localhost:7777/ip');
-        if (ipRes.ok) {
-          const json = await ipRes.json();
-          const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
-          if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/${type}/${recordId}`;
-        }
-      }
       if (qrUrl) {
         const QRCode = (await import('qrcode')).default;
         const dataUrl: string = await QRCode.toDataURL(qrUrl, {
@@ -411,7 +403,7 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
         });
         if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
       }
-    } catch { /* QR generation failed — print without it */ }
+    } catch (error) { console.error('Cloud QR generation failed; printing without a QR code.', error); }
   }
 
   const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });

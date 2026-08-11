@@ -54,14 +54,6 @@ const ReleaseFormWindow: React.FC = () => {
           const result = await (window as any).api?.qrGetStatusUrl?.(type, recordId);
           if (result?.ok && result.url) qrUrl = result.url;
         } catch { /* QR helper unavailable */ }
-        if (!qrUrl) {
-          const ipRes = await fetch('http://localhost:7777/ip');
-          if (ipRes.ok) {
-            const json = await ipRes.json();
-            const baseUrl = String(json?.ipUrl || (json?.ip ? `http://${json.ip}:7777` : '')).trim();
-            if (baseUrl) qrUrl = `${baseUrl.replace(/\/$/, '')}/status/${type}/${recordId}`;
-          }
-        }
         if (qrUrl) {
           const dataUrl: string = await QRCode.toDataURL(qrUrl, {
             width: 176, margin: 1,
@@ -70,7 +62,7 @@ const ReleaseFormWindow: React.FC = () => {
           });
           if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
         }
-      } catch { /* QR generation failed silently */ }
+      } catch (error) { console.error('Cloud QR generation failed.', error); }
     })();
     return () => { alive = false; };
   }, [(data as any).id, (data as any).workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps

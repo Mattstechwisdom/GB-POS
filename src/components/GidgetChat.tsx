@@ -48,8 +48,7 @@ const STARTERS = [
 ];
 
 function contextEndpoint() {
-  const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').replace(/\/+$/, '');
-  return configured ? `${configured}/api/gidget/context` : '';
+  return '';
 }
 
 function messageId() {

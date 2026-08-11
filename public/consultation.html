@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#18181b">
+  <title>GadgetBoy Consultation</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#111113;color:#f4f4f5;font-family:Arial,sans-serif;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+    main{width:min(100%,520px);margin:0 auto;padding:28px 0}.brand{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:3px solid #8b5cf6}.brand img{width:58px;height:58px;object-fit:contain}.brand strong{display:block;font-size:21px;color:#b56cff}.brand span{display:block;margin-top:3px;color:#a1a1aa;font-size:12px}
+    .panel{margin-top:18px;border:1px solid #3f3f46;background:#202023;padding:20px;border-radius:6px}.eyebrow{color:#39ff14;font-size:12px;font-weight:800;text-transform:uppercase}.title{margin:9px 0 4px;font-size:25px;line-height:1.15}.reference{color:#a1a1aa;font-size:13px}.rows{margin-top:20px}.row{display:grid;grid-template-columns:108px 1fr;gap:12px;padding:11px 0;border-top:1px solid #35353a}.row span{color:#a1a1aa;font-size:12px;font-weight:700;text-transform:uppercase}.row strong{text-align:right;overflow-wrap:anywhere}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.button{display:flex;min-height:48px;align-items:center;justify-content:center;border:0;border-radius:5px;padding:12px;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.primary{background:#8b5cf6;color:white}.secondary{background:#303036;color:#f4f4f5;border:1px solid #52525b}.message{margin-top:16px;padding:12px;border-left:4px solid #8b5cf6;background:#27272a;color:#d4d4d8;font-size:13px;line-height:1.5}.error{border-left-color:#ef4444;color:#fecaca}.loading{color:#d4d4d8}.footer{margin-top:18px;color:#71717a;font-size:12px;text-align:center}
+    @media(max-width:430px){main{padding-top:18px}.panel{padding:16px}.actions{grid-template-columns:1fr}.row{grid-template-columns:92px 1fr}.title{font-size:22px}}
+  </style>
+</head>
+<body>
+  <main>
+    <header class="brand"><img src="./logo.png" alt="GadgetBoy"><div><strong>GADGETBOY</strong><span>Repair &amp; Retail | 2822 Devine Street</span></div></header>
+    <section class="panel" id="panel"><div class="loading">Loading your consultation...</div></section>
+    <p class="footer">Questions? Call (803) 708-0101 or email gadgetboysc@gmail.com.</p>
+  </main>
+  <script>
+    (function () {
+      var API = 'https://hpuwxtfwogtsbmdvunan.supabase.co/functions/v1/qr-status';
+      var panel = document.getElementById('panel');
+      var token = new URLSearchParams(location.search).get('token') || '';
+      function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, function (char) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]; }); }
+      function row(label, value) { return value ? '<div class="row"><span>' + label + '</span><strong>' + escapeHtml(value) + '</strong></div>' : ''; }
+      function fail(message) { panel.innerHTML = '<div class="eyebrow">GadgetBoy Consultation</div><h1 class="title">Status unavailable</h1><div class="message error">' + escapeHtml(message) + '</div>'; }
+      if (!token) { fail('This consultation link is invalid.'); return; }
+      fetch(API + '?token=' + encodeURIComponent(token), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+        .then(function (response) { return response.json().then(function (body) { if (!response.ok || !body.ok) throw new Error(body.error || 'The consultation could not be loaded.'); return body; }); })
+        .then(function (data) {
+          if (data.type !== 'consult') throw new Error('This link is not a consultation reminder.');
+          panel.innerHTML = '<div class="eyebrow">Consultation Appointment</div><h1 class="title">' + escapeHtml(data.title) + '</h1><div class="reference">' + escapeHtml(data.reference) + '</div><div class="rows">' + row('Date', data.date) + row('Time', data.time + (data.endTime ? ' - ' + data.endTime : '')) + row('Location', data.location) + row('Technician', data.technician) + '</div><div class="actions"><a class="button primary" href="' + escapeHtml(data.icsUrl) + '">Add Reminder</a><a class="button secondary" href="tel:+18037080101">Call the Shop</a></div><div class="message">Adding the reminder creates a calendar event with an alert one hour before the consultation.</div>';
+        })
+        .catch(function (error) { fail(error.message || 'The consultation could not be loaded.'); });
+    })();
+  </script>
+</body>
+</html>

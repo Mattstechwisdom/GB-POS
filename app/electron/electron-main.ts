@@ -2431,30 +2431,7 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
 ipcMain.handle('parts:scrapeUrl', async (_e: any, rawUrl: string) => {
   const url = normalizePartOrderUrl(rawUrl);
   if (!url || !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a valid part URL.' };
-  let timer: NodeJS.Timeout | null = null;
-  try {
-    const controller = new AbortController();
-    timer = setTimeout(() => controller.abort(), 12_000);
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36 GBPOS/1.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-    } as any);
-    if (timer) clearTimeout(timer);
-    if (!res.ok) return await scrapeReaderFallback(url) || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
-    const html = await res.text();
-    const metadata = extractPartMetadataFromHtml(html, url);
-    return metadata.ok ? metadata : await scrapeReaderFallback(url) || metadata;
-  } catch (e: any) {
-    if (timer) clearTimeout(timer);
-    try {
-      return await scrapeReaderFallback(url) || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
-    } catch {
-      return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: e?.message || 'Could not scrape part URL.' };
-    }
-  }
+  return { ok: true, url, vendor: derivePartVendorFromUrl(url) };
 });
 
 // -------------------------
@@ -4062,6 +4039,12 @@ function fromCloudRow(key: string, row: any): any {
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4338,6 +4321,12 @@ function toCloudRow(key: string, item: any): any | null {
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -6254,9 +6243,8 @@ function getPublicAppUrl(): string {
   const candidates = [
     process.env.GBPOS_PUBLIC_APP_URL,
     process.env.VITE_PUBLIC_APP_URL,
-    process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '',
   ];
-  const picked = candidates.map(v => String(v || '').trim()).find(Boolean) || 'https://gb-pos-production.up.railway.app';
+  const picked = candidates.map(v => String(v || '').trim()).find(Boolean) || 'https://mattstechwisdom.github.io/GB-POS';
   return picked.replace(/\/+$/, '');
 }
 
@@ -6310,7 +6298,7 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {
     return type === 'consult'
-      ? `${getPublicAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
+      ? `${getPublicAppUrl()}/consultation.html?token=${encodeURIComponent(existing.data.token)}`
       : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
   }
 
@@ -6343,7 +6331,7 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
       .single();
     if (!inserted.error && inserted.data?.token) {
       return type === 'consult'
-        ? `${getPublicAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
+        ? `${getPublicAppUrl()}/consultation.html?token=${encodeURIComponent(inserted.data.token)}`
         : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
@@ -7496,9 +7484,10 @@ ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => 
   try {
     const t = normalizeQrStatusType(type);
     const safeId = Number(id) || 0;
-    const cloudUrl = await ensureCloudQrStatusUrl(t, safeId).catch(() => null);
-    if (cloudUrl) return { ok: true, url: cloudUrl, cloud: true };
-    return { ok: true, url: qrStatusUrl(t, safeId) };
+    if (!safeId) return { ok: false, error: 'Save the record before creating its QR code.' };
+    const cloudUrl = await ensureCloudQrStatusUrl(t, safeId);
+    if (!cloudUrl) return { ok: false, error: 'Sign in and sync the record before creating its QR code.' };
+    return { ok: true, url: cloudUrl, cloud: true };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -7646,7 +7635,6 @@ ipcMain.handle('qr:getServerInfo', async () => {
     }
     createWindow();
     checkForAppUpdatesSoon();
-    startQrStatusServer();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
