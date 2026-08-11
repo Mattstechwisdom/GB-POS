@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.87 (2026-08-11)
+- Desktop Navigation: centers Generate Quote and Consultation as an evenly sized action pair in the side menu.
+
 ## v0.5.86 (2026-08-11)
 - Desktop Navigation: restores the approved side-menu main screen in production and places Search Client, Add Client, and Quick Checkout together above the activity search bar.
 
