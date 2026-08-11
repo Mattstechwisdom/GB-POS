@@ -212,6 +212,7 @@ const Toolbar: React.FC<{
        <div className="desktop-preview-client-actions">
          <button type="button" className="search" onClick={onSearchClient}>Search Client</button>
          <button type="button" className="add" onClick={onAddClient}>Add Client</button>
+         <button type="button" className="checkout" onClick={() => dispatchOpenModal('quickSale')}>Quick Checkout</button>
        </div>
      </div>
    ) : null}

@@ -690,7 +690,6 @@ const AppInner: React.FC<{
                 <div className="desktop-drawer-primary">
                   <button type="button" className="quote" onClick={() => openDrawerModal('quoteGenerator')}>Generate Quote</button>
                   <button type="button" className="consult" onClick={() => openDrawerModal('consultation')}>Consultation</button>
-                  <button type="button" className="checkout" onClick={() => openDrawerModal('quickSale')}>Quick Checkout</button>
                 </div>
 
                 <details className="desktop-drawer-section" open>

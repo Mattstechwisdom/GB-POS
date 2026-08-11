@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.86 (2026-08-11)
+- Desktop Navigation: restores the approved side-menu main screen in production and places Search Client, Add Client, and Quick Checkout together above the activity search bar.
+
 ## v0.5.85 (2026-08-11)
 - Calendar Tasks: adds technician checklists with optional assignment, completion controls in Calendar and Daily Look, and automatic carryover of unfinished tasks into each following day.
 - Calendar Groups: combines repeated same-type entries into one counted icon and opens a compact list for that day, keeping busy delivery and consultation dates readable.
