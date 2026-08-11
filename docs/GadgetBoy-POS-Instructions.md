@@ -256,6 +256,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ### Inventory and Cart Rules
 
 - Selling or using an in-stock item reduces tracked stock and records COGS, but does not automatically create a supplier purchase.
+- Standard Sales, Work Orders, and Quick Checkout all deduct the checked-out line quantity from a linked tracked inventory listing. Reopening or saving the same checkout does not deduct the same line twice.
 - Restocking is explicit. Use Add to Cart on the selected inventory listing.
 - A work-order or sale item marked as requiring an order can appear in the EOD cart without becoming a permanent inventory listing.
 - A manually added EOD cart item is a purchasing record only. It does not silently create or change a permanent catalog entry.
@@ -290,6 +291,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 5. Complete payment and receipt handling.
 
 - Quick Sale supports multiple items in one checkout.
+- A catalog item selected from tracked inventory deducts its sold quantity after the Quick Checkout sale is saved. If stock cannot be updated, the sale remains saved and the technician receives an inventory-attention warning.
 - Do not complete payment until every item and price matches what is physically being sold.
 
 ## 13. Checkout and Payments
@@ -345,8 +347,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Mobile defaults to a compact vertical week; the current day is highlighted.
 - Use previous/next controls to change weeks.
 - Day, Week, and Month views are available where shown.
-- Filter colors identify events, consultations, parts orders/deliveries, and technician schedules.
-- Tapping an entry opens its details.
+- Filter colors identify tasks, events, consultations, parts orders/deliveries, and technician schedules.
+- Repeated icons of the same type are grouped under one counted icon. Tap or click it to open the complete list for that day, then select an entry for details.
 - Choose Expand Notes above an entry's Notes field when a larger editor is needed. Selecting the shaded area closes it without discarding the shared notes text.
 - Part order and expected delivery dates can create calendar entries from work-order data.
 - Streaming / Content Schedule is a separate weekly schedule for names, times, stream type/game, filming, and content work.
@@ -358,7 +360,16 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 2. On desktop, use the large left editor to write the note and the right-hand list to switch between multiple notes saved for that day. On mobile, the list stacks above the editor.
 3. Important notes sync through Supabase and appear on every signed-in Windows or Android installation.
 4. Open Daily Look to see the selected day's important notes beside schedules, consultations, orders, deliveries, events, and content work.
-5. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
+5. Daily Look derives active shifts from the same synced technician weekly schedules used by Calendar and refreshes when a technician schedule changes.
+6. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
+
+### Daily Technician Tasks
+
+1. Open Calendar, choose a day, select Add, then choose Tasks.
+2. Enter the task, optionally assign a technician, and save. The checklist item syncs with the same Supabase calendar data used by Windows and Android.
+3. Check the task from its Calendar list or from Daily Look. Both controls update the same saved task.
+4. An unfinished task remains in Daily Look on later days and is labeled with its original date. It stops carrying forward when completed.
+5. Completed tasks remain attached to their original calendar date for history. Unchecking one makes it active again.
 
 ## 17. Technicians and Time
 

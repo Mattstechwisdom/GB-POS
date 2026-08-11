@@ -6,6 +6,11 @@ function normalized(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
+export function isUniversalRepairFee(value: unknown): boolean {
+  const category = normalized(value).replace(/[^a-z0-9]+/g, ' ');
+  return category.includes('diagnostic') || category.includes('additional fee');
+}
+
 export function deriveRepairDeviceScope(item: Pick<RepairItem, 'category' | 'model'>, devices: RepairDeviceRecord[]) {
   const byName = new Map<string, string>(
     devices.map(device => [normalized(device.name), String(device.title || '').trim()] as const),
@@ -44,4 +49,12 @@ export function matchesRepairDeviceFilter(
   // Category-wide entries have no exact device and apply to every device in that category.
   if (!scope.device) return !!wantedCategory && normalized(scope.category) === wantedCategory;
   return normalized(scope.device) === wantedDevice;
+}
+
+export function matchesRepairDeviceAutofilter(
+  item: Pick<RepairItem, 'category' | 'model' | 'repairCategory'>,
+  devices: RepairDeviceRecord[],
+  filter: { deviceCategory?: string; deviceName?: string },
+): boolean {
+  return isUniversalRepairFee(item.repairCategory) || matchesRepairDeviceFilter(item, devices, filter);
 }

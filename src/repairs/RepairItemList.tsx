@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DevicePicker from '@/components/DevicePicker';
 import type { RepairItem } from '../lib/types';
 import { withRepairPreviewDevices } from '../lib/repairCatalogPreview';
-import { matchesRepairDeviceFilter, type RepairDeviceRecord } from '../lib/repairDeviceScope';
+import { matchesRepairDeviceAutofilter, type RepairDeviceRecord } from '../lib/repairDeviceScope';
 
 interface RepairItemListProps {
   items: RepairItem[];
@@ -125,10 +125,12 @@ export default function RepairItemList({
     let filtered = items;
 
     if (filterDeviceCategory || filterDeviceName) {
-      filtered = filtered.filter(item => matchesRepairDeviceFilter(item, deviceRecords, {
-        deviceCategory: filterDeviceCategory,
-        deviceName: filterDeviceName,
-      }));
+      filtered = filtered.filter(item =>
+        matchesRepairDeviceAutofilter(item, deviceRecords, {
+          deviceCategory: filterDeviceCategory,
+          deviceName: filterDeviceName,
+        })
+      );
     }
 
     if (repairTypeFilter) {

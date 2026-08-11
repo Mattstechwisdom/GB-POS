@@ -471,8 +471,12 @@ async function importCalendarEvents(shopId, customerMap, workOrderMap, saleMap) 
     part_name: str(e.partName),
     source: str(e.source),
     order_url: str(e.orderUrl),
+    tracking_url: str(e.trackingUrl),
     parts_status: str(e.partsStatus),
     consultation_type: str(e.consultationType),
+    task_completed: e.taskCompleted === true,
+    task_completed_at: e.taskCompleted ? toIso(e.taskCompletedAt) : null,
+    task_completed_by: str(e.taskCompletedBy),
     legacy_created_at: toIso(e.createdAt),
     legacy_updated_at: toIso(e.updatedAt),
   })).filter((r) => r.legacy_id !== null);

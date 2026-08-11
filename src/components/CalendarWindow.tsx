@@ -5,6 +5,7 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
+import { calendarEventGroupKey, taskIsCompleted, tasksForDailyLook } from '@/lib/calendarTasks';
 
 type CalendarEvent = {
   id?: number;
@@ -12,7 +13,7 @@ type CalendarEvent = {
   time?: string;      // HH:mm
   endTime?: string;   // HH:mm (optional)
   title: string;      // Display title
-  category?: 'parts' | 'event' | 'consultation' | 'schedule' | 'content';
+  category?: 'parts' | 'event' | 'consultation' | 'schedule' | 'content' | 'task';
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
@@ -34,6 +35,9 @@ type CalendarEvent = {
   consultationType?: string;
   technician?: string;
   location?: string;
+  taskCompleted?: boolean;
+  taskCompletedAt?: string;
+  taskCompletedBy?: string;
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -64,6 +68,7 @@ type CalendarColors = {
   streaming: string;
   content: string;
   notes: string;
+  task: string;
   federalHoliday: string;
   scTaxFreeWeekend: string;
   daylightSaving: string;
@@ -92,6 +97,7 @@ const DEFAULT_CALENDAR_COLORS: CalendarColors = {
   streaming: '#D946EF',
   content: '#22D3EE',
   notes: '#FBBF24',
+  task: '#A78BFA',
   federalHoliday: '#F43F5E',
   scTaxFreeWeekend: '#22C55E',
   daylightSaving: '#38BDF8',
@@ -203,6 +209,7 @@ function calendarEventVisual(ev: CalendarEvent, colors: CalendarColors = DEFAULT
     };
   }
   if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: colors.consultation, label: 'Consultation' };
+  if (ev.category === 'task') return { short: 'TASK', letter: 'K', color: colors.task, label: taskIsCompleted(ev) ? 'Completed task' : 'Task' };
   if (ev.category === 'parts') {
     const delivery = ev.partsStatus === 'delivery' || !ev.partsStatus;
     return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? colors.partsDelivery : colors.partsOrdered, label: delivery ? 'Expected delivery' : 'Part ordered' };
@@ -240,8 +247,8 @@ function activeShiftEvents(day: Date, events: CalendarEvent[]) {
   });
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onEdit, onOpenNotes, onOpenShifts, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onOpenGroup, onOpenNotes, onOpenShifts, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -259,6 +266,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       return { letter: 'O', color: colorOrdered, title: `${formatTime12FromHHmm(ev.time || '')} Ordered ${ev.partName || ev.title || ''}`.trim() };
     }
     if (ev.category === 'consultation') return { letter: 'C', color: colors.consultation, title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
+    if (ev.category === 'task') return { letter: taskIsCompleted(ev) ? 'X' : 'K', color: colors.task, title: `${taskIsCompleted(ev) ? 'Completed' : 'Task'}: ${ev.title || 'Untitled task'}` };
     if (ev.category === 'content') {
       const visual = calendarEventVisual(ev);
       return { letter: visual.letter, color: visual.color, title: `${formatTime12FromHHmm(ev.time || '')} ${visual.label}: ${ev.title || ''}`.trim() };
@@ -284,6 +292,13 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
   const otherEvents = events.filter(ev => ev.category !== 'schedule');
   const activeShifts = activeShiftEvents(day, scheduleEvents);
+  const groupedEvents = Array.from(otherEvents.reduce((groups, event) => {
+    const key = calendarEventGroupKey(event);
+    const existing = groups.get(key) || [];
+    existing.push(event);
+    groups.set(key, existing);
+    return groups;
+  }, new Map<string, CalendarEvent[]>()).values());
 
   return (
     <div className="p-2 h-full min-h-0 flex flex-col overflow-hidden">
@@ -300,21 +315,24 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       <div className="flex-1 min-h-0" />
       
       {/* Other event icons at bottom */}
-      {otherEvents.length > 0 && (
+      {groupedEvents.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-zinc-700">
-          {otherEvents.map(ev => {
+          {groupedEvents.map((group) => {
+            const ev = group[0];
             const b = blipFor(ev);
             if (!b) return null;
             return (
-              <div
-                key={ev.id || ev.title + ev.date}
-                title={b.title}
-                onClick={() => onEdit(ev)}
-                className="w-5 h-5 rounded-md text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105"
+              <button
+                type="button"
+                key={calendarEventGroupKey(ev)}
+                title={group.length > 1 ? `${group.length} ${calendarEventVisual(ev, colors).label} entries` : b.title}
+                onClick={() => onOpenGroup(group)}
+                className="relative w-6 h-6 rounded-md text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105"
                 style={{ backgroundColor: b.color }}
               >
                 {b.letter}
-              </div>
+                {group.length > 1 ? <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-4 h-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-black text-zinc-950 shadow">{group.length}</span> : null}
+              </button>
             );
           })}
         </div>
@@ -354,6 +372,7 @@ const CalendarWindow: React.FC = () => {
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
+  const [viewingGroup, setViewingGroup] = useState<CalendarEvent[] | null>(null);
   const [shiftDay, setShiftDay] = useState<string | null>(null);
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
@@ -380,6 +399,7 @@ const CalendarWindow: React.FC = () => {
     events: true,
     consultation: true,
     content: true,
+    tasks: true,
     notes: true,
   });
 
@@ -648,7 +668,8 @@ const CalendarWindow: React.FC = () => {
           (ev.category === 'parts' && filters.parts) ||
           (ev.category === 'event' && filters.events) ||
           (ev.category === 'consultation' && filters.consultation) ||
-          (ev.category === 'content' && filters.content);
+          (ev.category === 'content' && filters.content) ||
+          (ev.category === 'task' && filters.tasks);
           
         if (shouldShow) {
           const k = ev.date;
@@ -769,6 +790,23 @@ const CalendarWindow: React.FC = () => {
     setDeliveryDates([]);
     setDeliveryDateInput('');
   }
+
+  async function setTaskCompleted(event: CalendarEvent, completed: boolean) {
+    if (event.id == null || event.category !== 'task') return;
+    const now = new Date().toISOString();
+    const updated = await (window as any).api.dbUpdate('calendarEvents', event.id, {
+      ...event,
+      taskCompleted: completed,
+      taskCompletedAt: completed ? now : '',
+      taskCompletedBy: completed ? String(event.technician || '') : '',
+      updatedAt: now,
+    });
+    if (updated) {
+      setEvents(list => list.map(item => String(item.id) === String(updated.id) ? updated : item));
+      setViewing(currentViewing => currentViewing && String(currentViewing.id) === String(updated.id) ? updated : currentViewing);
+      setViewingGroup(group => group ? group.map(item => String(item.id) === String(updated.id) ? updated : item) : group);
+    }
+  }
   function onEdit(ev: CalendarEvent) {
     if (ev.source === 'business-calendar') {
       setEditing(null);
@@ -799,6 +837,14 @@ const CalendarWindow: React.FC = () => {
         payload.title = payload.partName || 'Part/Product';
       }
       if (payload.category === 'content' && !payload.source) payload.source = 'streaming';
+      if (payload.category === 'task') {
+        payload.title = payload.title.trim() || 'Task';
+        payload.taskCompleted = payload.taskCompleted === true;
+        if (!payload.taskCompleted) {
+          payload.taskCompletedAt = '';
+          payload.taskCompletedBy = '';
+        }
+      }
       // If user typed a date but didn't click Add, include it
       if (payload.category === 'parts' && deliveryDateInput && /^\d{4}-\d{2}-\d{2}$/.test(deliveryDateInput)) {
         if (!deliveryDates.includes(deliveryDateInput)) deliveryDates.push(deliveryDateInput);
@@ -853,6 +899,10 @@ const CalendarWindow: React.FC = () => {
         payload.title = payload.partName || 'Part/Product';
       }
       if (payload.category === 'content' && !payload.source) payload.source = 'streaming';
+      if (payload.category === 'task') {
+        payload.title = payload.title.trim() || 'Task';
+        payload.taskCompleted = payload.taskCompleted === true;
+      }
       if (ev.id) {
         const updated = await (window as any).api.dbUpdate('calendarEvents', ev.id, payload);
         if (updated) setEvents(list => list.map(x => x.id === updated.id ? updated : x));
@@ -948,6 +998,7 @@ const CalendarWindow: React.FC = () => {
     if (ev.category === 'event') return !!(ev.title || ev.location || ev.time);
     if (ev.category === 'consultation') return !!(ev.customerName || ev.title);
     if (ev.category === 'content') return !!(ev.title && ev.technician);
+    if (ev.category === 'task') return !!ev.title.trim();
     return true;
   }
 
@@ -1000,8 +1051,9 @@ const CalendarWindow: React.FC = () => {
       .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
     const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
+    const tasks = tasksForDailyLook(events, ymd, assigned);
 
-    return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered };
+    return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered, tasks };
   }, [businessCalendarEvents, dailyLookDate, dailyLookAssignedTo, events, techs]);
 
   useEffect(() => {
@@ -1155,6 +1207,11 @@ const CalendarWindow: React.FC = () => {
           </label>
 
           <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-violet-400" checked={filters.tasks} onChange={(event) => setFilters(previous => ({ ...previous, tasks: event.target.checked }))} />
+            <div className="flex items-center gap-1"><div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.task }}>K</div><span className="text-sm text-zinc-300">Tasks</span></div>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               className="w-4 h-4 accent-amber-400"
@@ -1170,13 +1227,13 @@ const CalendarWindow: React.FC = () => {
           <div className="ml-3 flex gap-2">
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true, notes: true })}
+              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true, tasks: true, notes: true })}
             >
               Select All
             </button>
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false, notes: false })}
+              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false, tasks: false, notes: false })}
             >
               Clear All
             </button>
@@ -1208,7 +1265,7 @@ const CalendarWindow: React.FC = () => {
                     colors={calendarColors}
                     technicianColors={technicianColors}
                     onPick={onPick}
-                    onEdit={onEdit}
+                    onOpenGroup={setViewingGroup}
                     onOpenNotes={openNotes}
                     onOpenShifts={(day) => setShiftDay(fmtDate(day))}
                     isToday={key === todayStr}
@@ -1243,6 +1300,13 @@ const CalendarWindow: React.FC = () => {
               const dayNotes = notesByDay[key] || [];
               const activeShifts = activeShiftEvents(day, dayEvents);
               const nonShiftEvents = dayEvents.filter((event) => event.category !== 'schedule');
+              const groupedDayEvents = Array.from(nonShiftEvents.reduce((groups, event) => {
+                const groupKey = calendarEventGroupKey(event);
+                const group = groups.get(groupKey) || [];
+                group.push(event);
+                groups.set(groupKey, group);
+                return groups;
+              }, new Map<string, CalendarEvent[]>()).values());
               const isToday = key === fmtDate(new Date());
               return (
                 <section key={key} className={isToday ? 'is-today' : ''}>
@@ -1256,7 +1320,8 @@ const CalendarWindow: React.FC = () => {
                   </header>
                   <div className="gb-calendar-agenda-list">
                     {activeShifts.length ? <button type="button" className="gb-calendar-week-shifts" aria-label={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'} for ${key}`} onClick={() => setShiftDay(key)}><span style={{ backgroundColor: calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
-                    {nonShiftEvents.map((event, index) => {
+                    {groupedDayEvents.map((group, index) => {
+                      const event = group[0];
                       const visual = calendarEventVisual(event, calendarColors);
                       return (
                         <button
@@ -1264,12 +1329,12 @@ const CalendarWindow: React.FC = () => {
                           type="button"
                           className={`gb-calendar-week-event type-${event.category || 'event'}`}
                           aria-label={`${visual.label}: ${eventSummary(event)}`}
-                          onClick={() => setViewing(event)}
+                          onClick={() => setViewingGroup(group)}
                         >
-                          <span className="gb-calendar-event-icon" style={{ backgroundColor: visual.color }}>{visual.short}</span>
+                          <span className="gb-calendar-event-icon relative" style={{ backgroundColor: visual.color }}>{visual.short}{group.length > 1 ? <b className="absolute -right-2 -top-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-white px-1 text-[10px] text-zinc-950 shadow">{group.length}</b> : null}</span>
                           <span className="gb-calendar-event-copy">
-                            <strong>{eventSummary(event)}</strong>
-                            <small>{visual.label}</small>
+                            <strong>{group.length > 1 ? `${group.length} ${visual.label} entries` : eventSummary(event)}</strong>
+                            <small>{visual.label}{group.length > 1 ? ' - tap to view list' : ''}</small>
                           </span>
                         </button>
                       );
@@ -1311,6 +1376,7 @@ const CalendarWindow: React.FC = () => {
             {filters.parts ? <section><h3>Parts Ordered <span>{dailyLookData.partsOrdered.length}</span></h3>{dailyLookData.partsOrdered.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsOrdered.length ? <p>No parts ordered.</p> : null}</section> : null}
             {filters.events ? <section><h3>Events <span>{dailyLookData.eventItems.length}</span></h3>{dailyLookData.eventItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.eventItems.length ? <p>No events.</p> : null}</section> : null}
             {filters.content ? <section><h3>Streaming/Content <span>{dailyLookData.contentItems.length}</span></h3>{dailyLookData.contentItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => setViewing(item)}>{eventSummary(item)}</button>)}{!dailyLookData.contentItems.length ? <p>No content sessions.</p> : null}</section> : null}
+            {filters.tasks ? <section><h3>Tasks <span>{dailyLookData.tasks.length}</span></h3>{dailyLookData.tasks.map((task, index) => <label key={task.id || index} className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><span className={taskIsCompleted(task) ? 'line-through text-zinc-500' : ''}><strong>{task.title || 'Task'}</strong><small className="block text-zinc-400">{task.date < dailyLookData.ymd ? `Carried from ${task.date}` : task.technician || 'All technicians'}</small></span></label>)}{!dailyLookData.tasks.length ? <p>No tasks.</p> : null}</section> : null}
             {filters.notes ? <section><h3>Important Notes <span>{(notesByDay[dailyLookData.ymd] || []).length}</span></h3>{(notesByDay[dailyLookData.ymd] || []).map((note) => <button key={String(note.id)} type="button" onClick={() => { setNotesDate(dailyLookData.ymd); setEditingNoteId(String(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}><strong>{note.subject}</strong><span className="block text-xs text-zinc-400">{note.body}</span></button>)}{!(notesByDay[dailyLookData.ymd] || []).length ? <p>No important notes.</p> : null}</section> : null}
           </div>
         </div>
@@ -1390,7 +1456,7 @@ const CalendarWindow: React.FC = () => {
               <details className="gb-calendar-settings-section" open>
                 <summary>Calendar Color Wheels</summary>
                 <div className="gb-calendar-color-grid">{([
-                  ['schedule', 'Default technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['notes', 'Important notes'], ['federalHoliday', 'Federal holidays'], ['scTaxFreeWeekend', 'SC tax-free weekend'], ['daylightSaving', 'Daylight saving time'], ['estimatedTaxDeadline', 'Tax reminders'],
+                  ['schedule', 'Default technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['task', 'Tasks'], ['notes', 'Important notes'], ['federalHoliday', 'Federal holidays'], ['scTaxFreeWeekend', 'SC tax-free weekend'], ['daylightSaving', 'Daylight saving time'], ['estimatedTaxDeadline', 'Tax reminders'],
                 ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => <div key={key} className="gb-calendar-color-row"><input className="gb-calendar-color-wheel" type="color" value={calendarColors[key]} aria-label={`${label} color wheel`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} /><span>{label}</span><button type="button" onClick={() => setCalendarColors(colors => ({ ...colors, [key]: DEFAULT_CALENDAR_COLORS[key] }))}>Default</button></div>)}</div>
               </details>
 
@@ -1409,6 +1475,22 @@ const CalendarWindow: React.FC = () => {
           </section>
         </div>
       )}
+
+      {viewingGroup && viewingGroup.length ? (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3" onClick={() => setViewingGroup(null)}>
+          <section className="w-full max-w-[620px] max-h-[86vh] overflow-hidden rounded border border-zinc-700 bg-zinc-900 shadow-2xl flex flex-col" role="dialog" aria-modal="true" aria-labelledby="calendar-group-title" onClick={event => event.stopPropagation()}>
+            <header className="flex items-start justify-between gap-3 border-b border-zinc-800 p-4"><div><h3 id="calendar-group-title" className="text-xl font-semibold">{calendarEventVisual(viewingGroup[0], calendarColors).label}</h3><p className="text-sm text-zinc-400">{new Date(`${viewingGroup[0].date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} - {viewingGroup.length} {viewingGroup.length === 1 ? 'entry' : 'entries'}</p></div><button type="button" className="gb-icon-button" aria-label="Close grouped calendar entries" onClick={() => setViewingGroup(null)}>X</button></header>
+            <div className="min-h-0 overflow-y-auto p-3 space-y-2">
+              {viewingGroup.slice().sort((left, right) => toMinutes(left.time) - toMinutes(right.time)).map((event, index) => (
+                <div key={event.id || index} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-800 p-3">
+                  {event.category === 'task' ? <input type="checkbox" className="h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(event)} aria-label={`Mark ${event.title || 'task'} complete`} onChange={change => { void setTaskCompleted(event, change.target.checked); }} /> : <span className="gb-calendar-event-icon shrink-0" style={{ backgroundColor: calendarEventVisual(event, calendarColors).color }}>{calendarEventVisual(event, calendarColors).short}</span>}
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setViewingGroup(null); setViewing(event); }}><strong className={`block break-words ${taskIsCompleted(event) ? 'text-zinc-500 line-through' : ''}`}>{eventSummary(event)}</strong><small className="block text-zinc-400">{event.technician || event.location || (event.id != null ? 'Open details' : '')}</small></button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {viewing && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
@@ -1438,6 +1520,7 @@ const CalendarWindow: React.FC = () => {
             </div>
             {viewing.category !== 'schedule' ? (
               <div className="flex justify-end gap-2 p-4 border-t border-zinc-800">
+                {viewing.category === 'task' ? <button type="button" className={`px-3 py-2 rounded font-semibold ${taskIsCompleted(viewing) ? 'bg-zinc-700 text-zinc-100' : 'bg-violet-500 text-white'}`} onClick={() => { void setTaskCompleted(viewing, !taskIsCompleted(viewing)); }}>{taskIsCompleted(viewing) ? 'Mark Incomplete' : 'Complete Task'}</button> : null}
                 <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => onEdit(viewing)}>Edit</button>
               </div>
             ) : null}
@@ -1526,12 +1609,13 @@ const CalendarWindow: React.FC = () => {
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
             </h3>
             {/* Category selector */}
-            {!contentEditorLocked && !editing.id ? <div className="flex gap-2 mb-3">
+            {!contentEditorLocked && !editing.id ? <div className="flex flex-wrap gap-2 mb-3">
               {([
                 { key: 'parts', label: 'Parts/Products' },
                 { key: 'event', label: 'Events' },
                 { key: 'consultation', label: 'Consultation' },
                 { key: 'content', label: 'Streaming/Content' },
+                { key: 'task', label: 'Tasks' },
               ] as const).map(opt => (
                 <button
                   key={opt.key}
@@ -1625,6 +1709,22 @@ const CalendarWindow: React.FC = () => {
                     <label className="block text-xs text-zinc-400">Location (optional)</label>
                     <input className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.location || ''} onChange={e => setEditing({ ...editing, location: e.target.value })} />
                   </div>
+                </>
+              )}
+              {editing.category === 'task' && (
+                <>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Task</label>
+                    <input autoFocus className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.title || ''} onChange={event => setEditing({ ...editing, title: event.target.value })} placeholder="What needs to be completed?" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Assigned technician (optional)</label>
+                    <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.technician || ''} onChange={event => setEditing({ ...editing, technician: event.target.value })}>
+                      <option value="">All technicians</option>
+                      {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
+                    </select>
+                  </div>
+                  {editing.id != null ? <label className="col-span-2 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-violet-400" checked={taskIsCompleted(editing)} onChange={event => setEditing({ ...editing, taskCompleted: event.target.checked, taskCompletedAt: event.target.checked ? new Date().toISOString() : '', taskCompletedBy: event.target.checked ? String(editing.technician || '') : '' })} /><span>Completed</span></label> : null}
                 </>
               )}
               {editing.category === 'consultation' && (
@@ -1797,7 +1897,7 @@ const CalendarWindow: React.FC = () => {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <div className="text-xl font-semibold">Daily Look</div>
-                <div className="text-xs text-zinc-400">Schedules, parts, events, and consultations for the day.</div>
+                <div className="text-xs text-zinc-400">Schedules, tasks, parts, events, consultations, and important notes for the day.</div>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -1832,6 +1932,10 @@ const CalendarWindow: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-auto grid grid-cols-2 gap-3">
+              <div className="border border-violet-500/40 rounded p-3 col-span-2 bg-violet-500/5">
+                <div className="font-semibold mb-2 flex items-center justify-between"><span>Tasks</span><span className="text-xs text-violet-300">{dailyLookData.tasks.filter(task => !taskIsCompleted(task)).length} open</span></div>
+                {dailyLookData.tasks.length === 0 ? <div className="text-sm text-zinc-500">No tasks for this day.</div> : <div className="grid grid-cols-2 gap-2">{dailyLookData.tasks.map((task, index) => <label key={task.id || index} className="flex items-start gap-2 rounded border border-zinc-800 bg-zinc-900/60 p-2 text-sm"><input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><span className={`min-w-0 ${taskIsCompleted(task) ? 'line-through text-zinc-500' : ''}`}><strong className="block break-words">{task.title || 'Task'}</strong><small className="text-zinc-400">{task.date < dailyLookData.ymd ? `Carried from ${task.date}` : task.technician || 'All technicians'}</small></span></label>)}</div>}
+              </div>
               <div className="border border-zinc-800 rounded p-3">
                 <div className="font-semibold mb-2">Schedules</div>
                 {dailyLookData.schedules.length === 0 ? (

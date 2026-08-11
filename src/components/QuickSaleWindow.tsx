@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
+import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 import SaleItemsTable, { SaleItemRow } from '@/sales/SaleItemsTable';
 
 const TAX_RATE = 8;
@@ -207,6 +208,14 @@ const QuickSaleWindow: React.FC = () => {
       };
 
       const created = await api.dbAdd('sales', saleRecord);
+      if (created?.id && (amountPaid > 0 || shouldClose)) {
+        try {
+          await consumeInStockInventory(api, 'sale', Number(created.id), normalizedItems);
+        } catch (inventoryError: any) {
+          console.error('Quick Checkout inventory consumption failed', inventoryError);
+          alert(`Checkout was saved, but inventory needs attention: ${inventoryError?.message || inventoryError}`);
+        }
+      }
 
       if (result.printReceipt) {
         try {

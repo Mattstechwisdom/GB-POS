@@ -11,6 +11,7 @@ assert.doesNotMatch(builder, /requestedExecutionLevel:\s*(?:highestAvailable|req
 assert.match(builder, /perMachine:\s*false/);
 assert.match(builder, /allowElevation:\s*false/);
 assert.match(builder, /packElevateHelper:\s*false/);
+assert.match(builder, /allowToChangeInstallationDirectory:\s*false/);
 assert.match(main, /autoUpdater\.quitAndInstall\(true,\s*true\)/);
 assert.doesNotMatch(main, /autoUpdater\.quitAndInstall\(false/);
 

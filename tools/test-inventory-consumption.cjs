@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
 
@@ -37,6 +38,9 @@ async function main() {
     /has 3 in stock but checkout requires 4/,
   );
   assert.equal(products[0].stockCount, 3, 'Insufficient stock must not change inventory.');
+
+  const quickSaleSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'QuickSaleWindow.tsx'), 'utf8');
+  assert.match(quickSaleSource, /consumeInStockInventory\(api,\s*'sale',\s*Number\(created\.id\),\s*normalizedItems\)/, 'Quick Checkout must consume linked inventory after saving the sale.');
   console.log('Inventory consumption checks passed.');
 }
 

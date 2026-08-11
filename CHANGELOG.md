@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.84 (2026-08-11)
+- Calendar Tasks: adds technician checklists with optional assignment, completion controls in Calendar and Daily Look, and automatic carryover of unfinished tasks into each following day.
+- Calendar Groups: combines repeated same-type entries into one counted icon and opens a compact list for that day, keeping busy delivery and consultation dates readable.
+- Repair Selection: keeps every Diagnostic and Additional Fee entry visible under inherited device and category filters while preserving explicit repair-type and text filtering.
+- Inventory: deducts the checked-out quantity of linked in-stock products and parts from Quick Checkout as well as standard sales and work orders, with exactly-once protection on repeated saves.
+- Daily Look: derives active shifts from the same synced technician schedules used by Calendar and refreshes when technician schedules change.
+- Shared Daily Look: refreshes calendar tasks and important notes through Supabase Realtime so Windows and Android reflect completed tasks and note changes without replacing shop data.
+- Windows Auto-Update: locks installation to the non-elevated per-user location used by silent update-and-relaunch, preventing new installs from being placed under an administrator-only directory.
+
 ## v0.5.83 (2026-08-11)
 - Desktop Navigation: promotes the approved side drawer, compact activity filters, prominent client actions, and actionable notification rail from preview to the standard Windows main screen.
 - Mobile Navigation: carries forward the approved compact drawer and maps a deliberate touch hold to desktop right-click actions on tickets, repair selections, and editable sale/work-order line items while preserving normal taps.

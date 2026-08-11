@@ -35,7 +35,9 @@ nsis:
   allowElevation: false
   packElevateHelper: false
   runAfterFinish: true
-  allowToChangeInstallationDirectory: true
+  # Keep every installation in the per-user location used by silent updates.
+  # Allowing Program Files here can make later updates require Windows elevation.
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
