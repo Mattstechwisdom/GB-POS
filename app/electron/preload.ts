@@ -148,6 +148,7 @@ contextBridge.exposeInMainWorld('api', {
   dbResetAll: (): Promise<any> => ipcRenderer.invoke('db-reset-all'),
   cloudSetSession: (payload: any): Promise<any> => ipcRenderer.invoke('cloud:setSession', payload),
   cloudClearSession: (): Promise<any> => ipcRenderer.invoke('cloud:clearSession'),
+  cloudCollectionChanged: (key: string): Promise<any> => ipcRenderer.invoke('cloud:collectionChanged', key),
   sendRepairSelected: (repair: any) => ipcRenderer.send('repair-selected', repair),
   _emitCheckoutSave: (result: any) => ipcRenderer.send('workorder:checkout:save', result),
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),

@@ -342,6 +342,25 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [session?.access_token, staffProfile?.shop_id]);
 
+  useEffect(() => {
+    const shopId = staffProfile?.shop_id;
+    const api = (window as any).api;
+    if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
+
+    const channel = supabase
+      .channel(`gbpos-desktop-technicians-${shopId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'staff_profiles', filter: `shop_id=eq.${shopId}` },
+        () => { void api.cloudCollectionChanged('technicians'); },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [cloudReady, staffProfile?.shop_id]);
+
   if (authLoading) {
     return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;
   }

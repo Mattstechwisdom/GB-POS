@@ -3556,6 +3556,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   settings: 'shop_settings',
   preferences: 'preferences',
   systemLogs: 'system_logs',
+  technicians: 'staff_profiles',
 };
 
 function shouldUseCloudDb(key: string): boolean {
@@ -3729,10 +3730,11 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
   cloudSession = { supabaseUrl, supabasePublishableKey, accessToken, shopId };
   cloudClient = null;
   try {
-    const [customersCount, workOrdersCount, salesCount] = await Promise.all([
+    const [customersCount, workOrdersCount, salesCount, techniciansCount] = await Promise.all([
       getCloudCount('customers'),
       getCloudCount('workOrders'),
       getCloudCount('sales'),
+      getCloudCount('technicians'),
     ]);
     scheduleCloudSyncQueueDrain(100);
     startClientUpdateEmailQueue();
@@ -3743,6 +3745,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
         customers: customersCount,
         workOrders: workOrdersCount,
         sales: salesCount,
+        technicians: techniciansCount,
       },
       pendingSync: readCloudSyncQueue().length,
     };
@@ -3757,6 +3760,13 @@ ipcMain.handle('cloud:clearSession', async () => {
   stopClientUpdateEmailQueue();
   cloudSession = null;
   cloudClient = null;
+  return { ok: true };
+});
+
+ipcMain.handle('cloud:collectionChanged', async (_e: any, key: string) => {
+  const collection = String(key || '').trim();
+  if (!CLOUD_TABLE_BY_KEY[collection]) return { ok: false, error: 'Unknown cloud collection.' };
+  scheduleCollectionChanged(collection);
   return { ok: true };
 });
 
@@ -3878,7 +3888,7 @@ function toCloudPayload(v: any): any {
   return { value: v };
 }
 
-function fromCloudRow(key: string, row: any): any {
+function fromCloudRow(key: string, row: any, extra?: any): any {
   const id = normalizeCloudId(row);
   if (key === 'customers') {
     return {
@@ -4150,6 +4160,28 @@ function fromCloudRow(key: string, row: any): any {
       cloudId: row.id,
     };
   }
+  if (key === 'technicians') {
+    const credential = extra?.credentialsByStaffId?.get(String(row.id))
+      || extra?.credentialsByLegacyId?.get(String(row.legacy_id || ''))
+      || {};
+    return {
+      id: row.legacy_id || row.id,
+      legacyId: row.legacy_id || '',
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      nickname: row.nickname || '',
+      phone: row.phone || '',
+      email: row.email || '',
+      passcode: credential.legacy_passcode || '',
+      schedule: cloudObject(row.schedule),
+      role: row.role || 'technician',
+      status: row.status || 'active',
+      createdAt: cloudDate(row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+      isLoginProfile: !row.legacy_id,
+    };
+  }
   return {
     ...(cloudObject(row.payload)),
     id,
@@ -4162,6 +4194,7 @@ function fromCloudRow(key: string, row: any): any {
 
 function cloudConflictForKey(key: string): string {
   if (key === 'preferences') return 'shop_id,key';
+  if (key === 'technicians') return 'shop_id,legacy_id';
   return 'shop_id,legacy_id';
 }
 
@@ -4457,6 +4490,24 @@ function toCloudRow(key: string, item: any): any | null {
       value: toCloudPayload(item.value !== undefined ? item.value : item),
     };
   }
+  if (key === 'technicians') {
+    const legacyId = toCloudTextId(item.id);
+    if (!legacyId) return null;
+    const email = toCloudString(item.email).trim() || `legacy-technician-${legacyId}@local.gbpos.invalid`;
+    return {
+      shop_id,
+      legacy_id: legacyId,
+      first_name: toCloudString(item.firstName),
+      last_name: toCloudString(item.lastName),
+      nickname: toCloudString(item.nickname),
+      phone: toCloudString(item.phone),
+      email,
+      schedule: toCloudObject(item.schedule),
+      status: item.status || 'active',
+      role: item.role || 'technician',
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
   if (key === 'partSources' || key === 'intakeSources' || key === 'suppliers' || key === 'vendors') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
@@ -4510,15 +4561,51 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     sales: { id: 'legacy_id', activityAt: 'check_in_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
     quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
+    technicians: { id: 'legacy_id', updatedAt: 'updated_at', firstName: 'first_name', lastName: 'last_name' },
   };
   if (map[key]?.[s]) return map[key][s];
   if (!s) {
     if (key === 'workOrders') return 'activity_at';
     if (key === 'sales') return 'check_in_at';
     if (key === 'quotes') return 'content_updated_at';
+    if (key === 'technicians') return 'first_name';
     return 'legacy_id';
   }
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
+}
+
+async function getDesktopTechnicianCredentials() {
+  const client = getCloudClient();
+  if (!client || !cloudSession) {
+    return { credentialsByStaffId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  }
+  const res = await client
+    .from('technician_private_credentials')
+    .select('staff_profile_id,legacy_technician_id,legacy_passcode')
+    .eq('shop_id', cloudSession.shopId);
+  if (res.error) {
+    // Technician names and schedules must remain available even if the signed-in
+    // role cannot read private passcodes.
+    return { credentialsByStaffId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  }
+  const credentialsByStaffId = new Map<string, any>();
+  const credentialsByLegacyId = new Map<string, any>();
+  for (const row of Array.isArray(res.data) ? res.data : []) {
+    if (row.staff_profile_id) credentialsByStaffId.set(String(row.staff_profile_id), row);
+    if (row.legacy_technician_id) credentialsByLegacyId.set(String(row.legacy_technician_id), row);
+  }
+  return { credentialsByStaffId, credentialsByLegacyId };
+}
+
+function isAssignableDesktopTechnicianRow(row: any): boolean {
+  if (!row || row.active === false || row.status === 'disabled') return false;
+  if (!row.isLoginProfile) return true;
+  return !!(
+    String(row.nickname || '').trim()
+    || String(row.passcode || '').trim()
+    || String(row.phone || '').trim()
+    || (row.schedule && typeof row.schedule === 'object' && Object.keys(row.schedule).length > 0)
+  );
 }
 
 async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) {
@@ -4531,6 +4618,7 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
     : 0;
   const pageSize = 1000;
   const rawRows: any[] = [];
+  const credentialExtra = key === 'technicians' ? await getDesktopTechnicianCredentials() : undefined;
   let pageStart = 0;
 
   do {
@@ -4550,7 +4638,8 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
     pageStart += pageSize;
   } while (true);
 
-  const mapped = rawRows.map((row: any) => fromCloudRow(key, row));
+  let mapped = rawRows.map((row: any) => fromCloudRow(key, row, credentialExtra));
+  if (key === 'technicians') mapped = mapped.filter(isAssignableDesktopTechnicianRow);
   if (key === 'workOrders' && mapped.length > 0) {
     try {
       const customerIds = Array.from(new Set(
@@ -4590,8 +4679,13 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
 
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
   try {
-    if (!Array.isArray(rows) || rows.length === 0) return;
+    if (!Array.isArray(rows)) return;
     const db: any = readDb();
+    if (key === 'technicians') {
+      writeDb({ ...db, technicians: rows.slice() });
+      return;
+    }
+    if (rows.length === 0) return;
     const existing = Array.isArray(db[key]) ? db[key] : [];
     const byId = new Map<string, any>();
     for (const item of existing) {
@@ -4625,6 +4719,27 @@ async function getCloudCount(key: string): Promise<number | null> {
   const res = await client.from(table).select('id', { count: 'exact', head: true }).eq('shop_id', cloudSession.shopId);
   if (res.error) throw new Error(`Cloud ${key} count failed: ${res.error.message}`);
   return typeof res.count === 'number' ? res.count : null;
+}
+
+async function syncDesktopTechnicianCredential(item: any) {
+  if (!cloudSession || typeof item?.passcode === 'undefined') return;
+  const client = getCloudClient();
+  const legacyId = toCloudTextId(item.id);
+  if (!client || !legacyId) return;
+  const profile = await client
+    .from('staff_profiles')
+    .select('id')
+    .eq('shop_id', cloudSession.shopId)
+    .eq('legacy_id', legacyId)
+    .maybeSingle();
+  if (profile.error) throw new Error(`Cloud technician profile lookup failed: ${profile.error.message}`);
+  const result = await client.from('technician_private_credentials').upsert({
+    shop_id: cloudSession.shopId,
+    staff_profile_id: profile.data?.id || null,
+    legacy_technician_id: legacyId,
+    legacy_passcode: String(item.passcode || '').slice(0, 4),
+  }, { onConflict: 'shop_id,legacy_technician_id' });
+  if (result.error) throw new Error(`Cloud technician passcode write failed: ${result.error.message}`);
 }
 
 async function cloudDbUpsert(key: string, item: any) {
@@ -4668,6 +4783,7 @@ async function cloudDbUpsert(key: string, item: any) {
     });
   }
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
+  if (key === 'technicians') await syncDesktopTechnicianCredential(item);
   return { ok: true };
 }
 
@@ -4675,7 +4791,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
-  const id = key === 'repairCategories' || key === 'calendarNotes' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'calendarNotes' || key === 'technicians' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
@@ -4688,7 +4804,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories' || key === 'calendarNotes') return toCloudTextId(item.id);
+  if (key === 'repairCategories' || key === 'calendarNotes' || key === 'technicians') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 

@@ -77,6 +77,7 @@ declare global {
     dbResetAll: () => Promise<{ ok: boolean; removed?: string[]; errors?: string[]; dataRoot?: string }>;
     cloudSetSession: (payload: any) => Promise<any>;
     cloudClearSession: () => Promise<any>;
+    cloudCollectionChanged: (key: string) => Promise<any>;
   sendRepairSelected: (repair: any) => void;
     openDevMenu: () => Promise<any>;
     devOpenUserDataFolder: () => Promise<any>;
