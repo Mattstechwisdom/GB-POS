@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.80 (2026-08-11)
+- Main List: identifies consultation sales as Consultation in the Type column, using the compact CONS label on narrow mobile screens.
+- Technician Sync: makes Windows read and write the same Supabase staff profiles and protected technician passcodes as Android instead of falling back to a device-local technician list.
+- Live Staff Updates: refreshes open Windows and Android instances when technician profiles change while keeping private passcodes outside the Realtime publication.
+- Data Safety: preserves the existing technician records and uses the authenticated Supabase shop as the authoritative source across installations.
+
 ## v0.5.79 (2026-08-11)
 - Hosting: removes the Railway server, runtime configuration, and deployment files; the public mobile and QR experience now deploys to GitHub Pages without a recurring hosting bill.
 - Shared Data: keeps Windows and Android records synchronized directly through Supabase, preserving the existing shop database and offline queue behavior.

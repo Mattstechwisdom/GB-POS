@@ -81,6 +81,7 @@ jobs:
           npm run test:consultation-location
           npm run test:consultation-pricing
           npm run test:main-record-types
+          npm run test:technician-sync
           npm run test:distributor-url
           npm run test:inventory-consumption
           npm run test:inventory-reorder
