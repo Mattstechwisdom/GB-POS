@@ -24,6 +24,10 @@ function repairCategoryRank(value: unknown): number {
   return 2;
 }
 
+function isUniversalFee(item: RepairItem): boolean {
+  return repairCategoryRank(item.repairCategory) < 2;
+}
+
 function compareRepairCategoryNames(a: string, b: string): number {
   const rankDiff = repairCategoryRank(a) - repairCategoryRank(b);
   if (rankDiff !== 0) return rankDiff;
@@ -121,6 +125,7 @@ export default function RepairItemList({
 
     if (categoryFilter) {
       filtered = filtered.filter(item => {
+        if (isUniversalFee(item)) return true;
         if (item.category === categoryFilter) return true;
         const title = deviceTitleMap.get(item.category || '');
         return !!title && title === categoryFilter;
@@ -129,13 +134,14 @@ export default function RepairItemList({
 
     if (repairTypeFilter) {
       filtered = filtered.filter(item =>
-        (item.repairCategory || '').toLowerCase() === repairTypeFilter.toLowerCase()
+        isUniversalFee(item) || (item.repairCategory || '').toLowerCase() === repairTypeFilter.toLowerCase()
       );
     }
 
     if (searchText.trim()) {
       const search = searchText.toLowerCase();
       filtered = filtered.filter(item =>
+        isUniversalFee(item) ||
         item.title.toLowerCase().includes(search) ||
         item.type.toLowerCase().includes(search) ||
         (item.model && item.model.toLowerCase().includes(search)) ||

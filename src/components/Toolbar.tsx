@@ -122,13 +122,6 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
         </button>
 
         <button
-          className="px-4 py-2 bg-zinc-800 text-zinc-100 font-semibold rounded shadow-sm border border-zinc-700 hover:border-[#39FF14] hover:text-white text-sm"
-          onClick={() => dispatchOpenModal('quickSale')}
-        >
-          Quick Checkout
-        </button>
-
-        <button
           className="px-4 py-2 bg-blue-600 text-white font-semibold rounded shadow-sm border border-blue-500 hover:bg-blue-500 text-sm"
           onClick={() => dispatchOpenModal('consultation')}
         >

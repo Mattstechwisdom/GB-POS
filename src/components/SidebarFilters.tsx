@@ -13,6 +13,7 @@ interface Props {
   onDateToChange?: (v: string) => void;
   onOpenCustomerSearch?: () => void;
   onAddCustomer?: () => void;
+  onQuickCheckout?: () => void;
   mode?: 'workorders' | 'sales' | 'all';
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
   invoiceQuery?: string;
@@ -25,7 +26,7 @@ interface Props {
   onOpenGidget?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenGidget }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, onQuickCheckout, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenGidget }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -186,6 +187,11 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           onClick={() => onAddCustomer && onAddCustomer()}
           className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
         >Add Client</button>
+        <button
+          type="button"
+          onClick={() => onQuickCheckout && onQuickCheckout()}
+          className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
+        >Quick Checkout</button>
         <button
           type="button"
           onClick={() => onOpenCustomerSearch && onOpenCustomerSearch()}
