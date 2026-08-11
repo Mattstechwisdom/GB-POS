@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   listNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
   NotificationRecord,
   openNotificationDestination,
 } from '../lib/notifications';
+import { dispatchOpenModal } from '../lib/modalBus';
 
 function formatWhen(value?: string) {
   if (!value) return '';
@@ -37,6 +39,8 @@ type Props = {
 const DesktopNotificationDrawer: React.FC<Props> = ({ open, onOpen, onClose }) => {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+  const [openedByHover, setOpenedByHover] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,13 +71,31 @@ const DesktopNotificationDrawer: React.FC<Props> = ({ open, onOpen, onClose }) =
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [open, onClose]);
 
-  const sorted = useMemo(() => [...notifications].sort((a, b) => {
+  const sorted = useMemo(() => notifications.filter(item => !item.readAt).sort((a, b) => {
     const aTime = new Date(a.eventAt || a.createdAt).getTime();
     const bTime = new Date(b.eventAt || b.createdAt).getTime();
     return bTime - aTime;
   }).slice(0, 40), [notifications]);
 
   const unreadCount = notifications.filter(item => !item.readAt).length;
+
+  const dismissNotifications = async () => {
+    if (dismissing || unreadCount === 0) return;
+    setDismissing(true);
+    try {
+      await markAllNotificationsRead();
+      const readAt = new Date().toISOString();
+      setNotifications(current => current.map(item => item.readAt ? item : { ...item, readAt }));
+    } finally {
+      setDismissing(false);
+    }
+  };
+
+  const openSettings = () => {
+    setOpenedByHover(false);
+    onClose();
+    dispatchOpenModal('notificationSettings');
+  };
 
   const openNotification = async (notification: NotificationRecord) => {
     if (notification.id != null && !notification.readAt) {
@@ -85,10 +107,26 @@ const DesktopNotificationDrawer: React.FC<Props> = ({ open, onOpen, onClose }) =
 
   return (
     <>
-      <aside className="desktop-notification-rail" aria-label="Notification rail">
+      <aside
+        className="desktop-notification-rail"
+        aria-label="Notification rail"
+        onMouseEnter={() => {
+          if (!open) {
+            setOpenedByHover(true);
+            onOpen();
+          }
+        }}
+      >
         <button
           type="button"
-          onClick={open ? onClose : onOpen}
+          onClick={() => {
+            if (open && !openedByHover) {
+              onClose();
+              return;
+            }
+            setOpenedByHover(false);
+            onOpen();
+          }}
           className={open ? 'active' : ''}
           aria-label={open ? 'Close notification drawer' : 'Open notification drawer'}
           title="Notifications"
@@ -99,14 +137,28 @@ const DesktopNotificationDrawer: React.FC<Props> = ({ open, onOpen, onClose }) =
       </aside>
       {open ? (
         <div className="desktop-notification-layer">
-          <button type="button" className="desktop-notification-scrim" onClick={onClose} aria-label="Dismiss notifications" />
-          <aside className="desktop-notification-drawer" aria-label="Notifications">
+          <button type="button" className="desktop-notification-scrim" onClick={onClose} aria-label="Close notification drawer" />
+          <aside
+            className="desktop-notification-drawer"
+            aria-label="Notifications"
+            onMouseLeave={() => {
+              if (openedByHover) {
+                setOpenedByHover(false);
+                onClose();
+              }
+            }}
+          >
             <header>
               <div>
                 <strong>Notifications</strong>
                 <span>{unreadCount} unread</span>
               </div>
-              <button type="button" onClick={onClose}>Dismiss</button>
+              <div className="desktop-notification-actions">
+                <button type="button" className="dismiss" disabled={dismissing || unreadCount === 0} onClick={() => void dismissNotifications()}>
+                  {dismissing ? 'Dismissing...' : 'Dismiss'}
+                </button>
+                <button type="button" className="settings" onClick={openSettings}>Settings</button>
+              </div>
             </header>
             <div className="desktop-notification-list">
               {loading ? <p>Loading notifications...</p> : null}

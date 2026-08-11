@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.88 (2026-08-11)
+- Desktop Notifications: opens the right-side notification drawer by hovering over its edge rail, while preserving click control.
+- Notification Inbox: Dismiss now marks all visible notifications read and removes them from the unread list instead of closing the drawer.
+- Notification Settings: restores the Settings button directly beside Dismiss in the desktop drawer header.
+
 ## v0.5.87 (2026-08-11)
 - Desktop Navigation: centers Generate Quote and Consultation as an evenly sized action pair in the side menu.
 

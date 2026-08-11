@@ -561,15 +561,35 @@
   font-size: 11px;
 }
 
-.desktop-notification-drawer > header > button {
+.desktop-notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.desktop-notification-actions button {
   min-height: 34px;
-  border: 1px solid #ef4444;
   border-radius: 5px;
-  background: #7f1d1d;
   padding: 0 14px;
-  color: #fee2e2;
   font-size: 12px;
   font-weight: 850;
+}
+
+.desktop-notification-actions .dismiss {
+  border: 1px solid #ef4444;
+  background: #7f1d1d;
+  color: #fee2e2;
+}
+
+.desktop-notification-actions .dismiss:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.desktop-notification-actions .settings {
+  border: 1px solid #a855f7;
+  background: #3b0764;
+  color: #f5d0fe;
 }
 
 .desktop-notification-list {
