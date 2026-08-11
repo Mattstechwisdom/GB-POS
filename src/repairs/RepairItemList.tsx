@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DevicePicker from '@/components/DevicePicker';
 import type { RepairItem } from '../lib/types';
+import { withRepairPreviewDevices } from '../lib/repairCatalogPreview';
+import { matchesRepairDeviceFilter, type RepairDeviceRecord } from '../lib/repairDeviceScope';
 
 interface RepairItemListProps {
   items: RepairItem[];
@@ -9,6 +11,8 @@ interface RepairItemListProps {
   onItemSelect: (item: RepairItem) => void;
   onFilteredItemsChange: (items: RepairItem[]) => void;
   onItemContextMenu?: (e: React.MouseEvent, item: RepairItem) => void;
+  initialDeviceCategory?: string;
+  initialDeviceName?: string;
 }
 
 const PAGE_SIZE = 10;
@@ -63,8 +67,12 @@ export default function RepairItemList({
   onItemSelect,
   onFilteredItemsChange,
   onItemContextMenu,
+  initialDeviceCategory = '',
+  initialDeviceName = '',
 }: RepairItemListProps) {
-  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>(() => initialDeviceName || initialDeviceCategory);
+  const [filterDeviceCategory, setFilterDeviceCategory] = useState<string>(initialDeviceCategory);
+  const [filterDeviceName, setFilterDeviceName] = useState<string>(initialDeviceName);
   const [repairTypeFilter, setRepairTypeFilter] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState<boolean>(true);
@@ -87,19 +95,16 @@ export default function RepairItemList({
   useEffect(() => { filteredItemsRef.current = filteredItems; }, [filteredItems]);
   useEffect(() => { onItemSelectRef.current = onItemSelect; }, [onItemSelect]);
 
-  const [deviceTitleMap, setDeviceTitleMap] = useState<Map<string, string>>(new Map());
+  const [deviceRecords, setDeviceRecords] = useState<RepairDeviceRecord[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const list = await (window as any).api.getDeviceCategories();
-        const map = new Map<string, string>();
-        (Array.isArray(list) ? list : []).forEach((d: any) => {
-          if (d && typeof d.name === 'string') map.set(d.name, d.title || '');
-        });
-        setDeviceTitleMap(map);
+        const rawList = await (window as any).api.getDeviceCategories();
+        const list = withRepairPreviewDevices(Array.isArray(rawList) ? rawList : []);
+        setDeviceRecords(Array.isArray(list) ? list : []);
       } catch {
-        setDeviceTitleMap(new Map());
+        setDeviceRecords(withRepairPreviewDevices([]));
       }
     })();
   }, []);
@@ -119,12 +124,11 @@ export default function RepairItemList({
   useEffect(() => {
     let filtered = items;
 
-    if (categoryFilter) {
-      filtered = filtered.filter(item => {
-        if (item.category === categoryFilter) return true;
-        const title = deviceTitleMap.get(item.category || '');
-        return !!title && title === categoryFilter;
-      });
+    if (filterDeviceCategory || filterDeviceName) {
+      filtered = filtered.filter(item => matchesRepairDeviceFilter(item, deviceRecords, {
+        deviceCategory: filterDeviceCategory,
+        deviceName: filterDeviceName,
+      }));
     }
 
     if (repairTypeFilter) {
@@ -147,7 +151,7 @@ export default function RepairItemList({
     onFilteredItemsChange(sortRepairItems(filtered));
     setSelectedIndex(-1);
     setPage(1);
-  }, [categoryFilter, repairTypeFilter, searchText, items, onFilteredItemsChange, deviceTitleMap]);
+  }, [filterDeviceCategory, filterDeviceName, repairTypeFilter, searchText, items, onFilteredItemsChange, deviceRecords]);
 
   const displayItems = useMemo(() => sortRepairItems(filteredItems), [filteredItems]);
   const totalPages = Math.max(1, Math.ceil(displayItems.length / PAGE_SIZE));
@@ -161,6 +165,8 @@ export default function RepairItemList({
 
   const handleShowAll = () => {
     setCategoryFilter('');
+    setFilterDeviceCategory('');
+    setFilterDeviceName('');
     setRepairTypeFilter('');
     setSearchText('');
   };
@@ -214,17 +220,28 @@ export default function RepairItemList({
   if (!isMobileRuntime) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex flex-wrap gap-2 mb-3 p-2 bg-zinc-800 rounded border border-zinc-700">
-          <DevicePicker value={categoryFilter} onChange={setCategoryFilter} onTitleSelect={setCategoryFilter} />
+        <div className="flex flex-wrap items-end gap-2 mb-3 p-2 bg-zinc-800 rounded border border-zinc-700">
+          <label className="min-w-[170px] text-xs text-zinc-400">
+            <span className="mb-1 block">Devices</span>
+            <DevicePicker
+              value={categoryFilter}
+              placeholder="All devices"
+              onChange={(device, title) => { setCategoryFilter(device); setFilterDeviceName(device); setFilterDeviceCategory(title || ''); }}
+              onTitleSelect={(title) => { setCategoryFilter(title); setFilterDeviceCategory(title); setFilterDeviceName(''); }}
+            />
+          </label>
 
-          <select
-            value={repairTypeFilter}
-            onChange={e => setRepairTypeFilter(e.target.value)}
-            className="bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none min-w-[140px]"
-          >
-            <option value="">All categories</option>
-            {repairTypeOptions.map(rt => <option key={rt} value={rt}>{rt}</option>)}
-          </select>
+          <label className="min-w-[160px] text-xs text-zinc-400">
+            <span className="mb-1 block">Repair Type</span>
+            <select
+              value={repairTypeFilter}
+              onChange={e => setRepairTypeFilter(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm text-zinc-100 focus:border-[#39FF14] focus:outline-none"
+            >
+              <option value="">All repair types</option>
+              {repairTypeOptions.map(rt => <option key={rt} value={rt}>{rt}</option>)}
+            </select>
+          </label>
 
           <input
             type="text"
@@ -238,7 +255,7 @@ export default function RepairItemList({
             onClick={handleShowAll}
             className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
           >
-            Show all
+            Reset Filters
           </button>
         </div>
 
@@ -248,7 +265,7 @@ export default function RepairItemList({
               <thead className="bg-zinc-800 sticky top-0">
                 <tr>
                   <th className="text-left p-2 border-b border-zinc-700">Device</th>
-                  <th className="text-left p-2 border-b border-zinc-700">Category</th>
+                  <th className="text-left p-2 border-b border-zinc-700">Repair Type</th>
                   <th className="text-left p-2 border-b border-zinc-700">Repair</th>
                   <th className="text-right p-2 border-b border-zinc-700">Price</th>
                 </tr>
@@ -268,7 +285,7 @@ export default function RepairItemList({
                       ${index % 2 === 0 ? 'bg-zinc-900' : 'bg-zinc-850'}
                     `}
                   >
-                    <td className="p-2 border-b border-zinc-800">{item.category}</td>
+                    <td className="p-2 border-b border-zinc-800">{item.model || item.category}</td>
                     <td className="p-2 border-b border-zinc-800 text-zinc-400 text-xs">{item.repairCategory || ''}</td>
                     <td className="p-2 border-b border-zinc-800">{item.title}</td>
                     <td className="p-2 border-b border-zinc-800 font-mono text-right">
@@ -321,23 +338,24 @@ export default function RepairItemList({
         {filtersOpen && (
           <div className="gb-repair-filter-row">
             <div className="gb-repair-filter-group">
-              <span className="gb-repair-filter-label">Search by</span>
+              <span className="gb-repair-filter-label">Devices</span>
               <DevicePicker
                 value={categoryFilter}
-                onChange={setCategoryFilter}
-                onTitleSelect={setCategoryFilter}
+                placeholder="All devices"
+                onChange={(device, title) => { setCategoryFilter(device); setFilterDeviceName(device); setFilterDeviceCategory(title || ''); }}
+                onTitleSelect={(title) => { setCategoryFilter(title); setFilterDeviceCategory(title); setFilterDeviceName(''); }}
                 className="gb-repair-device-picker"
               />
             </div>
 
             <label className="gb-repair-filter-group">
-              <span className="gb-repair-filter-label">Filter</span>
+              <span className="gb-repair-filter-label">Repair Type</span>
               <select
                 value={repairTypeFilter}
                 onChange={e => setRepairTypeFilter(e.target.value)}
                 className="gb-repair-type-filter bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
               >
-                <option value="">All categories</option>
+                <option value="">All repair types</option>
                 {repairTypeOptions.map(rt => <option key={rt} value={rt}>{rt}</option>)}
               </select>
             </label>
@@ -346,7 +364,7 @@ export default function RepairItemList({
               onClick={handleShowAll}
               className="gb-repair-clear-button px-3 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
             >
-              Show all
+              Reset Filters
             </button>
           </div>
         )}
@@ -378,7 +396,7 @@ export default function RepairItemList({
                 <thead className="bg-zinc-800 sticky top-0">
                   <tr>
                     <th className="text-left p-2 border-b border-zinc-700">Device</th>
-                    <th className="text-left p-2 border-b border-zinc-700">Category</th>
+                    <th className="text-left p-2 border-b border-zinc-700">Repair Type</th>
                     <th className="text-left p-2 border-b border-zinc-700">Repair</th>
                     <th className="text-right p-2 border-b border-zinc-700"><abbr title="Parts">P</abbr></th>
                     <th className="text-right p-2 border-b border-zinc-700"><abbr title="Labor">L</abbr></th>
@@ -404,8 +422,8 @@ export default function RepairItemList({
                           ${(pageStart + index) % 2 === 0 ? 'bg-zinc-900' : 'bg-zinc-850'}
                         `}
                       >
-                        <td data-label="Device" className="p-2 border-b border-zinc-800">{item.category}</td>
-                        <td data-label="Category" className="p-2 border-b border-zinc-800 text-zinc-400 text-xs">{item.repairCategory || ''}</td>
+                        <td data-label="Device" className="p-2 border-b border-zinc-800">{item.model || item.category}</td>
+                        <td data-label="Repair Type" className="p-2 border-b border-zinc-800 text-zinc-400 text-xs">{item.repairCategory || ''}</td>
                         <td data-label="Repair" className="p-2 border-b border-zinc-800">{item.title}</td>
                         <td data-label="Parts" className="p-2 border-b border-zinc-800 font-mono text-right">{formatRepairMoney(item.partCost)}</td>
                         <td data-label="Labor" className="p-2 border-b border-zinc-800 font-mono text-right">{formatRepairMoney(item.laborCost)}</td>

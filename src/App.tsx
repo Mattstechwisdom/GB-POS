@@ -496,15 +496,16 @@ const AppInner: React.FC<{
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [gidgetOpen, setGidgetOpen] = useState(false);
-  const desktopNavPreview = new URLSearchParams(window.location.search).get('desktopNavPreview') === '1';
-  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(desktopNavPreview);
-  const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopNavPreview);
+  const desktopNavigationEnabled = true;
+  const desktopDrawerPreviewOpen = new URLSearchParams(window.location.search).get('desktopNavPreview') === '1';
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(desktopDrawerPreviewOpen);
+  const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopDrawerPreviewOpen);
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
   const [desktopNotificationsOpen, setDesktopNotificationsOpen] = useState(false);
   const desktopFiltersRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!desktopNavPreview || !desktopFiltersOpen) return;
+    if (!desktopNavigationEnabled || !desktopFiltersOpen) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!desktopFiltersRef.current?.contains(event.target as Node)) setDesktopFiltersOpen(false);
     };
@@ -517,7 +518,7 @@ const AppInner: React.FC<{
       document.removeEventListener('mousedown', closeOnOutsideClick);
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, [desktopFiltersOpen, desktopNavPreview]);
+  }, [desktopFiltersOpen, desktopNavigationEnabled]);
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -651,8 +652,8 @@ const AppInner: React.FC<{
   };
 
   return (
-    <div className={`bg-zinc-900 min-h-screen text-white flex flex-col relative${desktopNavPreview ? ' desktop-nav-preview' : ''}`}>
-      {desktopNavPreview ? (
+    <div className={`bg-zinc-900 min-h-screen text-white flex flex-col relative${desktopNavigationEnabled ? ' desktop-nav-preview' : ''}`}>
+      {desktopNavigationEnabled ? (
         <>
           <div
             className="desktop-drawer-hotspot"
@@ -733,8 +734,8 @@ const AppInner: React.FC<{
           />
         </>
       ) : null}
-      <div className={`flex flex-1${desktopNavPreview ? ' desktop-preview-workspace' : ''}`}>
-        {!desktopNavPreview ? <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
+      <div className={`flex flex-1${desktopNavigationEnabled ? ' desktop-preview-workspace' : ''}`}>
+        {!desktopNavigationEnabled ? <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
@@ -767,7 +768,7 @@ const AppInner: React.FC<{
             onModeChange={setMode}
             keyword={keyword}
             onKeywordChange={setKeyword}
-            drawerMode={desktopNavPreview}
+            drawerMode={desktopNavigationEnabled}
             onOpenMenu={() => {
               setDesktopNotificationsOpen(false);
               setDesktopFiltersOpen(false);
@@ -783,7 +784,7 @@ const AppInner: React.FC<{
             onSearchClient={() => openModal('customerSearch')}
             onAddClient={() => openModal('customerOverview', 0)}
           />
-          {desktopNavPreview ? (
+          {desktopNavigationEnabled ? (
             <div className="desktop-preview-tabs" aria-label="Record type">
               <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
               <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>

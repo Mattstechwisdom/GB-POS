@@ -71,6 +71,7 @@ jobs:
         run: |
           npm run test:notifications:routing
           npm run test:windows-update-install
+          npm run test:desktop-navigation
           npm run test:sale-product-picker
           npm run test:quote-sales-prompt
           npm run test:client-update-api
@@ -87,6 +88,7 @@ jobs:
           npm run test:inventory-consumption
           npm run test:inventory-reorder
           npm run test:calendar-journal-sync
+          npm run test:repair-device-filters
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

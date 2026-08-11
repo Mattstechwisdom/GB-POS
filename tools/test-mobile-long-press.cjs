@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const { app, BrowserWindow } = require('electron');
 const esbuild = require('esbuild');
 
@@ -7,6 +8,20 @@ function assert(condition, message) {
 }
 
 async function run() {
+  const root = path.join(__dirname, '..');
+  const mobileApp = fs.readFileSync(path.join(root, 'src', 'mobile', 'MobileApp.tsx'), 'utf8');
+  const contextMenuSurfaces = [
+    'src/workorders/ItemsTable.tsx',
+    'src/sales/SaleItemsTable.tsx',
+    'src/repairs/RepairItemList.tsx',
+    'src/components/WorkOrdersTable.tsx',
+  ];
+  assert(/installMobileLongPressContextMenu\(\)/.test(mobileApp), 'Mobile must install long-press handling across the app.');
+  for (const relativePath of contextMenuSurfaces) {
+    const source = fs.readFileSync(path.join(root, relativePath), 'utf8');
+    assert(/onContextMenu=/.test(source), `${relativePath} must preserve its desktop right-click action for touch holds.`);
+  }
+
   const sourcePath = path.join(__dirname, '..', 'src', 'mobile', 'longPressContextMenu.ts');
   const build = await esbuild.build({
     entryPoints: [sourcePath],

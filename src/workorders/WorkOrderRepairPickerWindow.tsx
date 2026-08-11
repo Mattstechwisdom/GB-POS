@@ -1,19 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import RepairItemList from '../repairs/RepairItemList';
 import RepairItemForm from '../repairs/RepairItemForm';
 import type { RepairItem } from '../lib/types';
+import { consumeWindowPayload } from '../lib/windowPayload';
+import { isRepairCatalogPreview, REPAIR_CATALOG_PREVIEW_ITEMS } from '../lib/repairCatalogPreview';
 
-export default function WorkOrderRepairPickerWindow() {
+type WorkOrderRepairPickerProps = {
+  initialDeviceCategory?: string;
+  initialDeviceName?: string;
+  onPick?: (item: RepairItem) => void;
+  onClose?: () => void;
+};
+
+export default function WorkOrderRepairPickerWindow({ initialDeviceCategory = '', initialDeviceName = '', onPick, onClose }: WorkOrderRepairPickerProps = {}) {
   const [repairItems, setRepairItems] = useState<RepairItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<RepairItem | null>(null);
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
+  const inheritedFilters = useMemo(() => {
+    const stored = consumeWindowPayload('workOrderRepairPicker') || {};
+    const params = new URLSearchParams(window.location.search);
+    return {
+      deviceCategory: initialDeviceCategory || String(stored.deviceCategory || params.get('deviceCategory') || ''),
+      deviceName: initialDeviceName || String(stored.deviceName || params.get('deviceName') || ''),
+    };
+  }, [initialDeviceCategory, initialDeviceName]);
 
   // Load repairs from DB on mount
   useEffect(() => {
     (async () => {
+      if (isRepairCatalogPreview()) setRepairItems(REPAIR_CATALOG_PREVIEW_ITEMS);
       if (window.api?.dbGet) {
         const items = await window.api.dbGet('repairCategories');
-        if (Array.isArray(items)) setRepairItems(items);
+        const loaded = Array.isArray(items) ? items : [];
+        setRepairItems(isRepairCatalogPreview() ? [...loaded, ...REPAIR_CATALOG_PREVIEW_ITEMS] : loaded);
       }
     })();
   }, []);
@@ -23,11 +42,16 @@ export default function WorkOrderRepairPickerWindow() {
   };
 
   const handleCancel = () => {
-    window.close();
+    if (onClose) onClose();
+    else window.close();
   };
 
   function finalize(item: RepairItem) {
     if (!item) return;
+    if (onPick) {
+      onPick(item);
+      return;
+    }
     try {
       console.log('[Picker] finalize selection', item);
       if (window.api && typeof window.api.sendRepairSelected === 'function') {
@@ -52,6 +76,8 @@ export default function WorkOrderRepairPickerWindow() {
             selectedItem={selectedItem}
             onItemSelect={handleItemSelect}
             onFilteredItemsChange={setFilteredItems}
+            initialDeviceCategory={inheritedFilters.deviceCategory}
+            initialDeviceName={inheritedFilters.deviceName}
           />
         </div>
         {/* Right pane: Form */}

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.83 (2026-08-11)
+- Desktop Navigation: promotes the approved side drawer, compact activity filters, prominent client actions, and actionable notification rail from preview to the standard Windows main screen.
+- Mobile Navigation: carries forward the approved compact drawer and maps a deliberate touch hold to desktop right-click actions on tickets, repair selections, and editable sale/work-order line items while preserving normal taps.
+- Devices / Repairs: combines device categories and device names into one hierarchical Devices filter, separates Repair Type, and supports category-wide or exact-device repair assignments.
+- Work Orders: Add From Catalog now inherits the checked-in device category and device, while Reset Filters restores the full repair catalog.
+- Notes Sync: verifies the live Supabase calendar-notes table, authenticated RLS access, and Realtime publication used by Windows and Android.
+- Windows Auto-Update: preserves silent per-user installation with an as-invoker manifest, disabled elevation helper, and automatic relaunch after applying the update.
+
 ## v0.5.82 (2026-08-11)
 - Quick Checkout: keeps the selected product fields fixed in place while making the product catalog list the only scrolling pane.
 - Responsive Product Picker: compacts the sale-only editor so quantity, pricing, availability, and Add to Sale remain visible across desktop and mobile layouts.

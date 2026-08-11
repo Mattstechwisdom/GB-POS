@@ -339,7 +339,10 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     }} />;
     case 'inventory': return <InventoryWindow />;
     case 'vendors': return <VendorsWindow />;
-    case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow />;
+    case 'workOrderRepairPicker': return <WorkOrderRepairPickerWindow onPick={(repair) => {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-repair-picked', { detail: repair }));
+      onClose();
+    }} onClose={onClose} />;
     case 'addClient': return <CustomerOverviewWindow customer={null} onClose={onClose} />;
     case 'customerOverview': return <CustomerOverviewWindow onClose={onClose} />;
     case 'customerSearch': return <CustomerSearchWindow onClose={onClose} />;
@@ -372,6 +375,9 @@ function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zInde
   const requestClose = useCallback(() => {
     if (entry.type === 'productPicker') {
       window.dispatchEvent(new CustomEvent('gbpos:mobile-product-picker-cancelled'));
+    }
+    if (entry.type === 'workOrderRepairPicker') {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-repair-picker-cancelled'));
     }
     onClose();
   }, [entry.type, onClose]);
@@ -846,6 +852,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       };
     });
     const originalProductPicker = api?.pickSaleProduct;
+    const originalRepairPicker = api?.pickRepairItem;
     if (api) {
       api.pickSaleProduct = () => new Promise((resolve) => {
         let settled = false;
@@ -862,6 +869,21 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         window.addEventListener('gbpos:mobile-product-picker-cancelled', onCancelled, { once: true });
         openModal('productPicker');
       });
+      api.pickRepairItem = (filters?: { deviceCategory?: string; deviceName?: string }) => new Promise((resolve) => {
+        let settled = false;
+        const finish = (value: any) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('gbpos:mobile-repair-picked', onPicked as EventListener);
+          window.removeEventListener('gbpos:mobile-repair-picker-cancelled', onCancelled);
+          resolve(value);
+        };
+        const onPicked = (event: Event) => finish((event as CustomEvent).detail || null);
+        const onCancelled = () => finish(null);
+        window.addEventListener('gbpos:mobile-repair-picked', onPicked as EventListener, { once: true });
+        window.addEventListener('gbpos:mobile-repair-picker-cancelled', onCancelled, { once: true });
+        openModal('workOrderRepairPicker', filters || {});
+      });
     }
     return () => {
       unregisterOpenModal();
@@ -869,6 +891,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         try { api[method] = fn; } catch {}
       });
       if (api && originalProductPicker) api.pickSaleProduct = originalProductPicker;
+      if (api && originalRepairPicker) api.pickRepairItem = originalRepairPicker;
     };
   }, [openModal]);
 

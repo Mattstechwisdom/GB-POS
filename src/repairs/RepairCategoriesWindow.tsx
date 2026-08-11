@@ -6,6 +6,7 @@ import type { RepairItem } from '../lib/types';
 import DeviceForm from '@/repairs/DeviceForm';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import { isRepairCatalogPreview, REPAIR_CATALOG_PREVIEW_ITEMS, withRepairPreviewDevices } from '@/lib/repairCatalogPreview';
 
 // No placeholder data for now
 
@@ -33,6 +34,7 @@ interface RepairCategoriesWindowProps {
 }
 
 export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategoriesWindowProps) {
+  const previewMode = isRepairCatalogPreview();
   const [repairItems, setRepairItems] = useState<RepairItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<RepairItem | null>(null);
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
@@ -55,21 +57,29 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   // Load repairs from DB on mount
   useEffect(() => {
     (async () => {
+      if (previewMode) {
+        setRepairItems(REPAIR_CATALOG_PREVIEW_ITEMS);
+        setSelectedItem(REPAIR_CATALOG_PREVIEW_ITEMS[2]);
+        setDeviceCategories(withRepairPreviewDevices([]));
+      }
       if (window.api?.dbGet) {
         const items = await window.api.dbGet('repairCategories');
-        if (Array.isArray(items)) setRepairItems(items);
+        const loadedItems = Array.isArray(items) ? items : [];
+        const nextItems = previewMode ? [...loadedItems, ...REPAIR_CATALOG_PREVIEW_ITEMS] : loadedItems;
+        setRepairItems(nextItems);
+        if (previewMode) setSelectedItem(REPAIR_CATALOG_PREVIEW_ITEMS[2]);
         const devs = await window.api.dbGet('deviceCategories');
-        setDeviceCategories(Array.isArray(devs) ? devs : []);
+        setDeviceCategories(withRepairPreviewDevices(Array.isArray(devs) ? devs : []));
       }
     })();
     const off = (window as any).api?.onDeviceCategoriesChanged?.(async () => {
       try {
         const devs = await (window as any).api.dbGet('deviceCategories');
-        setDeviceCategories(Array.isArray(devs) ? devs : []);
+        setDeviceCategories(withRepairPreviewDevices(Array.isArray(devs) ? devs : []));
       } catch (e) {}
     });
     return () => { if (off) off(); };
-  }, []);
+  }, [previewMode]);
 
   const handleItemSelect = (item: RepairItem) => {
     setSelectedItem(item);
@@ -105,7 +115,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
       if (item.id && repairItems.some(i => i.id === item.id)) {
         // Edit existing item
         setRepairItems(prev => prev.map(i => i.id === item.id ? { ...i, ...item } : i));
-        if (window.api?.dbUpdate) await window.api.dbUpdate('repairCategories', item.id, item);
+        if (!previewMode && window.api?.dbUpdate) await window.api.dbUpdate('repairCategories', item.id, item);
       } else {
         // Add new item
         const newItem = {
@@ -113,7 +123,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           id: item.id || Math.random().toString(36).slice(2, 10),
         };
         setRepairItems(prev => [...prev, newItem]);
-        if (window.api?.dbAdd) await window.api.dbAdd('repairCategories', newItem);
+        if (!previewMode && window.api?.dbAdd) await window.api.dbAdd('repairCategories', newItem);
       }
       setSelectedItem(null);
     }
@@ -122,7 +132,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
   const handleDelete = async (itemId: string | number | undefined) => {
     if (!itemId) return;
     setRepairItems(prev => prev.filter(i => i.id !== itemId));
-    if (window.api?.dbDelete) await window.api.dbDelete('repairCategories', itemId);
+    if (!previewMode && window.api?.dbDelete) await window.api.dbDelete('repairCategories', itemId);
     setSelectedItem(null);
   };
 

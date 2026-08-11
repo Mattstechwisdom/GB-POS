@@ -2349,7 +2349,7 @@ app.on('browser-window-created', (_event: any, win: typeof BrowserWindow.prototy
 });
 
 // IPC handler for promise-based repair picker (returns selected repair)
-ipcMain.handle('pick-repair-item', async (event: any) => {
+ipcMain.handle('pick-repair-item', async (event: any, filters?: { deviceCategory?: string; deviceName?: string }) => {
   return new Promise((resolve) => {
     const parentFromSender = (() => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
@@ -2373,9 +2373,13 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
     });
     showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+    const filterQuery = new URLSearchParams();
+    filterQuery.set('workOrderRepairPicker', 'true');
+    if (filters?.deviceCategory) filterQuery.set('deviceCategory', String(filters.deviceCategory));
+    if (filters?.deviceName) filterQuery.set('deviceName', String(filters.deviceName));
     const url = isDev
-      ? `${DEV_SERVER_URL}/?workOrderRepairPicker=true`
-      : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?workOrderRepairPicker=true`;
+      ? `${DEV_SERVER_URL}/?${filterQuery.toString()}`
+      : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?${filterQuery.toString()}`;
     child.loadURL(url);
 
     // Listen for repair-selected event from picker window

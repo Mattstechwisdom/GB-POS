@@ -48,9 +48,11 @@ interface Props {
   readonlyItems?: WorkOrderItemRow[];
   /** Optional handler for removing a read-only row from its backing record (e.g., attached retail Sale). */
   onRemoveReadonlyItem?: (row: WorkOrderItemRow) => void | Promise<void>;
+  deviceCategory?: string;
+  deviceName?: string;
 }
 
-const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
+const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem, deviceCategory = '', deviceName = '' }) => {
   const ro = useMemo(() => (Array.isArray(readonlyItems) ? readonlyItems : []), [readonlyItems]);
 
   const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
@@ -151,7 +153,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
     if (typeof api.pickRepairItem === 'function') {
       let selected: any;
       try {
-        selected = await api.pickRepairItem();
+        selected = await api.pickRepairItem({ deviceCategory, deviceName });
         console.log('[ItemsTable] pickRepairItem resolved', selected);
       } catch (e) {
         console.error('[ItemsTable] pickRepairItem failed', e);
@@ -166,7 +168,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
       const trackedOutOfStock = !!linkedInventory?.trackStock && Number(linkedInventory?.stockCount || 0) <= 0;
       const row: WorkOrderItemRow = {
         id: crypto.randomUUID(),
-        device: selected.category || selected.deviceCategoryName || selected.device || '',
+        device: selected.model || selected.category || selected.deviceCategoryName || selected.device || '',
         repairCategory: selected.repairCategory || '',
         repair: selected.altDescription || selected.title || selected.repair || '',
         parts: Number(selected.partCost ?? 0) || 0,

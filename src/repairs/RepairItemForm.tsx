@@ -4,6 +4,7 @@ import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
 import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
 import { PART_MARKUP_PRESETS } from '../lib/partOrdering';
+import { isRepairCatalogPreview, REPAIR_CATALOG_PREVIEW_DEVICES, REPAIR_CATALOG_PREVIEW_ITEMS, withRepairPreviewDevices } from '../lib/repairCatalogPreview';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -14,17 +15,6 @@ interface RepairItemFormProps {
   // When true (default), show the internal Edit Repair action at the top
   showCreateAction?: boolean;
 }
-
-// Dummy device categories for now; replace with prop or API as needed
-const DUMMY_DEVICE_CATEGORIES = [
-  'iPhone 13',
-  'iPhone 14',
-  'iPad Pro',
-  'Samsung Galaxy S22',
-  'MacBook Air',
-  'Dell XPS',
-  'Other'
-];
 
 const MARKUP_PRESETS = PART_MARKUP_PRESETS;
 const DEFAULT_MARKUP_PCT = '10';
@@ -66,7 +56,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const effectiveMode = mode === 'workorderpicker' ? 'workorder' : mode;
   // Device Category search/dropdown state
   const [deviceCategoryInput, setDeviceCategoryInput] = useState('');
+  const [deviceNameInput, setDeviceNameInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Repair Category search/dropdown state
   const [repairCategoryInput, setRepairCategoryInput] = useState('');
@@ -99,12 +91,17 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
+  const [deviceRecords, setDeviceRecords] = useState<Array<{ id?: number; name: string; title?: string }>>([]);
   // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
     cat.toLowerCase().includes(deviceCategoryInput.toLowerCase())
+  );
+  const filteredDevices = deviceRecords.filter(device =>
+    (!deviceCategoryInput.trim() || String(device.title || '').trim().toLowerCase() === deviceCategoryInput.trim().toLowerCase()) &&
+    String(device.name || '').toLowerCase().includes(deviceNameInput.toLowerCase())
   );
   const filteredRepairTypes = repairTypes.filter(rt =>
     rt.toLowerCase().includes(repairCategoryInput.toLowerCase())
@@ -113,12 +110,20 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   // Fetch device categories and repair types from DB on mount
   useEffect(() => {
     (async () => {
+      if (isRepairCatalogPreview()) {
+        setDeviceRecords(REPAIR_CATALOG_PREVIEW_DEVICES);
+        setDeviceCategories(Array.from(new Set(REPAIR_CATALOG_PREVIEW_DEVICES.map(device => device.title))));
+        setRepairTypes(sortRepairCategoryNames(REPAIR_CATALOG_PREVIEW_ITEMS.map(item => item.repairCategory || '')));
+      }
       if (window.api?.dbGet) {
         const cats = await window.api.dbGet('deviceCategories');
-        const titles = Array.isArray(cats)
-          ? Array.from(new Set(cats.map((c: any) => String(c?.title || '').trim()).filter(Boolean)))
+        const records = withRepairPreviewDevices(Array.isArray(cats) ? cats : [])
+          .map((c: any) => ({ id: c?.id, name: String(c?.name || '').trim(), title: String(c?.title || '').trim() })).filter((c: any) => c.name);
+        const titles = records.length
+          ? Array.from(new Set(records.map((c: any) => c.title).filter(Boolean)))
           : [];
         setDeviceCategories(titles);
+        setDeviceRecords(records);
 
         // Pull from repairTypes master list AND from existing repair items' repairCategory values
         const [rt, repairItems] = await Promise.all([
@@ -131,7 +136,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         const fromItems = Array.isArray(repairItems)
           ? repairItems.map((r: any) => String(r?.repairCategory || '').trim()).filter(Boolean)
           : [];
-        const merged = sortRepairCategoryNames([...fromTypes, ...fromItems]);
+        const previewTypes = isRepairCatalogPreview() ? REPAIR_CATALOG_PREVIEW_ITEMS.map(item => item.repairCategory || '') : [];
+        const merged = sortRepairCategoryNames([...fromTypes, ...fromItems, ...previewTypes]);
         setRepairTypes(merged);
       }
     })();
@@ -147,14 +153,16 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const handleDeviceCategoryInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDeviceCategoryInput(e.target.value);
     setShowCategoryDropdown(true);
-    setFormData(prev => ({ ...prev, category: e.target.value }));
+    setDeviceNameInput('');
+    setFormData(prev => ({ ...prev, category: e.target.value, model: '' }));
   };
 
   // Select from dropdown
   const handleCategorySelect = (cat: string) => {
     setDeviceCategoryInput(cat);
+    setDeviceNameInput('');
     setShowCategoryDropdown(false);
-    setFormData(prev => ({ ...prev, category: cat }));
+    setFormData(prev => ({ ...prev, category: cat, model: '' }));
     inputRef.current?.blur();
   };
 
@@ -163,18 +171,32 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setTimeout(() => setShowCategoryDropdown(false), 100);
   };
 
+  const handleDeviceSelect = (name: string) => {
+    setDeviceNameInput(name);
+    setShowDeviceDropdown(false);
+    setFormData(prev => ({ ...prev, model: name }));
+  };
+
   // Update form when selectedItem changes
   useEffect(() => {
     if (selectedItem) {
+      const storedCategory = String(selectedItem.category || '').trim();
+      const legacyDevice = deviceRecords.find(device => device.name.toLowerCase() === storedCategory.toLowerCase());
+      const broadCategory = legacyDevice?.title || storedCategory;
+      const storedModel = String(selectedItem.model || '').trim();
+      const exactDevice = legacyDevice?.name || (deviceRecords.some(device => device.name.toLowerCase() === storedModel.toLowerCase() && (!broadCategory || String(device.title || '').toLowerCase() === broadCategory.toLowerCase())) ? storedModel : '');
       setFormData({
         ...selectedItem,
+        category: broadCategory,
+        model: exactDevice,
         orderDate: selectedItem.orderDate || '',
         estDelivery: selectedItem.estDelivery || '',
         markupPct: (selectedItem as any).markupPct ?? DEFAULT_MARKUP_PCT,
       });
       setMarkupPct(String((selectedItem as any).markupPct ?? DEFAULT_MARKUP_PCT));
       setOrderUrlEditing(!selectedItem.orderSourceUrl);
-      setDeviceCategoryInput(selectedItem.category || '');
+      setDeviceCategoryInput(broadCategory);
+      setDeviceNameInput(exactDevice);
       setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
     } else {
@@ -201,10 +223,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setMarkupPct(DEFAULT_MARKUP_PCT);
       setOrderUrlEditing(false);
       setDeviceCategoryInput('');
+      setDeviceNameInput('');
       setRepairCategoryInput('');
       setHasDeviceCategory(false);
     }
-  }, [selectedItem]);
+  }, [selectedItem, deviceRecords]);
 
   // no date fields in this form; dates are managed in Work Order and Calendar
 
@@ -231,9 +254,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       inventoryProductId: undefined,
     });
     setDeviceCategoryInput('');
+    setDeviceNameInput('');
     setRepairCategoryInput('');
     setHasDeviceCategory(false);
     setShowCategoryDropdown(false);
+    setShowDeviceDropdown(false);
     setShowRepairCategoryDropdown(false);
     setMarkupPct(DEFAULT_MARKUP_PCT);
     setOrderUrlEditing(false);
@@ -297,6 +322,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setHasDeviceCategory(true);
       setDeviceCategoryInput(part.category);
     }
+    setDeviceNameInput(part.deviceModel || part.associatedDevices?.[0] || '');
     setMarkupPct(String(part.markupPct ?? DEFAULT_MARKUP_PCT));
     setOrderUrlEditing(!part.reorderUrlTemplate);
     setPartPickerOpen(false);
@@ -377,7 +403,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   setHasDeviceCategory(e.target.checked);
                   if (!e.target.checked) {
                     setDeviceCategoryInput('');
-                    setFormData(prev => ({ ...prev, category: '' }));
+                    setDeviceNameInput('');
+                    setFormData(prev => ({ ...prev, category: '', model: '' }));
                   }
                 }}
                 className="w-4 h-4 rounded accent-[#39FF14]"
@@ -385,7 +412,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               Specific to a device?
             </label>
             {hasDeviceCategory && (
-              <div className="relative">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="relative">
+                <label className="mb-1 block text-xs text-zinc-400">Device Category</label>
                 <input
                   id="category"
                   name="category"
@@ -413,6 +442,30 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     ))}
                   </ul>
                 )}
+                </div>
+                <div className="relative">
+                  <label className="mb-1 block text-xs text-zinc-400">Device <span className="text-zinc-500">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={deviceNameInput}
+                    onChange={e => { setDeviceNameInput(e.target.value); setFormData(prev => ({ ...prev, model: e.target.value })); setShowDeviceDropdown(true); }}
+                    onFocus={() => setShowDeviceDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowDeviceDropdown(false), 100)}
+                    onKeyDown={handleEnterToSubmit}
+                    autoComplete="off"
+                    disabled={!deviceCategoryInput.trim()}
+                    placeholder={deviceCategoryInput ? `Any device in ${deviceCategoryInput}` : 'Choose a category first'}
+                    className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none disabled:opacity-50"
+                  />
+                  {showDeviceDropdown && filteredDevices.length > 0 && (
+                    <ul className="absolute z-10 left-0 right-0 bg-zinc-900 border border-zinc-700 mt-1 rounded shadow-lg max-h-40 overflow-y-auto">
+                      {filteredDevices.map(device => (
+                        <li key={device.id ?? `${device.title}-${device.name}`} className="px-3 py-2 hover:bg-[#39FF14] hover:text-black cursor-pointer" onMouseDown={() => handleDeviceSelect(device.name)}>{device.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 sm:col-span-2">Leave Device blank when the repair applies to every device in the selected category.</p>
               </div>
             )}
           </div>

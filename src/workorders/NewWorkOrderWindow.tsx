@@ -2373,6 +2373,8 @@ const NewWorkOrderWindow: React.FC = () => {
           ) : (
             <ItemsTable
               items={wo.items}
+              deviceCategory={wo.productCategory || ''}
+              deviceName={wo.productDescription || ''}
               onChange={handleItemsChange}
               onCommit={handleItemsCommit}
               onAddProduct={handleAddProduct}

@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { withRepairPreviewDevices } from '../lib/repairCatalogPreview';
 
 type DeviceCat = { id?: number; name: string; title?: string };
 
 interface DevicePickerProps {
   value: string;
-  onChange: (value: string) => void; // called when a device is chosen
+  onChange: (value: string, title?: string) => void; // called when a device is chosen
   onTitleSelect?: (title: string) => void; // called when a title (main category) is clicked
   className?: string;
+  placeholder?: string;
 }
 
 // A hoverable two-level dropdown: Titles on left, Devices (by Title) on right.
 // Limits visible rows to 10 with scroll.
-const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSelect, className }) => {
+const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSelect, className, placeholder = 'Devices' }) => {
   const [open, setOpen] = useState(false);
   const [cats, setCats] = useState<DeviceCat[]>([]);
   const [activeTitle, setActiveTitle] = useState<string>('');
@@ -24,8 +26,8 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
     (async () => {
       try {
         const list = await (window as any).api.getDeviceCategories();
-        setCats(Array.isArray(list) ? list : []);
-      } catch (e) { setCats([]); }
+        setCats(withRepairPreviewDevices(Array.isArray(list) ? list : []));
+      } catch (e) { setCats(withRepairPreviewDevices([])); }
     })();
   }, []);
 
@@ -35,8 +37,8 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
     (async () => {
       try {
         const list = await (window as any).api.getDeviceCategories();
-        setCats(Array.isArray(list) ? list : []);
-      } catch (e) { /* ignore */ }
+        setCats(withRepairPreviewDevices(Array.isArray(list) ? list : []));
+      } catch (e) { setCats(withRepairPreviewDevices([])); }
     })();
   }, [open]);
 
@@ -45,8 +47,8 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
     const off = (window as any).api?.onDeviceCategoriesChanged?.(async () => {
       try {
         const list = await (window as any).api.getDeviceCategories();
-        setCats(Array.isArray(list) ? list : []);
-      } catch (e) { /* ignore */ }
+        setCats(withRepairPreviewDevices(Array.isArray(list) ? list : []));
+      } catch (e) { setCats(withRepairPreviewDevices([])); }
     });
     return () => { if (off) off(); };
   }, []);
@@ -90,7 +92,7 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
-  const selectedLabel = value && value.trim() ? value.trim() : 'Categories';
+  const selectedLabel = value && value.trim() ? value.trim() : placeholder;
   const TITLE_MENU_WIDTH = 220; // px
 
   return (
@@ -134,7 +136,7 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
                 >
                   <div className="flex items-center justify-between">
                     <span>{t}</span>
-                    <span className="text-zinc-500">›</span>
+                    <span className="text-zinc-500">&gt;</span>
                   </div>
                 </li>
               ))}
@@ -153,7 +155,7 @@ const DevicePicker: React.FC<DevicePickerProps> = ({ value, onChange, onTitleSel
                 <li
                   key={(d.id ?? idx) + '-' + d.name}
                   className="px-2 py-1 text-sm cursor-pointer hover:bg-zinc-800 whitespace-nowrap"
-                  onClick={() => { onChange(d.name); setOpen(false); }}
+                  onClick={() => { onChange(d.name, activeTitle === UNASSIGNED_TITLE_LABEL ? '' : activeTitle); setOpen(false); }}
                 >
                   {d.name}
                 </li>

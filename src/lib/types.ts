@@ -149,7 +149,7 @@ export interface DropoffAccessory {
 
 export interface RepairItem {
   id: string;
-  category: string;         // Device (e.g. "iPhone 15 Pro")
+  category: string;         // Broad device category for new rows; legacy rows may contain the device name
   repairCategory?: string;  // Service type (e.g. "Screen Repair", "Diagnostic")
   title: string;            // Product / Service name
   altDescription?: string;
@@ -164,7 +164,7 @@ export interface RepairItem {
   partSource?: string;
   orderSourceUrl?: string;
   type: "product" | "service";
-  model?: string;
+  model?: string;           // Optional specific device association (e.g. "PlayStation 5")
   // Inventory / stock tracking
   trackStock?: boolean;
   stockCount?: number;

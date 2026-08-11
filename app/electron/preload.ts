@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
   storageEnsure: (): Promise<any> => ipcRenderer.invoke('storage:ensure'),
   runDiagnostics: (): Promise<any> => ipcRenderer.invoke('diagnostics:run'),
-  pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
+  pickRepairItem: (filters?: { deviceCategory?: string; deviceName?: string }): Promise<any> => ipcRenderer.invoke('pick-repair-item', filters),
   getCustomers: (opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => {
     if (opts) return ipcRenderer.invoke('db-get', 'customers', opts);
     return getCustomersCached();
