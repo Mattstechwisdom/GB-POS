@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.5.84 (2026-08-11)
+## v0.5.85 (2026-08-11)
 - Calendar Tasks: adds technician checklists with optional assignment, completion controls in Calendar and Daily Look, and automatic carryover of unfinished tasks into each following day.
 - Calendar Groups: combines repeated same-type entries into one counted icon and opens a compact list for that day, keeping busy delivery and consultation dates readable.
 - Repair Selection: keeps every Diagnostic and Additional Fee entry visible under inherited device and category filters while preserving explicit repair-type and text filtering.
