@@ -19,6 +19,7 @@ import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
+import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
@@ -736,6 +737,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     return [
       ...wo.map(w => ({
         type: 'workorder' as const,
+        displayType: mainRecordKind('workorder', w),
         id: w.id,
         customerId: (w as any).customerId as number | undefined,
         date: getActivityDate(w),
@@ -781,6 +783,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
       })),
       ...sa.map(s => ({
         type: 'sale' as const,
+        displayType: mainRecordKind('sale', s),
         id: s.id,
         customerId: (s as any).customerId as number | undefined,
         date: new Date(s.checkInAt || s.createdAt || 0),
@@ -960,9 +963,9 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
       ];
     }
 
-    // Sale
+    const saleTypeLabel = mainRecordTypeLabel(ctxRow.displayType);
     return [
-      { type: 'header', label: `Sale ${inv}` },
+      { type: 'header', label: `${saleTypeLabel} ${inv}` },
       { label: 'Edit / Open', onClick: async () => { await api?.openNewSale?.({ id: ctxRow.id }); } },
       { label: 'View Customer', disabled: !hasCustomer, onClick: async () => { await api?.openCustomerOverview?.(ctxRow.customerId); } },
       { type: 'separator' },
@@ -973,7 +976,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         label: 'Delete…',
         danger: true,
         onClick: async () => {
-          const ok = window.confirm(`Delete sale ${inv}? This cannot be undone.`);
+          const ok = window.confirm(`Delete ${saleTypeLabel.toLowerCase()} ${inv}? This cannot be undone.`);
           if (!ok) return;
           await api?.dbDelete?.('sales', ctxRow.id);
         },
@@ -989,7 +992,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
             <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
             <th className="px-2 py-1 text-left w-[105px]">Date</th>
             <th className="px-2 py-1 text-left w-[70px]">Status</th>
-            <th className="px-2 py-1 text-left w-[56px]">Type</th>
+            <th className="px-2 py-1 text-left w-[64px] xl:w-[112px]">Type</th>
             <th className="px-2 py-1 text-left w-[110px]">Tech</th>
             <th className="px-2 py-1 text-left">Customer</th>
             <th className="px-2 py-1 text-left">Items</th>
@@ -1023,7 +1026,10 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
                 <td className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
-                <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
+                <td className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
+                  <span className="xl:hidden">{mainRecordTypeLabel(r.displayType, true)}</span>
+                  <span className="hidden xl:inline">{mainRecordTypeLabel(r.displayType)}</span>
+                </td>
                 <td className="px-2 py-1">{r.tech}</td>
                 <td className="px-2 py-1" title={r.customer}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">

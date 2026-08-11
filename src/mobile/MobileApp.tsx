@@ -15,6 +15,7 @@ import {
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
+import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -67,6 +68,7 @@ type StatusFilter = 'all' | 'open' | 'closed';
 type ModalEntry = { id: string; type: string };
 type MobileRow = {
   type: 'workorder' | 'sale';
+  displayType: MainRecordKind;
   id: number;
   customerId?: number;
   customerName: string;
@@ -906,6 +908,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       const title = getItemSummary(wo) || wo?.productDescription || wo?.productCategory || 'Work order';
       return {
         type: 'workorder',
+        displayType: mainRecordKind('workorder', wo),
         id: Number(wo?.id || 0),
         customerId: Number.isFinite(customerId) ? customerId : undefined,
         customerName: customer?.name || wo?.customerName || [wo?.firstName, wo?.lastName].filter(Boolean).join(' ').trim() || 'No client attached',
@@ -932,6 +935,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       const technicianId = String(sale?.assignedTo || '').trim();
       return {
         type: 'sale',
+        displayType: mainRecordKind('sale', sale),
         id: Number(sale?.id || 0),
         customerId: Number.isFinite(customerId) ? customerId : undefined,
         customerName: customer?.name || sale?.customerName || 'Walk-in sale',
@@ -1166,7 +1170,7 @@ function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: 
   const { wasLongPress, ...longPressHandlers } = longPress;
   return (
     <article
-      className={`mobile-record-card ${row.type} ${row.status === 'closed' ? 'closed' : 'open'}`}
+      className={`mobile-record-card ${row.displayType} ${row.status === 'closed' ? 'closed' : 'open'}`}
       {...longPressHandlers}
       onClick={() => {
         if (wasLongPress()) return;
@@ -1191,13 +1195,13 @@ function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: 
         </button>
       </div>
       <div className="mobile-card-main">
-        <h2>{row.title || (row.type === 'workorder' ? 'Work order' : 'Sale')}</h2>
+        <h2>{row.title || mainRecordTypeLabel(row.displayType)}</h2>
         <p>{row.customerName}</p>
         {row.subtitle ? <span>{row.subtitle}</span> : null}
       </div>
       <div className="mobile-card-meta">
         <span className={`mobile-status-pill ${row.status.replace(' ', '-')}`}>{row.status}</span>
-        <span>{row.type === 'workorder' ? 'WO' : 'Sale'}</span>
+        <span>{mainRecordTypeLabel(row.displayType, true)}</span>
         {row.technicianLabel ? <span>{row.technicianLabel}</span> : <span>Unassigned</span>}
       </div>
       <div className="mobile-card-money">
@@ -1341,7 +1345,7 @@ function ActionSheet({ row, actions, onClose }: { row: MobileRow; actions: Sheet
           {...drag.handleProps}
         />
         <header>
-          <span>{row.type === 'workorder' ? 'Work Order' : 'Sale'}</span>
+          <span>{mainRecordTypeLabel(row.displayType)}</span>
           <strong>{invoiceNumber(row.id)}</strong>
           <p>{row.customerName}</p>
         </header>
