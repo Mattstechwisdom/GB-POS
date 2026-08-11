@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
 
@@ -38,5 +39,15 @@ assert.equal(picked.productUrl, 'https://example.test/ps5');
 assert.equal(picked.quantity, 3);
 assert.equal(picked.inStock, false);
 assert.equal(buildSaleProductPickerPayload({ id: 43, itemDescription: '' }), null);
+
+const productsWindow = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ProductsWindow.tsx'), 'utf8');
+const desktopStyles = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles', 'index.css'), 'utf8');
+const mobileStyles = fs.readFileSync(path.join(__dirname, '..', 'src', 'mobile', 'mobile.css'), 'utf8');
+
+assert.match(productsWindow, /gb-sale-catalog-editor[^\n]*overflow-hidden/);
+assert.match(desktopStyles, /\.gb-sale-catalog-results\s*>\s*:last-child\s*\{[^}]*overflow-y:\s*auto\s*!important/s);
+assert.match(desktopStyles, /\.gb-sale-catalog-editor\s*\{[^}]*overflow:\s*hidden\s*!important/s);
+assert.match(mobileStyles, /\.gb-sale-catalog-picker\s*\{[^}]*overflow:\s*hidden/s);
+assert.match(mobileStyles, /\.gb-sale-catalog-results\s*\{[^}]*overflow:\s*hidden/s);
 
 console.log('Sale product picker tests passed.');

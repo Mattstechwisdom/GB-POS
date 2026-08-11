@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.82 (2026-08-11)
+- Quick Checkout: keeps the selected product fields fixed in place while making the product catalog list the only scrolling pane.
+- Responsive Product Picker: compacts the sale-only editor so quantity, pricing, availability, and Add to Sale remain visible across desktop and mobile layouts.
+
 ## v0.5.81 (2026-08-11)
 - Technicians: replaces the oversized desktop table with compact, dynamically sized technician cards while preserving contact actions, passcodes, time verification, analytics, schedules, and deletion controls.
 - Responsive Windows: establishes explicit portrait and landscape layouts for mobile daughter windows, with shared width containment to prevent controls and sections from bleeding off-screen.

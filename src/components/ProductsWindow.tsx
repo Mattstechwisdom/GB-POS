@@ -348,7 +348,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
             </div>
           </section>
 
-          <section className="gb-sale-catalog-editor min-h-0 overflow-y-auto rounded border border-zinc-700 bg-zinc-800 p-3">
+          <section className="gb-sale-catalog-editor min-h-0 overflow-hidden rounded border border-zinc-700 bg-zinc-800 p-3">
             {!selectedId ? <div className="grid h-full min-h-40 place-items-center text-sm text-zinc-400">Select a product to edit its sale details.</div> : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-2"><h3 className="font-semibold">Sale Item Details</h3><span className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-0.5 text-xs text-[#e9b7ff]">Sale only</span></div>
