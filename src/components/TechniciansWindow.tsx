@@ -109,6 +109,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
   const isMobileLayout = /mobile\.html$/i.test(window.location.pathname)
     || !!document.querySelector('.gbpos-mobile');
+  const useCompactCardLayout = true;
 
   async function saveSchedule(tech: any, schedule: any) {
     await updateTechnician({ ...tech, schedule });
@@ -185,7 +186,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
           </div>
         </div>
 
-        {!isMobileLayout ? <div className="gb-tech-desktop-table border border-zinc-800 rounded overflow-hidden overflow-x-auto">
+        {!useCompactCardLayout ? <div className="gb-tech-desktop-table border border-zinc-800 rounded overflow-hidden overflow-x-auto">
           <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-zinc-800 text-zinc-400">
               <tr>

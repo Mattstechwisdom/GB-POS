@@ -59,6 +59,7 @@ const DeviceCategoriesWindow    = React.lazy(() => import('./components/DeviceCa
 const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBuildItemWindow'));
 const ClientUpdatePanel         = React.lazy(() => import('./workorders/ClientUpdatePanel'));
 const FeedbackWindow            = React.lazy(() => import('./components/FeedbackWindow'));
+const GameMenuWindow            = React.lazy(() => import('./components/GameMenuWindow'));
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -188,6 +189,7 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'deviceCategories':       return <DeviceCategoriesWindow />;
     case 'customBuildItem':        return <CustomBuildItemWindow />;
     case 'feedback':               return <FeedbackWindow />;
+    case 'gameMenu':               return <GameMenuWindow />;
     default:                       return <div className="p-8 text-zinc-400">Unknown modal: {type}</div>;
   }
 }
@@ -861,13 +863,27 @@ const AppInner: React.FC<{
             </div>
           ) : null}
           <div className="flex-1 min-h-0 overflow-auto">
-            {mode === 'workorders' && (
+            {keyword === 'GADGETBOY' ? (
+              <button
+                type="button"
+                className="gb-secret-game-result"
+                onClick={() => {
+                  const api: any = (window as any).api;
+                  if (typeof api?.openGameMenu === 'function') void api.openGameMenu();
+                  else openModal('gameMenu');
+                }}
+              >
+                <strong>GAME MENU</strong>
+                <span>Secret system entry</span>
+              </button>
+            ) : null}
+            {keyword !== 'GADGETBOY' && mode === 'workorders' && (
               <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
             )}
-            {mode === 'sales' && (
+            {keyword !== 'GADGETBOY' && mode === 'sales' && (
               <SalesTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} invoiceQuery={invoiceQuery} keyword={keyword} />
             )}
-            {mode === 'all' && (
+            {keyword !== 'GADGETBOY' && mode === 'all' && (
               <UnifiedList statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} keyword={keyword} />
             )}
           </div>

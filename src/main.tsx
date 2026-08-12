@@ -50,6 +50,7 @@ const NotificationSettingsWindow = lazy(() => import('./components/NotificationS
 const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
 const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
 const DataPathGate = lazy(() => import('./components/DataPathGate'));
+const GameMenuWindow = lazy(() => import('./components/GameMenuWindow'));
 
 declare global {
 	interface Window {
@@ -368,7 +369,7 @@ try {
 	const showReporting = params.get('reporting');
 	const showReportEmail = params.get('reportEmail');
 	const showQuote = params.get('quote');
-		const showQuickSale = params.get('quickSale');
+	const showQuickSale = params.get('quickSale');
 	const showEod = params.get('eod');
 	const showReleaseForm = params.get('releaseForm');
 	const showCustomerReceipt = params.get('customerReceipt');
@@ -377,15 +378,18 @@ try {
 	const showBackup = params.get('backup');
 	const showClearDb = params.get('clearDb');
 	const showClockIn = params.get('clockIn');
-		const showNotifications = params.get('notifications');
-		const showNotificationSettings = params.get('notificationSettings');
-		const showCustomBuildItem = params.get('customBuildItem');
+	const showNotifications = params.get('notifications');
+	const showNotificationSettings = params.get('notificationSettings');
+	const showCustomBuildItem = params.get('customBuildItem');
+	const showGameMenu = params.get('gameMenu');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
 	const root = createRoot(rootEl);
 	
-	if (showDeviceCategories) {
+	if (showGameMenu) {
+		renderWithSuspense(root, <GameMenuWindow />);
+	} else if (showDeviceCategories) {
 		renderWithSuspense(root, <DeviceCategoriesWindow />);
 	} else if (showEod) {
 		renderWithSuspense(root, <EODWindow />);

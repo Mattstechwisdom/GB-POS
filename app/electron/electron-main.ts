@@ -4486,6 +4486,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       partName: row.part_name || '',
       source: row.source || '',
       orderUrl: row.order_url || '',
+      trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
       taskCompleted: row.task_completed === true,
@@ -4770,6 +4771,7 @@ function toCloudRow(key: string, item: any): any | null {
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
       order_url: toCloudString(item.orderUrl),
+      tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
       task_completed: toCloudBool(item.taskCompleted),
@@ -7986,6 +7988,33 @@ ipcMain.handle('open-new-workorder', async (_event: any, payload: any) => {
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   // Load renderer with query params carrying payload
   const url = isDev ? `${DEV_SERVER_URL}/?newWorkOrder=${encodeURIComponent(JSON.stringify(payload))}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?newWorkOrder=${encodeURIComponent(JSON.stringify(payload))}`;
+  child.loadURL(url);
+  return { ok: true };
+});
+
+ipcMain.handle('open-game-menu', async () => {
+  const child = new BrowserWindow({
+    width: 940,
+    height: 720,
+    minWidth: 620,
+    minHeight: 560,
+    resizable: true,
+    frame: true,
+    parent: undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#09090b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Game Menu'),
+  });
+  showWindowFast(child, () => { centerWindow(child); });
+  const url = isDev ? `${DEV_SERVER_URL}/?gameMenu=1` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?gameMenu=1`;
   child.loadURL(url);
   return { ok: true };
 });

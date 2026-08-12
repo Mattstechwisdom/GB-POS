@@ -6,6 +6,8 @@ import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
 import { ALL_TECHNICIANS, calendarEventGroupKey, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '@/lib/calendarTasks';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '@/lib/useContextMenu';
 
 type CalendarEvent = {
   id?: number;
@@ -86,7 +88,11 @@ type CalendarPreferences = {
   colors?: Partial<CalendarColors>;
   technicianColors?: Record<string, string>;
   businessCalendar?: Partial<BusinessCalendarSettings>;
+  icons?: Partial<Record<CalendarIconKey, CalendarIconChoice>>;
 };
+
+type CalendarIconKey = keyof CalendarColors;
+type CalendarIconChoice = { kind: 'text' | 'image'; value: string };
 
 const DEFAULT_CALENDAR_COLORS: CalendarColors = {
   schedule: '#39FF14',
@@ -110,6 +116,40 @@ const DEFAULT_BUSINESS_CALENDAR_SETTINGS: BusinessCalendarSettings = {
   daylightSaving: true,
   estimatedTaxDeadlines: false,
 };
+
+const DEFAULT_CALENDAR_ICONS: Record<CalendarIconKey, CalendarIconChoice> = {
+  schedule: { kind: 'text', value: 'S' },
+  partsOrdered: { kind: 'text', value: 'O' },
+  partsDelivery: { kind: 'text', value: 'D' },
+  event: { kind: 'text', value: 'E' },
+  consultation: { kind: 'text', value: 'C' },
+  streaming: { kind: 'text', value: 'V' },
+  content: { kind: 'text', value: 'R' },
+  notes: { kind: 'text', value: 'N' },
+  task: { kind: 'text', value: 'K' },
+  federalHoliday: { kind: 'text', value: 'H' },
+  scTaxFreeWeekend: { kind: 'text', value: 'T' },
+  daylightSaving: { kind: 'text', value: 'D' },
+  estimatedTaxDeadline: { kind: 'text', value: '$' },
+};
+
+function calendarIconKey(ev: CalendarEvent): CalendarIconKey {
+  if (ev.businessKind) return ev.businessKind;
+  if (ev.category === 'parts') return ev.partsStatus === 'delivery' || !ev.partsStatus ? 'partsDelivery' : 'partsOrdered';
+  if (ev.category === 'consultation') return 'consultation';
+  if (ev.category === 'schedule') return 'schedule';
+  if (ev.category === 'task') return 'task';
+  if (ev.category === 'content') return ev.source === 'streaming' ? 'streaming' : 'content';
+  return 'event';
+}
+
+function CalendarIconContent({ event, icons, fallback }: { event: CalendarEvent; icons: Record<CalendarIconKey, CalendarIconChoice>; fallback: string }) {
+  const choice = icons[calendarIconKey(event)];
+  if (choice?.kind === 'image' && /^data:image\//i.test(choice.value)) {
+    return <img src={choice.value} alt="" className="h-[75%] w-[75%] object-contain" />;
+  }
+  return <>{choice?.value || fallback}</>;
+}
 
 function nthWeekdayOfMonth(year: number, month: number, weekday: number, nth: number) {
   const first = new Date(year, month, 1, 12, 0, 0, 0);
@@ -247,8 +287,8 @@ function activeShiftEvents(day: Date, events: CalendarEvent[]) {
   });
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onOpenGroup, onOpenNotes, onOpenShifts, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; icons: Record<CalendarIconKey, CalendarIconChoice>; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onContextGroup: (event: React.MouseEvent, events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, colors, icons, technicianColors, onPick, onOpenGroup, onContextGroup, onOpenNotes, onOpenShifts, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -327,10 +367,11 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
                 key={calendarEventGroupKey(ev)}
                 title={group.length > 1 ? `${group.length} ${calendarEventVisual(ev, colors).label} entries` : b.title}
                 onClick={() => onOpenGroup(group)}
+                onContextMenu={(event) => onContextGroup(event, group)}
                 className="relative w-6 h-6 rounded-md text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105"
                 style={{ backgroundColor: b.color }}
               >
-                {b.letter}
+                <CalendarIconContent event={ev} icons={icons} fallback={b.letter} />
                 {group.length > 1 ? <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-4 h-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-black text-zinc-950 shadow">{group.length}</span> : null}
               </button>
             );
@@ -384,6 +425,8 @@ const CalendarWindow: React.FC = () => {
   const [savedTechnicianColors, setSavedTechnicianColors] = useState<Record<string, string>>({});
   const [businessCalendar, setBusinessCalendar] = useState<BusinessCalendarSettings>(DEFAULT_BUSINESS_CALENDAR_SETTINGS);
   const [savedBusinessCalendar, setSavedBusinessCalendar] = useState<BusinessCalendarSettings>(DEFAULT_BUSINESS_CALENDAR_SETTINGS);
+  const [calendarIcons, setCalendarIcons] = useState<Record<CalendarIconKey, CalendarIconChoice>>(DEFAULT_CALENDAR_ICONS);
+  const [savedCalendarIcons, setSavedCalendarIcons] = useState<Record<CalendarIconKey, CalendarIconChoice>>(DEFAULT_CALENDAR_ICONS);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
   const [calendarSettingsSaving, setCalendarSettingsSaving] = useState(false);
   // For adding multiple estimated delivery dates in one go (parts only)
@@ -391,6 +434,7 @@ const CalendarWindow: React.FC = () => {
   const [deliveryDateInput, setDeliveryDateInput] = useState<string>('');
   // Live technicians for deriving schedules
   const [techs, setTechs] = useState<any[]>([]);
+  const calendarContext = useContextMenu<CalendarEvent[]>();
   
   // Event type filters
   const [filters, setFilters] = useState({
@@ -424,6 +468,9 @@ const CalendarWindow: React.FC = () => {
         const savedBusiness = { ...DEFAULT_BUSINESS_CALENDAR_SETTINGS, ...(stored?.businessCalendar && typeof stored.businessCalendar === 'object' ? stored.businessCalendar : {}) };
         setBusinessCalendar(savedBusiness);
         setSavedBusinessCalendar(savedBusiness);
+        const savedIcons = { ...DEFAULT_CALENDAR_ICONS, ...(stored?.icons && typeof stored.icons === 'object' ? stored.icons : {}) };
+        setCalendarIcons(savedIcons);
+        setSavedCalendarIcons(savedIcons);
       } catch {
         // Calendar presentation uses defaults until preferences can be read.
       }
@@ -437,13 +484,14 @@ const CalendarWindow: React.FC = () => {
       const rows = await (window as any).api.dbGet('settings');
       const existing = Array.isArray(rows) ? rows[0] : null;
       const now = new Date().toISOString();
-      const calendarPreferences = { colors: calendarColors, technicianColors, businessCalendar, updatedAt: now };
+      const calendarPreferences = { colors: calendarColors, technicianColors, businessCalendar, icons: calendarIcons, updatedAt: now };
       const payload = { ...(existing || {}), calendarPreferences, updatedAt: now };
       if (existing?.id != null) await (window as any).api.dbUpdate('settings', existing.id, payload);
       else await (window as any).api.dbAdd('settings', { ...payload, id: 1, createdAt: now });
       setSavedCalendarColors(calendarColors);
       setSavedTechnicianColors(technicianColors);
       setSavedBusinessCalendar(businessCalendar);
+      setSavedCalendarIcons(calendarIcons);
       setCalendarSettingsOpen(false);
     } finally {
       setCalendarSettingsSaving(false);
@@ -991,6 +1039,62 @@ const CalendarWindow: React.FC = () => {
     console.log('=== DELETE EVENT END ===');
   }
 
+  async function openCalendarInvoice(ev: CalendarEvent) {
+    const api: any = (window as any).api;
+    if (Number(ev.workOrderId || 0) > 0) {
+      await api?.openNewWorkOrder?.({ workOrderId: Number(ev.workOrderId) });
+      return;
+    }
+    const saleId = Number(ev.saleId || 0);
+    if (saleId > 0) {
+      await api?.openNewSale?.({ id: saleId });
+      return;
+    }
+    if (ev.category === 'consultation') await openConsultationSale(ev);
+  }
+
+  const calendarContextItems = useMemo<ContextMenuItem[]>(() => {
+    const group = calendarContext.state.data || [];
+    const event = group[0];
+    if (!event) return [];
+    const linkedInvoice = Number(event.workOrderId || event.saleId || 0) > 0 || event.category === 'consultation';
+    const editable = event.source !== 'business-calendar' && event.category !== 'schedule';
+    if (group.length > 1) {
+      return [
+        { type: 'header', label: `${group.length} ${calendarEventVisual(event, calendarColors).label} entries` },
+        { label: 'Open entries', onClick: () => setViewingGroup(group) },
+      ];
+    }
+    return [
+      { type: 'header', label: event.title || calendarEventVisual(event, calendarColors).label },
+      { label: 'Open details', onClick: () => setViewing(event) },
+      { label: 'Edit entry', disabled: !editable, onClick: () => onEdit(event) },
+      { type: 'separator' },
+      { label: 'Open invoice', disabled: !linkedInvoice, onClick: () => openCalendarInvoice(event) },
+      { label: 'Open order URL', disabled: !String(event.orderUrl || '').trim(), onClick: () => (window as any).api?.openUrl?.(String(event.orderUrl)) },
+      { label: 'Open tracking URL', disabled: !String(event.trackingUrl || '').trim(), onClick: () => (window as any).api?.openUrl?.(String(event.trackingUrl)) },
+      { type: 'separator' },
+      { label: 'Delete entry', danger: true, disabled: !editable || event.id == null, onClick: () => deleteEvent(event) },
+    ];
+  }, [calendarContext.state.data, calendarColors]);
+
+  function updateCalendarIconText(key: CalendarIconKey, value: string) {
+    const characters = Array.from(value.trim()).slice(0, 3).join('');
+    setCalendarIcons(current => ({ ...current, [key]: { kind: 'text', value: characters || DEFAULT_CALENDAR_ICONS[key].value } }));
+  }
+
+  function uploadCalendarIcon(key: CalendarIconKey, file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Choose an image file.'); return; }
+    if (file.size > 96 * 1024) { alert('Calendar icons must be smaller than 96 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      if (value.startsWith('data:image/')) setCalendarIcons(current => ({ ...current, [key]: { kind: 'image', value } }));
+    };
+    reader.readAsDataURL(file);
+  }
+
   // Minimal validation for autosave
   function canAutosave(ev: CalendarEvent | null) {
     if (!ev) return false;
@@ -1265,9 +1369,11 @@ const CalendarWindow: React.FC = () => {
                     notes={notesByDay[key] || []}
                     notesVisible={filters.notes}
                     colors={calendarColors}
+                    icons={calendarIcons}
                     technicianColors={technicianColors}
                     onPick={onPick}
                     onOpenGroup={setViewingGroup}
+                    onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
                     onOpenNotes={openNotes}
                     onOpenShifts={(day) => setShiftDay(fmtDate(day))}
                     isToday={key === todayStr}
@@ -1332,8 +1438,9 @@ const CalendarWindow: React.FC = () => {
                           className={`gb-calendar-week-event type-${event.category || 'event'}`}
                           aria-label={`${visual.label}: ${eventSummary(event)}`}
                           onClick={() => setViewingGroup(group)}
+                          onContextMenu={(contextEvent) => calendarContext.openFromEvent(contextEvent, group)}
                         >
-                          <span className="gb-calendar-event-icon relative" style={{ backgroundColor: visual.color }}>{visual.short}{group.length > 1 ? <b className="absolute -right-2 -top-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-white px-1 text-[10px] text-zinc-950 shadow">{group.length}</b> : null}</span>
+                          <span className="gb-calendar-event-icon relative" style={{ backgroundColor: visual.color }}><CalendarIconContent event={event} icons={calendarIcons} fallback={visual.short} />{group.length > 1 ? <b className="absolute -right-2 -top-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-white px-1 text-[10px] text-zinc-950 shadow">{group.length}</b> : null}</span>
                           <span className="gb-calendar-event-copy">
                             <strong>{group.length > 1 ? `${group.length} ${visual.label} entries` : eventSummary(event)}</strong>
                             <small>{visual.label}{group.length > 1 ? ' - tap to view list' : ''}</small>
@@ -1438,7 +1545,7 @@ const CalendarWindow: React.FC = () => {
           <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[860px] max-h-[90vh] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
             <div className="gb-calendar-settings-header flex items-center justify-between gap-3 border-b border-zinc-700 p-4">
               <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Settings</h3><p className="text-sm text-zinc-400">Choose business dates, calendar colors, and Technician shift colors.</p></div>
-              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarSettingsOpen(false); }}>X</button>
+              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarIcons(savedCalendarIcons); setCalendarSettingsOpen(false); }}>X</button>
             </div>
             <div className="gb-calendar-settings-body min-h-0 overflow-y-auto p-4">
               <section className="gb-calendar-settings-section">
@@ -1462,6 +1569,17 @@ const CalendarWindow: React.FC = () => {
                 ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => <div key={key} className="gb-calendar-color-row"><input className="gb-calendar-color-wheel" type="color" value={calendarColors[key]} aria-label={`${label} color wheel`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} /><span>{label}</span><button type="button" onClick={() => setCalendarColors(colors => ({ ...colors, [key]: DEFAULT_CALENDAR_COLORS[key] }))}>Default</button></div>)}</div>
               </details>
 
+              <details className="gb-calendar-settings-section" open>
+                <summary>Calendar Icons</summary>
+                <p className="mb-3 text-xs text-zinc-400">Use letters, symbols, emoji, or a small uploaded image. Icon choices synchronize with the shop calendar settings.</p>
+                <div className="gb-calendar-icon-grid">{([
+                  ['schedule', 'Technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['task', 'Tasks'], ['notes', 'Important notes'], ['federalHoliday', 'Federal holidays'], ['scTaxFreeWeekend', 'SC tax-free weekend'], ['daylightSaving', 'Daylight saving'], ['estimatedTaxDeadline', 'Tax reminders'],
+                ] as Array<[CalendarIconKey, string]>).map(([key, label]) => {
+                  const choice = calendarIcons[key];
+                  return <div key={key} className="gb-calendar-icon-row"><span className="gb-calendar-icon-preview" style={{ backgroundColor: calendarColors[key] }}>{choice.kind === 'image' ? <img src={choice.value} alt="" /> : choice.value}</span><label><span>{label}</span><input type="text" value={choice.kind === 'text' ? choice.value : ''} placeholder="Letter or emoji" maxLength={6} onChange={(event) => updateCalendarIconText(key, event.target.value)} /></label><label className="gb-calendar-icon-upload">Upload<input type="file" accept="image/*" onChange={(event) => uploadCalendarIcon(key, event.target.files?.[0])} /></label><button type="button" onClick={() => setCalendarIcons(current => ({ ...current, [key]: DEFAULT_CALENDAR_ICONS[key] }))}>Default</button></div>;
+                })}</div>
+              </details>
+
               <details className="gb-calendar-settings-section">
                 <summary>Technician Shift Color Wheels</summary>
                 <div className="gb-calendar-color-grid technician-colors">
@@ -1472,7 +1590,7 @@ const CalendarWindow: React.FC = () => {
             </div>
             <div className="gb-calendar-settings-footer flex justify-between gap-2 border-t border-zinc-700 p-4">
               <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setCalendarColors(DEFAULT_CALENDAR_COLORS)}>Restore defaults</button>
-              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarSettings(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save settings'}</button></div>
+              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setBusinessCalendar(savedBusinessCalendar); setCalendarIcons(savedCalendarIcons); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarSettings(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save settings'}</button></div>
             </div>
           </section>
         </div>
@@ -1484,8 +1602,8 @@ const CalendarWindow: React.FC = () => {
             <header className="flex items-start justify-between gap-3 border-b border-zinc-800 p-4"><div><h3 id="calendar-group-title" className="text-xl font-semibold">{calendarEventVisual(viewingGroup[0], calendarColors).label}</h3><p className="text-sm text-zinc-400">{new Date(`${viewingGroup[0].date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} - {viewingGroup.length} {viewingGroup.length === 1 ? 'entry' : 'entries'}</p></div><button type="button" className="gb-icon-button" aria-label="Close grouped calendar entries" onClick={() => setViewingGroup(null)}>X</button></header>
             <div className="min-h-0 overflow-y-auto p-3 space-y-2">
               {viewingGroup.slice().sort((left, right) => toMinutes(left.time) - toMinutes(right.time)).map((event, index) => (
-                <div key={event.id || index} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-800 p-3">
-                  {event.category === 'task' ? <input type="checkbox" className="h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(event)} aria-label={`Mark ${event.title || 'task'} complete`} onChange={change => { void setTaskCompleted(event, change.target.checked); }} /> : <span className="gb-calendar-event-icon shrink-0" style={{ backgroundColor: calendarEventVisual(event, calendarColors).color }}>{calendarEventVisual(event, calendarColors).short}</span>}
+                <div key={event.id || index} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-800 p-3" onContextMenu={(contextEvent) => calendarContext.openFromEvent(contextEvent, [event])}>
+                  {event.category === 'task' ? <input type="checkbox" className="h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(event)} aria-label={`Mark ${event.title || 'task'} complete`} onChange={change => { void setTaskCompleted(event, change.target.checked); }} /> : <span className="gb-calendar-event-icon shrink-0" style={{ backgroundColor: calendarEventVisual(event, calendarColors).color }}><CalendarIconContent event={event} icons={calendarIcons} fallback={calendarEventVisual(event, calendarColors).short} /></span>}
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setViewingGroup(null); setViewing(event); }}><strong className={`block break-words ${taskIsCompleted(event) ? 'text-zinc-500 line-through' : ''}`}>{eventSummary(event)}</strong><small className="block text-zinc-400">{event.technician || event.location || (event.id != null ? 'Open details' : '')}</small></button>
                 </div>
               ))}
@@ -1499,7 +1617,7 @@ const CalendarWindow: React.FC = () => {
           <div className="gb-calendar-event-detail bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800">
               <div className="flex items-center gap-3 min-w-0">
-                <span className="gb-calendar-event-icon" style={{ backgroundColor: calendarEventVisual(viewing, calendarColors).color }}>{calendarEventVisual(viewing, calendarColors).short}</span>
+                <span className="gb-calendar-event-icon" style={{ backgroundColor: calendarEventVisual(viewing, calendarColors).color }}><CalendarIconContent event={viewing} icons={calendarIcons} fallback={calendarEventVisual(viewing, calendarColors).short} /></span>
                 <div className="min-w-0">
                   <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing, calendarColors).label}</div>
                   <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing, calendarColors).label}</h3>
@@ -1716,15 +1834,15 @@ const CalendarWindow: React.FC = () => {
               {editing.category === 'task' && (
                 <>
                   <div className="col-span-2">
-                    <label className="block text-xs text-zinc-400">Task</label>
-                    <input autoFocus className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.title || ''} onChange={event => setEditing({ ...editing, title: event.target.value })} placeholder="What needs to be completed?" />
-                  </div>
-                  <div className="col-span-2">
                     <label className="block text-xs text-zinc-400">Assigned technician</label>
                     <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.technician || ''} onChange={event => setEditing({ ...editing, technician: event.target.value })}>
                       <option value={ALL_TECHNICIANS}>All Technicians</option>
                       {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
                     </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-zinc-400">Task</label>
+                    <input autoFocus className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.title || ''} onChange={event => setEditing({ ...editing, title: event.target.value })} placeholder="What needs to be completed?" />
                   </div>
                   {editing.id != null ? <label className="col-span-2 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-violet-400" checked={taskIsCompleted(editing)} onChange={event => setEditing({ ...editing, taskCompleted: event.target.checked, taskCompletedAt: event.target.checked ? new Date().toISOString() : '', taskCompletedBy: event.target.checked ? String(editing.technician || '') : '' })} /><span>Completed</span></label> : null}
                 </>
@@ -2103,6 +2221,14 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       )}
+      <ContextMenu
+        id="calendar-entry-context-menu"
+        open={calendarContext.state.open}
+        x={calendarContext.state.x}
+        y={calendarContext.state.y}
+        items={calendarContextItems}
+        onClose={calendarContext.close}
+      />
     </div>
   );
 };

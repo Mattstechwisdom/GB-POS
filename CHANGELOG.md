@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.93 (2026-08-12)
+- Calendar Workflow: places task assignment before task entry, adds invoice/order/tracking/delete context actions for right-click and mobile press-and-hold, and preserves tracking URLs across desktop Supabase sync.
+- Calendar Styling: adds synced per-category icon customization using letters, symbols, emoji, or small uploaded images.
+- Durant Report: adds an AV/sound work-order type with the full work-order workflow and an authenticated email handoff to Durant Media.
+- Technicians: uses the compact technician-card layout on desktop while preserving schedules, passcodes, time records, and analytics.
+- Hidden Game Menu: entering the exact uppercase `GADGETBOY` search keyword reveals a self-contained Ship, Captain & Crew dice game on Windows and Android.
+- Windows Updates: retains the verified per-user, non-elevated installer settings required for automatic update installation without a UAC approval prompt.
+
 ## v0.5.92 (2026-08-11)
 - Desktop Navigation: restores the approved slide-out desktop menu, top client actions, filter dropdown, right notification rail, Gidget logo entry point, Feedback button, and animated drawer closing without reverting newer features.
 - Calendar Tasks: adds an explicit All Technicians assignment, carries shared incomplete tasks into every technician's Daily Look, and synchronizes completion state through Supabase on Windows and Android.

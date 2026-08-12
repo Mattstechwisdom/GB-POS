@@ -297,7 +297,7 @@ const NewWorkOrderWindow: React.FC = () => {
   type WOState = Omit<WorkOrderFull, 'items'> & {
     items: WorkOrderItemRow[];
     internalNotesLog?: { id: number; text: string; createdAt?: string }[];
-    workOrderType?: 'standard' | 'customBuild' | 'drone';
+    workOrderType?: 'standard' | 'customBuild' | 'drone' | 'durantReport';
   };
   const [wo, setWo] = useState<WOState>({
     id: 0,
@@ -316,6 +316,7 @@ const NewWorkOrderWindow: React.FC = () => {
     intakeSource: '',
     workOrderType: (payload as any)?.workOrderType === 'customBuild' || (payload as any)?.isCustomBuild ? 'customBuild'
       : (payload as any)?.workOrderType === 'drone' ? 'drone'
+      : (payload as any)?.workOrderType === 'durantReport' ? 'durantReport'
       : 'standard',
   partsOrdered: false,
   partsEstimatedDelivery: null,
@@ -374,6 +375,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
   const isCustomBuild = wo.workOrderType === 'customBuild';
   const isDrone = wo.workOrderType === 'drone';
+  const isDurantReport = wo.workOrderType === 'durantReport';
 
   function triggerWarningBanner(message: string, details?: string) {
     if (warningHideTimer.current !== undefined) {
@@ -505,6 +507,7 @@ const NewWorkOrderWindow: React.FC = () => {
           ...existing,
           workOrderType: ((existing as any).workOrderType === 'customBuild' || (existing as any).isCustomBuild) ? 'customBuild'
             : (existing as any).workOrderType === 'drone' ? 'drone'
+            : (existing as any).workOrderType === 'durantReport' ? 'durantReport'
             : (w.workOrderType || 'standard'),
           partsOrdered: existing.partsOrdered ?? w.partsOrdered,
           partsEstimatedDelivery: existing.partsEstimatedDelivery ?? w.partsEstimatedDelivery,
@@ -791,6 +794,46 @@ const NewWorkOrderWindow: React.FC = () => {
         return;
       }
     })();
+  }
+
+  async function sendToDurant() {
+    if (!isDurantReport) return;
+    if (!ensureRequired('save', 'sending the Durant Report')) return;
+    if (!wo.customerId || !String(wo.productCategory || '').trim()) {
+      triggerWarningBanner('Complete the client and device information first');
+      return;
+    }
+    const recipient = window.prompt('Durant Media email address', '');
+    if (!recipient?.trim()) return;
+    try {
+      const api: any = (window as any).api;
+      let saved: any = null;
+      const next = { ...wo, workOrderType: 'durantReport', updatedAt: new Date().toISOString() };
+      if (Number(wo.id || 0) > 0) saved = await api.dbUpdate('workOrders', wo.id, next);
+      else saved = await (api.addWorkOrder ? api.addWorkOrder(next) : api.dbAdd('workOrders', next));
+      const record = saved || next;
+      if (saved?.id) setWo(current => ({ ...current, id: Number(saved.id), workOrderType: 'durantReport' }));
+
+      const customers = await api.findCustomers?.({ id: wo.customerId }).catch(() => []);
+      const customer = Array.isArray(customers) ? customers[0] : null;
+      const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ').trim() || customerSummary.name || 'Client';
+      const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] || character));
+      const invoice = `GB${String(record.id || 0).padStart(7, '0')}`;
+      const itemRows = wo.items.length ? wo.items.map(item => `<tr><td>${escape(item.repair || item.device)}</td><td>${escape(item.note || '')}</td></tr>`).join('') : '<tr><td colspan="2">No line items entered</td></tr>';
+      const html = `<div style="font-family:Arial,sans-serif;color:#18181b;max-width:760px;margin:auto"><h1 style="color:#7e22ce">Durant Report</h1><p><strong>GadgetBoy work order:</strong> ${escape(invoice)}</p><table style="width:100%;border-collapse:collapse"><tr><td><strong>Client</strong></td><td>${escape(customerName)}</td></tr><tr><td><strong>Phone</strong></td><td>${escape(customer?.phone || customerSummary.phone)}</td></tr><tr><td><strong>Equipment</strong></td><td>${escape(wo.productDescription)}</td></tr><tr><td><strong>Category</strong></td><td>${escape(wo.productCategory)}</td></tr><tr><td><strong>Model</strong></td><td>${escape(wo.model)}</td></tr><tr><td><strong>Serial</strong></td><td>${escape(wo.serial)}</td></tr><tr><td><strong>Reported issue</strong></td><td>${escape(wo.problemInfo)}</td></tr><tr><td><strong>Assigned technician</strong></td><td>${escape(wo.assignedTo)}</td></tr></table><h2>Services / findings</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="8"><tr><th>Item</th><th>Notes</th></tr>${itemRows}</table><h2>Internal notes supplied for review</h2><p style="white-space:pre-wrap">${escape(wo.internalNotes)}</p></div>`;
+      const result = await api.emailSendReportHtml?.({
+        to: recipient.trim(),
+        subject: `Durant Report ${invoice} - ${wo.productDescription || wo.productCategory}`,
+        bodyText: `Durant Report ${invoice}\nClient: ${customerName}\nEquipment: ${wo.productDescription}\nIssue: ${wo.problemInfo}`,
+        html,
+      });
+      if (result?.ok === false) throw new Error(result.error || 'Email failed');
+      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+      triggerWarningBanner('Durant Report sent', `Sent ${invoice} to ${recipient.trim()}.`);
+    } catch (error: any) {
+      console.error('send Durant Report failed', error);
+      triggerWarningBanner('Durant Report was not sent', error?.message || 'Check email settings and try again.');
+    }
   }
   function onCancel() {
     if (!isEditingExisting && !hasMeaningfulInput) {
@@ -1585,9 +1628,9 @@ const NewWorkOrderWindow: React.FC = () => {
             <div className="gb-wo-type-grid mt-2">
               <button
                 type="button"
-                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${!isCustomBuild && !isDrone && !isDurantReport ? 'bg-neon-green text-zinc-900 border-transparent' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                 onClick={() => {
-                  if (!isCustomBuild && !isDrone) return;
+                  if (!isCustomBuild && !isDrone && !isDurantReport) return;
                   const hasData = Boolean((wo.items?.length || 0) > 0 || (wo.password || wo.model || wo.serial));
                   if (hasData && !confirm('Switch to Standard Work Order? This will clear custom-build-only fields and may clear some device fields.')) return;
                   setWo((w) => ({
@@ -1638,6 +1681,16 @@ const NewWorkOrderWindow: React.FC = () => {
                 }}
               >
                 Drone
+              </button>
+              <button
+                type="button"
+                className={`gb-wo-type-button px-3 py-1.5 rounded border text-sm ${isDurantReport ? 'bg-purple-500 text-white border-purple-300' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                onClick={() => {
+                  if (isDurantReport) return;
+                  setWo(current => ({ ...current, workOrderType: 'durantReport', productCategory: current.productCategory || 'AV / Sound Equipment' }));
+                }}
+              >
+                Durant Report
               </button>
             </div>
           </div>
@@ -1763,6 +1816,7 @@ const NewWorkOrderWindow: React.FC = () => {
       <div className="fixed bottom-4 left-4 right-3 flex items-center justify-between">
         <div className="text-xs text-zinc-500 min-h-[1.2rem]">Auto-save enabled</div>
         <div className="flex gap-2">
+          {isDurantReport ? <button className="px-3 py-1.5 bg-purple-600 border border-purple-400 text-white rounded font-semibold" onClick={() => { void sendToDurant(); }}>Send to Durant</button> : null}
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>
           <button
             className={`px-3 py-1.5 rounded font-semibold shadow focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.98] transition ${saveDisabled ? 'bg-zinc-800 text-zinc-500' : 'bg-neon-green text-zinc-900 hover:brightness-110'}`}

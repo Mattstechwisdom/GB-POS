@@ -53,6 +53,7 @@ const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
 const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
+const GameMenuWindow = React.lazy(() => import('../components/GameMenuWindow'));
 
 type StaffProfile = {
   id: string;
@@ -366,6 +367,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'customBuildItem': return <CustomBuildItemWindow />;
     case 'technicians': return <TechniciansWindow onClose={onClose} />;
     case 'feedback': return <FeedbackWindow />;
+    case 'gameMenu': return <GameMenuWindow />;
     default: return <div className="mobile-empty-state">Unknown window: {type}</div>;
   }
 }
@@ -1120,21 +1122,22 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       {error ? <div className="mobile-cloud-warning danger">{error}</div> : null}
 
       <section className="mobile-record-list" aria-live="polite">
+        {query === 'GADGETBOY' ? <button type="button" className="gb-secret-game-result mobile" onClick={() => openModal('gameMenu')}><strong>GAME MENU</strong><span>Secret system entry</span></button> : null}
         {loading ? <div className="mobile-loading-inline">Loading shop data...</div> : null}
-        {!loading && visibleRows.length === 0 ? (
+        {!loading && visibleRows.length === 0 && query !== 'GADGETBOY' ? (
           <div className="mobile-empty-state">
             <strong>No matching records</strong>
             <span>Try clearing filters or opening the menu to start a new ticket.</span>
           </div>
         ) : null}
-        {visibleRows.map((row) => (
+        {query !== 'GADGETBOY' ? visibleRows.map((row) => (
           <MobileRecordCard
             key={`${row.type}-${row.id}`}
             row={row}
             onOpen={() => openRecord(row)}
             onActions={() => setSheetRow(row)}
           />
-        ))}
+        )) : null}
         {!loading && filteredRows.length > visibleRows.length ? (
           <button type="button" className="mobile-load-more" onClick={() => setVisibleCount((count) => count + 35)}>
             Load {Math.min(35, filteredRows.length - visibleRows.length)} more

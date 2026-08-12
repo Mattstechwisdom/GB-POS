@@ -98,6 +98,14 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 9. Print the work order form. Ask the client to verify the contact information and sign the terms.
 10. Confirm the saved work order shows the client name rather than only a client number.
 
+### Durant Report
+
+1. Choose Durant Report beside the other work-order types for AV or sound equipment that may require Durant Media.
+2. Complete the client, equipment, condition, issue, notes, technician, and line-item fields just as you would for a standard work order.
+3. Save the ticket before handoff so the shared POS retains the complete record.
+4. Choose Send to Durant, verify the partner email address, and send the generated ticket summary.
+5. Keep the work order in the normal shop workflow until responsibility, status, and customer communication are confirmed.
+
 ### Diagnostic-First Process
 
 1. Record the initial symptom without claiming an unverified diagnosis.
@@ -351,6 +359,15 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Part order and expected delivery dates can create calendar entries from work-order data.
 - Streaming / Content Schedule is a separate weekly schedule for names, times, stream type/game, filming, and content work.
 - Content schedule Add contains only content/streaming fields, not repair or consultation categories.
+- Right-click a calendar icon on Windows, or press and hold it on Android, to open the available actions. Depending on the entry, these include opening details, editing, opening the linked invoice, opening order/tracking URLs, and deleting the entry.
+- When multiple entries share one grouped icon, open the group to choose a specific record before using its contextual actions.
+
+### Tasks and Calendar Icons
+
+1. Add a Task and choose the assigned technician before entering the task text. Choose All Technicians for shared shop duties.
+2. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
+3. Open Calendar Settings to replace each event category's default character with a short letter, symbol, emoji, or small uploaded icon.
+4. Save Calendar Settings to sync the icon choices with the shop settings on other signed-in devices.
 
 ### Important Notes, Daily Look, and Technician Journal
 
@@ -368,6 +385,13 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Clock in/out and work schedules feed time and reporting tools.
 - Audit open shifts before payroll/commission reporting.
 - Do not assign records to the Supabase login display name.
+- Windows and Android use the same compact technician cards; actions, schedules, passcodes, time entries, and analytics remain attached to the existing technician records.
+
+### Hidden Game Menu
+
+- Enter the exact uppercase keyword `GADGETBOY` in the main search field to reveal GAME MENU.
+- Open Ship, Captain & Crew for a five-round dice game. Secure a 6, then 5, then 4 within three rolls; the remaining two dice are cargo points.
+- Game scores stay inside the game window and never modify clients, tickets, reporting, or other shop data.
 
 ### Technician Analytics
 
