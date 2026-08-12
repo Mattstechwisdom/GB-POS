@@ -1,7 +1,5 @@
-
 # Node / JS
 node_modules/
-.local-tools/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -11,15 +9,10 @@ pnpm-debug.log*
 # Vite / build outputs
 dist/
 dist-main/
-dist-mobile/
 
 # Electron builder outputs
 release/
 out/
-
-# Generated document outputs
-output/
-build/GadgetBoy-POS-Instructions.pdf
 
 # Temporary release artifacts
 release-v023-test/
@@ -59,5 +52,3 @@ quote-generator/
 
 # Legacy build outputs (don’t commit)
 quote-legacy/frontend/build/
-
-

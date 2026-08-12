@@ -4,8 +4,7 @@ import { SpeechRecognition as NativeSpeechRecognition } from '@capgo/capacitor-s
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { publicAsset } from '../lib/publicAsset';
 import { supabase } from '../lib/supabase';
-import { cancelGidgetWork, generateWithGidget, getLocalGidgetPosContext, gidgetLocalStatus, setupGidgetModel, subscribeGidgetProgress, type GidgetModelProgress } from '../lib/gidgetLocalEngine';
-import { requestMicrophonePermission } from '../lib/platformPermissions';
+import { cancelGidgetWork, generateWithGidget, gidgetLocalStatus, setupGidgetModel, subscribeGidgetProgress, type GidgetModelProgress } from '../lib/gidgetLocalEngine';
 import GidgetVoiceSphere from './GidgetVoiceSphere';
 import './GidgetChat.css';
 
@@ -20,25 +19,6 @@ type ChatMessage = {
 };
 type Conversation = { id: string; title: string; last_message_at: string; created_at: string };
 type Props = { open: boolean; onClose: () => void };
-type GidgetSettings = {
-  allowLocalPos: boolean;
-  allowOnlineResearch: boolean;
-  saveCloudHistory: boolean;
-  blockedUrlPatterns: string;
-  microphoneId: string;
-  speakerId: string;
-};
-type AudioDevice = { deviceId: string; label: string };
-
-const GIDGET_SETTINGS_KEY = 'gbpos:gidget:settings:v1';
-const DEFAULT_SETTINGS: GidgetSettings = {
-  allowLocalPos: true,
-  allowOnlineResearch: false,
-  saveCloudHistory: true,
-  blockedUrlPatterns: '',
-  microphoneId: '',
-  speakerId: '',
-};
 
 const STARTERS = [
   'How many PS5s did we check in this week?',
@@ -48,7 +28,10 @@ const STARTERS = [
 ];
 
 function contextEndpoint() {
-  return '';
+  const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').replace(/\/+$/, '');
+  if (configured) return `${configured}/api/gidget/context`;
+  const hosted = ['http:', 'https:'].includes(window.location.protocol) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  return hosted ? `${window.location.origin}/api/gidget/context` : 'https://gb-pos-production.up.railway.app/api/gidget/context';
 }
 
 function messageId() {
@@ -62,30 +45,10 @@ function titleFrom(content: string) {
 
 function friendlyError(error: any) {
   const raw = String(error?.message || '');
-  if (/failed to fetch|networkerror|load failed/i.test(raw)) return 'Gidget could not reach an optional online source. Local repair guidance and local POS summaries remain available.';
+  if (/local model|node-llama|llama/i.test(raw)) return `${raw} Select "Retry setup" to download a fresh optional copy.`;
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) return 'Gidget could not load authenticated shop context. Check the connection and try again.';
   if (/gidget_memories|gidget_conversations|schema cache/i.test(raw)) return 'Gidget history is waiting for its secure database migration. Chat remains available for this session.';
   return raw || 'Gidget could not connect. Check the connection and try again.';
-}
-
-function loadGidgetSettings(): GidgetSettings {
-  try {
-    const saved = JSON.parse(localStorage.getItem(GIDGET_SETTINGS_KEY) || '{}');
-    return { ...DEFAULT_SETTINGS, ...(saved && typeof saved === 'object' ? saved : {}) };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-function isBlockedSource(url: string, patterns: string) {
-  const value = String(url || '').toLowerCase();
-  return patterns.split(/[\n,]/).map(pattern => pattern.trim().toLowerCase()).filter(Boolean)
-    .some(pattern => value.includes(pattern));
-}
-
-const SENSITIVE_MEMORY = /\b(password|passcode|pin\s*(?:code)?|social security|ssn|credit card|debit card|cvv|routing number|account number|unlock code|device code|apple id|google account|client email|client phone|customer email|customer phone)\b/i;
-
-function memoryTerms(content: string) {
-  return new Set(String(content || '').toLowerCase().match(/[a-z0-9]{3,}/g) || []);
 }
 
 export default function GidgetChat({ open, onClose }: Props) {
@@ -96,11 +59,6 @@ export default function GidgetChat({ open, onClose }: Props) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [gidgetSettings, setGidgetSettings] = useState<GidgetSettings>(loadGidgetSettings);
-  const [microphones, setMicrophones] = useState<AudioDevice[]>([]);
-  const [speakers, setSpeakers] = useState<AudioDevice[]>([]);
-  const [deviceStatus, setDeviceStatus] = useState('');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -117,45 +75,6 @@ export default function GidgetChat({ open, onClose }: Props) {
   const nativeVoice = useMemo(() => Capacitor.isNativePlatform(), []);
   const speechSupported = useMemo(() => nativeVoice || (typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)), [nativeVoice]);
 
-  const updateGidgetSettings = useCallback((patch: Partial<GidgetSettings>) => {
-    setGidgetSettings(current => {
-      const next = { ...current, ...patch };
-      localStorage.setItem(GIDGET_SETTINGS_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const refreshAudioDevices = useCallback(async (requestPermission = false) => {
-    if (!navigator.mediaDevices?.enumerateDevices) {
-      setDeviceStatus('This platform does not expose audio-device selection. Voice follows the system settings.');
-      return;
-    }
-    try {
-      if (requestPermission && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: gidgetSettings.microphoneId ? { deviceId: { exact: gidgetSettings.microphoneId } } : true });
-        stream.getTracks().forEach(track => track.stop());
-      }
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter(device => device.kind === 'audioinput').map((device, index) => ({ deviceId: device.deviceId, label: device.label || `Microphone ${index + 1}` }));
-      const outputs = devices.filter(device => device.kind === 'audiooutput').map((device, index) => ({ deviceId: device.deviceId, label: device.label || `Speaker ${index + 1}` }));
-      setMicrophones(inputs);
-      setSpeakers(outputs);
-      setDeviceStatus(inputs.length ? 'Audio devices detected. The browser or operating system may still require permission.' : 'Allow microphone access to list available devices.');
-    } catch (error: any) {
-      setDeviceStatus(String(error?.message || 'Audio devices could not be read.'));
-    }
-  }, [gidgetSettings.microphoneId]);
-
-  const requestGidgetMicrophonePermission = useCallback(async () => {
-    const permission = await requestMicrophonePermission();
-    setDeviceStatus(permission === 'granted'
-      ? 'Microphone access is allowed for GadgetBoy POS.'
-      : permission === 'denied'
-        ? 'Microphone access is blocked by the operating system. Enable it in the device app permissions, then retry.'
-        : 'The microphone permission request did not complete. Try again after checking device permissions.');
-    if (permission === 'granted') await refreshAudioDevices();
-  }, [refreshAudioDevices]);
-
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -165,10 +84,6 @@ export default function GidgetChat({ open, onClose }: Props) {
     });
     return () => { cancelled = true; unsubscribe(); };
   }, [open]);
-
-  useEffect(() => {
-    if (open && settingsOpen) void refreshAudioDevices();
-  }, [open, refreshAudioDevices, settingsOpen]);
 
   const recheckModelStatus = useCallback(async () => {
     setSettingUpModel(true);
@@ -242,7 +157,7 @@ export default function GidgetChat({ open, onClose }: Props) {
   }, [open, refreshHistory]);
 
   const persistMessage = useCallback(async (id: string, message: ChatMessage, context = shopContext) => {
-    if (!gidgetSettings.saveCloudHistory || !context || message.error) return;
+    if (!context || message.error) return;
     await supabase.from('gidget_messages').insert({
       conversation_id: id,
       shop_id: context.shopId,
@@ -253,11 +168,11 @@ export default function GidgetChat({ open, onClose }: Props) {
       citations: message.citations || [],
     });
     await supabase.from('gidget_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', id);
-  }, [gidgetSettings.saveCloudHistory, shopContext]);
+  }, [shopContext]);
 
   const ensureConversation = useCallback(async (firstText: string) => {
     if (conversationId) return conversationId;
-    if (!gidgetSettings.saveCloudHistory || !shopContext) return null;
+    if (!shopContext) return null;
     const { data, error } = await supabase.from('gidget_conversations').insert({
       shop_id: shopContext.shopId,
       user_id: shopContext.userId,
@@ -266,34 +181,7 @@ export default function GidgetChat({ open, onClose }: Props) {
     if (error || !data?.id) return null;
     setConversationId(data.id);
     return data.id as string;
-  }, [conversationId, gidgetSettings.saveCloudHistory, shopContext]);
-
-  const loadMemoryContext = useCallback(async (content: string, activeConversationId: string | null) => {
-    if (!gidgetSettings.saveCloudHistory || !shopContext) return null;
-    const terms = memoryTerms(content);
-    const { data } = await supabase.from('gidget_memories')
-      .select('id,content,updated_at')
-      .eq('shop_id', shopContext.shopId)
-      .eq('user_id', shopContext.userId)
-      .order('updated_at', { ascending: false })
-      .limit(120);
-    const relevant = (data || [])
-      .map((memory: any) => ({ ...memory, score: [...terms].reduce((total, term) => total + (String(memory.content || '').toLowerCase().includes(term) ? 1 : 0), 0) }))
-      .sort((a: any, b: any) => b.score - a.score || String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
-      .slice(0, 16);
-    const remembered = content.match(/\b(?:remember|retain|learn|save)\s+(?:that\s+)?(.{3,1000})$/i)?.[1]?.replace(/\s+/g, ' ').trim();
-    if (!remembered) return { relevant };
-    if (SENSITIVE_MEMORY.test(remembered)) return { relevant, saved: false, reason: 'That information may contain private or security-sensitive data and was not retained.' };
-    const existing = (data || []).find((memory: any) => String(memory.content || '') === remembered);
-    if (existing) return { relevant, saved: true, already_saved: true, content: remembered };
-    const { error } = await supabase.from('gidget_memories').insert({
-      shop_id: shopContext.shopId,
-      user_id: shopContext.userId,
-      content: remembered,
-      source_conversation_id: activeConversationId || null,
-    });
-    return { relevant, saved: !error, content: remembered, reason: error?.message || undefined };
-  }, [gidgetSettings.saveCloudHistory, shopContext]);
+  }, [conversationId, shopContext]);
 
   const speak = useCallback((content: string) => {
     if (!voiceOpenRef.current) return;
@@ -344,37 +232,20 @@ export default function GidgetChat({ open, onClose }: Props) {
     abortRef.current = controller;
     try {
       if (!modelState.ready) throw new Error('Finish Gidget\'s one-time local model setup before chatting.');
-      let context: any = null;
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      const onlineResearchEndpoint = contextEndpoint();
-      if (gidgetSettings.allowOnlineResearch && token && onlineResearchEndpoint) {
-        try {
-          const response = await fetch(onlineResearchEndpoint, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              conversation_id: activeConversationId,
-              messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
-            }),
-          });
-          context = await response.json().catch(() => ({}));
-          if (!response.ok) context = null;
-        } catch (error) {
-          if (controller.signal.aborted) throw error;
-        }
-      }
-      if (context?.web_sources) {
-        context.web_sources = context.web_sources.filter((source: any) => !isBlockedSource(source?.url, gidgetSettings.blockedUrlPatterns));
-      }
-      if (!context && gidgetSettings.allowLocalPos) {
-        const localContext = await getLocalGidgetPosContext(content);
-        if (!localContext?.ok) throw new Error(localContext?.error || 'Gidget could not load local POS context.');
-        context = { records: localContext.records, web_sources: [] };
-      }
-      if (!context) context = { records: null, web_sources: [] };
-      context.memory_result = await loadMemoryContext(content, activeConversationId).catch(() => null);
+      if (!token) throw new Error('Your shop session expired. Sign in again to use Gidget.');
+      const response = await fetch(contextEndpoint(), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          conversation_id: activeConversationId,
+          messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
+        }),
+      });
+      const context = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(context?.error || `Gidget context request failed (${response.status}).`);
       const body = await generateWithGidget({
         ...context,
         messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
@@ -401,7 +272,7 @@ export default function GidgetChat({ open, onClose }: Props) {
       setSending(false);
       if (source === 'voice' && !window.speechSynthesis?.speaking) setVoiceStatus('Listening');
     }
-  }, [draft, ensureConversation, gidgetSettings.allowLocalPos, gidgetSettings.allowOnlineResearch, gidgetSettings.blockedUrlPatterns, loadMemoryContext, messages, modelState.ready, persistMessage, refreshHistory, sending, shopContext, speak, voiceStatus]);
+  }, [draft, ensureConversation, messages, modelState.ready, persistMessage, refreshHistory, sending, shopContext, speak, voiceStatus]);
   sendRef.current = send;
 
   const stopVoice = useCallback(() => {
@@ -429,7 +300,6 @@ export default function GidgetChat({ open, onClose }: Props) {
       setVoiceStatus('Voice recognition is unavailable on this device');
       return;
     }
-    void refreshAudioDevices(true);
     if (nativeVoice) {
       void (async () => {
         try {
@@ -518,7 +388,7 @@ export default function GidgetChat({ open, onClose }: Props) {
     };
     recognitionRef.current = recognition;
     try { recognition.start(); } catch { setVoiceStatus('Voice recognition could not start'); }
-  }, [nativeVoice, refreshAudioDevices, speechSupported]);
+  }, [nativeVoice, speechSupported]);
 
   const loadConversation = async (conversation: Conversation) => {
     const { data, error } = await supabase.from('gidget_messages')
@@ -564,9 +434,7 @@ export default function GidgetChat({ open, onClose }: Props) {
         <header className="gidget-header">
           <img src={publicAsset('logo.png')} alt="" />
           <div><h2 id="gidget-title">Gidget</h2><span>Private repair + POS assistant</span></div>
-          <span className="gidget-readonly">Local model</span>
           <span className="gidget-readonly">POS read-only</span>
-          <button type="button" className="gidget-history-button" onClick={() => { setHistoryOpen(false); setSettingsOpen(true); }} title="Gidget settings">Settings</button>
           <button type="button" className="gidget-history-button" onClick={() => setHistoryOpen(true)} title="Conversation history">History</button>
           <button type="button" className="gidget-close" onClick={onClose} aria-label="Close Gidget">x</button>
         </header>
@@ -590,15 +458,6 @@ export default function GidgetChat({ open, onClose }: Props) {
               <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry setup' : 'Download and set up Gidget'}</button>
             )}
           </div>
-        ) : settingsOpen ? (
-          <div className="gidget-settings" aria-label="Gidget settings">
-            <div className="gidget-history-title"><div><strong>Gidget settings</strong><span>Stored only on this device</span></div><button type="button" onClick={() => setSettingsOpen(false)}>Back to chat</button></div>
-            <div className="gidget-settings-content">
-              <section><h3>Access</h3><label><input type="checkbox" checked={gidgetSettings.allowLocalPos} onChange={(event) => updateGidgetSettings({ allowLocalPos: event.target.checked })} /> Read local POS summaries</label><p>Gidget receives capped, read-only ticket, sales, and inventory summaries. It never receives passwords, contact details, notes, or payment-card data.</p><label><input type="checkbox" checked={gidgetSettings.allowOnlineResearch} onChange={(event) => updateGidgetSettings({ allowOnlineResearch: event.target.checked })} /> Allow online research</label><p>Optional web context is sent to the local model after blocked sources are removed. Keep this off for fully offline use.</p><label><input type="checkbox" checked={gidgetSettings.saveCloudHistory} onChange={(event) => updateGidgetSettings({ saveCloudHistory: event.target.checked })} /> Save cloud conversation history</label><p>Only available while signed in. Turning it off keeps new conversations in the current device session.</p></section>
-              <section><h3>Blocked URLs</h3><textarea value={gidgetSettings.blockedUrlPatterns} onChange={(event) => updateGidgetSettings({ blockedUrlPatterns: event.target.value })} rows={4} placeholder={'example.com\nuntrusted-source.example'} /><p>One hostname or URL fragment per line. Matches are removed before web context reaches Gidget.</p></section>
-              <section><h3>Voice Dictation</h3><label>Microphone<select value={gidgetSettings.microphoneId} onChange={(event) => updateGidgetSettings({ microphoneId: event.target.value })}><option value="">System default</option>{microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><label>Speaker<select value={gidgetSettings.speakerId} onChange={(event) => updateGidgetSettings({ speakerId: event.target.value })}><option value="">System default</option>{speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><button type="button" onClick={() => void requestGidgetMicrophonePermission()}>Request microphone access</button><button type="button" onClick={() => void refreshAudioDevices(true)}>Refresh audio devices</button><p>{deviceStatus || 'Voice dictation uses the platform speech service. Speech output follows the operating-system default speaker because browser speech synthesis cannot safely route to a selected device.'}</p></section>
-            </div>
-          </div>
         ) : historyOpen ? (
           <div className="gidget-history" aria-label="Gidget conversation history">
             <div className="gidget-history-title"><div><strong>Conversation history</strong><span>Newest 30 chats</span></div><button type="button" onClick={newConversation}>New chat</button></div>
@@ -614,7 +473,7 @@ export default function GidgetChat({ open, onClose }: Props) {
         ) : voiceOpen ? (
           <div className="gidget-voice-room">
             <GidgetVoiceSphere active={listening || sending} speaking={speaking} />
-            <div className="gidget-voice-state"><strong>{voiceStatus}</strong><span>{speechSupported ? `Speak naturally. Dictation uses ${gidgetSettings.microphoneId ? 'your selected microphone where supported' : 'the system microphone'}.` : 'Use text chat on this device.'}</span></div>
+            <div className="gidget-voice-state"><strong>{voiceStatus}</strong><span>{speechSupported ? 'Speak naturally. Start talking to interrupt Gidget.' : 'Use text chat on this device.'}</span></div>
             <button type="button" onClick={stopVoice}>End voice conversation</button>
           </div>
         ) : (

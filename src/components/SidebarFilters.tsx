@@ -13,7 +13,6 @@ interface Props {
   onDateToChange?: (v: string) => void;
   onOpenCustomerSearch?: () => void;
   onAddCustomer?: () => void;
-  onQuickCheckout?: () => void;
   mode?: 'workorders' | 'sales' | 'all';
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
   invoiceQuery?: string;
@@ -23,10 +22,11 @@ interface Props {
   onClear?: () => void;
   onRefresh?: () => void;
   onSignOut?: () => void;
+  onOpenFeedback?: () => void;
   onOpenGidget?: () => void;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, onQuickCheckout, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenGidget }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenFeedback, onOpenGidget }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -54,13 +54,10 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         <div className="flex w-full items-center justify-center gap-2">
           <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
           {onSignOut && (
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white"
-            >
-              Sign out
-            </button>
+            <div className="flex flex-col gap-1">
+              {onOpenFeedback ? <button type="button" onClick={onOpenFeedback} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white">Feedback</button> : null}
+              <button type="button" onClick={onSignOut} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white">Sign out</button>
+            </div>
           )}
         </div>
         {appVersion && (
@@ -187,11 +184,6 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
           onClick={() => onAddCustomer && onAddCustomer()}
           className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
         >Add Client</button>
-        <button
-          type="button"
-          onClick={() => onQuickCheckout && onQuickCheckout()}
-          className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
-        >Quick Checkout</button>
         <button
           type="button"
           onClick={() => onOpenCustomerSearch && onOpenCustomerSearch()}

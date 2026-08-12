@@ -552,8 +552,12 @@ export async function scrapePartUrl(urlInput: string): Promise<PartUrlMetadata> 
   if (!url) return { ok: false, error: 'Missing URL.' };
   const api = (window as any).api;
   if (typeof api?.scrapePartUrl === 'function') {
-    const result = await api.scrapePartUrl(url);
-    if (result?.ok || result?.title || result?.price) return result;
+    try {
+      const result = await api.scrapePartUrl(url);
+      if (result?.ok || result?.title || result?.price) return result;
+    } catch {
+      // Desktop builds without the optional scraper continue through the safe fallbacks below.
+    }
   }
   try {
     const res = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(6_000) });

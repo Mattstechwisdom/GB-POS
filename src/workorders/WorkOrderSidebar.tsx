@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { printReleaseForm, WorkOrder as PrintWorkOrder } from './releasePrint';
 import { WorkOrderFull, WorkOrderStatus } from '../lib/types';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
-import { listTechnicians, technicianDisplayName } from '../../src/lib/admin';
+import { listTechnicians } from '../../src/lib/admin';
 
 interface Props {
   workOrder: WorkOrderFull;
@@ -13,14 +13,13 @@ interface Props {
   hideDates?: boolean; // optionally hide the date controls entirely (used by Sale window)
   hideOrderDeliveryDates?: boolean; // when true in Sale window, hide Product ordered & Product delivered (keep Client pickup)
   renderActions?: (workOrder: WorkOrderFull) => React.ReactNode; // override default print buttons
-  footerActions?: React.ReactNode;
   validationFlags?: Partial<Record<'assignedTo', boolean>>;
   /** Called when the receipt button needs a saved work-order ID but the record is still unsaved.
    *  Should persist the work order immediately and return its new numeric ID (0 if it fails). */
   onRequestForceSave?: () => Promise<number>;
 }
 
-const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, hideAssigned = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, footerActions, validationFlags, onRequestForceSave }) => {
+const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, hideAssigned = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags, onRequestForceSave }) => {
   const [techs, setTechs] = useState<any[]>([]);
   useEffect(() => {
     let mounted = true;
@@ -40,7 +39,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
     // If stored as id
     if (techs.some((t: any) => String(t.id) === raw)) return raw;
     // If stored as label (nickname/first)
-    const matchByLabel = techs.find((t: any) => technicianDisplayName(t) === raw);
+    const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
     return matchByLabel ? String(matchByLabel.id) : '';
   }, [techs, workOrder.assignedTo]);
 
@@ -79,7 +78,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
             >
               <option value="">—</option>
               {techs.map((t: any) => (
-                <option key={t.id} value={String(t.id)}>{technicianDisplayName(t)}</option>
+                <option key={t.id} value={String(t.id)}>{t.nickname?.trim() || t.firstName}</option>
               ))}
             </select>
           )}
@@ -276,7 +275,6 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
             >
               Print customer receipt
             </button>
-            {footerActions}
           </>
         )}
       </div>
@@ -292,7 +290,6 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && prev.hideDates === next.hideDates
     && prev.hideOrderDeliveryDates === next.hideOrderDeliveryDates
     && prev.renderActions === next.renderActions
-    && prev.footerActions === next.footerActions
     && prev.onRequestForceSave === next.onRequestForceSave
     && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
     && String(a.status || '') === String(b.status || '')

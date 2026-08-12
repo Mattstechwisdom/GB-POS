@@ -41,7 +41,7 @@ function buildSaleHtml(
   const dateStr = (() => {
     try {
       const d = new Date(sale.dateTimeISO);
-      return isNaN(d.getTime()) ? '' : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      return isNaN(d.getTime()) ? '' : `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
     } catch { return ''; }
   })();
 
@@ -75,10 +75,10 @@ function buildSaleHtml(
     @page { size: A4; margin: 12mm; }
     html, body { background:#fff; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; margin: 0; }
     .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 12mm; }
-    .brand { display:grid; grid-template-columns:minmax(0, 1.35fr) auto minmax(210px, 0.9fr); align-items:center; gap:0; margin-bottom:10px; }
-    .brand-left { display:flex; align-items:center; gap:12px; min-width:0; }
-    .brand-right { text-align:right; font-size: 10pt; line-height:1.2; white-space:nowrap; }
-    .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 10px; }
+    .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .brand-left { display:flex; align-items:center; gap:12px; }
+    .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
+    .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 16px; }
     .brand-title { font-weight:700; letter-spacing:0.3px; }
     .slogan { color:#444; font-style:italic; margin-top:4px; }
     .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
@@ -135,7 +135,7 @@ function buildSaleHtml(
       </div>
       ${opts?.qrSrc ? `
       <div class="brand-center">
-        <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:68px; height:68px; display:block;" />
+        <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:88px; height:88px; display:block;" />
         <div style="font-size:6.5pt; color:#555; text-align:center; margin-top:3px; letter-spacing:0.4px;">TECH SCAN</div>
       </div>
       ` : ''}
@@ -300,21 +300,26 @@ export async function printSaleReleaseForm(
   // Generate technician QR code pointing to the sale status page
   let qrSrc = '';
   const recordId = Number(sale.id || sale.invoiceId || 0) || 0;
-  if (recordId <= 0) throw new Error('Save the sale before printing its QR form.');
-  let qrUrl = '';
-  try {
-    const result = await window.api?.qrGetStatusUrl?.('sale', recordId);
-    if (result?.ok && result.url) qrUrl = result.url;
-  } catch { /* handled below */ }
-  if (!qrUrl) throw new Error('The sale update QR link could not be created. Check the cloud connection and try again.');
-  const QRCode = (await import('qrcode')).default;
-  const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-    width: 176, margin: 1,
-    color: { dark: '#000000', light: '#ffffff' },
-    errorCorrectionLevel: 'M',
-  });
-  if (!dataUrl || !dataUrl.startsWith('data:')) throw new Error('The sale QR image could not be generated.');
-  qrSrc = dataUrl;
+  if (recordId > 0) {
+    try {
+      let lanIp = 'localhost';
+      try {
+        const ipRes = await fetch('http://localhost:7777/ip');
+        if (ipRes.ok) {
+          const json = await ipRes.json();
+          if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+        }
+      } catch { /* QR server not running */ }
+      const qrUrl = `http://${lanIp}:7777/status/sale/${recordId}`;
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+        width: 176, margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+      if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
+    } catch { /* print without QR */ }
+  }
 
   const html = buildSaleHtml(sale, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });
   const ok = openPopupAndPrint(html);

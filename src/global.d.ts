@@ -18,6 +18,7 @@ declare global {
   }
 
   interface Window {
+    GBPosAndroid?: any;
     __GB_POS_CONFIG__?: {
       VITE_SUPABASE_URL?: string;
       VITE_SUPABASE_PUBLISHABLE_KEY?: string;
@@ -37,7 +38,6 @@ declare global {
     gidgetLocalStatus?: () => Promise<any>;
     gidgetLocalSetup?: () => Promise<any>;
     gidgetLocalGenerate?: (payload: any) => Promise<any>;
-    gidgetLocalPosContext?: (query: string) => Promise<any>;
     gidgetLocalCancel?: () => Promise<any>;
     onGidgetModelProgress?: (cb: (progress: any) => void) => () => void;
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
@@ -53,10 +53,10 @@ declare global {
   openNewWorkOrder: (payload: any) => Promise<any>;
   openDeviceCategories: () => Promise<any>;
   openRepairCategories: () => Promise<any>;
-  openCalendar: (payload?: any) => Promise<any>;
+  openCalendar: () => Promise<any>;
   openClockIn: () => Promise<any>;
   openProducts: () => Promise<any>;
-  openInventory: (payload?: { inventoryId?: number }) => Promise<any>;
+  openInventory: () => Promise<any>;
   openWorkOrderRepairPicker: () => Promise<any>;
   openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;
@@ -122,18 +122,12 @@ declare global {
     emailClearGmailAppPassword: () => Promise<{ ok: boolean; error?: string }>;
     emailSendQuoteHtml: (payload: { to: string; subject: string; bodyText: string; filename: string; html: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
     emailSendReportCsv: (payload: { to: string; subject: string; bodyText: string; filename: string; csv: string }) => Promise<{ ok: boolean; messageId?: string | null; error?: string }>;
-    emailDrainClientUpdates: () => Promise<{ ok: boolean; sent?: number; retried?: number; pending?: boolean; error?: string }>;
     openReporting: () => Promise<any>;
     openReportEmail: (payload: any) => Promise<any>;
     openCustomBuildItem: (payload: any) => Promise<any>;
   openCharts: () => Promise<any>;
     openNotifications: () => Promise<any>;
     openNotificationSettings: () => Promise<any>;
-    notificationGetNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string }>;
-    notificationRequestNativePermission: () => Promise<{ permission: 'granted' | 'denied' | 'prompt' | 'unsupported'; platform?: string; error?: string }>;
-    notificationSendNative: (payload: { title?: string; body?: string; key?: string; record?: any }) => Promise<{ ok: boolean; error?: string }>;
-    onNativeNotificationClicked: (cb: (record: any) => void) => () => void;
-    notificationOpenSystemSettings: () => Promise<{ ok: boolean; error?: string }>;
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyCustomerReceiptReady: () => void;
@@ -154,7 +148,6 @@ declare global {
   onTimeEntriesChanged: (cb: () => void) => () => void;
   onProductCategoriesChanged: (cb: () => void) => () => void;
   onProductsChanged: (cb: () => void) => () => void;
-  onPurchaseOrdersChanged: (cb: () => void) => () => void;
   // window controls
   getFullScreen: () => Promise<boolean>;
   setFullScreen: (flag: boolean) => Promise<any>;
@@ -165,20 +158,6 @@ declare global {
 
   _emitCustomBuildItemSave: (result: any) => void;
   _emitCustomBuildItemCancel: () => void;
-    };
-  }
-
-  interface Window {
-    GBPosAndroid?: {
-      openExternalUrl?: (url: string) => void;
-      openNotificationSettings?: () => void;
-      getNotificationPermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
-      requestNotificationPermission?: () => 'requested' | 'granted' | 'denied' | 'unsupported';
-      postDeviceNotification?: (title: string, body: string) => 'posted' | 'permission-denied' | 'notifications-disabled' | 'channel-disabled' | 'error';
-      getMicrophonePermissionStatus?: () => 'granted' | 'denied' | 'prompt' | 'unsupported';
-      requestMicrophonePermission?: () => 'requested' | 'granted' | 'denied' | 'unsupported';
-      downloadAndInstallApk?: (url: string, fileName?: string) => void;
-      downloadFile?: (url: string, fileName?: string, mimeType?: string) => void;
     };
   }
   declare module '*?raw' {

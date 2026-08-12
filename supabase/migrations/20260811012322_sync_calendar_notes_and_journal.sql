@@ -1,10 +1,10 @@
 create table if not exists public.calendar_notes (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references public.shops(id) on delete cascade,
-  legacy_id text,
+  legacy_id text not null,
   note_date date not null,
-  subject text not null default '',
-  body text not null default '',
+  subject text not null,
+  body text not null,
   legacy_created_at timestamptz,
   legacy_updated_at timestamptz,
   created_at timestamptz not null default now(),
@@ -12,13 +12,8 @@ create table if not exists public.calendar_notes (
   unique (shop_id, legacy_id)
 );
 
--- Numeric legacy IDs are preserved as text, while new installations can use
--- collision-resistant UUID IDs across Windows and Android clients.
-alter table public.calendar_notes
-  alter column legacy_id type text using legacy_id::text;
-
 create index if not exists calendar_notes_shop_date_idx
-  on public.calendar_notes(shop_id, note_date desc, created_at desc);
+  on public.calendar_notes(shop_id, note_date desc);
 
 drop trigger if exists calendar_notes_set_updated_at on public.calendar_notes;
 create trigger calendar_notes_set_updated_at
@@ -52,7 +47,8 @@ using (public.is_active_shop_staff(shop_id));
 do $$
 begin
   if not exists (
-    select 1 from pg_publication_tables
+    select 1
+    from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
       and tablename = 'calendar_notes'

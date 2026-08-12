@@ -22,8 +22,7 @@ assert.match(mobileApi, /calendarNotes:\s*'calendar_notes'/, 'Mobile must map ca
 assert.match(preload, /onCalendarNotesChanged/, 'Desktop preload must expose note-change events.');
 assert.match(mobileApi, /onCalendarNotesChanged:\s*'calendarNotes:changed'/, 'Mobile API must expose note-change events.');
 assert.match(calendar, /id:\s*crypto\.randomUUID\(\)/, 'New notes need collision-resistant cross-device IDs.');
-assert.match(calendar, /Important Notes <span>\{\(notesByDay\[dailyLookData\.ymd\]/, 'Calendar Daily Look must include important notes.');
-assert.match(read('src/components/DailyLookWindow.tsx'), /dbGet\?\.\('calendarNotes'\)/, 'Standalone Daily Look must load important notes.');
+assert.match(calendar, /dailyLookData\.importantNotes/, 'Daily Look must include important notes.');
 assert.match(calendar, /Streaming\/Content Schedule/, 'Adding notes must preserve the content schedule.');
 assert.match(calendar, /calendarView === 'week'/, 'Adding notes must preserve the mobile weekly calendar.');
 assert.match(journal, /calendarNotes/, 'Journal must read calendar notes.');
@@ -32,7 +31,7 @@ assert.match(journal, /sales/, 'Journal must include sale notes.');
 assert.match(mobileApp, /Journal/, 'Technician Tools must expose Journal on mobile.');
 assert.match(eod, /Refresh Cart/, 'Purchasing cart must expose price refresh.');
 assert.match(eod, /Keep Changes/, 'Refreshed prices must require explicit confirmation.');
-assert.match(eod, /Checkout Selected/, 'Technicians must be able to check out only selected cart rows.');
+assert.match(eod, /Checkout Selected \(/, 'Technicians must be able to check out only selected cart rows.');
 assert.match(eod, /setSelectedPurchaseRows\(current => new Set\(Array\.from\(current\)\.filter\(key => activeKeys\.has\(key\)\)\)\)/, 'Checked-out rows must be pruned from selection state.');
 assert.match(eod, /onDoubleClick=\{\(\) => \{ void handleRowOpen\(row\); \}\}/, 'EOD ticket rows must open invoices on double-click.');
 assert.match(eod, /value instanceof Date \? value : parseDateValue\(value\)/, 'EOD date filters must normalize synced string timestamps before using Date methods.');

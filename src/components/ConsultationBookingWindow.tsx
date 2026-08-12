@@ -2,13 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import { formatPhone } from '../lib/format';
 import { SC_CITIES } from '../lib/scCities';
-import CustomerOverviewWindow from './CustomerOverviewWindow';
-import ClientUpdatePanel from '../workorders/ClientUpdatePanel';
-import { customerMatchesSearchText } from '../lib/customerDuplicates';
-import { listTechnicians, technicianDisplayName } from '../lib/admin';
-import { SHOP_CONSULTATION_LOCATION } from '../lib/consultationLocation';
-import { calculateConsultationPricing, CONSULTATION_BASE_RATE, CONSULTATION_EXTRA_RATE } from '../lib/consultationPricing';
+import DuplicateCustomerDialog from './DuplicateCustomerDialog';
+import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
 
+const CONSULTATION_BASE_RATE = 75;
+const CONSULTATION_EXTRA_RATE = 50;
 const CONSULTATION_DISTANCE_FEE = 20;
 const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
 
@@ -128,10 +126,12 @@ export default function ConsultationBookingWindow() {
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showCustomerCreator, setShowCustomerCreator] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [newCust, setNewCust] = useState({ firstName: '', lastName: '', phone: '', email: '' });
+  const [duplicateMatches, setDuplicateMatches] = useState<CustomerDuplicateMatch[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customerIndexRef = useRef<Customer[]>([]);
+  const customerIndexRef = useRef<Array<{ c: Customer; fullLower: string; phoneDigits: string }>>([]);
 
   // ── Consultation state ──────────────────────────────────────────
   const [date, setDate] = useState(todayISO());
@@ -145,7 +145,6 @@ export default function ConsultationBookingWindow() {
   const [city, setCity] = useState('');
   const [zip, setZip] = useState('');
   const [hours, setHours] = useState(1);
-  const [customLaborCharge, setCustomLaborCharge] = useState<number | null>(null);
   const [driverFee, setDriverFee] = useState(0);
 
   // Shop location (used for distance-based driver fee)
@@ -224,22 +223,20 @@ export default function ConsultationBookingWindow() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<{ saleId: number; eventId?: number; customerName: string } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
 
   useEffect(() => {
     if (!done?.eventId) return;
     let alive = true;
     (async () => {
       try {
-        let qrUrl = '';
+        let lanIp = 'localhost';
         try {
-          const result = await api?.qrGetStatusUrl?.('consult', done.eventId);
-          if (result?.ok && result.url) qrUrl = result.url;
-        } catch { /* QR helper unavailable */ }
-        if (qrUrl) {
-          const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
-          if (alive) setQrDataUrl(dataUrl);
-        }
+          const ipRes = await fetch('http://localhost:7777/ip');
+          if (ipRes.ok) { const j = await ipRes.json(); if (j?.ip) lanIp = j.ip; }
+        } catch {}
+        const qrUrl = `http://${lanIp}:7777/status/consult/${done.eventId}`;
+        const dataUrl: string = await QRCode.toDataURL(qrUrl, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
+        if (alive) setQrDataUrl(dataUrl);
       } catch {}
     })();
     return () => { alive = false; };
@@ -249,11 +246,11 @@ export default function ConsultationBookingWindow() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await listTechnicians();
-        setTechs(Array.isArray(list) ? list : []);
+        const list = await api.dbGet('technicians');
+        setTechs(Array.isArray(list) ? list.filter((t: any) => t?.active !== false) : []);
       } catch {}
     })();
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     (async () => {
@@ -287,7 +284,11 @@ export default function ConsultationBookingWindow() {
   useEffect(() => {
     try {
       const safe = Array.isArray(allCustomers) ? allCustomers : [];
-      customerIndexRef.current = safe;
+      customerIndexRef.current = safe.map((c) => ({
+        c,
+        fullLower: customerDisplayName(c).toLowerCase(),
+        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
+      }));
     } catch {
       customerIndexRef.current = [];
     }
@@ -306,10 +307,16 @@ export default function ConsultationBookingWindow() {
     if (!query) { setCustomerResults([]); return; }
     setSearchBusy(true);
     try {
+      const ql = query.toLowerCase();
+      const digits = query.replace(/\D/g, '');
       const idx = customerIndexRef.current || [];
       const out: Customer[] = [];
-      for (const customer of idx) {
-        if (customerMatchesSearchText(customer, query)) out.push(customer);
+      for (const it of idx) {
+        if (it.fullLower.includes(ql)) {
+          out.push(it.c);
+        } else if (digits && it.phoneDigits.includes(digits)) {
+          out.push(it.c);
+        }
         if (out.length >= 8) break;
       }
       setCustomerResults(out);
@@ -330,10 +337,13 @@ export default function ConsultationBookingWindow() {
     setSelectedCustomer(c);
     setCustomerQuery('');
     setCustomerResults([]);
+    setShowNewCustomer(false);
   };
 
   const clearCustomer = () => {
     setSelectedCustomer(null);
+    setShowNewCustomer(false);
+    setNewCust({ firstName: '', lastName: '', phone: '', email: '' });
   };
 
   // When start time changes, push end time by 1 hour
@@ -342,10 +352,13 @@ export default function ConsultationBookingWindow() {
     setEndTime(addHour(v));
   };
 
-  const techLabel = (t: Technician) => technicianDisplayName(t);
+  const techLabel = (t: Technician) =>
+    t.nickname || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.id;
 
-  const { billedHours, extraHours, automaticLaborCharge: laborCost, laborCharge: chargedLabor } = calculateConsultationPricing(hours, customLaborCharge);
-  const totalCost = chargedLabor + driverFee;
+  const billedHours = Math.max(1, Number(hours) || 1);
+  const extraHours = Math.max(0, billedHours - 1);
+  const laborCost = CONSULTATION_BASE_RATE + (extraHours * CONSULTATION_EXTRA_RATE);
+  const totalCost = laborCost + driverFee;
 
   const computeDistanceFee = useCallback(async (clientAddress: string) => {
     const addr = String(clientAddress || '').trim();
@@ -416,7 +429,7 @@ export default function ConsultationBookingWindow() {
     }
   };
 
-  const canBook = !saving && !!date && !!selectedCustomer;
+  const canBook = !saving && date && (selectedCustomer || (showNewCustomer && newCust.firstName.trim() && newCust.lastName.trim()));
 
   async function handleBook() {
     if (!canBook) return;
@@ -437,24 +450,44 @@ export default function ConsultationBookingWindow() {
       let effectiveDriverFee = 0;
       if (locationType === 'athome') {
         const res = await computeDistanceFee(fullAddress);
-        if (res.miles == null) {
-          throw new Error('We could not verify the at-home address and driver fee. Check the address and try again before saving.');
-        }
         effectiveDriverFee = res.fee;
         setDistanceMiles(res.miles);
         setDistanceFeeApplied(res.feeApplied);
         setDriverFee(res.fee);
       }
 
-      const effectiveLaborCharge = calculateConsultationPricing(hours, customLaborCharge).laborCharge;
-      const effectiveTotalCost = effectiveLaborCharge + effectiveDriverFee;
+      const effectiveTotalCost = laborCost + effectiveDriverFee;
 
       if (locationType === 'athome') {
         try { await upsertAddressHistory(fullAddress); } catch {}
       }
-      // New clients are persisted by the shared Add Client window before booking.
-      const customer = selectedCustomer;
-      if (!customer?.id) throw new Error('Select or add a saved client before booking.');
+      // 1. Resolve or create customer
+      let customer = selectedCustomer;
+      if (!customer) {
+        const now = new Date().toISOString();
+        const customerPayload = {
+          firstName: newCust.firstName.trim(),
+          lastName: newCust.lastName.trim(),
+          phone: newCust.phone.replace(/\D/g, '').slice(-10),
+          email: newCust.email.trim(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        const duplicateList = findDuplicateCustomers(customerPayload, allCustomers);
+        if (duplicateList.length) {
+          setDuplicateMatches(duplicateList);
+          return;
+        }
+        customer = await api.dbAdd('customers', customerPayload);
+        if (customer?.id != null) {
+          const created = customer as Customer;
+          setAllCustomers((prev) => {
+            const list = Array.isArray(prev) ? prev : [];
+            if (list.some((c) => c?.id === created.id)) return list;
+            return [created, ...list];
+          });
+        }
+      }
 
       const customerName = customerDisplayName(customer!);
       const customerPhone = customer!.phone || '';
@@ -462,16 +495,7 @@ export default function ConsultationBookingWindow() {
 
       // 2. Create consultation sale record
       const purpose = title.trim() || 'Consultation';
-      const customChargeItem: any = customLaborCharge != null ? {
-        id: crypto.randomUUID(),
-        description: purpose,
-        qty: billedHours,
-        price: effectiveLaborCharge / billedHours,
-        consultationHours: billedHours,
-        category: 'Consultation',
-        inStock: true,
-      } : null;
-      const baseItem: any = customLaborCharge == null ? {
+      const baseItem: any = {
         id: crypto.randomUUID(),
         description: purpose,
         qty: 1,
@@ -479,8 +503,8 @@ export default function ConsultationBookingWindow() {
         consultationHours: 1,
         category: 'Consultation',
         inStock: true,
-      } : null;
-      const extraItem: any = customLaborCharge == null && extraHours > 0 ? {
+      };
+      const extraItem: any = extraHours > 0 ? {
         id: crypto.randomUUID(),
         description: `${purpose} (Additional Hours)`,
         qty: extraHours,
@@ -499,13 +523,12 @@ export default function ConsultationBookingWindow() {
         inStock: true,
       } : null;
 
-      const saleItems = [customChargeItem, baseItem, extraItem, driverItem].filter(Boolean);
+      const saleItems = [baseItem, extraItem, driverItem].filter(Boolean);
 
       const saleRecord: any = {
         customerId: customer!.id,
         customerName,
         customerPhone,
-        customerEmail: customer?.email || '',
         category: 'Consultation',
         items: saleItems,
         itemDescription: title.trim() || 'Consultation',
@@ -516,12 +539,12 @@ export default function ConsultationBookingWindow() {
         notes: notes.trim() || undefined,
         consultationHours: billedHours,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
         appointmentDate: date,
         appointmentTime: time || undefined,
         appointmentEndTime: endTime || undefined,
         driverFee: effectiveDriverFee > 0 ? effectiveDriverFee : undefined,
-        laborCost: effectiveLaborCharge,
+        laborCost: laborCost,
         partCosts: 0,
         totals: { subTotal: effectiveTotalCost, tax: 0, total: effectiveTotalCost, remaining: effectiveTotalCost },
         total: effectiveTotalCost,
@@ -535,7 +558,7 @@ export default function ConsultationBookingWindow() {
       // 3. Create calendar event
       const location = locationType === 'athome'
         ? (fullAddress.trim() || 'At Home')
-        : SHOP_CONSULTATION_LOCATION;
+        : 'In-Store';
 
       const createdEvent = await api.dbAdd('calendarEvents', {
         category: 'consultation',
@@ -551,7 +574,7 @@ export default function ConsultationBookingWindow() {
         notes: notes.trim() || undefined,
         location,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
+        consultationAddress: locationType === 'athome' ? fullAddress.trim() : undefined,
         saleId: createdSale?.id,
         source: 'consultation',
       });
@@ -568,18 +591,10 @@ export default function ConsultationBookingWindow() {
   if (done) {
     return (
       <div className="min-h-screen bg-zinc-900 text-gray-100 flex items-center justify-center p-6">
-        {clientUpdateOpen ? <ClientUpdatePanel embedded recordType="consult" recordId={done.saleId} onClose={() => setClientUpdateOpen(false)} /> : null}
         <div className="text-center max-w-md">
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Consultation Booked</h1>
           <p className="text-zinc-300 mb-1">Client: <span className="font-semibold">{done.customerName}</span></p>
-          <button
-            type="button"
-            onClick={() => setClientUpdateOpen(true)}
-            className="mb-3 mt-2 w-full rounded border border-[#BC13FE]/70 bg-[#BC13FE]/20 px-6 py-2 font-semibold text-fuchsia-100 hover:brightness-110"
-          >
-            Update Client
-          </button>
           <p className="text-zinc-300 mb-1">
             {date} at {time}{endTime ? ` – ${endTime}` : ''}
           </p>
@@ -591,7 +606,7 @@ export default function ConsultationBookingWindow() {
           {qrDataUrl && (
             <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4 mb-4 inline-block">
               <img src={qrDataUrl} alt="Consultation QR" style={{ width: 160, height: 160, display: 'block', borderRadius: 8 }} />
-              <p className="text-xs text-zinc-400 mt-2">Scan to add calendar reminder</p>
+              <p className="text-xs text-zinc-400 mt-2">Scan to send reminder &amp; view details</p>
             </div>
           )}
           {!qrDataUrl && done.eventId && (
@@ -599,7 +614,7 @@ export default function ConsultationBookingWindow() {
           )}
 
           <p className="text-zinc-400 text-sm mb-6">
-            Added to the synced calendar. Scanning downloads a calendar event with a reminder one hour before the consultation.
+            Added to calendar. Scan the QR code to send a consultation reminder email to the client.
           </p>
           {!isModalShell && (
             <button
@@ -610,7 +625,7 @@ export default function ConsultationBookingWindow() {
             </button>
           )}
           <button
-            onClick={() => { setDone(null); setQrDataUrl(''); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setCustomLaborCharge(null); setError(''); }}
+            onClick={() => { setDone(null); setQrDataUrl(''); clearCustomer(); setTitle(''); setNotes(''); setDate(todayISO()); setTime('10:00'); setEndTime('11:00'); setHours(1); setError(''); }}
             className="px-6 py-2 bg-zinc-700 text-zinc-200 font-semibold rounded hover:bg-zinc-600"
           >
             Book Another
@@ -656,8 +671,56 @@ export default function ConsultationBookingWindow() {
               </div>
               <button onClick={clearCustomer} className="text-xs text-zinc-400 hover:text-red-400 ml-4">Change</button>
             </div>
+          ) : showNewCustomer ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-zinc-300">New Client</span>
+                <button onClick={() => setShowNewCustomer(false)} className="text-xs text-zinc-400 hover:text-zinc-200">← Back to search</button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">First Name <span className="text-red-400">*</span></label>
+                  <input
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    value={newCust.firstName}
+                    onChange={e => setNewCust(p => ({ ...p, firstName: e.target.value }))}
+                    placeholder="First name"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Last Name <span className="text-red-400">*</span></label>
+                  <input
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    value={newCust.lastName}
+                    onChange={e => setNewCust(p => ({ ...p, lastName: e.target.value }))}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    value={newCust.phone}
+                    onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="555-555-5555"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Email</label>
+                  <input
+                    type="email"
+                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                    value={newCust.email}
+                    onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))}
+                    placeholder="email@example.com"
+                  />
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="relative gb-consultation-client-search">
+            <div className="relative">
               <input
                 className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-blue-400 focus:outline-none pr-20"
                 placeholder="Search by name or phone…"
@@ -669,7 +732,7 @@ export default function ConsultationBookingWindow() {
                 <span className="absolute right-16 top-1/2 -translate-y-1/2 text-xs text-zinc-500">…</span>
               )}
               <button
-                onClick={() => { setShowCustomerCreator(true); setCustomerQuery(''); setCustomerResults([]); }}
+                onClick={() => { setShowNewCustomer(true); setCustomerQuery(''); setCustomerResults([]); }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded"
               >
                 New
@@ -688,24 +751,6 @@ export default function ConsultationBookingWindow() {
                   ))}
                 </div>
               )}
-              {showCustomerCreator ? (
-                <div className="gb-consultation-client-create mt-3">
-                  <CustomerOverviewWindow
-                    customer={null}
-                    closeAfterSave
-                    childDialog
-                    compactCreate
-                    embeddedCreate
-                    onClose={() => setShowCustomerCreator(false)}
-                    onSaved={(saved) => {
-                      const created = saved as Customer;
-                      setAllCustomers((current) => current.some((row) => row.id === created.id) ? current : [created, ...current]);
-                      selectCustomer(created);
-                      setShowCustomerCreator(false);
-                    }}
-                  />
-                </div>
-              ) : null}
             </div>
           )}
         </section>
@@ -890,7 +935,7 @@ export default function ConsultationBookingWindow() {
         {/* ── Pricing ───────────────────────────────────────────── */}
         <section className="bg-zinc-800 border border-zinc-700 rounded p-4">
           <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-3">Pricing</h2>
-          <div className="gb-consultation-pricing-grid grid grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-3 gap-4 items-end">
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Estimated Hours</label>
               <input
@@ -903,25 +948,22 @@ export default function ConsultationBookingWindow() {
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Amount Charged ($)</label>
+              <label className="block text-xs text-zinc-400 mb-1">First Hour ($)</label>
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="5"
                 className="w-full bg-yellow-100 text-black border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
-                value={chargedLabor}
-                onChange={e => setCustomLaborCharge(Math.max(0, Number(e.target.value) || 0))}
+                value={CONSULTATION_BASE_RATE}
+                readOnly
               />
               <div className="mt-1 text-[11px] text-zinc-500">
-                Auto: ${CONSULTATION_BASE_RATE} first hour + ${CONSULTATION_EXTRA_RATE}/hr after
-                {customLaborCharge != null ? (
-                  <button type="button" className="ml-2 text-blue-400 hover:text-blue-300" onClick={() => setCustomLaborCharge(null)}>Use automatic</button>
-                ) : null}
+                Additional hours: ${CONSULTATION_EXTRA_RATE}/hr
               </div>
             </div>
             <div className="text-right">
               <div className="text-xs text-zinc-400 mb-1">Labor</div>
-              <div className="text-base font-semibold text-zinc-200">${chargedLabor.toFixed(2)}</div>
+              <div className="text-base font-semibold text-zinc-200">${laborCost.toFixed(2)}</div>
             </div>
           </div>
           {locationType === 'athome' && (
@@ -981,7 +1023,7 @@ export default function ConsultationBookingWindow() {
       <div className="shrink-0 px-5 py-3 border-t border-zinc-700 flex items-center justify-between bg-zinc-900">
         <div className="text-sm text-zinc-400">
           {canBook
-            ? `Booking for ${selectedCustomer ? customerDisplayName(selectedCustomer) : ''} on ${date}`
+            ? `Booking for ${selectedCustomer ? customerDisplayName(selectedCustomer) : `${newCust.firstName} ${newCust.lastName}`.trim()} on ${date}`
             : <span className="text-zinc-500">Select a client and date to book.</span>
           }
         </div>
@@ -994,6 +1036,21 @@ export default function ConsultationBookingWindow() {
         </button>
       </div>
     </div>
+    {duplicateMatches.length > 0 && (
+      <DuplicateCustomerDialog
+        matches={duplicateMatches}
+        onClose={() => setDuplicateMatches([])}
+        onOpenCustomer={async (customerId) => {
+          setDuplicateMatches([]);
+          const match = duplicateMatches.find((m) => Number(m.customer.id) === Number(customerId));
+          if (match?.customer) {
+            selectCustomer(match.customer as Customer);
+            setShowNewCustomer(false);
+          }
+          await api?.openCustomerOverview?.(customerId);
+        }}
+      />
+    )}
     </>
   );
 }

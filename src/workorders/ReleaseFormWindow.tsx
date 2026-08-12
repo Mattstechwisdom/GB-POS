@@ -49,20 +49,22 @@ const ReleaseFormWindow: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        let qrUrl = '';
+        let lanIp = 'localhost';
         try {
-          const result = await (window as any).api?.qrGetStatusUrl?.(type, recordId);
-          if (result?.ok && result.url) qrUrl = result.url;
-        } catch { /* QR helper unavailable */ }
-        if (qrUrl) {
-          const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-            width: 176, margin: 1,
-            color: { dark: '#000000', light: '#ffffff' },
-            errorCorrectionLevel: 'M',
-          });
-          if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
-        }
-      } catch (error) { console.error('Cloud QR generation failed.', error); }
+          const ipRes = await fetch('http://localhost:7777/ip');
+          if (ipRes.ok) {
+            const json = await ipRes.json();
+            if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+          }
+        } catch { /* QR server not running */ }
+        const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+          width: 176, margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
+      } catch { /* QR generation failed silently */ }
     })();
     return () => { alive = false; };
   }, [(data as any).id, (data as any).workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,9 +164,9 @@ const ReleaseFormWindow: React.FC = () => {
       `}</style>
       <div className="page">
         <div className="page-inner">
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) auto minmax(210px, 0.9fr)', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
         {/* Left — logo + shop name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR</div>
@@ -174,16 +176,16 @@ const ReleaseFormWindow: React.FC = () => {
           </div>
         </div>
         {/* Center — technician QR code */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 16px' }}>
           {qrDataUrl ? (
             <>
-              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 64, height: 64, display: 'block' }} />
+              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 72, height: 72, display: 'block' }} />
               <div style={{ fontSize: 7, color: '#555', textAlign: 'center', marginTop: 3, letterSpacing: '0.4px' }}>TECH SCAN</div>
             </>
           ) : null}
         </div>
         {/* Right — WO info + client */}
-        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#111' }}>WO: {data.id ? String(data.id).padStart(6, '0') : '—'}</div>
           <div style={{ fontSize: 11, color: '#666' }}>Date: {new Date().toLocaleDateString()}</div>
           {fullName ? <div style={{ fontSize: 11, color: '#111', marginTop: 4 }}><strong>Client:</strong> {fullName}</div> : null}
@@ -258,7 +260,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, background: '#fff' }}>
           <div style={{ fontWeight: 600, marginBottom: 10 }}>Acknowledgements</div>
           <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5, marginBottom: 54 }}>
-            By signing below, I confirm the client, phone, email, and device information above is correct. I authorize GadgetBoy Repair to diagnose and/or repair the device. I acknowledge that data backup is my responsibility and GadgetBoy is not liable for data loss. I agree to the diagnostic, repair, and storage terms listed.
+            By signing below, I authorize GadgetBoy Repair to perform the above repairs. I acknowledge that data backup is my responsibility and GadgetBoy is not liable for data loss. I agree to the terms and charges listed. Devices not picked up within 30 days of completion may incur storage fees.
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 120, color: '#444' }}>Customer Signature</div>

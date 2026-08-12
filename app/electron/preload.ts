@@ -37,16 +37,6 @@ try {
 
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
-  gidgetLocalStatus: (): Promise<any> => ipcRenderer.invoke('gidget:localStatus'),
-  gidgetLocalSetup: (): Promise<any> => ipcRenderer.invoke('gidget:localSetup'),
-  gidgetLocalGenerate: (payload: any): Promise<any> => ipcRenderer.invoke('gidget:localGenerate', payload),
-  gidgetLocalPosContext: (query: string): Promise<any> => ipcRenderer.invoke('gidget:localPosContext', query),
-  gidgetLocalCancel: (): Promise<any> => ipcRenderer.invoke('gidget:localCancel'),
-  onGidgetModelProgress: (cb: (progress: any) => void) => {
-    const handler = (_event: any, progress: any) => cb(progress);
-    ipcRenderer.on('gidget:model-progress', handler);
-    return () => ipcRenderer.removeListener('gidget:model-progress', handler);
-  },
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('os:openUrl', url),
   // Storage / diagnostics
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
@@ -66,12 +56,12 @@ contextBridge.exposeInMainWorld('api', {
   openNewWorkOrder: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-workorder', payload),
   openDeviceCategories: (): Promise<any> => ipcRenderer.invoke('open-device-categories'),
   openRepairCategories: (): Promise<any> => ipcRenderer.invoke('open-repair-categories'),
-  openCalendar: (payload?: any): Promise<any> => ipcRenderer.invoke('open-calendar', payload),
+  openCalendar: (): Promise<any> => ipcRenderer.invoke('open-calendar'),
   openClockIn: (): Promise<any> => ipcRenderer.invoke('open-clock-in'),
   openQuoteGenerator: (): Promise<any> => ipcRenderer.invoke('open-quote-generator'),
   openEod: (): Promise<any> => ipcRenderer.invoke('open-eod'),
   openProducts: (): Promise<any> => ipcRenderer.invoke('open-products'),
-  openInventory: (payload?: { inventoryId?: number }): Promise<any> => ipcRenderer.invoke('open-inventory', payload),
+  openInventory: (): Promise<any> => ipcRenderer.invoke('open-inventory'),
   openWorkOrderRepairPicker: (): Promise<any> => ipcRenderer.invoke('open-workorder-repair-picker'),
   openCustomerOverview: (customerId: number): Promise<any> => ipcRenderer.invoke('open-customer-overview', customerId),
   openNewSale: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-sale', payload),
@@ -105,26 +95,30 @@ contextBridge.exposeInMainWorld('api', {
   emailSendQuotePdf: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendQuotePdf', payload),
   emailSendReportCsv: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportCsv', payload),
   emailSendReportHtml: (payload: any): Promise<any> => ipcRenderer.invoke('email:sendReportHtml', payload),
-  emailDrainClientUpdates: (): Promise<any> => ipcRenderer.invoke('email:drainClientUpdates'),
   // OS helpers
   openFile: (filePath: string): Promise<any> => ipcRenderer.invoke('os:openFile', filePath),
   openUrl: (url: string): Promise<any> => ipcRenderer.invoke('os:openUrl', url),
-  scrapePartUrl: (url: string): Promise<any> => ipcRenderer.invoke('parts:scrapeUrl', url),
   openReporting: (): Promise<any> => ipcRenderer.invoke('open-reporting'),
   openReportEmail: (payload: any): Promise<any> => ipcRenderer.invoke('open-report-email', payload),
   openCustomBuildItem: (payload: any): Promise<any> => ipcRenderer.invoke('customBuild:openItem', payload),
   openCharts: (): Promise<any> => ipcRenderer.invoke('open-charts'),
   openNotifications: (): Promise<any> => ipcRenderer.invoke('open-notifications'),
   openNotificationSettings: (): Promise<any> => ipcRenderer.invoke('open-notification-settings'),
-  notificationGetNativePermission: (): Promise<any> => ipcRenderer.invoke('notifications:get-native-permission'),
-  notificationRequestNativePermission: (): Promise<any> => ipcRenderer.invoke('notifications:request-native-permission'),
-  notificationSendNative: (payload: { title?: string; body?: string; key?: string; record?: any }): Promise<any> => ipcRenderer.invoke('notifications:send-native', payload),
-  onNativeNotificationClicked: (cb: (record: any) => void): (() => void) => {
-    const handler = (_event: any, record: any) => cb(record);
-    ipcRenderer.on('notifications:native-clicked', handler);
-    return () => ipcRenderer.removeListener('notifications:native-clicked', handler);
-  },
-  notificationOpenSystemSettings: (): Promise<any> => ipcRenderer.invoke('notifications:open-system-settings'),
+  openCloverSettings: (): Promise<any> => ipcRenderer.invoke('open-clover-settings'),
+  cloverGetConfig: (): Promise<any> => ipcRenderer.invoke('clover:rest:getConfig'),
+  cloverSaveConfig: (data: any): Promise<any> => ipcRenderer.invoke('clover:saveConfig', data),
+  cloverSetAccessToken: (token: string): Promise<any> => ipcRenderer.invoke('clover:setAccessToken', token),
+  cloverTestConnection: (): Promise<any> => ipcRenderer.invoke('clover:testConnection'),
+  cloverTestLocalConnection: (): Promise<any> => ipcRenderer.invoke('clover:testLocalConnection'),
+  cloverLocalCharge: (payload: any): Promise<any> => ipcRenderer.invoke('clover:localCharge', payload),
+  cloverChargeCard: (payload: any): Promise<any> => ipcRenderer.invoke('clover:chargeCard', payload),
+  cloverCashSale: (payload: any): Promise<any> => ipcRenderer.invoke('clover:cashSale', payload),
+  openTwilioSettings: (): Promise<any> => ipcRenderer.invoke('open-twilio-settings'),
+  twilioGetConfig: (): Promise<any> => ipcRenderer.invoke('twilio:getConfig'),
+  twilioSetConfig: (patch: any): Promise<any> => ipcRenderer.invoke('twilio:setConfig', patch),
+  twilioSendSms: (payload: any): Promise<any> => ipcRenderer.invoke('twilio:sendSms', payload),
+  twilioGetMessages: (customerId: number): Promise<any> => ipcRenderer.invoke('twilio:getMessages', customerId),
+  twilioLogMessage: (msg: any): Promise<any> => ipcRenderer.invoke('twilio:logMessage', msg),
   openReleaseForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-release-form', payload),
   openCustomerReceipt: (payload: any): Promise<any> => ipcRenderer.invoke('open-customer-receipt', payload),
   notifyCustomerReceiptReady: (): void => ipcRenderer.send('customer-receipt:ready'),
@@ -182,11 +176,6 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('products:changed', handler);
     return () => ipcRenderer.removeListener('products:changed', handler);
-  },
-  onPurchaseOrdersChanged: (cb: () => void) => {
-    const handler = () => cb();
-    ipcRenderer.on('purchaseOrders:changed', handler);
-    return () => ipcRenderer.removeListener('purchaseOrders:changed', handler);
   },
   onSalesChanged: (cb: () => void) => {
     const handler = () => cb();
@@ -252,8 +241,7 @@ contextBridge.exposeInMainWorld('api', {
   restoreEncryptedBackup: (password: string): Promise<any> => ipcRenderer.invoke('restore-encrypted-backup', password),
   getLastBackupPath: (): Promise<string> => ipcRenderer.invoke('get-last-backup-path'),
   // QR Code status server
-  qrGetStatusUrl: (type: 'repair' | 'sale' | 'consult', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
-  qrResolveStatusToken: (token: string): Promise<{ ok: boolean; token?: any; type?: 'repair' | 'sale' | 'consult'; record?: any; customer?: any; error?: string }> => ipcRenderer.invoke('qr:resolveStatusToken', token),
+  qrGetStatusUrl: (type: 'repair' | 'sale', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
   qrGetDataUrl: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getDataUrl', url),
   qrGetServerInfo: (): Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getServerInfo'),
 });

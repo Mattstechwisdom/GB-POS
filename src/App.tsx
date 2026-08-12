@@ -18,13 +18,11 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
-import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
 const SaleWindow                = React.lazy(() => import('./sales/SaleWindow'));
 const CalendarWindow            = React.lazy(() => import('./components/CalendarWindow'));
-const DailyLookWindow           = React.lazy(() => import('./components/DailyLookWindow'));
 const ClockInWindow             = React.lazy(() => import('./components/ClockInWindow'));
 const QuoteGeneratorWindow      = React.lazy(() => import('./components/QuoteGeneratorWindow'));
 const EODWindow                 = React.lazy(() => import('./components/EODWindow'));
@@ -52,6 +50,7 @@ const RepairCategoriesWindow    = React.lazy(() => import('./repairs/RepairCateg
 const DeviceCategoriesWindow    = React.lazy(() => import('./components/DeviceCategoriesWindow'));
 const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBuildItemWindow'));
 const ClientUpdatePanel         = React.lazy(() => import('./workorders/ClientUpdatePanel'));
+const FeedbackWindow            = React.lazy(() => import('./components/FeedbackWindow'));
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -100,7 +99,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12"
+      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12 pt-12"
       style={{ zIndex }}
       data-modal-shell="1"
     >
@@ -130,7 +129,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
         )}
       </div>
       <React.Suspense fallback={
-        <div className="flex min-h-[100dvh] items-center justify-center text-zinc-500">Loading…</div>
+        <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
       }>
         <ModalContent type={entry.type} onClose={onClose} />
       </React.Suspense>
@@ -144,7 +143,6 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'newWorkOrder':           return <NewWorkOrderWindow />;
     case 'newSale':                return <SaleWindow />;
     case 'calendar':               return <CalendarWindow />;
-    case 'dailyLook':              return <DailyLookWindow />;
     case 'clockIn':                return <ClockInWindow />;
     case 'quoteGenerator':         return <QuoteGeneratorWindow />;
     case 'eod':                    return <EODWindow />;
@@ -172,6 +170,7 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'repairCategories':       return <RepairCategoriesWindow mode="admin" />;
     case 'deviceCategories':       return <DeviceCategoriesWindow />;
     case 'customBuildItem':        return <CustomBuildItemWindow />;
+    case 'feedback':               return <FeedbackWindow />;
     default:                       return <div className="p-8 text-zinc-400">Unknown modal: {type}</div>;
   }
 }
@@ -463,6 +462,7 @@ const AppInner: React.FC<{
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [gidgetOpen, setGidgetOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -588,7 +588,7 @@ const AppInner: React.FC<{
   return (
     <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
       <div className="flex flex-1">
-        <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
+        <aside className={`shrink-0 bg-zinc-800 border-r border-zinc-700 flex flex-col gap-6 overflow-hidden transition-[width,transform,padding] duration-300 ease-out ${sidebarOpen ? 'w-[320px] p-4' : 'w-0 -translate-x-full border-r-0 p-0'}`}>
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
@@ -600,7 +600,6 @@ const AppInner: React.FC<{
             onDateToChange={setDateTo}
             onOpenCustomerSearch={() => setShowCustomerSearch(true)}
             onAddCustomer={() => openModal('customerOverview', 0)}
-            onQuickCheckout={() => openModal('quickSale')}
             mode={mode}
             onModeChange={setMode}
             invoiceQuery={invoiceQuery}
@@ -610,6 +609,7 @@ const AppInner: React.FC<{
             onClear={handleClear}
             onRefresh={() => setRefreshKey(refreshKey + 1)}
             onSignOut={onSignOut}
+            onOpenFeedback={() => openModal('feedback')}
             onOpenGidget={() => setGidgetOpen(true)}
           />
           <div>
@@ -617,8 +617,8 @@ const AppInner: React.FC<{
           </div>
         </aside>
         <main className="flex-1 min-w-0 flex flex-col">
-          <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} />
-          <div className="flex-1 min-h-0 overflow-auto">
+          <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(open => !open)} />
+          <div className="flex-1 overflow-x-auto overflow-y-hidden">
             {mode === 'workorders' && (
               <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
             )}
@@ -648,7 +648,6 @@ const AppInner: React.FC<{
         />
       ))}
       <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
-      <PlatformPermissionHandshake />
     </div>
   );
 };

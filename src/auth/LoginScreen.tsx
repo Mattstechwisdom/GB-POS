@@ -1,54 +1,34 @@
 import React, { FormEvent, useState } from 'react';
-import { getShopLoginConfig, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 type LoginScreenProps = {
   onSignedIn: () => void;
 };
 
 export function LoginScreen({ onSignedIn }: LoginScreenProps) {
-  const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-
-  async function resolveLoginEmail(loginName: string) {
-    const trimmed = loginName.trim();
-    if (!trimmed) throw new Error('Enter your username.');
-
-    const config = getShopLoginConfig();
-    const expectedUsername = String(config.username || 'Gadgetboyz').trim();
-    const loginEmail = String(config.email || '').trim();
-    if (expectedUsername && trimmed.toLowerCase() === expectedUsername.toLowerCase()) {
-      if (!loginEmail) throw new Error('Shop login email is not configured.');
-      return loginEmail;
-    }
-    throw new Error('Invalid username or PIN.');
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage('');
     setLoading(true);
 
-    try {
-      const email = await resolveLoginEmail(username);
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pin,
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
 
-      if (error) {
-        setErrorMessage('Invalid username or PIN.');
-        setLoading(false);
-        return;
-      }
+    setLoading(false);
 
-      onSignedIn();
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Invalid username or PIN.');
-    } finally {
-      setLoading(false);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
     }
+
+    onSignedIn();
   }
 
   return (
@@ -61,28 +41,24 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
         <p className="mt-2 text-sm text-slate-400">Sign in to access shop data.</p>
 
         <label className="mt-6 block text-sm font-medium text-slate-200">
-          Username
+          Email
           <input
-            type="text"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
             required
-            placeholder="Gadgetboyz"
             className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-emerald-400"
           />
         </label>
 
         <label className="mt-4 block text-sm font-medium text-slate-200">
-          PIN
+          Password
           <input
             type="password"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
-            inputMode="numeric"
             required
             className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-emerald-400"
           />

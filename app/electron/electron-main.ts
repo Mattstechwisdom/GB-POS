@@ -1,17 +1,13 @@
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage, Notification, session } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage, Notification } = electron;
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const { pathToFileURL } = require('url');
 const os = require('os');
-const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
-const { registerGidgetLocalIpc } = require('./gidget-local');
-
-registerGidgetLocalIpc({ ipcMain, app, getLocalPosContext: buildGidgetLocalPosContext });
 
 let autoUpdater: any = null;
 try {
@@ -29,16 +25,6 @@ try {
 
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
-
-function isTrustedRendererPermissionRequest(requestingUrl: string) {
-  try {
-    const url = new URL(String(requestingUrl || ''));
-    return url.protocol === 'file:'
-      || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname));
-  } catch {
-    return false;
-  }
-}
 
 function isExternalUrl(url: string, sourceUrl?: string) {
   try {
@@ -68,362 +54,6 @@ function isExternalUrl(url: string, sourceUrl?: string) {
   } catch {
     return false;
   }
-}
-
-const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
-
-function normalizePartOrderUrl(value: any): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  return /^(https?:)?\/\//i.test(raw) ? raw.replace(/^\/\//, 'https://') : `https://${raw}`;
-}
-
-function derivePartVendorFromUrl(value: any): string {
-  const url = normalizePartOrderUrl(value);
-  if (!url) return '';
-  try {
-    const host = new URL(url).hostname.replace(/^www\./i, '');
-    const base = host.split('.')[0] || '';
-    const cleaned = base.replace(/[^a-z0-9]+/gi, ' ').trim();
-    return cleaned
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-      .join(' ');
-  } catch {
-    return '';
-  }
-}
-
-function decodeScrapedHtml(value: string): string {
-  return String(value || '')
-    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16)))
-    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number.parseInt(code, 10)))
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function cleanScrapedPartTitle(value: any): string {
-  return decodeScrapedHtml(String(value || ''))
-    .replace(/\s+[|-]\s+Phone LCD Parts.*$/i, '')
-    .replace(/\s+[|-]\s+Wholesale.*$/i, '')
-    .replace(/\s+[|-]\s+Parts.*$/i, '')
-    .trim();
-}
-
-function parseScrapedMoney(value: any): number | undefined {
-  const match = String(value || '').replace(/,/g, '').match(/(?:[$\u20ac\u00a3]\s*)?(\d+(?:\.\d{1,2})?)/);
-  if (!match) return undefined;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : undefined;
-}
-
-// schema.org microdata (`itemprop="price"`) is a strong, explicit signal used by most storefront platforms.
-function extractScrapedItempropPrice(html: string): number | undefined {
-  const withContent = html.match(/itemprop=["']price["'][^>]*content=["']([\d.,]+)["']/i)
-    || html.match(/content=["']([\d.,]+)["'][^>]*itemprop=["']price["']/i);
-  if (withContent?.[1]) return parseScrapedMoney(withContent[1]);
-  const inline = html.match(/itemprop=["']price["'][^>]*>\s*\$?\s*([\d,]+(?:\.\d{1,2})?)/i);
-  return inline?.[1] ? parseScrapedMoney(inline[1]) : undefined;
-}
-
-// Look for a dollar amount inside an element whose class/id names it as the product price,
-// rather than matching the word "price" anywhere in the page's raw HTML/scripts (which can pick up
-// unrelated related-product carousels, analytics payloads, or upsell widgets).
-function extractScrapedClassPrice(html: string): number | undefined {
-  const re = /<[a-zA-Z]+\b[^>]*(?:class|id)=["'][^"']*\b(?:price|product-price|sale-price|current-price|our-price)\b[^"']*["'][^>]*>([\s\S]{0,200}?)<\/[a-zA-Z]+>/i;
-  const match = html.match(re);
-  if (!match) return undefined;
-  const amount = match[1].replace(/<[^>]+>/g, ' ').match(/\$?\s*([\d,]+(?:\.\d{1,2})?)/);
-  return amount?.[1] ? parseScrapedMoney(amount[1]) : undefined;
-}
-
-function findScrapedMeta(html: string, names: string[]): string {
-  for (const name of names) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const first = new RegExp(`<meta\\s+[^>]*(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i');
-    const second = new RegExp(`<meta\\s+[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${escaped}["'][^>]*>`, 'i');
-    const match = html.match(first) || html.match(second);
-    if (match?.[1]) return decodeScrapedHtml(match[1]);
-  }
-  return '';
-}
-
-function collectScrapedJsonLd(html: string): any[] {
-  const list: any[] = [];
-  const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(html))) {
-    try {
-      const parsed = JSON.parse(match[1].trim());
-      if (Array.isArray(parsed)) list.push(...parsed);
-      else if (parsed) list.push(parsed);
-    } catch {
-      // ignore malformed embedded product data
-    }
-  }
-  return list;
-}
-
-function flattenScrapedJsonLd(input: any): any[] {
-  if (!input || typeof input !== 'object') return [];
-  const out = [input];
-  if (Array.isArray(input['@graph'])) {
-    for (const child of input['@graph']) out.push(...flattenScrapedJsonLd(child));
-  }
-  return out;
-}
-
-function absoluteScrapedUrl(value: any, pageUrl: string): string {
-  const raw = decodeScrapedHtml(String(value || '')).trim();
-  if (!raw) return '';
-  try {
-    const resolved = new URL(raw, pageUrl);
-    return /^https?:$/i.test(resolved.protocol) ? resolved.toString() : '';
-  } catch {
-    return '';
-  }
-}
-
-function extractPartMetadataFromHtml(html: string, url: string) {
-  const jsonLd = collectScrapedJsonLd(html).flatMap(flattenScrapedJsonLd);
-  const product = jsonLd.find((entry) => {
-    const type = entry?.['@type'];
-    return String(Array.isArray(type) ? type.join(' ') : type || '').toLowerCase().includes('product');
-  });
-  const offer = Array.isArray(product?.offers) ? product.offers[0] : product?.offers;
-  const title =
-    cleanScrapedPartTitle(product?.name) ||
-    cleanScrapedPartTitle(findScrapedMeta(html, ['og:title', 'twitter:title'])) ||
-    cleanScrapedPartTitle(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
-  const price =
-    parseScrapedMoney(offer?.price) ||
-    parseScrapedMoney(findScrapedMeta(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
-    extractScrapedItempropPrice(html) ||
-    extractScrapedClassPrice(html) ||
-    parseScrapedMoney(html.match(/(?:price|salePrice|regularPrice)["']?\s*[:=]\s*["']?\$?(\d+(?:\.\d{1,2})?)/i)?.[1]);
-  const description = decodeScrapedHtml(
-    product?.description || findScrapedMeta(html, ['og:description', 'twitter:description', 'description'])
-  );
-  const pageImageValues: string[] = [];
-  const imagePattern = /<img\b[^>]*(?:data-zoom-image|data-large-image|data-src|src)=["']([^"']+)["'][^>]*>/gi;
-  let imageMatch: RegExpExecArray | null;
-  while ((imageMatch = imagePattern.exec(html)) && pageImageValues.length < 24) {
-    if (/logo|icon|sprite|badge|payment|avatar|placeholder|spinner/i.test(`${imageMatch[0]} ${imageMatch[1]}`)) continue;
-    if (/product|catalog|media|gallery|image|cdn/i.test(`${imageMatch[0]} ${imageMatch[1]}`)) pageImageValues.push(imageMatch[1]);
-  }
-  const imageValues = [product?.image, findScrapedMeta(html, ['og:image', 'twitter:image']), pageImageValues].flat(Infinity);
-  const images: string[] = [];
-  for (const value of imageValues) {
-    const imageUrl = absoluteScrapedUrl(value, url);
-    if (imageUrl && !images.includes(imageUrl)) images.push(imageUrl);
-    if (images.length === 3) break;
-  }
-  const structuredSpecs = (Array.isArray(product?.additionalProperty) ? product.additionalProperty : [])
-    .map((entry: any) => ({
-      name: decodeScrapedHtml(String(entry?.name || entry?.propertyID || '')),
-      value: decodeScrapedHtml(String(entry?.value || '')),
-    }))
-    .filter((entry: any) => entry.name && entry.value);
-  const tableSpecs: Array<{ name: string; value: string }> = [];
-  const rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-  let row: RegExpExecArray | null;
-  while ((row = rowPattern.exec(html)) && tableSpecs.length < 20) {
-    const cells = [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
-      .map((cell) => decodeScrapedHtml(cell[1].replace(/<script\b[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')));
-    if (cells.length >= 2 && cells[0] && cells[1] && cells[0].length <= 80 && cells[1].length <= 240) {
-      tableSpecs.push({ name: cells[0], value: cells[1] });
-    }
-  }
-  const combinedSpecs = [...structuredSpecs, ...tableSpecs];
-  const specs = combinedSpecs
-    .filter((entry, index) => combinedSpecs.findIndex((candidate) => candidate.name.toLowerCase() === entry.name.toLowerCase()) === index)
-    .slice(0, 20);
-  return {
-    ok: Boolean(title || price || description || images.length),
-    url: normalizePartOrderUrl(url),
-    title,
-    price,
-    currency: offer?.priceCurrency || findScrapedMeta(html, ['product:price:currency']) || 'USD',
-    vendor: derivePartVendorFromUrl(url),
-    description: description || undefined,
-    images,
-    specs,
-  };
-}
-
-function extractPartMetadataFromReader(markdown: string, url: string) {
-  const lines = String(markdown || '').split(/\r?\n/).slice(0, 12_000);
-  let title = '';
-  let price: number | undefined;
-  let currency = 'USD';
-  let titleLine = -1;
-  const imageCandidates: Array<{ url: string; alt: string }> = [];
-  const conditionPrices: Array<{ condition: string; price?: number }> = [];
-  const storagePrices: Array<{ value: string; price?: number }> = [];
-  const colorPrices: Array<{ value: string; price?: number }> = [];
-  const batteryPrices: Array<{ value: string; price?: number }> = [];
-  const processorPrices: Array<{ value: string; price?: number }> = [];
-  const memoryPrices: Array<{ value: string; price?: number }> = [];
-  const pageSpecs = new Map<string, string>();
-  const imageAltText: string[] = [];
-  let optionSection: 'condition' | 'battery' | 'storage' | 'color' | 'processor' | 'memory' | '' = '';
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    const trimmed = line.trim();
-    if (!title && /^Title:\s*/i.test(trimmed)) { title = decodeScrapedHtml(trimmed.replace(/^Title:\s*/i, '')).replace(/\s*\|\s*[^|]+$/g, '').replace(/\s+Refurbished$/i, '').trim(); titleLine = lineIndex; }
-    if (!title && /^#\s+/.test(trimmed)) { title = decodeScrapedHtml(trimmed.replace(/^#\s+/, '')).trim(); titleLine = lineIndex; }
-    if (price === undefined) {
-      const priceMatch = trimmed.match(/\$([\d,]+(?:\.\d{1,2})?)\s+before trade-in/i)
-        || trimmed.match(/(?:Refurbished price|Current price|Sale price|Our price|Price|Now)\s*:?\s*([$€£]\s*[\d,]+(?:\.\d{1,2})?)/i)
-        || (titleLine >= 0 && lineIndex - titleLine <= 220 && !/~~|\b(?:new|list|retail|was|save|shipping|delivery|trade-in|per month)\b|\/mo\b/i.test(trimmed)
-          ? trimmed.match(/^\s*(?:[-*]\s*)?([$€£]\s*[\d,]+(?:\.\d{1,2})?)\s*$/i)
-          : null);
-      if (priceMatch?.[1]) {
-        price = parseScrapedMoney(priceMatch[1]);
-        const symbol = priceMatch[1].trim()[0];
-        if (symbol === '€') currency = 'EUR';
-        else if (symbol === '£') currency = 'GBP';
-      }
-    }
-    if (imageCandidates.length < 240 && trimmed.includes('![')) {
-      const open = trimmed.indexOf('](');
-      const close = open >= 0 ? trimmed.indexOf(')', open + 2) : -1;
-      const imageUrl = close > open ? decodeScrapedHtml(trimmed.slice(open + 2, close)) : '';
-      const altClose = trimmed.indexOf(']');
-      const alt = altClose > 2 ? trimmed.slice(trimmed.indexOf('![') + 2, altClose).trim() : '';
-      if (alt) imageAltText.push(alt);
-      if (/^https?:\/\//i.test(imageUrl) && !/\.svg(?:\?|$)/i.test(imageUrl)
-        && !/logo|icon|flag|payment|review-attachment|trade-in|picker|placeholder|used-vs-verified/i.test(`${imageUrl} ${alt}`)) imageCandidates.push({ url: imageUrl, alt });
-    }
-    if (/Compare conditions/i.test(trimmed)) optionSection = 'condition';
-    else if (/Select a battery option/i.test(trimmed)) optionSection = 'battery';
-    else if (/Select (?:the )?processor/i.test(trimmed)) optionSection = 'processor';
-    else if (/Select storage/i.test(trimmed)) optionSection = 'storage';
-    else if (/Select memory/i.test(trimmed)) optionSection = 'memory';
-    else if (/Select (?:the )?color/i.test(trimmed)) optionSection = 'color';
-    const pricedOption = trimmed.match(/^\*\s+([^$!][^$]*?)\s+\$([\d,]+(?:\.\d{1,2})?)/);
-    if (pricedOption) {
-      const value = pricedOption[1].trim();
-      const optionPrice = parseScrapedMoney(pricedOption[2]);
-      if (optionSection === 'storage') storagePrices.push({ value, price: optionPrice });
-      else if (optionSection === 'color') colorPrices.push({ value, price: optionPrice });
-      else if (optionSection === 'battery') batteryPrices.push({ value, price: optionPrice });
-      else if (optionSection === 'processor') processorPrices.push({ value, price: optionPrice });
-      else if (optionSection === 'memory') memoryPrices.push({ value, price: optionPrice });
-    }
-    if (optionSection === 'condition') {
-      const match = trimmed.match(/\b(Fair|Good|Excellent|Premium|Like New|New)\s+\$([\d,]+(?:\.\d{1,2})?)/i);
-      if (match) conditionPrices.push({ condition: match[1].trim(), price: parseScrapedMoney(match[2]) });
-    }
-    const specPatterns: Array<[RegExp, string]> = [
-      [/^Processor\s+(?!Core\s+\d+\s*$)(.+)$/i, 'Processor'], [/^Processor generation\s+(.+)$/i, 'Processor Generation'],
-      [/^Memory \(GB\)\s*(.+)$/i, 'Memory'], [/^(?:SSD )?Storage (?:Capacity )?\(GB\)\s*(.+)$/i, 'Storage'],
-      [/^Storage \(GB\)\s*(.+)$/i, 'Storage'], [/^(?:Screen|Display) size\s+(.+)$/i, 'Screen Size'],
-      [/^Resolution\s+(.+)$/i, 'Resolution'], [/^Refresh rate\s+(.+)$/i, 'Refresh Rate'],
-      [/^(?:Display|Panel|Screen) (?:technology|type)\s+(.+)$/i, 'Display Technology'], [/^(?:HDR|High Dynamic Range)\s+(.+)$/i, 'HDR'],
-      [/^(?:OS|Operating system)\s+(.+)$/i, 'Operating System'],
-      [/^Graphic(?:s| card)(?: Card Type)?\s+(.+)$/i, 'Graphics'], [/^Color\s+(.+)$/i, 'Color'],
-      [/^Carrier\s+(.+)$/i, 'Carrier'], [/^(?:Network|Connectivity|Wireless)\s+(.+)$/i, 'Connectivity'],
-      [/^(?:Ports|Inputs|Ports \/ Inputs)\s+(.+)$/i, 'Ports'], [/^(?:Included accessories|Accessories included|Accessories)\s+(.+)$/i, 'Accessories'],
-      [/^Camera type\s+(.+)$/i, 'Camera Type'], [/^(?:Sensor|Sensor type)\s+(.+)$/i, 'Sensor'],
-      [/^(?:Lens mount|Mount type)\s+(.+)$/i, 'Lens Mount'], [/^(?:Video|Video recording|Video resolution)\s+(.+)$/i, 'Video'],
-      [/^Flight time\s+(.+)$/i, 'Flight Time'], [/^(?:Maximum range|Max range)\s+(.+)$/i, 'Maximum Range'],
-      [/^(?:Maximum speed|Max speed)\s+(.+)$/i, 'Maximum Speed'], [/^Weight\s+(.+)$/i, 'Weight'],
-      [/^Battery capacity\s+(.+)$/i, 'Battery Capacity'], [/^Battery cycles?\s+(.+)$/i, 'Battery Cycles'],
-      [/^(?:Controller|Remote control)\s+(.+)$/i, 'Controller'], [/^Obstacle avoidance\s+(.+)$/i, 'Obstacle Avoidance'], [/^GPS\s+(.+)$/i, 'GPS'],
-    ];
-    for (const [pattern, name] of specPatterns) {
-      const match = trimmed.match(pattern);
-      if (match?.[1] && !pageSpecs.has(name)) pageSpecs.set(name, match[1].trim());
-    }
-    const markdownTableSpec = trimmed.match(/^\|\s*([^|]{1,60}?)\s*\|\s*([^|]{1,240}?)\s*\|?$/);
-    const markdownLabelSpec = trimmed.match(/^(?:[-*]\s*)?(?:\*\*)?([A-Za-z][A-Za-z0-9 /()+&.-]{1,58}?)(?:\*\*)?\s*:\s*(.{1,240})$/);
-    const genericSpec = markdownTableSpec || markdownLabelSpec;
-    if (genericSpec?.[1] && genericSpec?.[2]) {
-      const name = decodeScrapedHtml(genericSpec[1]).trim();
-      const value = decodeScrapedHtml(genericSpec[2].replace(/\*\*/g, '')).trim();
-      if (!/^[-:]+$/.test(value) && !/^(?:price|sale price|our price|quantity)$/i.test(name) && !pageSpecs.has(name)) pageSpecs.set(name, value);
-    }
-  }
-  const titleTokens = title.toLowerCase().match(/[a-z]+\d+[a-z]*|[a-z]{4,}|\d{1,3}/g)?.filter((token) => !['refurbished', 'backmarket', 'market'].includes(token)) || [];
-  const distinctiveTitleTokens = titleTokens.filter((token) => token.length >= 5 && !['series', 'edition', 'unlocked'].includes(token));
-  const rankedImages = imageCandidates.map((candidate) => ({ ...candidate, score: titleTokens.filter((token) => candidate.alt.toLowerCase().includes(token)).length }))
-    .filter((candidate) => candidate.score >= 2 || (candidate.score >= 1 && (
-      titleTokens.some((token) => /\d/.test(token) && candidate.alt.toLowerCase().includes(token))
-      || distinctiveTitleTokens.some((token) => candidate.alt.toLowerCase().includes(token))
-    )))
-    .sort((a, b) => b.score - a.score);
-  const images = [...new Set((rankedImages.length ? rankedImages : imageCandidates).map((candidate) => candidate.url))].slice(0, 3);
-  let values: string[] = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const amount = parseScrapedMoney(lines[index].match(/\$([\d,]+(?:\.\d{1,2})?)\s+before trade-in/i)?.[1]);
-    if (amount === undefined || (price !== undefined && Math.abs(amount - price) >= 0.005)) continue;
-    const candidate: string[] = [];
-    let blanks = 0;
-    for (let cursor = index - 1; cursor >= 0 && cursor >= index - 12; cursor -= 1) {
-      const previous = lines[cursor].trim();
-      if (!previous) { blanks += 1; if (blanks > 2 && candidate.length) break; continue; }
-      if (!/^\*\s+/.test(previous)) { if (candidate.length) break; continue; }
-      candidate.unshift(previous.replace(/^\*\s+/, '').trim());
-    }
-    if (candidate.length >= 2) { values = candidate; break; }
-  }
-  const pricedCondition = typeof price === 'number'
-    ? conditionPrices.find((option) => typeof option.price === 'number' && Math.abs(option.price - price) < 0.005)?.condition
-    : '';
-  const condition = pricedCondition || values.find((value) => /^(?:Fair|Good|Excellent|Premium|Like New|New)$/i.test(value)) || '';
-  const samePrice = (option: { price?: number }) => typeof price === 'number' && typeof option.price === 'number' && Math.abs(option.price - price) < 0.005;
-  const storageFromPrice = storagePrices.find(samePrice)?.value || '';
-  const processor = processorPrices.find(samePrice)?.value || values.find((value) => /\b(?:Core|Ryzen|Celeron|Pentium|Apple M\d)\b/i.test(value)) || pageSpecs.get('Processor') || '';
-  const memory = memoryPrices.find(samePrice)?.value || [...values].reverse().find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value) && value !== storageFromPrice) || pageSpecs.get('Memory') || '';
-  const matchingColors = colorPrices.filter(samePrice);
-  const imageText = imageAltText.slice(0, 12).join(' ');
-  const colorFromPrice = matchingColors.find((option) => imageText.toLowerCase().includes(option.value.toLowerCase()))?.value || matchingColors[0]?.value || '';
-  const storage = values.find((value) => /^\d+(?:\.\d+)?\s*(?:GB|TB)$/i.test(value)) || storageFromPrice;
-  const color = values.find((value) => /\b(?:Black|Blue|Natural|White|Gold|Silver|Gray|Grey|Green|Red|Purple|Pink|Titanium)\b/i.test(value)) || colorFromPrice;
-  const carrier = /\bunlocked\b/i.test(`${title} ${lines.slice(0, 600).join(' ')}`) ? 'Unlocked' : '';
-  const connectivity = values.find((value) => /wi[-\u2010-\u2015 ]?fi|\b5g\b|\blte\b/i.test(value)) || pageSpecs.get('Connectivity') || '';
-  const battery = values.find((value) => /battery/i.test(value)) || batteryPrices.find(samePrice)?.value || '';
-  const specs = [
-    processor && { name: 'Processor', value: processor }, memory && { name: 'Memory', value: memory },
-    storage && { name: 'Storage', value: storage }, color && { name: 'Color', value: color },
-    carrier && { name: 'Carrier', value: carrier }, connectivity && { name: 'Connectivity', value: connectivity }, condition && { name: 'Condition', value: condition },
-    battery && { name: 'Battery', value: battery },
-    ...[...pageSpecs.entries()].filter(([name]) => !['Processor', 'Memory', 'Storage', 'Color'].includes(name)).map(([name, value]) => ({ name, value })),
-  ].filter(Boolean);
-  const description = [title, condition && `${condition} refurbished condition`, storage, color, carrier, battery].filter(Boolean).join(', ');
-  return {
-    ok: Boolean(title || price || images.length || specs.length),
-    url: normalizePartOrderUrl(url), title, price, currency, vendor: derivePartVendorFromUrl(url),
-    description: description ? `${description}. Product-page values can change by selected configuration; review all editable quote fields before saving.` : undefined,
-    images, specs,
-    conditionOptions: conditionPrices,
-  };
-}
-
-async function scrapeReaderFallback(url: string) {
-  const parsed = new URL(url);
-  const suffix = `${parsed.host}${parsed.pathname}${parsed.search}`;
-  const source = await Promise.any([
-    `https://r.jina.ai/https://${suffix}`,
-    `https://r.jina.ai/http://${suffix}`,
-  ].map(async (readerUrl) => {
-    const response = await fetch(readerUrl, {
-      headers: { Accept: 'text/plain', 'User-Agent': 'GadgetBoy-POS/1.0 product metadata reader' },
-      signal: AbortSignal.timeout(25_000),
-    } as any);
-    if (!response.ok) throw new Error(`Product reader failed (${response.status}).`);
-    return response.text();
-  }));
-  return extractPartMetadataFromReader(source, url);
 }
 
 // Prevent random blank popup windows (often caused by window.open or target=_blank)
@@ -647,7 +277,6 @@ function emitAllDataChanged() {
       'deviceCategories:changed',
       'productCategories:changed',
       'products:changed',
-      'purchaseOrders:changed',
       'partSources:changed',
       'calendarEvents:changed',
       'timeEntries:changed',
@@ -1267,69 +896,91 @@ function decryptAppPassword(cfg: any): string | null {
   }
 }
 
-async function sendSupabaseEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
-  if (!cloudSession?.supabaseUrl || !cloudSession?.accessToken || !cloudSession?.shopId) {
-    return { ok: false, unavailable: true, error: 'Cloud session is not ready.' };
-  }
+// ─── Clover REST config helpers ───────────────────────────────────────────
+function cloverRestConfigPath(): string {
+  return path.join(resolveDataRoot(), 'clover-config.json');
+}
+
+function readCloverRestConfig(): any {
   try {
-    const attachments = (Array.isArray(payload.attachments) ? payload.attachments : []).map((attachment: any) => {
-      const raw = attachment?.content;
-      if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
-        return {
-          filename: String(attachment?.filename || 'attachment'),
-          contentBase64: Buffer.from(raw).toString('base64'),
-          encoding: 'base64',
-          contentType: String(attachment?.contentType || 'application/octet-stream'),
-        };
-      }
-      return {
-        filename: String(attachment?.filename || 'attachment'),
-        content: String(raw ?? ''),
-        contentType: String(attachment?.contentType || 'application/octet-stream'),
-      };
-    });
-    const response = await fetch(`${cloudSession.supabaseUrl.replace(/\/+$/, '')}/functions/v1/send-pos-email`, {
-      method: 'POST',
-      headers: {
-        apikey: cloudSession.supabasePublishableKey,
-        Authorization: `Bearer ${cloudSession.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'send',
-        shopId: cloudSession.shopId,
-        to: payload.to,
-        bcc: payload.bcc,
-        subject: payload.subject,
-        text: payload.text,
-        html: payload.html,
-        attachments,
-      }),
-    });
-    const body: any = await response.json().catch(() => null);
-    if (!response.ok || !body?.ok) {
-      return { ok: false, error: String(body?.error || `Supabase email failed (${response.status}).`) };
-    }
-    return { ok: true, messageId: body.messageId || null };
-  } catch (error: any) {
-    return { ok: false, error: error?.message || String(error) };
+    const p = cloverRestConfigPath();
+    if (!fs.existsSync(p)) return {};
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return {};
   }
 }
 
-async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
-  const cloudDelivery = await sendSupabaseEmail(payload);
-  if (cloudDelivery.ok) return cloudDelivery;
+function writeCloverRestConfig(cfg: any) {
+  try {
+    fs.writeFileSync(cloverRestConfigPath(), JSON.stringify(cfg || {}, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
 
+function decryptCloverToken(cfg: any): string | null {
+  try {
+    const enc = cfg?.accessTokenEnc;
+    if (!enc || typeof enc !== 'string') return null;
+    const buf = Buffer.from(enc, 'base64');
+    if (safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(buf);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function cloverApiRequest(opts: {
+  method: string;
+  urlPath: string;
+  accessToken: string;
+  body?: any;
+  baseUrl?: string;
+}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const base = opts.baseUrl || 'https://api.clover.com';
+    const url = new URL(opts.urlPath, base);
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const reqOpts: any = {
+      method: opts.method,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      headers: {
+        'Authorization': `Bearer ${opts.accessToken}`,
+        'Accept': 'application/json',
+        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+      },
+    };
+    const req = https.request(reqOpts, (res: any) => {
+      let data = '';
+      res.on('data', (chunk: any) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+          } else {
+            reject(new Error(`Clover API error ${res.statusCode}: ${parsed?.message || data}`));
+          }
+        } catch {
+          reject(new Error(`Clover API non-JSON response (${res.statusCode}): ${data.slice(0, 200)}`));
+        }
+      });
+    });
+    req.on('error', (e: any) => reject(e));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
-  if (!appPass) {
-    return {
-      ok: false,
-      error: cloudDelivery.unavailable
-        ? 'Email not configured. Add the Gmail App Password to Supabase or this PC.'
-        : String(cloudDelivery.error || 'Supabase email delivery failed.'),
-    };
-  }
+  if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
 
   const to = String(payload?.to || '').trim();
   if (!to) return { ok: false, error: 'Missing recipient email' };
@@ -1415,9 +1066,6 @@ let autoUpdateInitialized = false;
 let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
-let autoInstallAfterDownload = false;
-let downloadInstructionsWithUpdate = true;
-let instructionsDownloadPromise: Promise<string> = Promise.resolve('');
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1451,63 +1099,6 @@ function getUpdateLabel(info: any): string {
   const version = String(info?.version || '').trim();
   const releaseName = String(info?.releaseName || '').trim();
   return releaseName || (version ? `v${version}` : 'a newer version');
-}
-
-function updateInstructionsUrl(info: any): { url: string; fileName: string } | null {
-  const version = String(info?.version || '').trim().replace(/^v/i, '');
-  if (!/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(version)) return null;
-  const fileName = `GadgetBoy-POS-Instructions-${version}.pdf`;
-  return {
-    fileName,
-    url: `https://github.com/Mattstechwisdom/GB-POS/releases/download/v${encodeURIComponent(version)}/${encodeURIComponent(fileName)}`,
-  };
-}
-
-function downloadHttpsFile(url: string, destination: string, redirectsLeft = 6): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = https.get(url, { headers: { 'User-Agent': 'GadgetBoy-POS-Updater' } }, (response: any) => {
-      const status = Number(response.statusCode || 0);
-      if (status >= 300 && status < 400 && response.headers.location && redirectsLeft > 0) {
-        response.resume();
-        const redirected = new URL(String(response.headers.location), url).toString();
-        downloadHttpsFile(redirected, destination, redirectsLeft - 1).then(resolve, reject);
-        return;
-      }
-      if (status !== 200) {
-        response.resume();
-        reject(new Error(`Instructions download returned HTTP ${status || 'unknown'}.`));
-        return;
-      }
-      const temporary = `${destination}.download`;
-      const output = fs.createWriteStream(temporary);
-      response.pipe(output);
-      output.on('finish', () => {
-        output.close(() => {
-          try {
-            fs.renameSync(temporary, destination);
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      });
-      output.on('error', (error: any) => {
-        try { output.close(); } catch {}
-        try { fs.unlinkSync(temporary); } catch {}
-        reject(error);
-      });
-    });
-    request.setTimeout(30000, () => request.destroy(new Error('Instructions download timed out.')));
-    request.on('error', reject);
-  });
-}
-
-async function downloadUpdateInstructions(info: any): Promise<string> {
-  const asset = updateInstructionsUrl(info);
-  if (!asset) return '';
-  const destination = path.join(app.getPath('downloads'), asset.fileName);
-  await downloadHttpsFile(asset.url, destination);
-  return destination;
 }
 
 function updateUiHtml(initialState: any): string {
@@ -1681,36 +1272,6 @@ function updateUiHtml(initialState: any): string {
       box-shadow: 0 0 18px rgba(57,255,20,.2);
     }
     button.primary:hover { background: #6bff52; }
-    button.auto {
-      color: #fff;
-      background: #7e22ce;
-      border-color: #a855f7;
-      box-shadow: 0 0 18px rgba(168,85,247,.18);
-    }
-    .options {
-      display: flex;
-      align-items: center;
-      min-height: 34px;
-      padding: 8px 11px;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      background: rgba(255,255,255,.035);
-    }
-    .options label {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      color: var(--text);
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .options input {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--green);
-    }
-    button.auto:hover { background: #9333ea; }
     button:disabled {
       cursor: default;
       opacity: .62;
@@ -1753,13 +1314,9 @@ function updateUiHtml(initialState: any): string {
         <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
         <div id="percent" class="percent">0%</div>
       </div>
-      <div id="options" class="options">
-        <label><input id="instructionsCheck" type="checkbox" checked /> Download the matching Instructions PDF</label>
-      </div>
     </div>
     <div class="footer">
       <button id="secondaryBtn">Skip for Now</button>
-      <button id="autoBtn" class="auto">Auto Install &amp; Relaunch</button>
       <button id="primaryBtn" class="primary">Update Now</button>
     </div>
   </div>
@@ -1772,9 +1329,6 @@ function updateUiHtml(initialState: any): string {
     const percentEl = document.getElementById('percent');
     const primaryBtn = document.getElementById('primaryBtn');
     const secondaryBtn = document.getElementById('secondaryBtn');
-    const autoBtn = document.getElementById('autoBtn');
-    const optionsEl = document.getElementById('options');
-    const instructionsCheck = document.getElementById('instructionsCheck');
     const busyDots = '<span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
 
     function pct(value) {
@@ -1791,27 +1345,17 @@ function updateUiHtml(initialState: any): string {
       barWrap.style.display = 'none';
       primaryBtn.disabled = false;
       secondaryBtn.disabled = false;
-      autoBtn.disabled = false;
-      autoBtn.style.display = 'none';
-      optionsEl.style.display = 'flex';
-      if (typeof state.instructions === 'boolean') instructionsCheck.checked = state.instructions;
-      instructionsCheck.disabled = phase !== 'available';
 
       if (phase === 'available') {
         titleEl.textContent = 'Update Available';
-        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready. Update Now downloads and lets you choose when to install. Auto Install & Relaunch downloads, closes the POS, installs, and reopens automatically.';
+        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready to download. Choose Update Now to download the latest release; Skip for Now will remind you again next launch.';
         primaryBtn.textContent = 'Update Now';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'download', instructions: instructionsCheck.checked });
-        autoBtn.style.display = 'inline-block';
-        autoBtn.textContent = 'Auto Install & Relaunch';
-        autoBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'auto', instructions: instructionsCheck.checked });
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
         secondaryBtn.textContent = 'Skip for Now';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'skip' });
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
       } else if (phase === 'downloading') {
         titleEl.textContent = 'Downloading Update';
-        messageEl.innerHTML = (state && state.autoInstall
-          ? 'Downloading GadgetBoy POS ' + label + '. The app will close, install, and relaunch automatically when ready '
-          : 'Downloading GadgetBoy POS ' + label + ' ') + busyDots;
+        messageEl.innerHTML = 'Downloading GadgetBoy POS ' + label + ' ' + busyDots;
         barWrap.style.display = 'flex';
         progressFill.style.width = percent.toFixed(0) + '%';
         percentEl.textContent = percent.toFixed(0) + '%';
@@ -1821,11 +1365,6 @@ function updateUiHtml(initialState: any): string {
         secondaryBtn.textContent = 'Keep Open';
         secondaryBtn.disabled = true;
         secondaryBtn.onclick = null;
-        if (state && state.autoInstall) {
-          autoBtn.style.display = 'inline-block';
-          autoBtn.textContent = 'Auto Relaunch On';
-          autoBtn.disabled = true;
-        }
       } else if (phase === 'downloaded') {
         titleEl.textContent = 'Update Ready';
         messageEl.textContent = 'GadgetBoy POS ' + label + ' has downloaded. The app will close, install the update, and relaunch when you choose Install and Relaunch.';
@@ -1833,9 +1372,9 @@ function updateUiHtml(initialState: any): string {
         progressFill.style.width = '100%';
         percentEl.textContent = '100%';
         primaryBtn.textContent = 'Install and Relaunch';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'install' });
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'install');
         secondaryBtn.textContent = 'Later';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'later' });
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'later');
       } else if (phase === 'applying') {
         titleEl.textContent = 'Applying Update';
         messageEl.innerHTML = 'Closing GadgetBoy POS and applying the update ' + busyDots;
@@ -1853,9 +1392,9 @@ function updateUiHtml(initialState: any): string {
         messageEl.classList.add('error');
         messageEl.textContent = state && state.detail ? state.detail : 'The update could not be completed. You can try again the next time you open the app.';
         primaryBtn.textContent = 'Close';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'skip' });
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
         secondaryBtn.textContent = 'Releases';
-        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', { action: 'releases' });
+        secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
       }
     };
 
@@ -1868,24 +1407,15 @@ function updateUiHtml(initialState: any): string {
 function ensureUpdateUiIpc() {
   if (updateUiIpcRegistered) return;
   updateUiIpcRegistered = true;
-  ipcMain.on('updater-window-action', (_event: any, payload: any) => {
+  ipcMain.on('updater-window-action', (_event: any, action: string) => {
     try {
-      const action = typeof payload === 'string' ? payload : String(payload?.action || '');
-      if (action === 'download' || action === 'auto') {
-        downloadInstructionsWithUpdate = payload?.instructions !== false;
-      }
       if (action === 'download') {
-        autoInstallAfterDownload = false;
-        void startUpdateDownload();
-      } else if (action === 'auto') {
-        autoInstallAfterDownload = true;
         void startUpdateDownload();
       } else if (action === 'install') {
         void installDownloadedUpdate();
       } else if (action === 'releases') {
         void shell.openExternal(getReleasesUrl());
       } else if (action === 'skip' || action === 'later') {
-        autoInstallAfterDownload = false;
         closeUpdateUi();
       }
     } catch (e: any) {
@@ -1897,7 +1427,7 @@ function ensureUpdateUiIpc() {
 function sendUpdateUiState(state: any) {
   try {
     if (!updateUiWindow || updateUiWindow.isDestroyed()) return;
-    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify({ ...(state || {}), autoInstall: autoInstallAfterDownload, instructions: downloadInstructionsWithUpdate })});`).catch(() => {});
+    updateUiWindow.webContents.executeJavaScript(`window.__setUpdateState(${JSON.stringify(state || {})});`).catch(() => {});
   } catch {
     // ignore
   }
@@ -1926,8 +1456,8 @@ function showUpdateUi(state: any) {
     }
 
     updateUiWindow = new BrowserWindow({
-      width: 690,
-      height: 440,
+      width: 560,
+      height: 390,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -1951,7 +1481,7 @@ function showUpdateUi(state: any) {
     updateUiWindow.once('ready-to-show', () => {
       try { updateUiWindow.show(); } catch {}
     });
-    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml({ ...(state || {}), autoInstall: autoInstallAfterDownload, instructions: downloadInstructionsWithUpdate }))}`);
+    updateUiWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(updateUiHtml(state))}`);
   } catch (e: any) {
     autoUpdatePromptOpen = false;
     try { console.error('[AutoUpdate] update window failed:', e?.message || e); } catch {}
@@ -1963,16 +1493,9 @@ async function startUpdateDownload() {
   autoUpdateDownloading = true;
   showUpdateUi({ phase: 'downloading', label: getUpdateLabel(updateUiInfo), percent: 0 });
   try {
-    instructionsDownloadPromise = downloadInstructionsWithUpdate
-      ? downloadUpdateInstructions(updateUiInfo).catch((error: any) => {
-          try { console.warn('[AutoUpdate] Instructions download failed:', error?.message || error); } catch {}
-          return '';
-        })
-      : Promise.resolve('');
-    await Promise.all([autoUpdater.downloadUpdate(), instructionsDownloadPromise]);
+    await autoUpdater.downloadUpdate();
   } catch (e: any) {
     autoUpdateDownloading = false;
-    autoInstallAfterDownload = false;
     showUpdateUi({
       phase: 'error',
       detail: `GadgetBoy POS could not download the update. ${String(e?.message || e || 'Unknown update error.')}`,
@@ -1982,7 +1505,6 @@ async function startUpdateDownload() {
 
 async function installDownloadedUpdate() {
   if (!autoUpdater) return;
-  autoInstallAfterDownload = false;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   setTimeout(() => {
     try {
@@ -2000,9 +1522,6 @@ async function installDownloadedUpdate() {
 async function promptToDownloadUpdate(info: any) {
   if (autoUpdatePromptOpen || autoUpdateDownloading || !autoUpdater) return;
   updateUiInfo = info;
-  autoInstallAfterDownload = false;
-  downloadInstructionsWithUpdate = true;
-  instructionsDownloadPromise = Promise.resolve('');
   showUpdateUi({ phase: 'available', label: getUpdateLabel(info), percent: 0 });
 }
 
@@ -2010,11 +1529,6 @@ async function promptToInstallDownloadedUpdate(info: any) {
   if (!autoUpdater) return;
   updateUiInfo = info;
   autoUpdateDownloading = false;
-  await instructionsDownloadPromise;
-  if (autoInstallAfterDownload) {
-    void installDownloadedUpdate();
-    return;
-  }
   showUpdateUi({ phase: 'downloaded', label: getUpdateLabel(info), percent: 100 });
 }
 
@@ -2028,15 +1542,6 @@ function setupAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.allowPrerelease = false;
-  autoUpdater.allowDowngrade = false;
-  // Do not rely solely on the generated app-update.yml. Older installs have
-  // shipped with stale metadata, so keep the production feed explicit.
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'Mattstechwisdom',
-    repo: 'GB-POS',
-  });
   autoUpdater.on('checking-for-update', () => {
     try { console.log('[AutoUpdate] checking for update'); } catch {}
   });
@@ -2061,7 +1566,6 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('error', (err: any) => {
     autoUpdateDownloading = false;
-    autoInstallAfterDownload = false;
     try { console.error('[AutoUpdate] error:', err?.message || err); } catch {}
     showUpdateUi({
       phase: 'error',
@@ -2078,15 +1582,13 @@ function checkForAppUpdatesSoon() {
     if ((process.env.GBPOS_DISABLE_AUTO_UPDATE || '').toString().trim() === '1') return;
     setupAutoUpdater();
     if (!autoUpdater) return;
-    const check = () => {
+    setTimeout(() => {
       try {
         void autoUpdater.checkForUpdates();
       } catch (e: any) {
         try { console.error('[AutoUpdate] check failed:', e?.message || e); } catch {}
       }
-    };
-    setTimeout(check, 2500);
-    setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
+    }, 2500);
   } catch (e: any) {
     try { console.error('[AutoUpdate] setup failed:', e?.message || e); } catch {}
   }
@@ -2355,9 +1857,8 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
     })();
     const child = new BrowserWindow({
-      width: 1480,
+      width: 1200,
       height: 960,
-      minWidth: 1320,
       resizable: true,
       parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
@@ -2369,7 +1870,7 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
         preload: path.join(__dirname, '..', 'electron', 'preload.js'),
       },
       show: false,
-      title: windowTitle('Repair Selection'),
+      title: windowTitle('Add Repair to Work Order'),
     });
     showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
@@ -2426,12 +1927,6 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
   } catch (err) {
     return { ok: false, error: String(err) };
   }
-});
-
-ipcMain.handle('parts:scrapeUrl', async (_e: any, rawUrl: string) => {
-  const url = normalizePartOrderUrl(rawUrl);
-  if (!url || !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a valid part URL.' };
-  return { ok: true, url, vendor: derivePartVendorFromUrl(url) };
 });
 
 // -------------------------
@@ -2787,7 +2282,7 @@ ipcMain.handle('window:toggleFullScreen', async (event: any) => {
   try { const w = BrowserWindow.fromWebContents(event.sender); if (!w) return { ok: false, error: 'no-window' }; const next = !w.isFullScreen(); w.setFullScreen(next); return { ok: true, value: next }; } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
 });
 // Open Calendar window
-ipcMain.handle('open-calendar', async (_event: any, payload?: any) => {
+ipcMain.handle('open-calendar', async () => {
   console.log('[IPC] open-calendar invoked');
   const { screen } = electron;
   const primary = screen.getPrimaryDisplay();
@@ -2827,9 +2322,7 @@ ipcMain.handle('open-calendar', async (_event: any, payload?: any) => {
   });
   child.on('show', () => { try { child.maximize(); child.focus(); } catch {} });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const eventId = Number(payload?.calendarEventId || 0) || 0;
-  const suffix = `?calendar=true${eventId ? `&calendarEventId=${eventId}` : ''}`;
-  const url = isDev ? `${DEV_SERVER_URL}/${suffix}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}${suffix}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?calendar=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?calendar=true`;
   console.log('[Calendar] Loading URL:', url);
   child.loadURL(url).catch((e: any) => console.error('[Calendar] loadURL failed', e));
   return { ok: true };
@@ -2894,6 +2387,328 @@ ipcMain.handle('open-notification-settings', async (event: any) => {
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const url = isDev ? `${DEV_SERVER_URL}/?notificationSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?notificationSettings=true`;
   child.loadURL(url).catch((e: any) => console.error('[NotificationSettings] loadURL failed', e));
+  return { ok: true };
+});
+
+// ─── Clover IPC handlers ───────────────────────────────────────────────────
+
+ipcMain.handle('clover:rest:getConfig', async () => {
+  const cfg = readCloverRestConfig();
+  return {
+    merchantId: cfg.merchantId || '',
+    deviceSerial: cfg.deviceSerial || '',
+    environment: cfg.environment || 'production',
+    hasToken: !!cfg.accessTokenEnc,
+    deviceIp: cfg.deviceIp || '',
+    devicePort: cfg.devicePort || 12346,
+    hasLocalToken: !!cfg.localAuthTokenEnc,
+    remoteAppId: cfg.remoteAppId || '',
+  };
+});
+
+ipcMain.handle('clover:saveConfig', async (_e: any, data: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    if (data.merchantId !== undefined) cfg.merchantId = String(data.merchantId).trim();
+    if (data.deviceSerial !== undefined) cfg.deviceSerial = String(data.deviceSerial).trim();
+    if (data.environment !== undefined) cfg.environment = data.environment === 'sandbox' ? 'sandbox' : 'production';
+    if (data.deviceIp !== undefined) cfg.deviceIp = String(data.deviceIp).trim();
+    if (data.devicePort !== undefined) cfg.devicePort = Number(data.devicePort) || 12346;
+    if (data.remoteAppId !== undefined) cfg.remoteAppId = String(data.remoteAppId).trim();
+    if (data.localAuthToken !== undefined) {
+      const tok = String(data.localAuthToken || '').trim();
+      if (!tok) {
+        delete cfg.localAuthTokenEnc;
+      } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
+        cfg.localAuthTokenEnc = safeStorage.encryptString(tok).toString('base64');
+      } else {
+        cfg.localAuthToken = tok;
+      }
+    }
+    writeCloverRestConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:setAccessToken', async (_e: any, token: string) => {
+  try {
+    const trimmed = String(token || '').trim();
+    const cfg = readCloverRestConfig();
+    if (!trimmed) {
+      delete cfg.accessTokenEnc;
+    } else if (safeStorage && typeof safeStorage.encryptString === 'function') {
+      cfg.accessTokenEnc = safeStorage.encryptString(trimmed).toString('base64');
+    } else {
+      return { ok: false, error: 'safeStorage not available' };
+    }
+    writeCloverRestConfig(cfg);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:testConnection', async () => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const merchant = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${cfg.merchantId}`, accessToken: token, baseUrl: base });
+    return { ok: true, merchantName: merchant?.name || cfg.merchantId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:chargeCard', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const mId = cfg.merchantId;
+    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
+    const label: string = String(payload?.label || 'Service');
+
+    // 1. Create order
+    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
+    const orderId: string = order?.id;
+    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
+
+    // 2. Add line item
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
+
+    // 3. Get device ID by serial
+    let deviceId: string | null = null;
+    if (cfg.deviceSerial) {
+      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices?filter=serial%3D${encodeURIComponent(cfg.deviceSerial)}`, accessToken: token, baseUrl: base });
+      deviceId = devResp?.elements?.[0]?.id || null;
+    }
+    if (!deviceId) {
+      // Fall back to first device
+      const devResp = await cloverApiRequest({ method: 'GET', urlPath: `/v3/merchants/${mId}/devices`, accessToken: token, baseUrl: base });
+      deviceId = devResp?.elements?.[0]?.id || null;
+    }
+    if (!deviceId) return { ok: false, error: 'No Clover device found on this account' };
+
+    // 4. Send order to Pay Display
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/devices/${deviceId}/pay_display`, accessToken: token, body: { action: 'SHOW_ORDER', order: { id: orderId } }, baseUrl: base });
+
+    return { ok: true, orderId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+// ─── Clover Local Pay Display (LAN direct to Flex on port 12346) ───────────
+
+function decryptLocalCloverToken(cfg: any): string | null {
+  try {
+    const enc = cfg?.localAuthTokenEnc;
+    if (enc && typeof enc === 'string' && safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+    }
+    if (typeof cfg?.localAuthToken === 'string' && cfg.localAuthToken.trim()) return cfg.localAuthToken.trim();
+    return null;
+  } catch { return null; }
+}
+
+function cloverLocalRequest(opts: {
+  deviceIp: string;
+  devicePort: number;
+  path: string;
+  method: string;
+  authToken?: string | null;
+  body?: any;
+  timeoutMs?: number;
+  forceHttps?: boolean;
+  bearerPrefix?: 'Bearer' | 'token';
+}): Promise<{ ok: boolean; status?: number; data?: any; error?: string }> {
+  return new Promise((resolve) => {
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : undefined;
+    const mod = opts.forceHttps ? https : http;
+    const authHeaders: Record<string, string> = {};
+    if (opts.authToken) {
+      // Clover REST Pay API accepts either format depending on firmware version
+      if (opts.bearerPrefix === 'token') {
+        authHeaders['Authorization'] = `token ${opts.authToken}`;
+      } else {
+        authHeaders['Authorization'] = `Bearer ${opts.authToken}`;
+      }
+    }
+    const reqOpts: any = {
+      method: opts.method,
+      hostname: opts.deviceIp,
+      port: opts.devicePort,
+      path: opts.path,
+      headers: {
+        'Accept': 'application/json',
+        ...(bodyStr ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
+        ...authHeaders,
+      },
+      ...(opts.forceHttps ? { rejectUnauthorized: false } : {}),
+      timeout: opts.timeoutMs || 30000,
+    };
+    try {
+      const req = mod.request(reqOpts, (res: any) => {
+        let data = '';
+        res.on('data', (c: any) => { data += String(c ?? ''); });
+        res.on('end', () => {
+          const status = Number(res?.statusCode || 0);
+          const ok = status >= 200 && status < 300;
+          try {
+            const json = data.trim() ? JSON.parse(data) : null;
+            resolve({ ok, status, data: json });
+          } catch {
+            resolve({ ok, status, data: data.trim() || null });
+          }
+        });
+      });
+      req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch {} });
+      req.on('error', (err: any) => { resolve({ ok: false, error: String(err?.message || err) }); });
+      if (bodyStr) req.write(bodyStr);
+      req.end();
+    } catch (e: any) {
+      resolve({ ok: false, error: String(e?.message || e) });
+    }
+  });
+}
+
+// Probe several path/protocol/auth combos; return first success or best error
+async function cloverProbeDevice(deviceIp: string, devicePort: number, authToken: string | null, remoteAppId?: string, timeoutMs = 6000) {
+  type Probe = { path: string; forceHttps: boolean; bearerPrefix?: 'Bearer' | 'token'; label: string };
+  const probes: Probe[] = [
+    { path: '/status', forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /status Bearer' },
+    { path: '/status', forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /status token'  },
+    { path: '/status', forceHttps: false,                          label: 'HTTP /status (no auth)' },
+    { path: '/ping',   forceHttps: false, bearerPrefix: 'Bearer', label: 'HTTP /ping Bearer'   },
+    { path: '/ping',   forceHttps: false, bearerPrefix: 'token',  label: 'HTTP /ping token'    },
+    { path: '/',       forceHttps: false,                          label: 'HTTP / (no auth)'    },
+    { path: '/status', forceHttps: true,  bearerPrefix: 'Bearer', label: 'HTTPS /status Bearer' },
+    { path: '/status', forceHttps: true,  bearerPrefix: 'token',  label: 'HTTPS /status token'  },
+    { path: '/',       forceHttps: true,                           label: 'HTTPS / (no auth)'   },
+  ];
+  const errors: string[] = [];
+  for (const p of probes) {
+    const res = await cloverLocalRequest({ deviceIp, devicePort, path: p.path, method: 'GET', authToken, timeoutMs, forceHttps: p.forceHttps, bearerPrefix: p.bearerPrefix });
+    if (res.ok || (res.status && res.status < 500)) {
+      return { ok: true, probe: p.label, status: res.status };
+    }
+    errors.push(`${p.label}: ${res.error || `HTTP ${res.status}`}`);
+  }
+  const uniqueErrors = [...new Set(errors.map(e => e.replace(/^[^:]+: /, '')))];
+  return { ok: false, error: `Device not reachable. Errors: ${uniqueErrors.join(', ')}. Check IP (${deviceIp}:${devicePort}), that Pay Display app is open, and enter the Auth Token shown in the Pay Display app settings on the Flex.` };
+}
+
+ipcMain.handle('clover:testLocalConnection', async () => {
+  try {
+    const cfg = readCloverRestConfig();
+    const deviceIp = String(cfg.deviceIp || '').trim();
+    const devicePort = Number(cfg.devicePort || 12346);
+    if (!deviceIp) return { ok: false, error: 'No device IP configured.' };
+    if (!cfg.remoteAppId) return { ok: false, error: 'Remote App ID is required. Get it from developer.clover.com → your app → App ID.' };
+    const authToken = decryptLocalCloverToken(cfg);
+    const res = await cloverProbeDevice(deviceIp, devicePort, authToken, cfg.remoteAppId);
+    if (res.ok) return { ok: true, message: `Clover Flex reachable at ${deviceIp}:${devicePort} (${res.probe})` };
+    return { ok: false, error: res.error || 'Device not reachable. Check IP, port, and that the Pay Display app is open.' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:localCharge', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const deviceIp = String(cfg.deviceIp || '').trim();
+    const devicePort = Number(cfg.devicePort || 12346);
+    if (!deviceIp) return { ok: false, error: 'No device IP configured. Go to Admin → Integrations → Clover to set up.' };
+    const authToken = decryptLocalCloverToken(cfg);
+    const amountCents = Math.round(Number(payload?.amountCents) || 0);
+    if (amountCents <= 0) return { ok: false, error: 'Amount must be greater than zero.' };
+    const externalId = `GB-${Date.now()}`;
+    const body: any = { externalId, amount: amountCents, tipMode: 'NO_TIP' };
+    if (cfg.remoteAppId) body.appId = cfg.remoteAppId;
+    // Try HTTP first; fall back to HTTPS if ECONNRESET (some devices use HTTPS)
+    let res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: false });
+    if (!res.ok && (res.error || '').includes('ECONNRESET')) {
+      res = await cloverLocalRequest({ deviceIp, devicePort, path: '/sale', method: 'POST', authToken, body, timeoutMs: 30000, forceHttps: true });
+    }
+    if (res.ok) return { ok: true, result: res.data, externalId };
+    return { ok: false, error: res.error || `Device returned HTTP ${res.status}. Check that Pay Display is open on the Flex.` };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:cashSale', async (_e: any, payload: any) => {
+  try {
+    const cfg = readCloverRestConfig();
+    const token = decryptCloverToken(cfg);
+    if (!token) return { ok: false, error: 'No access token saved' };
+    if (!cfg.merchantId) return { ok: false, error: 'No Merchant ID configured' };
+    const base = cfg.environment === 'sandbox' ? 'https://sandbox.dev.clover.com' : 'https://api.clover.com';
+    const mId = cfg.merchantId;
+    const amountCents: number = Math.round(Number(payload?.amountCents) || 0);
+    const tenderedCents: number = Math.round(Number(payload?.tenderedCents) || amountCents);
+    const label: string = String(payload?.label || 'Service');
+
+    // 1. Create order
+    const order = await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders`, accessToken: token, body: { currency: 'USD' }, baseUrl: base });
+    const orderId: string = order?.id;
+    if (!orderId) return { ok: false, error: 'Failed to create Clover order' };
+
+    // 2. Add line item
+    await cloverApiRequest({ method: 'POST', urlPath: `/v3/merchants/${mId}/orders/${orderId}/line_items`, accessToken: token, body: { name: label, price: amountCents, unitQty: 1000 }, baseUrl: base });
+
+    // 3. Record cash payment (triggers drawer)
+    await cloverApiRequest({
+      method: 'POST',
+      urlPath: `/v3/merchants/${mId}/orders/${orderId}/payments`,
+      accessToken: token,
+      body: {
+        tender: { labelKey: 'com.clover.tender.cash' },
+        amount: amountCents,
+        cashTendered: tenderedCents,
+      },
+      baseUrl: base,
+    });
+
+    return { ok: true, orderId };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('open-clover-settings', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 680,
+    height: 580,
+    resizable: false,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Clover Settings'),
+  });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?cloverSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?cloverSettings=true`;
+  child.loadURL(url).catch((e: any) => console.error('[CloverSettings] loadURL failed', e));
   return { ok: true };
 });
 
@@ -2995,6 +2810,849 @@ ipcMain.handle('server-sync-backup-now', async (_e: any, label?: string) => {
 ipcMain.handle('server-sync-status', async () => {
   const cfg = readServerSyncConfig();
   return { ok: true, config: cfg };
+});
+
+// -------------------------------------------------------------
+// Clover Remote Pay (LAN)
+// -------------------------------------------------------------
+
+type CloverConnectionConfig = {
+  ipAddress?: string;
+  // Stored encrypted (base64) when safeStorage is available.
+  authTokenEnc?: string | null;
+  // Fallback when safeStorage is unavailable.
+  authToken?: string | null;
+  updatedAt?: string;
+};
+
+function cloverConfigPath(): string {
+  return path.join(resolveDataRoot(), 'clover-connection.json');
+}
+
+function encryptToBase64(value: string): string | null {
+  try {
+    const v = String(value || '').trim();
+    if (!v) return null;
+    if (safeStorage && typeof safeStorage.encryptString === 'function') {
+      const buf = safeStorage.encryptString(v);
+      return Buffer.from(buf).toString('base64');
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function decryptFromBase64(enc: string): string | null {
+  try {
+    const e = String(enc || '').trim();
+    if (!e) return null;
+    const buf = Buffer.from(e, 'base64');
+    if (safeStorage && typeof safeStorage.decryptString === 'function') {
+      return safeStorage.decryptString(buf);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function readCloverConfig(): CloverConnectionConfig {
+  try {
+    const p = cloverConfigPath();
+    if (!fs.existsSync(p)) return { ipAddress: '', authTokenEnc: null, authToken: null };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { ipAddress: '', authTokenEnc: null, authToken: null };
+    return {
+      ipAddress: typeof (json as any).ipAddress === 'string' ? String((json as any).ipAddress) : '',
+      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
+      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
+      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
+    };
+  } catch {
+    return { ipAddress: '', authTokenEnc: null, authToken: null };
+  }
+}
+
+function writeCloverConfig(patch: Partial<CloverConnectionConfig>) {
+  try {
+    const current = readCloverConfig();
+    const next: CloverConnectionConfig = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    ensureDir(path.dirname(cloverConfigPath()));
+    fs.writeFileSync(cloverConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function getCloverAuthToken(cfg?: CloverConnectionConfig): string | null {
+  const c = cfg || readCloverConfig();
+  const dec = c?.authTokenEnc ? decryptFromBase64(c.authTokenEnc) : null;
+  if (dec && dec.trim()) return dec.trim();
+  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
+  if (plain && plain.trim()) return plain.trim();
+  return null;
+}
+
+function persistCloverAuthToken(token: string) {
+  const t = String(token || '').trim();
+  if (!t) return;
+  const enc = encryptToBase64(t);
+  if (enc) {
+    writeCloverConfig({ authTokenEnc: enc, authToken: null });
+  } else {
+    writeCloverConfig({ authToken: t, authTokenEnc: null });
+  }
+}
+
+type CloverStatus = {
+  ok: true;
+  state: 'disconnected' | 'connecting' | 'pairing' | 'connected' | 'ready' | 'error' | string;
+  endpoint?: string;
+  pairingCode?: string | null;
+  lastError?: string | null;
+  updatedAt?: string;
+};
+
+let cloverConnector: any | null = null;
+let cloverStatus: CloverStatus = {
+  ok: true,
+  state: 'disconnected',
+  endpoint: '',
+  pairingCode: null,
+  lastError: null,
+  updatedAt: new Date().toISOString(),
+};
+
+const pendingCloverSales = new Map<string, { resolve: (resp: any) => void; reject: (err: any) => void; timer: any }>();
+
+function emitToAllWindows(channel: string, payload: any) {
+  try {
+    const wins = BrowserWindow.getAllWindows();
+    for (const w of wins) {
+      try { w.webContents.send(channel, payload); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function setCloverStatus(patch: Partial<CloverStatus>) {
+  cloverStatus = {
+    ...cloverStatus,
+    ...patch,
+    ok: true,
+    updatedAt: new Date().toISOString(),
+  };
+  emitToAllWindows('clover:status', cloverStatus);
+}
+
+function rejectAllPendingCloverSales(message: string) {
+  try {
+    for (const [, p] of pendingCloverSales) {
+      try { clearTimeout(p.timer); } catch {}
+      try { p.reject(new Error(message)); } catch {}
+    }
+  } catch {
+    // ignore
+  }
+  pendingCloverSales.clear();
+}
+
+function disposeCloverConnector() {
+  try {
+    if (cloverConnector && typeof cloverConnector.dispose === 'function') {
+      cloverConnector.dispose();
+    }
+  } catch {
+    // ignore
+  }
+  cloverConnector = null;
+  rejectAllPendingCloverSales('Clover disconnected');
+}
+
+function buildCloverEndpoint(ipAddress: string): string {
+  const raw = String(ipAddress || '').trim();
+  if (!raw) return '';
+
+  // If a full ws/wss URL is provided, normalize path to /remote_pay.
+  if (/^wss?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (!u.pathname || u.pathname === '/') u.pathname = '/remote_pay';
+      return u.toString();
+    } catch {
+      const noTrail = raw.replace(/\/+$/, '');
+      return /\/remote_pay$/i.test(noTrail) ? noTrail : `${noTrail}/remote_pay`;
+    }
+  }
+
+  const cleaned = raw.replace(/\/+$/, '');
+  let hostPort = cleaned;
+  let pathPart = '/remote_pay';
+  if (cleaned.includes('/')) {
+    const idx = cleaned.indexOf('/');
+    hostPort = cleaned.slice(0, idx);
+    const p = cleaned.slice(idx);
+    if (p && p !== '/') pathPart = p;
+  }
+  if (!hostPort) return '';
+  const withPort = hostPort.includes(':') ? hostPort : `${hostPort}:12346`;
+  const finalPath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+  return `wss://${withPort}${finalPath}`;
+}
+
+function cloverSaleResponseToSummary(resp: any): any {
+  try {
+    const success = Boolean(resp?.getSuccess?.());
+    const result = resp?.getResult?.();
+    const reason = resp?.getReason?.();
+    const message = resp?.getMessage?.();
+    const payment = resp?.getPayment?.();
+    const paymentId = payment?.getId?.();
+    const externalPaymentId = payment?.getExternalPaymentId?.();
+    const amount = payment?.getAmount?.();
+    const tipAmount = payment?.getTipAmount?.();
+    return {
+      success,
+      result: typeof result !== 'undefined' ? String(result) : null,
+      reason: reason ? String(reason) : null,
+      message: message ? String(message) : null,
+      paymentId: paymentId ? String(paymentId) : null,
+      externalPaymentId: externalPaymentId ? String(externalPaymentId) : null,
+      amount: typeof amount === 'number' ? amount : null,
+      tipAmount: typeof tipAmount === 'number' ? tipAmount : null,
+    };
+  } catch {
+    return { success: false, result: null, reason: null, message: null };
+  }
+}
+
+function makeCloverListener(): any {
+  const noop = () => {};
+  return {
+    onDisconnected: () => {
+      setCloverStatus({ state: 'disconnected', pairingCode: null });
+      rejectAllPendingCloverSales('Clover disconnected');
+    },
+    onDeviceDisconnected: () => {
+      setCloverStatus({ state: 'disconnected', pairingCode: null });
+      rejectAllPendingCloverSales('Clover disconnected');
+    },
+    onDeviceConnected: () => {
+      setCloverStatus({ state: 'connected', lastError: null });
+    },
+    onReady: (_merchantInfo: any) => {
+      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
+    },
+    onDeviceReady: (_merchantInfo: any) => {
+      setCloverStatus({ state: 'ready', pairingCode: null, lastError: null });
+    },
+    onDeviceActivityStart: noop,
+    onDeviceActivityEnd: noop,
+    onDeviceError: (deviceErrorEvent: any) => {
+      const msg = String(deviceErrorEvent?.getMessage?.() || deviceErrorEvent?.message || 'Clover device error');
+      setCloverStatus({ state: 'error', lastError: msg });
+    },
+    onAuthResponse: noop,
+    onTipAdjustAuthResponse: noop,
+    onCapturePreAuthResponse: noop,
+    onVerifySignatureRequest: noop,
+    onConfirmPaymentRequest: noop,
+    onCloseoutResponse: noop,
+    onSaleResponse: (response: any) => {
+      const summary = cloverSaleResponseToSummary(response);
+      emitToAllWindows('clover:saleResponse', summary);
+
+      const key = String(summary?.externalPaymentId || '').trim();
+      const pending = key ? pendingCloverSales.get(key) : null;
+      if (pending) {
+        try { clearTimeout(pending.timer); } catch {}
+        pendingCloverSales.delete(key);
+        try { pending.resolve(response); } catch {}
+        return;
+      }
+
+      // Fallback: if we couldn't correlate and there is exactly one pending sale, resolve it.
+      if (pendingCloverSales.size === 1) {
+        const [[onlyKey, onlyPending]] = Array.from(pendingCloverSales.entries());
+        try { clearTimeout(onlyPending.timer); } catch {}
+        pendingCloverSales.delete(onlyKey);
+        try { onlyPending.resolve(response); } catch {}
+      }
+    },
+    onManualRefundResponse: noop,
+    onRefundPaymentResponse: noop,
+    onTipAdded: noop,
+    onVoidPaymentResponse: noop,
+    onVoidPaymentRefundResponse: noop,
+    onVaultCardResponse: noop,
+    onPreAuthResponse: noop,
+    onRetrievePendingPaymentsResponse: noop,
+    onReadCardDataResponse: noop,
+    onMessageFromActivity: noop,
+    onCustomActivityResponse: noop,
+    onRetrieveDeviceStatusResponse: noop,
+    onInvalidStateTransitionResponse: noop,
+    onResetDeviceResponse: noop,
+    onRetrievePaymentResponse: noop,
+    onRetrievePrintersResponse: noop,
+    onPrintJobStatusResponse: noop,
+    onPrintManualRefundReceipt: noop,
+    onPrintManualRefundDeclineReceipt: noop,
+    onPrintPaymentReceipt: noop,
+    onPrintPaymentDeclineReceipt: noop,
+    onPrintPaymentMerchantCopyReceipt: noop,
+    onPrintRefundPaymentReceipt: noop,
+    onCustomerProvidedData: noop,
+    onDisplayReceiptOptionsResponse: noop,
+  };
+}
+
+function requireCloverReady(): { ok: true } | { ok: false; error: string } {
+  if (!cloverConnector) return { ok: false, error: 'Clover is not connected.' };
+  if (cloverConnector?.isReady !== true) return { ok: false, error: 'Clover is not ready yet. Finish pairing and wait for Ready.' };
+  return { ok: true };
+}
+
+// Best-effort cleanup on quit.
+try {
+  app.on('before-quit', () => {
+    try { disposeCloverConnector(); } catch {}
+  });
+} catch {}
+
+ipcMain.handle('clover:getConfig', async () => {
+  const cfg = readCloverConfig();
+  return {
+    ok: true,
+    ipAddress: String(cfg.ipAddress || ''),
+    hasAuthToken: Boolean(getCloverAuthToken(cfg)),
+  };
+});
+
+ipcMain.handle('clover:setConfig', async (_e: any, patch: any) => {
+  try {
+    const p = (patch && typeof patch === 'object') ? patch : {};
+    const next: Partial<CloverConnectionConfig> = {};
+    if (typeof p.ipAddress === 'string') next.ipAddress = String(p.ipAddress || '').trim();
+    if (p.clearAuthToken === true) {
+      next.authToken = null;
+      next.authTokenEnc = null;
+    }
+    if (Object.keys(next).length > 0) writeCloverConfig(next);
+    const cfg = readCloverConfig();
+    return {
+      ok: true,
+      ipAddress: String(cfg.ipAddress || ''),
+      hasAuthToken: Boolean(getCloverAuthToken(cfg)),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:getStatus', async () => {
+  return cloverStatus;
+});
+
+ipcMain.handle('clover:connect', async () => {
+  try {
+    const cfg = readCloverConfig();
+    const ip = String(cfg.ipAddress || '').trim();
+    if (!ip) return { ok: false, error: 'Clover IP address is not set.' };
+
+    const endpoint = buildCloverEndpoint(ip);
+    if (!endpoint) return { ok: false, error: 'Invalid Clover IP address.' };
+
+    // Dispose any prior connection.
+    disposeCloverConnector();
+
+    setCloverStatus({ state: 'connecting', endpoint, pairingCode: null, lastError: null });
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const CloverWebSocketInterface = remotePayCloud.CloverWebSocketInterface;
+
+    class NodeWebSocketImpl extends CloverWebSocketInterface {
+      constructor(ep: string) { super(ep); }
+      public createWebSocket(ep: string): any {
+        const WS = require('ws');
+        // Clover devices frequently use self-signed certs on LAN.
+        return new WS(ep, { rejectUnauthorized: false });
+      }
+      public sendPong(): any {
+        try { (this as any).webSocket?.pong?.(); } catch {}
+        return this;
+      }
+      public sendPing(): any {
+        try { (this as any).webSocket?.ping?.(); } catch {}
+        return this;
+      }
+      public static createInstance(ep: string): any { return new NodeWebSocketImpl(ep); }
+    }
+
+    const appVersion = (() => { try { return app.getVersion(); } catch { return '0.0.0'; } })();
+    const applicationId = `com.gadgetboy.pos:${appVersion}`;
+    const posName = 'GadgetBoy POS';
+    const serialNumber = `GBPOS-${String(os.hostname?.() || 'POS')}`;
+    const authToken = getCloverAuthToken(cfg);
+
+    const onPairingCode = (code: string) => {
+      const c = String(code || '').trim();
+      if (!c) return;
+      setCloverStatus({ state: 'pairing', pairingCode: c });
+      emitToAllWindows('clover:pairingCode', c);
+    };
+
+    const onPairingSuccess = (token: string) => {
+      try { persistCloverAuthToken(token); } catch {}
+      setCloverStatus({ pairingCode: null });
+    };
+
+    const builder = new remotePayCloud.WebSocketPairedCloverDeviceConfigurationBuilder(
+      applicationId,
+      endpoint,
+      posName,
+      serialNumber,
+      authToken || null,
+      onPairingCode,
+      onPairingSuccess,
+    );
+    builder.setWebSocketFactoryFunction(NodeWebSocketImpl.createInstance);
+
+    const deviceConfig = builder.build();
+    cloverConnector = new remotePayCloud.CloverConnector(deviceConfig);
+    cloverConnector.addCloverConnectorListener(makeCloverListener());
+    cloverConnector.initializeConnection();
+
+    return { ok: true, endpoint };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    setCloverStatus({ state: 'error', lastError: msg });
+    return { ok: false, error: msg };
+  }
+});
+
+ipcMain.handle('clover:disconnect', async () => {
+  try {
+    disposeCloverConnector();
+    setCloverStatus({ state: 'disconnected', pairingCode: null });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:sale', async (_e: any, amountCents: any) => {
+  try {
+    const ready = requireCloverReady();
+    if (!ready.ok) return { ok: false, error: ready.error };
+
+    const amt = Number(amountCents);
+    if (!Number.isFinite(amt) || amt <= 0) return { ok: false, error: 'Invalid amount.' };
+    if (pendingCloverSales.size > 0) return { ok: false, error: 'Another Clover sale is already in progress.' };
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const req = new remotePayCloud.remotepay.SaleRequest();
+    req.setAmount(Math.round(amt));
+    const externalId = `GBPOS-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    req.setExternalId(externalId);
+
+    const response = await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingCloverSales.delete(externalId);
+        reject(new Error('Timed out waiting for Clover sale response.'));
+      }, 120000);
+      pendingCloverSales.set(externalId, { resolve, reject, timer });
+      cloverConnector.sale(req);
+    });
+
+    return { ok: true, response: cloverSaleResponseToSummary(response) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('clover:openCashDrawer', async (_e: any, payload: any) => {
+  try {
+    const ready = requireCloverReady();
+    if (!ready.ok) return { ok: false, error: ready.error };
+
+    const remotePayCloud = require('remote-pay-cloud');
+    const reason = String(payload?.reason || 'GadgetBoy POS').trim() || 'GadgetBoy POS';
+    const deviceId = String(payload?.deviceId || '').trim();
+    if (deviceId) {
+      const req = new remotePayCloud.remotepay.OpenCashDrawerRequest();
+      req.setReason(reason);
+      req.setDeviceId(deviceId);
+      cloverConnector.openCashDrawer(req);
+    } else {
+      cloverConnector.openCashDrawer(reason);
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+// -------------------------------------------------------------
+// Twilio SMS
+// -------------------------------------------------------------
+
+type TwilioSmsConfig = {
+  accountSid?: string;
+  // Optional: when using Twilio API Keys, this can be the API Key SID (SK...).
+  // When omitted, accountSid is used as the HTTP Basic auth username.
+  authSid?: string;
+  fromNumber?: string;
+  // Stored encrypted (base64) when safeStorage is available.
+  authTokenEnc?: string | null;
+  // Fallback when safeStorage is unavailable.
+  authToken?: string | null;
+  updatedAt?: string;
+};
+
+function twilioConfigPath(): string {
+  return path.join(resolveDataRoot(), 'twilio-config.json');
+}
+
+function readTwilioConfig(): TwilioSmsConfig {
+  try {
+    const p = twilioConfigPath();
+    if (!fs.existsSync(p)) return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+    const raw = fs.readFileSync(p, 'utf-8');
+    const json = JSON.parse(raw);
+    if (!json || typeof json !== 'object') return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+    return {
+      accountSid: typeof (json as any).accountSid === 'string' ? String((json as any).accountSid) : '',
+      authSid: typeof (json as any).authSid === 'string' ? String((json as any).authSid) : '',
+      fromNumber: typeof (json as any).fromNumber === 'string' ? String((json as any).fromNumber) : '',
+      authTokenEnc: typeof (json as any).authTokenEnc === 'string' ? String((json as any).authTokenEnc) : null,
+      authToken: typeof (json as any).authToken === 'string' ? String((json as any).authToken) : null,
+      updatedAt: typeof (json as any).updatedAt === 'string' ? String((json as any).updatedAt) : undefined,
+    };
+  } catch {
+    return { accountSid: '', authSid: '', fromNumber: '', authTokenEnc: null, authToken: null };
+  }
+}
+
+function writeTwilioConfig(patch: Partial<TwilioSmsConfig>) {
+  try {
+    const current = readTwilioConfig();
+    const next: TwilioSmsConfig = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    ensureDir(path.dirname(twilioConfigPath()));
+    fs.writeFileSync(twilioConfigPath(), JSON.stringify(next, null, 2), 'utf-8');
+  } catch {
+    // ignore
+  }
+}
+
+function getTwilioAuthToken(cfg?: TwilioSmsConfig): string | null {
+  const c = cfg || readTwilioConfig();
+  const dec = c?.authTokenEnc ? decryptFromBase64(String(c.authTokenEnc)) : null;
+  if (dec && dec.trim()) return dec.trim();
+  const plain = typeof c?.authToken === 'string' ? c.authToken : null;
+  if (plain && plain.trim()) return plain.trim();
+  return null;
+}
+
+function normalizePhoneE164(raw: any): string | null {
+  try {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    if (s.startsWith('+')) {
+      const digits = s.replace(/[^0-9]/g, '');
+      if (digits.length < 10) return null;
+      return `+${digits}`;
+    }
+    const digits = s.replace(/\D+/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function twilioSendSms(toRaw: any, bodyRaw: any): Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }> {
+  try {
+    const cfg = readTwilioConfig();
+    const accountSid = String(cfg.accountSid || '').trim();
+    const authSid = String((cfg as any).authSid || accountSid).trim();
+    const authToken = String(getTwilioAuthToken(cfg) || '').trim();
+    const fromNumberRaw = String(cfg.fromNumber || '').trim();
+
+    if (!accountSid) return { ok: false, error: 'Twilio not configured: missing Account SID.' };
+    if (!authSid) return { ok: false, error: 'Twilio not configured: missing Auth SID (API Key SID) / Account SID.' };
+    if (!authToken) return { ok: false, error: 'Twilio not configured: missing Auth Token.' };
+    if (!fromNumberRaw) return { ok: false, error: 'Twilio not configured: missing From Number.' };
+
+    const to = normalizePhoneE164(toRaw);
+    if (!to) return { ok: false, error: 'Invalid recipient phone number.' };
+
+    const from = normalizePhoneE164(fromNumberRaw);
+    if (!from) return { ok: false, error: 'Invalid From phone number. Use +E.164 or a 10-digit US number.' };
+
+    const body = String(bodyRaw || '').trim();
+    if (!body) return { ok: false, error: 'Message body is empty.' };
+
+    const postData = new URLSearchParams({ To: to, From: from, Body: body }).toString();
+    const auth = Buffer.from(`${authSid}:${authToken}`).toString('base64');
+
+    const result = await new Promise<{ ok: true; sid?: string | null } | { ok: false; error: string }>((resolve) => {
+      try {
+        const req = https.request({
+          method: 'POST',
+          hostname: 'api.twilio.com',
+          path: `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData),
+          },
+          timeout: 15000,
+        }, (res: any) => {
+          let data = '';
+          res.on('data', (chunk: any) => { data += String(chunk ?? ''); });
+          res.on('end', () => {
+            const status = Number(res?.statusCode || 0);
+            const ok = status >= 200 && status < 300;
+            if (ok) {
+              try {
+                const json = JSON.parse(data || '{}');
+                resolve({ ok: true, sid: json?.sid || null });
+              } catch {
+                resolve({ ok: true, sid: null });
+              }
+              return;
+            }
+
+            try {
+              const json = JSON.parse(data || '{}');
+              const msg = String(json?.message || '').trim();
+              resolve({ ok: false, error: msg || `Twilio error (${status || 'unknown'})` });
+            } catch {
+              resolve({ ok: false, error: `Twilio error (${status || 'unknown'})` });
+            }
+          });
+        });
+
+        req.on('timeout', () => {
+          try { req.destroy(new Error('Request timed out')); } catch {}
+        });
+        req.on('error', (err: any) => {
+          resolve({ ok: false, error: String(err?.message || err) });
+        });
+        req.write(postData);
+        req.end();
+      } catch (e: any) {
+        resolve({ ok: false, error: String(e?.message || e) });
+      }
+    });
+
+    return result;
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+function normalizeStatusForCompare(raw: any): string {
+  try {
+    return String(raw || '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function maybeAutoTextOnStatusChange(key: string, previousItem: any, updatedItem: any, db: any) {
+  try {
+    const k = String(key || '').trim();
+    if (k !== 'workOrders' && k !== 'sales') return;
+
+    const cfg = readTwilioConfig();
+    const hasConfig = Boolean(String(cfg?.accountSid || '').trim())
+      && Boolean(String(cfg?.fromNumber || '').trim())
+      && Boolean(getTwilioAuthToken(cfg));
+    if (!hasConfig) return;
+
+    const prevStatus = normalizeStatusForCompare(previousItem?.status);
+    const nextStatus = normalizeStatusForCompare(updatedItem?.status);
+    if (!prevStatus || !nextStatus || prevStatus === nextStatus) return;
+
+    const statusDisplay = String(updatedItem?.status || '').trim();
+    if (!statusDisplay) return;
+
+    let phoneRaw = String(updatedItem?.customerPhone || updatedItem?.phone || '').trim();
+    const cid = Number(updatedItem?.customerId || 0);
+    if (Number.isFinite(cid) && cid > 0) {
+      try {
+        const customers: any[] = Array.isArray(db?.customers) ? db.customers : [];
+        const c = customers.find((x: any) => Number(x?.id || 0) === cid);
+        if (c) {
+          const p1 = String((c as any)?.phone || '').trim();
+          const p2 = String((c as any)?.phoneAlt || '').trim();
+          phoneRaw = p1 || p2 || phoneRaw;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!normalizePhoneE164(phoneRaw)) return;
+
+    const idNum = Number(updatedItem?.id || 0);
+    const invoice = (Number.isFinite(idNum) && idNum > 0) ? `GB${String(idNum).padStart(7, '0')}` : '';
+    const label = invoice || (Number.isFinite(idNum) && idNum > 0 ? `#${idNum}` : 'ticket');
+    const typeLabel = k === 'sales' ? 'sale' : 'ticket';
+    const body = `GadgetBoy Update: Your ${typeLabel} ${label} status is now ${statusDisplay}.`;
+
+    // Fire-and-forget: never block DB writes.
+    void twilioSendSms(phoneRaw, body).then((res) => {
+      if (!res?.ok) {
+        console.warn('[Twilio] auto status SMS failed:', res?.error || 'unknown error');
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
+
+ipcMain.handle('twilio:getConfig', async () => {
+  const cfg = readTwilioConfig();
+  return {
+    ok: true,
+    accountSid: String(cfg.accountSid || ''),
+    authSid: String((cfg as any).authSid || ''),
+    fromNumber: String(cfg.fromNumber || ''),
+    hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
+  };
+});
+
+ipcMain.handle('twilio:setConfig', async (_e: any, patch: any) => {
+  try {
+    const p = (patch && typeof patch === 'object') ? patch : {};
+    const next: Partial<TwilioSmsConfig> = {};
+
+    if (typeof p.accountSid === 'string') next.accountSid = String(p.accountSid || '').trim();
+    if (typeof p.authSid === 'string') (next as any).authSid = String(p.authSid || '').trim();
+    if (typeof p.fromNumber === 'string') next.fromNumber = String(p.fromNumber || '').trim();
+
+    if (p.clearAuthToken === true) {
+      next.authToken = null;
+      next.authTokenEnc = null;
+    }
+
+    if (typeof p.authToken === 'string') {
+      const token = String(p.authToken || '').trim();
+      if (token) {
+        const enc = encryptToBase64(token);
+        if (enc) {
+          next.authTokenEnc = enc;
+          next.authToken = null;
+        } else {
+          next.authToken = token;
+          next.authTokenEnc = null;
+        }
+      }
+    }
+
+    if (Object.keys(next).length > 0) writeTwilioConfig(next);
+    const cfg = readTwilioConfig();
+    return {
+      ok: true,
+      accountSid: String(cfg.accountSid || ''),
+      authSid: String((cfg as any).authSid || ''),
+      fromNumber: String(cfg.fromNumber || ''),
+      hasAuthToken: Boolean(getTwilioAuthToken(cfg)),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('twilio:sendSms', async (_e: any, payload: any) => {
+  try {
+    const to = payload?.to;
+    const body = payload?.body;
+    return await twilioSendSms(to, body);
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('twilio:getMessages', async (_e: any, customerId: any) => {
+  try {
+    const cid = Number(customerId || 0);
+    if (!cid) return { ok: true, messages: [] };
+    const db = readDb();
+    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
+    const result = msgs
+      .filter((m: any) => Number(m?.customerId || 0) === cid)
+      .sort((a: any, b: any) => new Date(String(a.sentAt || 0)).getTime() - new Date(String(b.sentAt || 0)).getTime());
+    return { ok: true, messages: result };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e), messages: [] };
+  }
+});
+
+ipcMain.handle('twilio:logMessage', async (_e: any, msg: any) => {
+  try {
+    const m = (msg && typeof msg === 'object') ? msg : {};
+    const db = readDb();
+    const msgs: any[] = Array.isArray(db['smsMessages']) ? db['smsMessages'] : [];
+    const maxId = msgs.reduce((acc: number, x: any) => Math.max(acc, Number(x?.id || 0)), 0);
+    const entry = {
+      id: maxId + 1,
+      customerId: Number(m.customerId || 0),
+      to: String(m.to || '').trim(),
+      body: String(m.body || '').trim(),
+      sentAt: m.sentAt || new Date().toISOString(),
+      direction: m.direction || 'out',
+      twilioSid: m.twilioSid || null,
+    };
+    msgs.push(entry);
+    db['smsMessages'] = msgs;
+    writeDb(db);
+    return { ok: true, message: entry };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle('open-twilio-settings', async (event: any) => {
+  const parentFromSender = (() => {
+    try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
+  })();
+  const child = new BrowserWindow({
+    width: 580,
+    height: 640,
+    resizable: false,
+    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#18181b',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('SMS / Twilio Settings'),
+  });
+  showWindowFast(child, () => { try { centerWindow(child); } catch {} });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const url = isDev ? `${DEV_SERVER_URL}/?twilioSettings=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?twilioSettings=true`;
+  child.loadURL(url).catch((e: any) => console.error('[TwilioSettings] loadURL failed', e));
+  return { ok: true };
 });
 
 // Open Clock In window
@@ -3127,7 +3785,6 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
   products: 'products:changed',
-  purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
   calendarNotes: 'calendarNotes:changed',
@@ -3217,108 +3874,6 @@ function readDb() {
     // Return empty WITHOUT setting dbCache — safe fallback that does not persist.
     return defaultDb();
   }
-}
-
-function gidgetRecordTotals(record: any) {
-  const number = (value: any) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
-  };
-  const total = ['total', 'grandTotal', 'invoiceTotal', 'totalAmount', 'amountTotal']
-    .map(key => number(record?.[key]))
-    .find(value => value !== undefined) ?? 0;
-  const paid = ['amountPaid', 'paid', 'totalPaid', 'paidAmount', 'collected', 'amountCollected']
-    .map(key => number(record?.[key]))
-    .find(value => value !== undefined);
-  const remaining = ['remaining', 'balance', 'balanceDue', 'amountDue', 'due']
-    .map(key => number(record?.[key]))
-    .find(value => value !== undefined);
-  return {
-    total,
-    paid: paid ?? (remaining !== undefined ? Math.max(0, total - remaining) : 0),
-    remaining: remaining ?? Math.max(0, total - (paid ?? 0)),
-  };
-}
-
-function gidgetItemSummary(record: any) {
-  const items = Array.isArray(record?.items) ? record.items : [];
-  const labels = items
-    .map((item: any) => String(item?.description || item?.name || item?.itemDescription || '').trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  return labels.length ? labels.join(', ') : String(record?.productDescription || record?.productCategory || record?.itemDescription || '').trim() || 'No line items recorded';
-}
-
-function buildGidgetLocalPosContext(rawQuery: string) {
-  const query = String(rawQuery || '').toLowerCase().slice(0, 2000);
-  const db = readDb() || {};
-  const limit = 20;
-  const statusFilter = /\b(open|closed|complete|completed|waiting|diagnostic|part)\b/.exec(query)?.[1] || '';
-  const now = new Date();
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const weekStart = new Date(dayStart);
-  weekStart.setDate(dayStart.getDate() - dayStart.getDay());
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const periodStart = /\b(today|this day)\b/.test(query) ? dayStart
-    : /\b(this week|weekly)\b/.test(query) ? weekStart
-      : /\b(this month|monthly)\b/.test(query) ? monthStart : null;
-  const words = query
-    .replace(/[^a-z0-9 ]/g, ' ')
-    .split(/\s+/)
-    .filter(word => word.length >= 3 && !['what', 'which', 'show', 'find', 'with', 'from', 'that', 'this', 'have', 'were', 'today', 'week', 'weekly', 'month', 'monthly', 'many', 'check', 'checked', 'into', 'last', 'ticket', 'tickets', 'order', 'orders', 'sales', 'sale', 'client', 'clients', 'gidget'].includes(word))
-    .slice(0, 6);
-  const matches = (record: any) => {
-    if (periodStart) {
-      const recordedAt = new Date(record?.checkInDate || record?.checkedInAt || record?.createdAt || record?.created_at || record?.date || 0);
-      if (Number.isNaN(recordedAt.getTime()) || recordedAt < periodStart) return false;
-    }
-    const haystack = [record?.customerName, record?.name, record?.status, record?.repairStatus, record?.statusUpdate, record?.productDescription, record?.productCategory, record?.deviceName, record?.deviceModel, gidgetItemSummary(record)]
-      .join(' ')
-      .toLowerCase();
-    const status = `${record?.status || ''} ${record?.repairStatus || ''} ${record?.statusUpdate || ''}`.toLowerCase();
-    if (statusFilter && !status.includes(statusFilter)) return false;
-    return words.every(word => haystack.includes(word));
-  };
-  const summarize = (kind: 'work_order' | 'sale', record: any) => {
-    const totals = gidgetRecordTotals(record);
-    return {
-      type: kind,
-      id: record?.id ?? record?.ticketNumber ?? record?.invoiceNumber ?? 'unknown',
-      client: String(record?.customerName || record?.name || 'Client not recorded').slice(0, 100),
-      device_or_item: String(record?.deviceName || record?.deviceModel || record?.productDescription || record?.productCategory || 'Not recorded').slice(0, 120),
-      line_items: gidgetItemSummary(record).slice(0, 300),
-      status: String(record?.status || record?.repairStatus || 'Open').slice(0, 80),
-      checkout_date: record?.checkoutDate || null,
-      taken: totals.paid,
-      owed: totals.remaining,
-    };
-  };
-
-  if (/\b(stock|inventory|product|products|low stock)\b/.test(query)) {
-    const products = (Array.isArray(db.products) ? db.products : [])
-      .filter(matches)
-      .slice(0, limit)
-      .map((product: any) => ({
-        type: 'inventory',
-        id: product?.id ?? 'unknown',
-        item: String(product?.itemDescription || product?.name || product?.productName || 'Unnamed product').slice(0, 120),
-        category: String(product?.productCategory || product?.category || '').slice(0, 80),
-        stock_on_hand: Number(product?.stockCount ?? product?.quantity ?? 0) || 0,
-        low_stock_at: Number(product?.lowStockThreshold ?? 0) || 0,
-      }));
-    return { source: 'local_pos', mode: 'read_only', scope: 'inventory', result_count: products.length, records: products, privacy: 'Contact details, notes, credentials, and payment-card data are excluded.' };
-  }
-
-  const workOrders = (Array.isArray(db.workOrders) ? db.workOrders : []).filter(matches);
-  const sales = (Array.isArray(db.sales) ? db.sales : []).filter(matches);
-  const unclosedOnly = /\b(unclosed|unchecked|not checked out|open ticket|open tickets)\b/.test(query);
-  const filterUnclosed = (record: any) => !record?.checkoutDate || String(record?.status || '').toLowerCase() !== 'closed';
-  const resultWorkOrders = (unclosedOnly ? workOrders.filter(filterUnclosed) : workOrders).slice(0, limit).map((record: any) => summarize('work_order', record));
-  const resultSales = (unclosedOnly ? sales.filter(filterUnclosed) : sales).slice(0, limit).map((record: any) => summarize('sale', record));
-  const requestedSales = /\b(sale|sales|invoice|invoices)\b/.test(query);
-  const requestedWorkOrders = /\b(work order|workorder|repair|repairs|diagnostic|ticket|tickets)\b/.test(query);
-  const records = requestedSales && !requestedWorkOrders ? resultSales : requestedWorkOrders && !requestedSales ? resultWorkOrders : [...resultWorkOrders, ...resultSales].slice(0, limit);
-  return { source: 'local_pos', mode: 'read_only', scope: requestedSales && !requestedWorkOrders ? 'sales' : requestedWorkOrders && !requestedSales ? 'work_orders' : 'tickets', result_count: records.length, records, privacy: 'Contact details, notes, credentials, and payment-card data are excluded.' };
 }
 
 // Simple atomic write with a tiny in-process queue to serialize writes
@@ -3539,6 +4094,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   sales: 'sales',
   calendarEvents: 'calendar_events',
   calendarNotes: 'calendar_notes',
+  feedbackEntries: 'feedback_entries',
   deviceCategories: 'device_categories',
   productCategories: 'product_categories',
   products: 'products',
@@ -3550,7 +4106,6 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   vendors: 'vendors',
   invoices: 'invoices',
   payments: 'payments',
-  purchaseOrders: 'purchase_orders',
   timeEntries: 'time_entries',
   quotes: 'quotes',
   settings: 'shop_settings',
@@ -3608,114 +4163,6 @@ function getCloudClient() {
   return cloudClient;
 }
 
-const CLIENT_UPDATE_EMAIL_POLL_MS = 3_000;
-let clientUpdateEmailTimer: NodeJS.Timeout | null = null;
-let clientUpdateEmailRunning = false;
-
-async function drainClientUpdateEmailQueue() {
-  if (clientUpdateEmailRunning) return { ok: true, busy: true };
-  const client = getCloudClient();
-  if (!client || !cloudSession?.shopId) return { ok: false, error: 'Cloud session is not ready.' };
-  if (!decryptAppPassword(readEmailConfig())) {
-    return { ok: false, pending: true, error: 'Gmail App Password is not configured on this shop PC.' };
-  }
-  clientUpdateEmailRunning = true;
-  let sent = 0;
-  let retried = 0;
-  try {
-    const now = new Date();
-    const staleBefore = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
-    await client
-      .from('client_update_history')
-      .update({ delivery_status: 'pending', delivery_updated_at: now.toISOString() })
-      .eq('shop_id', cloudSession.shopId)
-      .eq('delivery_status', 'sending')
-      .lt('delivery_updated_at', staleBefore);
-
-    const pendingResult = await client
-      .from('client_update_history')
-      .select('id,recipient_email,email_subject,email_text,email_html,delivery_attempts')
-      .eq('shop_id', cloudSession.shopId)
-      .eq('delivery_status', 'pending')
-      .or(`next_attempt_at.is.null,next_attempt_at.lte.${now.toISOString()}`)
-      .order('created_at', { ascending: true })
-      .limit(10);
-    if (pendingResult.error) throw pendingResult.error;
-
-    for (const candidate of pendingResult.data || []) {
-      const claimedResult = await client
-        .from('client_update_history')
-        .update({ delivery_status: 'sending', delivery_updated_at: new Date().toISOString() })
-        .eq('id', candidate.id)
-        .eq('shop_id', cloudSession.shopId)
-        .eq('delivery_status', 'pending')
-        .select('id,recipient_email,email_subject,email_text,email_html,delivery_attempts')
-        .maybeSingle();
-      if (claimedResult.error || !claimedResult.data) continue;
-
-      const claimed = claimedResult.data;
-      const delivery: any = await sendConfiguredEmail({
-        to: String(claimed.recipient_email || ''),
-        subject: String(claimed.email_subject || 'GadgetBoy POS Client Update'),
-        text: String(claimed.email_text || ''),
-        html: String(claimed.email_html || '') || undefined,
-      }).catch((error: any) => ({ ok: false, error: error?.message || String(error) }));
-      const attempts = Number(claimed.delivery_attempts || 0) + 1;
-      if (delivery?.ok) {
-        await client
-          .from('client_update_history')
-          .update({
-            delivery_status: 'sent',
-            delivery_error: null,
-            provider_message_id: delivery.messageId || null,
-            delivery_attempts: attempts,
-            next_attempt_at: null,
-            delivery_updated_at: new Date().toISOString(),
-          })
-          .eq('id', claimed.id)
-          .eq('shop_id', cloudSession.shopId);
-        sent += 1;
-      } else {
-        const retryDelaySeconds = Math.min(15 * 60, 30 * Math.pow(2, Math.min(attempts - 1, 5)));
-        await client
-          .from('client_update_history')
-          .update({
-            delivery_status: 'pending',
-            delivery_error: String(delivery?.error || 'Email delivery failed.').slice(0, 1000),
-            delivery_attempts: attempts,
-            next_attempt_at: new Date(Date.now() + retryDelaySeconds * 1000).toISOString(),
-            delivery_updated_at: new Date().toISOString(),
-          })
-          .eq('id', claimed.id)
-          .eq('shop_id', cloudSession.shopId);
-        retried += 1;
-      }
-    }
-    return { ok: true, sent, retried };
-  } catch (error: any) {
-    return { ok: false, sent, retried, error: error?.message || String(error) };
-  } finally {
-    clientUpdateEmailRunning = false;
-  }
-}
-
-function startClientUpdateEmailQueue() {
-  if (!clientUpdateEmailTimer) {
-    clientUpdateEmailTimer = setInterval(() => {
-      void drainClientUpdateEmailQueue();
-    }, CLIENT_UPDATE_EMAIL_POLL_MS);
-    clientUpdateEmailTimer.unref?.();
-  }
-  void drainClientUpdateEmailQueue();
-}
-
-function stopClientUpdateEmailQueue() {
-  if (clientUpdateEmailTimer) clearInterval(clientUpdateEmailTimer);
-  clientUpdateEmailTimer = null;
-}
-
-ipcMain.handle('email:drainClientUpdates', async () => drainClientUpdateEmailQueue());
-
 ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
   const supabaseUrl = String(payload?.supabaseUrl || '').trim();
   const supabasePublishableKey = String(payload?.supabasePublishableKey || '').trim();
@@ -3735,8 +4182,6 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
       getCloudCount('sales'),
     ]);
     scheduleCloudSyncQueueDrain(100);
-    startClientUpdateEmailQueue();
-    void checkBatchOutSchedule();
     return {
       ok: true,
       counts: {
@@ -3754,7 +4199,6 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
 });
 
 ipcMain.handle('cloud:clearSession', async () => {
-  stopClientUpdateEmailQueue();
   cloudSession = null;
   cloudClient = null;
   return { ok: true };
@@ -3930,13 +4374,6 @@ function fromCloudRow(key: string, row: any): any {
       payments: cloudArray(row.payments),
       internalNotes: row.internal_notes || '',
       internalNotesLog: cloudArray(row.internal_notes_log),
-      statusUpdate: row.status_update || '',
-      statusUpdatedAt: cloudDate(row.status_updated_at),
-      repairStatus: row.repair_status || '',
-      estimatedDate: row.estimated_date || '',
-      techNotes: row.tech_notes || '',
-      lastUpdateNote: row.last_update_note || '',
-      lastUpdateAt: cloudDate(row.last_update_at),
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -3990,12 +4427,6 @@ function fromCloudRow(key: string, row: any): any {
       items: cloudArray(row.items),
       payments: cloudArray(row.payments),
       totals: cloudObject(row.totals),
-      statusUpdate: row.status_update || '',
-      statusUpdatedAt: cloudDate(row.status_updated_at),
-      estimatedDate: row.estimated_date || '',
-      techNotes: row.tech_notes || '',
-      lastUpdateNote: row.last_update_note || '',
-      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4036,15 +4467,8 @@ function fromCloudRow(key: string, row: any): any {
       partName: row.part_name || '',
       source: row.source || '',
       orderUrl: row.order_url || '',
-      trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
-      statusUpdate: row.status_update || '',
-      statusUpdatedAt: cloudDate(row.status_updated_at),
-      estimatedDate: row.estimated_date || '',
-      techNotes: row.tech_notes || '',
-      lastUpdateNote: row.last_update_note || '',
-      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4052,10 +4476,22 @@ function fromCloudRow(key: string, row: any): any {
   }
   if (key === 'calendarNotes') {
     return {
-      id,
+      id: row.legacy_id || row.id,
       date: row.note_date || '',
       subject: row.subject || '',
       body: row.body || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'feedbackEntries') {
+    return {
+      id: row.legacy_id || row.id,
+      subject: row.subject || '',
+      body: row.body || '',
+      completed: !!row.completed,
+      completedAt: cloudDate(row.completed_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4075,28 +4511,14 @@ function fromCloudRow(key: string, row: any): any {
     return {
       id,
       itemDescription: row.item_description || '',
-      itemType: row.item_type || 'Product',
-      deviceModel: row.device_model || '',
       price: cloudNumber(row.price),
       internalCost: cloudNumber(row.internal_cost),
-      markupPct: cloudNumber(row.markup_pct),
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
-      partCategory: row.part_category || '',
-      distributor: row.distributor || '',
-      vendorRelationship: row.vendor_relationship || 'wholesale',
-      vendorSharePct: cloudNullableNumber(row.vendor_share_pct),
-      vendorTaxExempt: !!row.vendor_tax_exempt,
-      distributorSku: row.distributor_sku || '',
-      reorderQty: cloudNumber(row.reorder_qty) || 1,
-      reorderUrlTemplate: row.reorder_url_template || '',
-      associatedDevices: Array.isArray(row.associated_devices) ? row.associated_devices : [],
       trackStock: !!row.track_stock,
       stockCount: cloudNumber(row.stock_count),
       lowStockThreshold: cloudNumber(row.low_stock_threshold),
-      purchaseRestockKeys: Array.isArray(row.purchase_restock_keys) ? row.purchase_restock_keys.map(String) : [],
-      inventoryConsumptionKeys: Array.isArray(row.inventory_consumption_keys) ? row.inventory_consumption_keys.map(String) : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4112,7 +4534,6 @@ function fromCloudRow(key: string, row: any): any {
       partCost: cloudNumber(row.part_cost),
       laborCost: cloudNumber(row.labor_cost),
       internalCost: cloudNumber(row.internal_cost),
-      markupPct: cloudNumber(row.markup_pct),
       orderDate: row.order_date || '',
       estDelivery: row.est_delivery || '',
       partSource: row.part_source || '',
@@ -4120,7 +4541,6 @@ function fromCloudRow(key: string, row: any): any {
       type: row.type || '',
       model: row.model || '',
       trackStock: !!row.track_stock,
-      inventoryProductId: cloudNumber(row.inventory_product_id),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4224,13 +4644,6 @@ function toCloudRow(key: string, item: any): any | null {
       payments: toCloudArray(item.payments),
       internal_notes: toCloudString(item.internalNotes),
       internal_notes_log: toCloudArray(item.internalNotesLog),
-      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
-      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
-      repair_status: typeof item.repairStatus === 'undefined' ? undefined : toCloudString(item.repairStatus),
-      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
-      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
-      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
-      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),
@@ -4286,12 +4699,6 @@ function toCloudRow(key: string, item: any): any | null {
       items: toCloudArray(item.items),
       payments: toCloudArray(item.payments),
       totals: toCloudObject(item.totals),
-      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
-      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
-      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
-      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
-      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
-      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4318,15 +4725,8 @@ function toCloudRow(key: string, item: any): any | null {
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
       order_url: toCloudString(item.orderUrl),
-      tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
-      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
-      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
-      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
-      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
-      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
-      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4340,6 +4740,20 @@ function toCloudRow(key: string, item: any): any | null {
       note_date: toCloudDateOnly(item.date),
       subject: toCloudString(item.subject),
       body: toCloudString(item.body),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'feedbackEntries') {
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
+    return {
+      shop_id,
+      legacy_id,
+      subject: toCloudString(item.subject),
+      body: toCloudString(item.body),
+      completed: !!item.completed,
+      completed_at: toCloudIso(item.completedAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4381,28 +4795,14 @@ function toCloudRow(key: string, item: any): any | null {
       shop_id,
       legacy_id,
       item_description: toCloudString(item.itemDescription),
-      item_type: toCloudString(item.itemType || 'Product'),
-      device_model: toCloudString(item.deviceModel),
       price: toCloudMoney(item.price),
       internal_cost: toCloudMoney(item.internalCost),
-      markup_pct: toCloudNumber(item.markupPct),
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
-      part_category: toCloudString(item.partCategory),
-      distributor: toCloudString(item.distributor),
-      vendor_relationship: toCloudString(item.vendorRelationship || 'wholesale'),
-      vendor_share_pct: toCloudNumber(item.vendorSharePct),
-      vendor_tax_exempt: toCloudBool(item.vendorTaxExempt),
-      distributor_sku: toCloudString(item.distributorSku),
-      reorder_qty: toCloudIntId(item.reorderQty) || 1,
-      reorder_url_template: toCloudString(item.reorderUrlTemplate),
-      associated_devices: Array.isArray(item.associatedDevices) ? item.associatedDevices.map((value: any) => String(value || '').trim()).filter(Boolean) : [],
       track_stock: toCloudBool(item.trackStock),
       stock_count: toCloudIntId(item.stockCount) || 0,
       low_stock_threshold: toCloudIntId(item.lowStockThreshold) || 0,
-      purchase_restock_keys: Array.isArray(item.purchaseRestockKeys) ? item.purchaseRestockKeys.map((value: any) => String(value)).filter(Boolean).slice(-100) : [],
-      inventory_consumption_keys: Array.isArray(item.inventoryConsumptionKeys) ? item.inventoryConsumptionKeys.map((value: any) => String(value)).filter(Boolean).slice(-250) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4420,7 +4820,6 @@ function toCloudRow(key: string, item: any): any | null {
       part_cost: toCloudMoney(item.partCost),
       labor_cost: toCloudMoney(item.laborCost),
       internal_cost: toCloudMoney(item.internalCost),
-      markup_pct: toCloudNumber(item.markupPct),
       order_date: toCloudString(item.orderDate),
       est_delivery: toCloudString(item.estDelivery),
       part_source: toCloudString(item.partSource),
@@ -4428,7 +4827,6 @@ function toCloudRow(key: string, item: any): any | null {
       type: toCloudString(item.type),
       model: toCloudString(item.model),
       track_stock: toCloudBool(item.trackStock),
-      inventory_product_id: toCloudIntId(item.inventoryProductId),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4491,7 +4889,7 @@ function toCloudRow(key: string, item: any): any | null {
       logged_at: toCloudIso(item.loggedAt || item.createdAt) || new Date().toISOString(),
     };
   }
-  if (key === 'invoices' || key === 'payments' || key === 'repairItems' || key === 'purchaseOrders') {
+  if (key === 'invoices' || key === 'payments' || key === 'repairItems') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
     return {
@@ -4510,12 +4908,14 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     sales: { id: 'legacy_id', activityAt: 'check_in_at', checkInAt: 'check_in_at', updatedAt: 'updated_at' },
     quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
+    calendarNotes: { id: 'legacy_id', date: 'note_date', updatedAt: 'updated_at', createdAt: 'created_at' },
   };
   if (map[key]?.[s]) return map[key][s];
   if (!s) {
     if (key === 'workOrders') return 'activity_at';
     if (key === 'sales') return 'check_in_at';
     if (key === 'quotes') return 'content_updated_at';
+    if (key === 'calendarNotes') return 'note_date';
     return 'legacy_id';
   }
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
@@ -4525,67 +4925,15 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) return null;
+  let q = client.from(table).select('*').eq('shop_id', cloudSession.shopId);
   const sortColumn = cloudSortColumn(key, opts?.sortBy);
-  const requestedLimit = typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0
-    ? Math.floor(opts.limit)
-    : 0;
-  const pageSize = 1000;
-  const rawRows: any[] = [];
-  let pageStart = 0;
-
-  do {
-    let q = client
-      .from(table)
-      .select('*')
-      .eq('shop_id', cloudSession.shopId)
-      .order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
-    if (sortColumn !== 'legacy_id') q = q.order('legacy_id', { ascending: true, nullsFirst: false });
-    if (requestedLimit > 0) q = q.limit(requestedLimit);
-    else q = q.range(pageStart, pageStart + pageSize - 1);
-    const res = await q;
-    if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-    const page = Array.isArray(res.data) ? res.data : [];
-    rawRows.push(...page);
-    if (requestedLimit > 0 || page.length < pageSize) break;
-    pageStart += pageSize;
-  } while (true);
-
-  const mapped = rawRows.map((row: any) => fromCloudRow(key, row));
-  if (key === 'workOrders' && mapped.length > 0) {
-    try {
-      const customerIds = Array.from(new Set(
-        mapped
-          .map((row: any) => Number(row?.customerId || 0))
-          .filter((id: number) => Number.isFinite(id) && id > 0)
-      ));
-      if (customerIds.length > 0) {
-        const customerRes = await client
-          .from('customers')
-          .select('legacy_id, first_name, last_name, phone, phone_alt, email')
-          .eq('shop_id', cloudSession.shopId)
-          .in('legacy_id', customerIds);
-        if (!customerRes.error && Array.isArray(customerRes.data)) {
-          const customersByLegacyId = new Map<number, any>();
-          for (const customer of customerRes.data) {
-            const id = Number(customer?.legacy_id || 0);
-            if (Number.isFinite(id) && id > 0) customersByLegacyId.set(id, customer);
-          }
-          for (const row of mapped) {
-            const customer = customersByLegacyId.get(Number(row?.customerId || 0));
-            if (!customer) continue;
-            const fullName = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
-            if (fullName && !row.customerName) row.customerName = fullName;
-            if (customer.phone && !row.customerPhone) row.customerPhone = customer.phone;
-            if (customer.phone_alt && !row.customerPhoneAlt) row.customerPhoneAlt = customer.phone_alt;
-            if (customer.email && !row.customerEmail) row.customerEmail = customer.email;
-          }
-        }
-      }
-    } catch {
-      // Customer snapshots are best effort; work-order reads still succeed without them.
-    }
+  q = q.order(sortColumn, { ascending: opts?.sortDir === 'asc', nullsFirst: false });
+  if (typeof opts?.limit === 'number' && Number.isFinite(opts.limit) && opts.limit > 0) {
+    q = q.limit(Math.floor(opts.limit));
   }
-  return mapped;
+  const res = await q;
+  if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
+  return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
 }
 
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
@@ -4633,40 +4981,10 @@ async function cloudDbUpsert(key: string, item: any) {
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
   const row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
-  let res = await client.from(table).upsert(row, {
+  const res = await client.from(table).upsert(row, {
     onConflict: cloudConflictForKey(key),
     ignoreDuplicates: false,
   });
-  if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
-    const fallbackRow = { ...row };
-    delete fallbackRow.item_type;
-    delete fallbackRow.part_category;
-    delete fallbackRow.distributor;
-    delete fallbackRow.vendor_relationship;
-    delete fallbackRow.device_model;
-    delete fallbackRow.vendor_share_pct;
-    delete fallbackRow.vendor_tax_exempt;
-    delete fallbackRow.distributor_sku;
-    delete fallbackRow.reorder_qty;
-    delete fallbackRow.reorder_url_template;
-    delete fallbackRow.associated_devices;
-    delete fallbackRow.markup_pct;
-    delete fallbackRow.purchase_restock_keys;
-    delete fallbackRow.inventory_consumption_keys;
-    res = await client.from(table).upsert(fallbackRow, {
-      onConflict: cloudConflictForKey(key),
-      ignoreDuplicates: false,
-    });
-  }
-  if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|schema cache|column/i.test(String(res.error.message || ''))) {
-    const fallbackRow = { ...row };
-    delete fallbackRow.markup_pct;
-    delete fallbackRow.inventory_product_id;
-    res = await client.from(table).upsert(fallbackRow, {
-      onConflict: cloudConflictForKey(key),
-      ignoreDuplicates: false,
-    });
-  }
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
   return { ok: true };
 }
@@ -4688,7 +5006,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories' || key === 'calendarNotes') return toCloudTextId(item.id);
+  if (key === 'repairCategories' || key === 'calendarNotes' || key === 'feedbackEntries') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 
@@ -4839,6 +5157,7 @@ ipcMain.handle('db-reset-all', async () => {
       try { w.webContents.send('products:changed'); } catch {}
       try { w.webContents.send('partSources:changed'); } catch {}
       try { w.webContents.send('calendarEvents:changed'); } catch {}
+      try { w.webContents.send('calendarNotes:changed'); } catch {}
       try { w.webContents.send('timeEntries:changed'); } catch {}
     }
   } catch {
@@ -5253,6 +5572,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   if (ok) {
     scheduleCollectionChanged(key);
     void syncCloudWriteOrQueue('upsert', key, updatedItem);
+    try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
   return null;
@@ -5318,7 +5638,7 @@ ipcMain.handle('open-products', async (event: any) => {
   return { ok: true };
 });
 
-ipcMain.handle('open-inventory', async (event: any, payload?: { inventoryId?: number }) => {
+ipcMain.handle('open-inventory', async (event: any) => {
   const parentFromSender = (() => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
@@ -5343,9 +5663,7 @@ ipcMain.handle('open-inventory', async (event: any, payload?: { inventoryId?: nu
   });
   showWindowFast(child, () => { centerWindow(child); }, { focus: false });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
-  const inventoryId = Number(payload?.inventoryId);
-  const inventoryQuery = Number.isFinite(inventoryId) && inventoryId > 0 ? `&inventoryId=${encodeURIComponent(String(inventoryId))}` : '';
-  const url = isDev ? `${DEV_SERVER_URL}/?inventory=true${inventoryQuery}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?inventory=true${inventoryQuery}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?inventory=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?inventory=true`;
   child.loadURL(url);
   return { ok: true };
 });
@@ -5510,15 +5828,12 @@ ipcMain.handle('backup:import', async () => {
 });
 
 ipcMain.handle('backup:runBatchOut', async () => {
-  const db = readDb();
-  const settings = Array.isArray((db as any)?.eodSettings) ? (db as any).eodSettings[0] : null;
-  const cutoffTime = settings?.batchOutTime || '21:00';
-  return runBatchOutBackup('batchout', batchOutDayKey(new Date(), cutoffTime));
+  return runBatchOutBackup('batchout');
 });
 
 ipcMain.handle('backup:getBatchOutInfo', async () => {
   const cfg = readBackupConfig();
-  return { ok: true, lastBackupPath: cfg.lastBackupPath, lastBackupDate: cfg.lastBackupDate, lastBatchOutDate: cfg.lastBatchOutDate, lastBatchOutDayKey: cfg.lastBatchOutDayKey };
+  return { ok: true, lastBackupPath: cfg.lastBackupPath, lastBackupDate: cfg.lastBackupDate, lastBatchOutDate: cfg.lastBatchOutDate };
 });
 
 ipcMain.handle('dev:environmentInfo', async () => {
@@ -6218,12 +6533,12 @@ function getQrHost(): string {
   return getLanIp(); // fallback to IP if hostname unavailable
 }
 
-function qrStatusUrl(type: 'repair' | 'sale' | 'consult', id: number | string): string {
-  return `http://${getLanIp()}:${QR_PORT}/status/${type}/${id}`;
+function qrStatusUrl(type: 'repair' | 'sale', id: number | string): string {
+  return `http://${getQrHost()}:${QR_PORT}/status/${type}/${id}`;
 }
 
 function qrConsultUrl(id: number | string): string {
-  return qrStatusUrl('consult', id);
+  return `http://${getQrHost()}:${QR_PORT}/status/consult/${id}`;
 }
 
 function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUrl: string; ipUrl: string } {
@@ -6239,192 +6554,12 @@ function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUr
   };
 }
 
-function getPublicAppUrl(): string {
-  const candidates = [
-    process.env.GBPOS_PUBLIC_APP_URL,
-    process.env.VITE_PUBLIC_APP_URL,
-  ];
-  const picked = candidates.map(v => String(v || '').trim()).find(Boolean) || 'https://mattstechwisdom.github.io/GB-POS';
-  return picked.replace(/\/+$/, '');
-}
-
-function makeQrToken(): string {
-  try {
-    return nodeCrypto.randomBytes(24).toString('base64url');
-  } catch {
-    return nodeCrypto.randomBytes(24).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-}
-
 function escHtml(s: any): string {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-type QrStatusType = 'repair' | 'sale' | 'consult';
-
-function normalizeQrStatusType(value: any): QrStatusType {
-  const raw = String(value || '').trim().toLowerCase();
-  if (/^(sale|sales|invoice|inv)$/.test(raw)) return 'sale';
-  if (/^(consult|consultation|appointment)$/.test(raw)) return 'consult';
-  return 'repair';
-}
-
-function cloudRecordKeyForQrType(type: QrStatusType): string {
-  if (type === 'sale') return 'sales';
-  if (type === 'consult') return 'calendarEvents';
-  return 'workOrders';
-}
-
-async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<string | null> {
-  const client = getCloudClient();
-  if (!client || !cloudSession?.shopId || !id) return null;
-
-  const recordKey = cloudRecordKeyForQrType(type);
-  const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
-  if (!recordTable) return null;
-
-  const existing = await client
-    .from('qr_status_tokens')
-    .select('token')
-    .eq('shop_id', cloudSession.shopId)
-    .eq('record_type', type)
-    .eq('legacy_record_id', id)
-    .is('revoked_at', null)
-    .maybeSingle();
-  if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
-  if (existing.data?.token) {
-    return type === 'consult'
-      ? `${getPublicAppUrl()}/consultation.html?token=${encodeURIComponent(existing.data.token)}`
-      : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
-  }
-
-  let recordCloudId: string | null = null;
-  try {
-    const recordRes = await client
-      .from(recordTable)
-      .select('id')
-      .eq('shop_id', cloudSession.shopId)
-      .eq('legacy_id', id)
-      .maybeSingle();
-    if (!recordRes.error && recordRes.data?.id) recordCloudId = recordRes.data.id;
-  } catch {
-    // Token can still be created from the legacy id; record resolution will happen at scan time.
-  }
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const token = makeQrToken();
-    const inserted = await client
-      .from('qr_status_tokens')
-      .insert({
-        shop_id: cloudSession.shopId,
-        token,
-        record_type: type,
-        legacy_record_id: id,
-        record_id: recordCloudId,
-        metadata: { createdBy: 'gb-pos' },
-      })
-      .select('token')
-      .single();
-    if (!inserted.error && inserted.data?.token) {
-      return type === 'consult'
-        ? `${getPublicAppUrl()}/consultation.html?token=${encodeURIComponent(inserted.data.token)}`
-        : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
-    }
-    if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
-      throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
-    }
-  }
-
-  throw new Error('Cloud QR token create failed after duplicate retries.');
-}
-
-async function resolveCloudQrStatusToken(token: string) {
-  const client = getCloudClient();
-  if (!client || !cloudSession?.shopId) throw new Error('Cloud session is not ready.');
-  const cleaned = String(token || '').trim();
-  if (!cleaned) throw new Error('Missing QR token.');
-
-  const tokenRes = await client
-    .from('qr_status_tokens')
-    .select('*')
-    .eq('token', cleaned)
-    .eq('shop_id', cloudSession.shopId)
-    .is('revoked_at', null)
-    .maybeSingle();
-  if (tokenRes.error) throw new Error(`Cloud QR token read failed: ${tokenRes.error.message}`);
-  const tokenRow = tokenRes.data;
-  if (!tokenRow) throw new Error('QR token was not found for this shop.');
-  if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) {
-    throw new Error('This QR token is expired.');
-  }
-
-  void client
-    .from('qr_status_tokens')
-    .update({ last_opened_at: new Date().toISOString() })
-    .eq('id', tokenRow.id)
-    .then(() => undefined);
-
-  const type = normalizeQrStatusType(tokenRow.record_type);
-  const recordKey = cloudRecordKeyForQrType(type);
-  const table = CLOUD_TABLE_BY_KEY[recordKey];
-  const recordRes = await client
-    .from(table)
-    .select('*')
-    .eq('shop_id', cloudSession.shopId)
-    .eq('legacy_id', Number(tokenRow.legacy_record_id))
-    .maybeSingle();
-  if (recordRes.error) throw new Error(`Cloud QR record read failed: ${recordRes.error.message}`);
-  if (!recordRes.data) throw new Error('The QR record no longer exists.');
-
-  const record = fromCloudRow(recordKey, recordRes.data);
-  let customer: any = null;
-  const customerId = Number((record as any)?.customerId || 0) || 0;
-  if (customerId > 0) {
-    try {
-      const customerRes = await client
-        .from('customers')
-        .select('*')
-        .eq('shop_id', cloudSession.shopId)
-        .eq('legacy_id', customerId)
-        .maybeSingle();
-      if (!customerRes.error && customerRes.data) customer = fromCloudRow('customers', customerRes.data);
-    } catch {
-      // customer context is best effort
-    }
-  }
-
-  return { token: tokenRow, type, record, customer };
-}
-
-function parseQrStatusRoute(rawUrl: string): { type: QrStatusType; id: number } | null {
-  let pathname = '';
-  let params: URLSearchParams | null = null;
-  try {
-    const parsed = new URL(rawUrl || '/', 'http://qr.local');
-    pathname = parsed.pathname.replace(/\/+$/, '') || '/';
-    params = parsed.searchParams;
-  } catch {
-    pathname = String(rawUrl || '').split('?')[0].replace(/\/+$/, '') || '/';
-  }
-
-  const legacyQueryId = Number(params?.get('id') || params?.get('recordId') || params?.get('workOrderId') || 0) || 0;
-  if ((pathname === '/status' || pathname === '/qr' || pathname === '/') && legacyQueryId > 0) {
-    return { type: normalizeQrStatusType(params?.get('type') || params?.get('kind')), id: legacyQueryId };
-  }
-
-  const typed = pathname.match(/^\/status\/([^/]+)\/(\d+)$/) || pathname.match(/^\/([^/]+)\/(\d+)$/);
-  if (typed) {
-    return { type: normalizeQrStatusType(typed[1]), id: parseInt(typed[2], 10) };
-  }
-
-  const defaultRepair = pathname.match(/^\/status\/(\d+)$/);
-  if (defaultRepair) return { type: 'repair', id: parseInt(defaultRepair[1], 10) };
-
-  return null;
 }
 
 function buildConsultPageHtml(event: any): string {
@@ -6791,7 +6926,6 @@ function sendStatus(key,label,extra){
 async function handleQrRequest(req: any, res: any) {
   const rawUrl = String(req.url || '');
   const url = rawUrl.split('?')[0];
-  const statusRoute = parseQrStatusRoute(rawUrl);
 
   if (url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -6806,14 +6940,7 @@ async function handleQrRequest(req: any, res: any) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
-    const info = getQrServerInfo();
-    res.end(JSON.stringify({
-      ip: info.ip,
-      host: info.hostname,
-      port: info.port,
-      hostUrl: info.hostUrl,
-      ipUrl: info.ipUrl,
-    }));
+    res.end(JSON.stringify({ ip: getLanIp() }));
     return;
   }
 
@@ -6834,8 +6961,9 @@ async function handleQrRequest(req: any, res: any) {
   }
 
   // ── Consultation status page ───────────────────────────────────────────
-  if (statusRoute?.type === 'consult') {
-    const eventId = statusRoute.id;
+  const consultMatch = url.match(/^\/status\/consult\/(\d+)$/);
+  if (consultMatch) {
+    const eventId = parseInt(consultMatch[1], 10);
     const db = readDb();
     const events: any[] = Array.isArray(db['calendarEvents']) ? db['calendarEvents'] : [];
     const event = events.find((e: any) => Number(e?.id || 0) === eventId) || null;
@@ -6862,28 +6990,8 @@ async function handleQrRequest(req: any, res: any) {
     const enrichedEvent = { ...event, customerEmail, customerPhone };
 
     if (req.method === 'GET') {
-      const icsEscape = (value: any) => String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
-      const icsDate = (dateValue: any, timeValue: any) => `${String(dateValue || '').replace(/-/g, '')}T${String(timeValue || '09:00').replace(':', '').padEnd(4, '0')}00`;
-      const start = icsDate(enrichedEvent.date, enrichedEvent.time);
-      const end = icsDate(enrichedEvent.date, enrichedEvent.endTime || enrichedEvent.time || '10:00');
-      const calendar = [
-        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GadgetBoy POS//Consultation Reminder//EN',
-        'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
-        `UID:consult-local-${eventId}@gadgetboypos`,
-        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,
-        `DTSTART:${start}`, `DTEND:${end}`,
-        `SUMMARY:${icsEscape(enrichedEvent.title || 'GadgetBoy Consultation')}`,
-        `LOCATION:${icsEscape(enrichedEvent.consultationAddress || enrichedEvent.location || '')}`,
-        `DESCRIPTION:${icsEscape(enrichedEvent.notes || 'Scheduled consultation with GadgetBoy Repair & Retail.')}`,
-        'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY',
-        'DESCRIPTION:Consultation begins in one hour', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR', '',
-      ].join('\r\n');
-      res.writeHead(200, {
-        'Content-Type': 'text/calendar; charset=utf-8',
-        'Content-Disposition': `attachment; filename="GadgetBoy-Consultation-${eventId}.ics"`,
-        'Cache-Control': 'no-store',
-      });
-      res.end(calendar);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buildConsultPageHtml(enrichedEvent));
       return;
     }
 
@@ -7010,14 +7118,15 @@ async function handleQrRequest(req: any, res: any) {
     return;
   }
 
-  if (!statusRoute || (statusRoute.type !== 'repair' && statusRoute.type !== 'sale')) {
+  const match = url.match(/^\/status\/(repair|sale)\/(\d+)$/);
+  if (!match) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found');
     return;
   }
 
-  const type = statusRoute.type;
-  const id = statusRoute.id;
+  const type = match[1] as 'repair' | 'sale';
+  const id = parseInt(match[2], 10);
   const collection = type === 'repair' ? 'workOrders' : 'sales';
 
   const db = readDb();
@@ -7098,11 +7207,9 @@ async function handleQrRequest(req: any, res: any) {
           storage_fee:     'Storage Fee Notice',
         };
         try {
-          const updatedAt = new Date().toISOString();
           const updates: any = {
             statusUpdate:    statusLabel,
-            statusUpdatedAt: updatedAt,
-            updatedAt,
+            statusUpdatedAt: new Date().toISOString(),
           };
           if (estimatedDate) updates.estimatedDate = estimatedDate;
           if (techNotes) updates.techNotes = techNotes;
@@ -7110,7 +7217,7 @@ async function handleQrRequest(req: any, res: any) {
             // Don't overwrite the order status; just record the note
             delete updates.statusUpdate;
             updates.lastUpdateNote = techNotes;
-            updates.lastUpdateAt = updatedAt;
+            updates.lastUpdateAt = new Date().toISOString();
           } else if (type === 'repair' && repairStatusMap[statusKey]) {
             updates.repairStatus = repairStatusMap[statusKey];
           } else if (type === 'sale' && saleStatusMap[statusKey]) {
@@ -7120,16 +7227,10 @@ async function handleQrRequest(req: any, res: any) {
           const col: any[] = Array.isArray(freshDb2[collection]) ? freshDb2[collection] : [];
           const idx = col.findIndex((r: any) => Number(r?.id || 0) === id);
           if (idx >= 0) {
-            const previousItem = col[idx];
-            const updatedItem = { ...previousItem, ...updates };
-            if (collection === 'workOrders') {
-              updatedItem.activityAt = computeWorkOrderActivityAt(previousItem, updatedItem, updatedAt);
-            }
-            col[idx] = updatedItem;
+            col[idx] = { ...col[idx], ...updates };
             freshDb2[collection] = col;
             writeDb(freshDb2);
             scheduleCollectionChanged(collection);
-            void syncCloudWriteOrQueue('upsert', collection, updatedItem);
           }
         } catch { /* non-fatal */ }
 
@@ -7480,44 +7581,21 @@ ipcMain.handle('qr:getDataUrl', async (_event: any, url: string) => {
 });
 
 // IPC: return the LAN-accessible status URL for a work order or sale
-ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => {
-  try {
-    const t = normalizeQrStatusType(type);
-    const safeId = Number(id) || 0;
-    if (!safeId) return { ok: false, error: 'Save the record before creating its QR code.' };
-    const cloudUrl = await ensureCloudQrStatusUrl(t, safeId);
-    if (!cloudUrl) return { ok: false, error: 'Sign in and sync the record before creating its QR code.' };
-    return { ok: true, url: cloudUrl, cloud: true };
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message || e) };
-  }
-});
-
 ipcMain.handle('notifications:get-native-permission', async () => ({
   permission: Notification?.isSupported?.() ? 'granted' : 'unsupported',
   platform: process.platform,
 }));
 
 ipcMain.handle('notifications:request-native-permission', async () => {
-  if (!Notification?.isSupported?.()) {
-    return { permission: 'unsupported', platform: process.platform, error: 'System notifications are not supported on this computer.' };
-  }
-  const notice = new Notification({
-    title: 'GadgetBoy POS',
-    body: 'Notifications are enabled on this computer.',
-    silent: false,
-  });
+  if (!Notification?.isSupported?.()) return { permission: 'unsupported', platform: process.platform, error: 'System notifications are not supported on this computer.' };
+  const notice = new Notification({ title: 'GadgetBoy POS', body: 'Notifications are enabled on this computer.', silent: false });
   notice.show();
   return { permission: 'granted', platform: process.platform };
 });
 
 ipcMain.handle('notifications:send-native', async (_event: any, payload: any) => {
   if (!Notification?.isSupported?.()) return { ok: false, error: 'System notifications are not supported on this computer.' };
-  const notice = new Notification({
-    title: String(payload?.title || 'GadgetBoy POS'),
-    body: String(payload?.body || ''),
-    silent: false,
-  });
+  const notice = new Notification({ title: String(payload?.title || 'GadgetBoy POS'), body: String(payload?.body || ''), silent: false });
   notice.on('click', () => {
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -7544,10 +7622,11 @@ ipcMain.handle('notifications:open-system-settings', async () => {
   }
 });
 
-ipcMain.handle('qr:resolveStatusToken', async (_event: any, token: string) => {
+ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => {
   try {
-    const resolved = await resolveCloudQrStatusToken(token);
-    return { ok: true, ...resolved };
+    const t = String(type || '') === 'sale' ? 'sale' : 'repair';
+    const safeId = Number(id) || 0;
+    return { ok: true, url: qrStatusUrl(t as 'repair' | 'sale', safeId) };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -7565,15 +7644,6 @@ ipcMain.handle('qr:getServerInfo', async () => {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
-    session.defaultSession.setPermissionCheckHandler((_webContents: any, permission: string, requestingOrigin: string) => {
-      return permission === 'notifications'
-        || (permission === 'media' && isTrustedRendererPermissionRequest(requestingOrigin));
-    });
-    session.defaultSession.setPermissionRequestHandler((webContents: any, permission: string, callback: (allowed: boolean) => void, details: any) => {
-      const requestedMedia = Array.isArray(details?.mediaTypes) ? details.mediaTypes : [];
-      const allowsMicrophone = permission === 'media' && requestedMedia.includes('audio');
-      callback(permission === 'notifications' || (allowsMicrophone && isTrustedRendererPermissionRequest(webContents?.getURL?.())));
-    });
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     ensureBatchOutScheduler();
@@ -7635,6 +7705,7 @@ ipcMain.handle('qr:getServerInfo', async () => {
     }
     createWindow();
     checkForAppUpdatesSoon();
+    startQrStatusServer();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -7807,7 +7878,7 @@ ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: windowTitle('Repair Selection'),
+    title: windowTitle('Add Repair to Work Order'),
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
@@ -8142,7 +8213,7 @@ ipcMain.handle('customBuild:openItem', async (event: any, payload: any) => {
 
 const BACKUP_CONFIG_PATH = () => path.join(resolveDataRoot(), 'backup-config.json');
 
-type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string; lastBatchOutDayKey?: string; lastAutoEmailDate?: string };
+type BackupConfig = { lastBackupPath?: string; lastBackupDate?: string; lastBatchOutDate?: string; lastAutoEmailDate?: string };
 
 function readBackupConfig(): BackupConfig {
   try {
@@ -8179,8 +8250,8 @@ const BACKUP_COLLECTION_KEYS = [
   'customers',
   'workOrders',
   'sales',
+    'calendarNotes',
   'calendarEvents',
-  'calendarNotes',
   'deviceCategories',
   'productCategories',
   'products',
@@ -8265,16 +8336,15 @@ async function writeComprehensiveBackupToRoot(targetRoot: string, label: string)
   return backupPath;
 }
 
-async function runBatchOutBackup(label: string = 'batchout', batchDayKey?: string) {
+async function runBatchOutBackup(label: string = 'batchout') {
   if (batchOutRunning) return { ok: false, error: 'Batch out already running' };
   batchOutRunning = true;
   try {
     const localBackupPath = await writeComprehensiveBackupToRoot(resolveDataRoot(), label);
     const backupPath = localBackupPath;
     const iso = new Date().toISOString();
-    const completedDayKey = batchDayKey || localDateKey(new Date());
-    writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso, lastBatchOutDayKey: completedDayKey });
-    lastBatchOutDate = completedDayKey;
+    writeBackupConfig({ lastBackupPath: backupPath, lastBackupDate: iso, lastBatchOutDate: iso });
+    lastBatchOutDate = iso.slice(0, 10);
     console.log('[LOCAL-BACKUP] Backup written to', backupPath);
     return { ok: true, backupPath, localBackupPath };
   } catch (e: any) {
@@ -8291,14 +8361,6 @@ function parseHhMm(str?: string): { h: number; m: number } {
   const h = Math.min(23, Math.max(0, Number(parts[0] || 0)));
   const m = Math.min(59, Math.max(0, Number(parts[1] || 0)));
   return { h: Number.isFinite(h) ? h : 0, m: Number.isFinite(m) ? m : 0 };
-}
-
-function batchOutDayKey(now: Date, batchOutTime?: string) {
-  const { h, m } = parseHhMm(batchOutTime || '21:00');
-  const mostRecentCutoff = new Date(now);
-  mostRecentCutoff.setHours(h, m, 0, 0);
-  if (now < mostRecentCutoff) mostRecentCutoff.setDate(mostRecentCutoff.getDate() - 1);
-  return localDateKey(mostRecentCutoff);
 }
 
 function scheduleAllowsToday(schedule: string | undefined, date: Date) {
@@ -8791,11 +8853,8 @@ async function trySendScheduledEodEmail(targetDate: Date) {
 
 async function checkBatchOutSchedule() {
   try {
-    // A completed batch must include the authenticated Supabase records. The
-    // cloud session handler calls this again as soon as login is verified.
-    if (!cloudSession?.accessToken || !cloudSession?.shopId) return;
     const cfg = readBackupConfig();
-    if (!lastBatchOutDate) lastBatchOutDate = cfg.lastBatchOutDayKey || configDateKey(cfg.lastBatchOutDate) || null;
+    if (cfg.lastBatchOutDate && !lastBatchOutDate) lastBatchOutDate = configDateKey(cfg.lastBatchOutDate) || null;
     const db = readDb();
     const settings = (db as any)?.eodSettings && Array.isArray((db as any).eodSettings) ? (db as any).eodSettings[0] : null;
     const autoEmailDate = configDateKey((cfg as any)?.lastAutoEmailDate);
@@ -8805,17 +8864,19 @@ async function checkBatchOutSchedule() {
     const batchOutTime = settings?.batchOutTime || settings?.sendTime || '21:00';
     const sendTime = settings?.sendTime || batchOutTime || '21:00';
     const now = new Date();
+    if (!scheduleAllowsToday(scheduleMode, now)) return;
 
     const todayKey = localDateKey(now);
-    const dueBatchDayKey = batchOutDayKey(now, batchOutTime);
-    if (autoBackup && lastBatchOutDate !== dueBatchDayKey) {
-      const res = await runBatchOutBackup('batchout', dueBatchDayKey);
+
+    const { h, m } = parseHhMm(batchOutTime);
+    const batchTarget = new Date();
+    batchTarget.setHours(h, m, 0, 0);
+    if (autoBackup && lastBatchOutDate !== todayKey && now >= batchTarget) {
+      const res = await runBatchOutBackup('batchout');
       if (res.ok) {
-        lastBatchOutDate = dueBatchDayKey;
+        lastBatchOutDate = todayKey;
       }
     }
-
-    if (!scheduleAllowsToday(scheduleMode, now)) return;
 
     const scheduleModeLower = String(scheduleMode || '').trim().toLowerCase();
     const effectiveSendTime = (scheduleModeLower === 'weekly' || scheduleModeLower === 'monthly') ? '00:00' : sendTime;

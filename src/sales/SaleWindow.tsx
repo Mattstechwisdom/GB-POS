@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { consumeWindowPayload, peekWindowPayload } from '../lib/windowPayload';
+import { consumeWindowPayload } from '../lib/windowPayload';
 import { printSaleReleaseForm, SaleOrderPrint } from './salePrint';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
 import IntakePanel from '@/workorders/IntakePanel';
@@ -7,9 +7,6 @@ import PaymentPanel from '@/workorders/PaymentPanel';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
-import { consumeInStockInventory } from '@/lib/inventoryConsumption';
-import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
-import { consultationLocationDisplay } from '@/lib/consultationLocation';
 
 type SalePayload = {
   customerId?: number;
@@ -137,6 +134,12 @@ async function geocodeAddress(address: string, near?: { lat: number; lng: number
   }
 }
 
+function calcConsultationPrice(hours: number, hasDistanceFee: boolean): number {
+  const extra = Math.max(0, hours - 1) * CONSULTATION_EXTRA_RATE;
+  const dist = hasDistanceFee ? CONSULTATION_DISTANCE_FEE : 0;
+  return CONSULTATION_BASE_RATE + extra + dist;
+}
+
 // Add minutes to a HH:MM time string; returns null if base time is empty
 function addHoursToTime(time: string, hours: number): string | null {
   if (!time) return null;
@@ -158,9 +161,7 @@ const SALE_REQUIRED_LABELS: Record<SaleRequiredKey, string> = {
 
 function readPayload(): SalePayload | null {
   try {
-    // Keep the payload available through React Strict Mode's discarded
-    // development render. The mounted component clears it below.
-    const stored = peekWindowPayload('newSale');
+    const stored = consumeWindowPayload('newSale');
     if (stored !== null) return stored as SalePayload;
   } catch {}
   try {
@@ -221,9 +222,6 @@ function buildNormalizedCheckoutPayments(record: any) {
 
 const SaleWindow: React.FC = () => {
   const payload = useMemo(() => readPayload() || {}, []);
-  useEffect(() => {
-    consumeWindowPayload('newSale');
-  }, []);
   const [sale, setSale] = useState<Partial<SaleRecord>>({
     customerId: payload.customerId,
     customerName: payload.customerName,
@@ -255,7 +253,6 @@ const SaleWindow: React.FC = () => {
   });
   const [errors, setErrors] = useState<string[]>([]);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
@@ -411,6 +408,23 @@ const SaleWindow: React.FC = () => {
   useEffect(() => {
     refreshAddressHistory();
   }, [refreshAddressHistory]);
+
+  // Auto-update consultation item price whenever hours or distanceFee changes
+  useEffect(() => {
+    const isConsult = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
+    if (!isConsult) return;
+    const hours = Number((sale as any).consultationHours) || 1;
+    const newPrice = calcConsultationPrice(hours, distanceFeeApplied);
+    setSale(s => ({
+      ...s,
+      items: ((s.items || []) as SaleItemRow[]).map(r =>
+        String(r.category || '').toLowerCase().startsWith('consult')
+          ? { ...r, price: newPrice }
+          : r
+      ),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(sale as any).consultationHours, distanceFeeApplied]);
 
   useEffect(() => () => {
     if (warningHideTimer.current !== undefined) {
@@ -586,29 +600,13 @@ const SaleWindow: React.FC = () => {
 
   function validate(actionDescription: string): boolean {
     if (!ensureRequired(actionDescription.includes('checking out') ? 'checkout' : 'save', actionDescription)) return false;
-    const rows = sale.items || [];
-    const orderingErrors: string[] = [];
-    rows.forEach((row, index) => {
-      if (isConsultationItem(row) || !(row.requiresOrder === true || row.inStock === false)) return;
-      const rawCost = row.internalCost;
-      if (rawCost === null || rawCost === undefined || !Number.isFinite(Number(rawCost)) || Number(rawCost) < 0) {
-        orderingErrors.push(`Row ${index + 1}: full supplier cost is required`);
-      }
-      if (!String(row.distributor || '').trim() && !String(row.productUrl || '').trim()) {
-        orderingErrors.push(`Row ${index + 1}: distributor or order URL is required`);
-      }
-    });
-    if (orderingErrors.length) {
-      setErrors(orderingErrors);
-      triggerWarningBanner(`Complete ordering details before ${actionDescription}`, orderingErrors.slice(0, 4).join(' · '));
-      return false;
-    }
     if ((sale as any).id) {
       setErrors([]);
       return true;
     }
 
     const errs: string[] = [];
+    const rows = sale.items || [];
     if (rows.length === 0) {
       const desc = (sale as any).itemDescription;
       const qty = Number((sale as any).quantity || 0);
@@ -656,17 +654,16 @@ const SaleWindow: React.FC = () => {
     return true;
   }, [sale.items, (sale as any).itemDescription, (sale as any).quantity, (sale as any).price, (sale as any).id]);
 
-  function buildSaleRecordBase(itemsOverride?: SaleItemRow[]): SaleRecord {
+  function buildSaleRecordBase(): SaleRecord {
     const now = new Date().toISOString();
-    const recordItems = itemsOverride || sale.items || [];
     const record: SaleRecord = {
       ...sale,
       // legacy fields: mirror first row for compatibility
-      itemDescription: recordItems[0] ? recordItems[0].description : (sale as any).itemDescription,
-      quantity: recordItems[0] ? itemUnits(recordItems[0]) : (sale as any).quantity,
-      price: recordItems[0] ? recordItems[0].price : (sale as any).price,
-      consultationHours: recordItems[0] && isConsultationItem(recordItems[0])
-        ? Number(recordItems[0].consultationHours ?? itemUnits(recordItems[0])) || undefined
+      itemDescription: sale.items && sale.items[0] ? sale.items[0].description : (sale as any).itemDescription,
+      quantity: sale.items && sale.items[0] ? itemUnits(sale.items[0]) : (sale as any).quantity,
+      price: sale.items && sale.items[0] ? sale.items[0].price : (sale as any).price,
+      consultationHours: sale.items && sale.items[0] && isConsultationItem(sale.items[0])
+        ? Number(sale.items[0].consultationHours ?? itemUnits(sale.items[0])) || undefined
         : (sale as any).consultationHours,
       // If inStock, null out order/delivery fields to avoid confusion
       orderedDate: sale.inStock ? null : sale.orderedDate || null,
@@ -676,7 +673,7 @@ const SaleWindow: React.FC = () => {
       createdAt: (sale as any).id ? (sale.createdAt || now) : now,
       updatedAt: now,
       total: total,
-      items: recordItems as any,
+      items: sale.items as any,
     } as SaleRecord;
     // Preserve original checkInAt for updates
     if ((sale as any).id) {
@@ -705,24 +702,27 @@ const SaleWindow: React.FC = () => {
     try { window.close(); } catch {}
   }
 
-  async function persistSaleRecord() {
-    const record = buildSaleRecordBase();
-    const saved = (sale as any).id
-      ? await window.api.dbUpdate('sales', (sale as any).id, { ...record, id: (sale as any).id })
-      : await window.api.dbAdd('sales', record);
-    if (!saved) throw new Error('The sale did not return a saved record.');
-    setSale(saved);
-    setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
-    try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
-    try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
-    return saved as SaleRecord;
-  }
-
   async function handleSave() {
     if (!validate('saving this sale')) return;
+    const record = buildSaleRecordBase();
     try {
-      await persistSaleRecord();
-      await closeThisWindow({ focusMain: true });
+      let saved;
+      if ((sale as any).id) {
+        saved = await window.api.dbUpdate('sales', (sale as any).id, { ...record, id: (sale as any).id });
+      } else {
+        saved = await window.api.dbAdd('sales', record);
+      }
+      if (saved) {
+        setSale(saved);
+        setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+        // Reflect in Calendar: add parts/events based on dates present
+        try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
+        // Nudge any opener window (e.g., Customer Overview) to reload sales in fallback scenarios
+        try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
+
+        // After saving, return the user to the main/customer screen.
+        await closeThisWindow({ focusMain: true });
+      }
     } catch (e) {
       console.error('Save failed', e);
       triggerWarningBanner('Failed to save sale', 'See console for details.');
@@ -866,22 +866,6 @@ const SaleWindow: React.FC = () => {
     setSale(s => ({ ...s, items }));
   }, []);
 
-  const handleSaleItemsCommit = useCallback(async (items: SaleItemRow[]) => {
-    setSale(s => ({ ...s, items }));
-    const saleId = Number((sale as any).id || 0);
-    if (!saleId) return;
-    try {
-      const record = buildSaleRecordBase(items);
-      const saved = await window.api.dbUpdate('sales', saleId, { ...record, id: saleId });
-      if (saved) setSale(saved);
-      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
-      try { window.opener?.postMessage({ type: 'sales:changed', customerId: record.customerId }, '*'); } catch {}
-    } catch (error) {
-      console.error('Immediate sale item save failed', error);
-      triggerWarningBanner('Item is still on screen but was not synced', 'Save the sale before closing and check your connection.');
-    }
-  }, [sale]);
-
   // Save shop address to DB and geocode it for future distance checks
   async function saveShopAddressToDB() {
     const addr = shopAddressInput.trim();
@@ -941,41 +925,25 @@ const SaleWindow: React.FC = () => {
 
   const renderSidebarActions = useCallback(() => (
     <>
-      <button
-        className="w-full px-3 py-2 bg-[#BC13FE]/20 border border-[#BC13FE]/70 rounded text-fuchsia-100 mb-1"
-        onClick={async () => {
-          try {
-            const saved = (sale as any).id ? sale : await persistSaleRecord();
-            if (!saved?.customerId) throw new Error('Select a client before opening updates.');
-            setClientUpdateOpen(true);
-          } catch (error: any) {
-            triggerWarningBanner('Could not open Update Client', error?.message || 'Save the sale and try again.');
-          }
-        }}
-      >
-        Update Client
-      </button>
       {/* Print Sales Form — tech copy with QR code */}
       {!((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
         <button
           className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-1"
           onClick={async () => {
             try {
-              if (!validate('printing this sales form')) return;
-              const printableSale = (sale as any).id ? sale : await persistSaleRecord();
-              const rows = (printableSale.items || []) as SaleItemRow[];
+              const rows = (sale.items || []) as SaleItemRow[];
               const saleItems = (rows.length
                 ? rows
-                : [{ description: printableSale.itemDescription || 'Sale', qty: (printableSale as any).quantity || 1, price: printableSale.price || 0 }]
+                : [{ description: sale.itemDescription || 'Sale', qty: (sale as any).quantity || 1, price: sale.price || 0 }]
               ).map(r => ({
                 description: r.description || '',
                 qty: itemUnits(r) || 1,
                 price: Number(r.price) || 0,
               }));
               let customerPhoneAlt = '';
-              let customerEmail = String((printableSale as any).customerEmail || '').trim();
+              let customerEmail = String((sale as any).customerEmail || '').trim();
               try {
-                const cid = printableSale.customerId;
+                const cid = sale.customerId;
                 if (cid && (window as any).api?.findCustomers) {
                   const list = await (window as any).api.findCustomers({ id: cid });
                   const c = Array.isArray(list) && list.length ? list[0] : null;
@@ -983,26 +951,23 @@ const SaleWindow: React.FC = () => {
                 }
               } catch {}
               const payload: SaleOrderPrint = {
-                invoiceId: String((printableSale as any).invoiceId || (printableSale as any).id || ''),
-                id: Number((printableSale as any).id) || 0,
-                dateTimeISO: printableSale.checkInAt || new Date().toISOString(),
-                clientName: printableSale.customerName || '',
-                phone: printableSale.customerPhone || '',
+                invoiceId: String((sale as any).invoiceId || (sale as any).id || ''),
+                id: Number((sale as any).id) || 0,
+                dateTimeISO: sale.checkInAt || new Date().toISOString(),
+                clientName: sale.customerName || '',
+                phone: sale.customerPhone || '',
                 phoneAlt: customerPhoneAlt,
                 email: customerEmail,
                 items: saleItems,
-                subTotal: printableSale.totals?.subTotal ?? 0,
-                discount: printableSale.discount || 0,
-                taxRate: printableSale.taxRate || 0,
-                taxes: printableSale.totals?.tax ?? 0,
-                amountPaid: printableSale.amountPaid || 0,
-                notes: (printableSale as any).notes || '',
+                subTotal: sale.totals?.subTotal ?? 0,
+                discount: sale.discount || 0,
+                taxRate: sale.taxRate || 0,
+                taxes: sale.totals?.tax ?? 0,
+                amountPaid: sale.amountPaid || 0,
+                notes: (sale as any).notes || '',
               };
               await printSaleReleaseForm(payload);
-            } catch (e: any) {
-              console.error('Print Sales Form failed', e);
-              triggerWarningBanner('Sales form could not be printed', e?.message || 'The sale QR code could not be generated.');
-            }
+            } catch (e) { console.error('Print Sales Form failed', e); }
           }}
         >
           Print Sales Form
@@ -1058,7 +1023,9 @@ const SaleWindow: React.FC = () => {
               : (sale.checkInAt ? new Date(String(sale.checkInAt)).toLocaleDateString() : new Date().toLocaleDateString());
             const consultationTimeLabel = appointmentTime || '';
 
-            const address = consultationLocationDisplay(sale as any);
+            const address = (sale as any).consultationType === 'athome'
+              ? String((sale as any).consultationAddress || '').trim()
+              : 'In-Store';
 
             const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
             const driverFee = Number((sale as any).driverFee ?? (driverItem as any)?.price ?? 0) || 0;
@@ -1076,7 +1043,6 @@ const SaleWindow: React.FC = () => {
               consultationTimeLabel,
               reasonForVisit,
               address,
-              consultationType: (sale as any).consultationType,
               firstHourRateLabel: money(firstHourRate),
               driverFeeLabel: money(driverFee),
               firstHourTotalLabel: money(firstHourTotal),
@@ -1150,15 +1116,6 @@ const SaleWindow: React.FC = () => {
         }}
       >
         {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'Print Consult Sheet' : 'Print Customer Receipt'}
-      </button>
-      <button
-        type="button"
-        className="gb-sale-mobile-checkout w-full px-3 py-2 bg-neon-green text-zinc-900 font-semibold rounded"
-        onClick={() => {
-          void handleCheckoutRef.current();
-        }}
-      >
-        Checkout
       </button>
     </>
   ), [sale]);
@@ -1270,14 +1227,6 @@ const SaleWindow: React.FC = () => {
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
         }
-        if (currentId && (additionalPaid > 0 || status === 'closed')) {
-          try {
-            await consumeInStockInventory((window as any).api, 'sale', currentId, Array.isArray(recordToPersist.items) ? recordToPersist.items : []);
-          } catch (inventoryError: any) {
-            console.error('Sale inventory consumption failed', inventoryError);
-            alert(`Sale payment was saved, but inventory needs attention: ${inventoryError?.message || inventoryError}`);
-          }
-        }
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
 
         if (result.printReceipt) {
@@ -1330,10 +1279,9 @@ const SaleWindow: React.FC = () => {
               const consultationTimeLabel = appointmentTime || '';
 
               const consultationType = String((recordToPersist as any).consultationType || (sale as any).consultationType || '').trim();
-              const address = consultationLocationDisplay({
-                consultationType,
-                consultationAddress: (recordToPersist as any).consultationAddress || (sale as any).consultationAddress,
-              });
+              const address = consultationType === 'athome'
+                ? String((recordToPersist as any).consultationAddress || (sale as any).consultationAddress || '').trim()
+                : 'In-Store';
 
               const firstHourRate = Number((consultItem as any)?.price ?? CONSULTATION_BASE_RATE) || CONSULTATION_BASE_RATE;
               const driverFee = Number((recordToPersist as any).driverFee ?? (driverItem as any)?.price ?? (sale as any).driverFee ?? 0) || 0;
@@ -1351,7 +1299,6 @@ const SaleWindow: React.FC = () => {
                 consultationTimeLabel,
                 reasonForVisit,
                 address,
-                consultationType,
                 firstHourRateLabel: money(firstHourRate),
                 driverFeeLabel: money(driverFee),
                 firstHourTotalLabel: money(firstHourTotal),
@@ -1465,10 +1412,6 @@ const SaleWindow: React.FC = () => {
         condition: picked.condition || 'New',
         productUrl: picked.productUrl || picked.url || picked.link || '',
         category: picked.category,
-        distributor: picked.distributor || '',
-        vendorRelationship: picked.vendorRelationship,
-        vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
-        vendorTaxExempt: !!picked.vendorTaxExempt,
       };
       setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
     }
@@ -1489,10 +1432,6 @@ const SaleWindow: React.FC = () => {
             condition: picked.condition || 'New',
             productUrl: picked.productUrl || picked.url || picked.link || '',
             category: picked.category,
-            distributor: picked.distributor || '',
-            vendorRelationship: picked.vendorRelationship,
-            vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
-            vendorTaxExempt: !!picked.vendorTaxExempt,
           };
           setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
         });
@@ -1508,7 +1447,7 @@ const SaleWindow: React.FC = () => {
   }, []);
 
   return (
-    <div className="gb-sale-window h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
+    <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
@@ -1517,9 +1456,7 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="gb-sale-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-    <>
-    {clientUpdateOpen ? <ClientUpdatePanel embedded recordType={((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? 'consult' : 'sale'} recordId={Number((sale as any).id || 0)} initialRecord={sale} onClose={() => setClientUpdateOpen(false)} onUpdated={updated => setSale(current => ({ ...current, ...updated }))} /> : null}
+      <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
     <WorkOrderSidebar
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
@@ -1529,19 +1466,8 @@ const SaleWindow: React.FC = () => {
       validationFlags={sidebarValidationFlags}
       renderActions={renderSidebarActions}
     />
-  <div className="gb-sale-main flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
-          <section className="gb-sale-mobile-title-card" aria-label="Sale client summary">
-            <div>
-              <span>Sale</span>
-              <strong>{(sale as any).id ? `#${(sale as any).id}` : 'New sale'}</strong>
-            </div>
-            <div>
-              <span>Client</span>
-              <strong>{sale.customerName || 'Client not selected'}</strong>
-              {sale.customerPhone ? <small>{sale.customerPhone}</small> : null}
-            </div>
-          </section>
-          <h1 className="gb-sale-desktop-title text-xl font-semibold mb-2">New Sale</h1>
+  <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
+          <h1 className="text-xl font-semibold mb-2">New Sale</h1>
 
           {/* ── Consultation Details Panel ──────────────────────── */}
           {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
@@ -1793,17 +1719,16 @@ const SaleWindow: React.FC = () => {
             </div>
           )}
 
-          <div className="gb-sale-details-card grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
+          <div className="grid grid-cols-1 gap-4 bg-zinc-900 border border-zinc-700 rounded p-3">
             <SaleItemsTable
               items={(sale.items || []) as SaleItemRow[]}
               onChange={handleSaleItemsChange}
-              onCommit={handleSaleItemsCommit}
               showRequiredIndicator={itemsSectionNeedsAttention}
             />
 
 
             {/* Ordered and ETA date inputs side-by-side */}
-            <div className="gb-sale-date-grid col-span-2 grid grid-cols-2 gap-4">
+            <div className="col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
                 <input
@@ -1827,7 +1752,7 @@ const SaleWindow: React.FC = () => {
             </div>
 
             {/* Parts URLs */}
-            <div className="gb-sale-url-grid col-span-2 grid grid-cols-2 gap-4">
+            <div className="col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
                 {(sale as any).partsOrderUrl ? <button type="button" className="mb-2 rounded border border-[#39FF14]/60 bg-[#39FF14]/10 px-3 py-1.5 text-xs font-semibold text-[#39FF14]" onClick={() => { const url = String((sale as any).partsOrderUrl); if ((window as any).api?.openUrl) void (window as any).api.openUrl(url); else if ((window as any).api?.openExternal) void (window as any).api.openExternal(url); else window.open(url, '_blank', 'noopener,noreferrer'); }}>Open Part URL</button> : null}
@@ -1853,7 +1778,7 @@ const SaleWindow: React.FC = () => {
                 {(sale as any).partsTrackingUnavailable ? <div className="mt-2 text-xs text-zinc-400">Distributor did not provide tracking.</div> : null}
               </div>
             </div>
-          <div className="gb-sale-notes col-span-2">
+          <div className="col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-h-[80px]"
@@ -1875,13 +1800,12 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
         </div>
-        <div className="gb-sale-payment flex flex-col gap-3 min-h-0 overflow-auto">
+        <div className="flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
           <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
-      </>
       </div>
-      <div className="gb-sale-action-bar fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
+      <div className="fixed bottom-4 left-4 right-3 flex items-center justify-between gap-2">
         <div className="text-xs text-zinc-500 min-h-[1.2rem]">Auto-save enabled</div>
         <div className="flex items-center gap-2">
           <button className="px-3 py-1.5 bg-zinc-800 rounded" onClick={onCancel}>Cancel</button>

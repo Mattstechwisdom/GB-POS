@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { dispatchOpenModal } from '../lib/modalBus';
 import { storeWindowPayload } from '../lib/windowPayload';
-import { normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
-import { Capacitor } from '@capacitor/core';
+import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getCloudEmailStatus, sendCloudEmail } from '../lib/cloudEmail';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
@@ -19,6 +19,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   sales: 'sales',
   calendarEvents: 'calendar_events',
   calendarNotes: 'calendar_notes',
+  feedbackEntries: 'feedback_entries',
   deviceCategories: 'device_categories',
   productCategories: 'product_categories',
   products: 'products',
@@ -52,6 +53,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
   calendarNotes: 'calendarNotes:changed',
+  feedbackEntries: 'feedbackEntries:changed',
   timeEntries: 'timeEntries:changed',
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
@@ -413,12 +415,6 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
-      statusUpdate: row.status_update || '',
-      statusUpdatedAt: cloudDate(row.status_updated_at),
-      estimatedDate: row.estimated_date || '',
-      techNotes: row.tech_notes || '',
-      lastUpdateNote: row.last_update_note || '',
-      lastUpdateAt: cloudDate(row.last_update_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -426,10 +422,22 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
   }
   if (key === 'calendarNotes') {
     return {
-      id,
+      id: row.legacy_id || row.id,
       date: row.note_date || '',
       subject: row.subject || '',
       body: row.body || '',
+      createdAt: cloudDate(row.legacy_created_at || row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+    };
+  }
+  if (key === 'feedbackEntries') {
+    return {
+      id: row.legacy_id || row.id,
+      subject: row.subject || '',
+      body: row.body || '',
+      completed: !!row.completed,
+      completedAt: cloudDate(row.completed_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -748,12 +756,33 @@ function toCloudRow(key: string, item: any): any | null {
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
-      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
-      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
-      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
-      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
-      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
-      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'calendarNotes') {
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
+    return {
+      shop_id,
+      legacy_id,
+      note_date: toCloudDateOnly(item.date),
+      subject: toCloudString(item.subject),
+      body: toCloudString(item.body),
+      legacy_created_at: toCloudIso(item.createdAt),
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
+  if (key === 'feedbackEntries') {
+    const legacy_id = toCloudTextId(item.id);
+    if (!legacy_id) return null;
+    return {
+      shop_id,
+      legacy_id,
+      subject: toCloudString(item.subject),
+      body: toCloudString(item.body),
+      completed: !!item.completed,
+      completed_at: toCloudIso(item.completedAt),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -826,19 +855,6 @@ function toCloudRow(key: string, item: any): any | null {
       model: toCloudString(item.model),
       track_stock: toCloudBool(item.trackStock),
       inventory_product_id: toCloudIntId(item.inventoryProductId),
-      legacy_created_at: toCloudIso(item.createdAt),
-      legacy_updated_at: toCloudIso(item.updatedAt),
-    };
-  }
-  if (key === 'calendarNotes') {
-    const legacy_id = toCloudTextId(item.id);
-    if (!legacy_id) return null;
-    return {
-      shop_id,
-      legacy_id,
-      note_date: toCloudDateOnly(item.date),
-      subject: toCloudString(item.subject),
-      body: toCloudString(item.body),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -938,6 +954,7 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
     technicians: { id: 'legacy_id', updatedAt: 'updated_at', firstName: 'first_name', lastName: 'last_name' },
+    calendarNotes: { id: 'legacy_id', date: 'note_date', updatedAt: 'updated_at', createdAt: 'created_at' },
   };
   if (map[key]?.[s]) return map[key][s];
   if (!s) {
@@ -945,6 +962,7 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     if (key === 'sales') return 'check_in_at';
     if (key === 'quotes') return 'content_updated_at';
     if (key === 'technicians') return 'first_name';
+    if (key === 'calendarNotes') return 'note_date';
     return 'legacy_id';
   }
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
@@ -968,20 +986,16 @@ function cloudRecordKeyForQrType(type: 'repair' | 'sale' | 'consult'): string {
   return 'workOrders';
 }
 
-function getQrStatusFunctionBase(): string {
-  const supabaseUrl = String(cloudSession?.supabaseUrl || (import.meta as any)?.env?.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
-  if (!supabaseUrl) throw new Error('Supabase is not configured for cloud QR status links.');
-  return `${supabaseUrl}/functions/v1/qr-status`;
-}
-
-function getQrStatusFunctionUrl(token: string): string {
-  const configured = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
-  return `${configured}/?clientUpdateToken=${encodeURIComponent(token)}`;
-}
-
-function getConsultationQrUrl(token: string): string {
-  const configured = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
-  return `${configured}/consultation.html?token=${encodeURIComponent(token)}`;
+function getHostedAppUrl(): string {
+  const envUrl = String((import.meta as any)?.env?.VITE_PUBLIC_APP_URL || '').trim();
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  try {
+    const origin = String(window.location.origin || '').trim();
+    if (/^https?:\/\//i.test(origin)) return origin.replace(/\/+$/, '');
+  } catch {
+    // ignore
+  }
+  return 'https://gb-pos-production.up.railway.app';
 }
 
 function makeQrToken(): string {
@@ -1008,7 +1022,9 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {
-    return type === 'consult' ? getConsultationQrUrl(existing.data.token) : getQrStatusFunctionUrl(existing.data.token);
+    return type === 'consult'
+      ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
+      : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
   }
 
   const recordKey = cloudRecordKeyForQrType(type);
@@ -1039,7 +1055,9 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
       .select('token')
       .single();
     if (!inserted.error && inserted.data?.token) {
-        return type === 'consult' ? getConsultationQrUrl(inserted.data.token) : getQrStatusFunctionUrl(inserted.data.token);
+      return type === 'consult'
+        ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
+        : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
       throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
@@ -1302,7 +1320,7 @@ async function getCloudCount(key: string): Promise<number | null> {
 }
 
 async function nextLegacyId(key: string): Promise<number | string> {
-  if (key === 'repairCategories' || key === 'technicians') return Math.random().toString(36).slice(2, 9);
+  if (key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' || key === 'feedbackEntries') return crypto.randomUUID();
   const table = CLOUD_TABLE_BY_KEY[key];
   const session = requireCloudSession();
   let max = 0;
@@ -1329,7 +1347,7 @@ async function nextLegacyId(key: string): Promise<number | string> {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories' || key === 'technicians') return toCloudTextId(item.id);
+  if (key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' || key === 'feedbackEntries') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 
@@ -1504,7 +1522,7 @@ async function cloudDbDelete(key: string, legacyId: any, queueOnFailure = true):
   const table = CLOUD_TABLE_BY_KEY[key];
   if (!table) return deleteLocalOnly(key, legacyId);
   const session = requireCloudSession();
-  const id = key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' || key === 'feedbackEntries' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   try {
     let q = supabase.from(table).delete().eq('shop_id', session.shopId);
@@ -1743,7 +1761,57 @@ function makeApi() {
     scrapePartUrl: async (rawUrl: string) => {
       const url = normalizePartOrderUrl(rawUrl);
       if (!url) return { ok: false, error: 'Missing URL.' };
-      return { ok: true, url, vendor: derivePartVendorFromUrl(url) };
+      if (Capacitor.getPlatform() !== 'android') return null;
+      const readFallback = async () => {
+        if (!CapacitorHttp?.get) return null;
+        const parsed = new URL(url);
+        const suffix = `${parsed.host}${parsed.pathname}${parsed.search}`;
+        const source = await Promise.any([
+          `https://r.jina.ai/https://${suffix}`,
+          `https://r.jina.ai/http://${suffix}`,
+        ].map(async (readerUrl) => {
+          const readerRes = await CapacitorHttp.get({
+            url: readerUrl,
+            responseType: 'text',
+            connectTimeout: 25000,
+            readTimeout: 25000,
+            headers: { Accept: 'text/plain', 'User-Agent': 'GadgetBoy-POS/1.0 product metadata reader' },
+          });
+          if (readerRes.status < 200 || readerRes.status >= 300) throw new Error(`Product reader failed (${readerRes.status}).`);
+          return typeof readerRes.data === 'string' ? readerRes.data : JSON.stringify(readerRes.data || '');
+        }));
+        return extractPartMetadataFromReader(source, url);
+      };
+      try {
+        if (CapacitorHttp?.get) {
+          const nativeRes = await CapacitorHttp.get({
+            url,
+            responseType: 'text',
+            connectTimeout: 12000,
+            readTimeout: 12000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36 GBPOS/1.0',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+          if (nativeRes.status < 200 || nativeRes.status >= 300) {
+            return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${nativeRes.status}` };
+          }
+          const html = typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data || '');
+          const metadata = extractPartMetadataFromHtml(html, url);
+          return metadata.ok ? metadata : await readFallback() || metadata;
+        }
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: `HTTP ${res.status}` };
+        const html = await res.text();
+        return extractPartMetadataFromHtml(html, url);
+      } catch (error: any) {
+        try {
+          return await readFallback() || { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+        } catch {
+          return { ok: false, url, vendor: derivePartVendorFromUrl(url), error: error?.message || 'Could not scrape URL from this device.' };
+        }
+      }
     },
     openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -1839,7 +1907,7 @@ function makeApi() {
       }
     },
     qrGetDataUrl: async () => ({ ok: false, error: 'QR generation is desktop-only.' }),
-    qrGetServerInfo: async () => ({ ok: true, hostUrl: getQrStatusFunctionBase(), ipUrl: getQrStatusFunctionBase() }),
+    qrGetServerInfo: async () => ({ ok: true, hostUrl: getHostedAppUrl(), ipUrl: getHostedAppUrl() }),
   };
 
   for (const method of Object.keys(API_TO_MODAL)) {

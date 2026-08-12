@@ -3,29 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
-import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { useAutosave } from '../lib/useAutosave';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
-import { markedUpPartPrice } from '../lib/partOrdering';
-import { generateWithGidget, gidgetLocalStatus } from '../lib/gidgetLocalEngine';
-import { buildQuoteSalesPrompt } from '../lib/quoteSalesPrompt';
-
-const QUOTE_AUTOFILL_MARKUP_PCT = 15;
-const QUOTE_SUMMARY_TIMEOUT_MS = 30_000;
-
-function withQuoteSummaryTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise.then(
-      (value) => { window.clearTimeout(timer); resolve(value); },
-      (error) => { window.clearTimeout(timer); reject(error); },
-    );
-  });
-}
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
 
@@ -266,14 +249,18 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
   const [busy, setBusy] = React.useState(false);
   const [selected, setSelected] = React.useState<any | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customersIndexRef = React.useRef<any[]>([]);
+  const customersIndexRef = React.useRef<Array<{ c: any; fullLower: string; phoneDigits: string }>>([]);
 
   const loadCustomers = React.useCallback(async () => {
     try {
       const api: any = (window as any).api;
       const list = await (api?.getCustomers ? api.getCustomers() : api?.dbGet ? api.dbGet('customers') : Promise.resolve([])).catch(() => []);
       const safe = Array.isArray(list) ? list : [];
-      customersIndexRef.current = safe;
+      customersIndexRef.current = safe.map((c: any) => ({
+        c,
+        fullLower: `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase(),
+        phoneDigits: String(c.phone || '').replace(/\D/g, ''),
+      }));
     } catch {
       customersIndexRef.current = [];
     }
@@ -297,10 +284,16 @@ const ClientSearchBar: React.FC<ClientSearchBarProps> = ({ onSelect, onClear }) 
     if (!v) { setResults([]); return; }
     setBusy(true);
     try {
+      const digits = v.replace(/\D/g, '');
+      const vl = v.toLowerCase();
       const idx = customersIndexRef.current || [];
       const out: any[] = [];
-      for (const customer of idx) {
-        if (customerMatchesSearchText(customer, v)) out.push(customer);
+      for (const it of idx) {
+        if (it.fullLower.includes(vl)) {
+          out.push(it.c);
+        } else if (digits && it.phoneDigits.includes(digits)) {
+          out.push(it.c);
+        }
         if (out.length >= 8) break;
       }
       setResults(out);
@@ -512,8 +505,6 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Mode: sales or repairs quote workflow
   const [mode, setMode] = useState<'sales' | 'repairs'>('sales');
   const [sales, setSales] = useState<SalesState>({ items: [] });
-  const [generatingSummaryItem, setGeneratingSummaryItem] = useState<number | null>(null);
-  const [summaryMessages, setSummaryMessages] = useState<Record<number, string>>({});
   const [repairs, setRepairs] = useState<RepairsState>({ lines: [] });
   const [quotes, setQuotes] = useState<any[]>([]);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -3985,7 +3976,6 @@ function QuoteGeneratorWindow(): JSX.Element {
   function addSaleItem() {
     setSales((s) => ({ ...s, items: [...s.items, { expanded: true, dynamic: {}, images: [] }] }));
   }
-
   function removeSaleItem(idx: number) {
     setSales((s) => ({ ...s, items: s.items.filter((_, i) => i !== idx) }));
     if (createSaleSelecting) {
@@ -4629,67 +4619,6 @@ function QuoteGeneratorWindow(): JSX.Element {
     } catch {}
   }, { debounceMs: 1000, enabled: true, equals: (a, b) => a === b });
 
-  function sanitizeAiSummary(raw: any): string {
-    let text = String(raw || '').trim();
-    if (!text) return '';
-    // Strip a full-response wrapper of matching quotes ("..." or '...').
-    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
-      text = text.slice(1, -1).trim();
-    }
-    // Strip common leading conversational preamble some small models add despite
-    // instructions, e.g. "Sure, here is a summary:" or "Certainly! ...".
-    const preamblePatterns = [
-      /^(sure|certainly|okay|ok|absolutely|of course)[!,.:]?\s*/i,
-      /^here(?:'s| is)[^\n:]{0,80}:\s*/i,
-      /^this is[^\n:]{0,80}:\s*/i,
-    ];
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const pattern of preamblePatterns) {
-        const next = text.replace(pattern, '');
-        if (next !== text) {
-          text = next.trim();
-          changed = true;
-        }
-      }
-    }
-    // Drop a leading markdown heading if the model added one anyway.
-    text = text.replace(/^#{1,6}\s+.*\n+/, '').trim();
-    // The quote description is intentionally one paragraph. Flatten accidental
-    // markdown lists/newlines without changing the model's wording.
-    return text
-      .replace(/^\s*[-*]\s+/gm, '')
-      .replace(/\s*\n+\s*/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-  }
-
-  function isValidAiSalesSummary(text: string): boolean {
-    if (!text || /[\r\n]/.test(text)) return false;
-    const sentences = text.match(/[^.!?]+[.!?]+(?:["')\]]+)?/g) || [];
-    return sentences.length >= 5 && sentences.length <= 7;
-  }
-
-  function quoteDisplayTitle(brand: any, model: any, fallback: any): string {
-    const cleanBrand = String(brand || '').trim();
-    const cleanModel = String(model || '').trim();
-    if (!cleanModel) return cleanBrand || String(fallback || 'Device').trim();
-    if (!cleanBrand || cleanModel.toLowerCase().startsWith(`${cleanBrand.toLowerCase()} `)) return cleanModel;
-    return `${cleanBrand} ${cleanModel}`;
-  }
-
-  function friendlyDynamicLabel(key: string): string {
-    for (const definition of DEVICE_TYPE_DEFS) {
-      const field = definition.fields.find((candidate) => candidate.key === key);
-      if (field?.label) return field.label;
-    }
-    return key
-      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-      .replace(/[_-]+/g, ' ')
-      .replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }
-
   function buildAIPrompt(it: SaleItem) {
     const lines: string[] = [];
     const isImageLike = (v: any) => {
@@ -4703,7 +4632,19 @@ function QuoteGeneratorWindow(): JSX.Element {
         return false;
       } catch { return false; }
     };
-    const sanitizeVal = (v: any) => (isImageLike(v) ? '' : String(v ?? '').trim());
+    const isPriceLike = (v: any) => {
+      try {
+        if (v == null) return false;
+        if (typeof v === 'number') return true;
+        const s = String(v).trim();
+        if (!s) return false;
+        // common currency/price patterns: $12.34, 12.34, 1234, 1,234.56
+        if (/^\$?\s*\d{1,3}(?:[\,\s]\d{3})*(?:[.,]\d{1,2})?\s*$/.test(s)) return true;
+        if (/^\d+(?:[.,]\d{1,2})?$/.test(s)) return true;
+        return false;
+      } catch { return false; }
+    };
+    const sanitizeVal = (v: any) => (isImageLike(v) || isPriceLike(v) ? '' : String(v ?? '').trim());
     // Custom Build: create a sectioned, fact-first prompt using only provided fields
     if (it.deviceType === 'Custom Build') {
       lines.push('Produce a concise, professional single paragraph (5-7 sentences) that summarizes the provided Custom PC components and explains how they work together as a balanced system.');
@@ -4739,11 +4680,9 @@ function QuoteGeneratorWindow(): JSX.Element {
       lines.push('Output: exactly one paragraph (5-7 sentences), no bullets or lists.');
       return lines.join('\n');
     }
-    const title = quoteDisplayTitle(it.brand, it.model, it.deviceType);
-    const rawAppleFamily = String(it.dynamic?.device || '').trim();
-    const appleFamily = rawAppleFamily
-      ? (/^apple\b/i.test(rawAppleFamily) ? rawAppleFamily : `Apple ${rawAppleFamily}`)
-      : '';
+    const titleParts = [it.brand, it.model].filter(Boolean);
+    const title = titleParts.join(' ') || (it.deviceType || 'Device');
+    const appleFamily = it.dynamic?.device ? `Apple ${it.dynamic.device}` : '';
     const deviceLabel = appleFamily || it.deviceType || 'Device';
 
     // Collect confirmed specs
@@ -4760,16 +4699,12 @@ function QuoteGeneratorWindow(): JSX.Element {
     if (it.dynamic) {
       Object.entries(it.dynamic).forEach(([k, v]) => {
         if (k === 'device') return;
-        if (k.startsWith('_')) return;
-        if (k === 'otherSpecs' || k === 'sourceVendor') return;
         if (/image/i.test(k)) return;
-        if (/price|cost|markup/i.test(k)) return;
+        if (/price/i.test(k)) return;
         if (isImageLike(v)) return;
-        addSpec(friendlyDynamicLabel(k), v);
+        if (isPriceLike(v)) return;
+        addSpec(k, v);
       });
-      if (Array.isArray(it.dynamic.otherSpecs)) {
-        it.dynamic.otherSpecs.forEach((spec: any) => addSpec(spec?.desc || spec?.name, spec?.value));
-      }
     }
     if (it.accessories) addSpec('Accessories', it.accessories);
 
@@ -4796,80 +4731,26 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   async function copyPromptForItem(idx: number) {
     const it = sales.items[idx];
-    const prompt = buildQuoteSalesPrompt(it);
-    const fallbackCopy = () => {
-      const ta = document.createElement('textarea');
-      ta.value = prompt;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const copied = document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (!copied) throw new Error('Clipboard copy was rejected.');
-    };
+    const prompt = buildAIPrompt(it);
+    // Try clipboard API with fallback
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-          await navigator.clipboard.writeText(prompt);
-        } catch {
-          fallbackCopy();
-        }
+        await navigator.clipboard.writeText(prompt);
       } else {
-        fallbackCopy();
+        const ta = document.createElement('textarea');
+        ta.value = prompt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
       }
       setSaveMsg('AI prompt copied to clipboard');
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (_) {
       setSaveMsg('Could not copy to clipboard');
       setTimeout(() => setSaveMsg(null), 2000);
-    }
-  }
-
-  async function generateSalesSummaryForItem(idx: number) {
-    if (generatingSummaryItem !== null) return;
-    const item = sales.items[idx];
-    if (!item) return;
-    const prompt = buildQuoteSalesPrompt(item);
-    setGeneratingSummaryItem(idx);
-    setSummaryMessages((current) => ({ ...current, [idx]: 'Writing sales summary from the entered fields...' }));
-    try {
-      const status = await withQuoteSummaryTimeout(
-        gidgetLocalStatus(),
-        3_000,
-        'The local summary engine did not respond.',
-      );
-      if (!status.supported) {
-        throw new Error('Automatic summaries are available in the installed Windows and Android apps. Copy AI Prompt remains available here.');
-      }
-      if (!status.ready) {
-        throw new Error('Gidget needs its one-time local model setup before it can write summaries. Copy AI Prompt remains available in the meantime.');
-      }
-      const response = await withQuoteSummaryTimeout(
-        generateWithGidget({
-          instructions: 'Write a factual, polished sales summary using only the confirmed product details in the technician prompt. Follow its requested output format exactly. Output only the summary paragraph with no preamble, heading, bullets, quotation marks, or closing remarks. Never invent specifications, condition, included accessories, pricing, warranty, or availability.',
-          messages: [{ role: 'user', content: prompt }],
-        }),
-        QUOTE_SUMMARY_TIMEOUT_MS,
-        'The summary took too long. Nothing was changed; try again or use Copy AI Prompt.',
-      );
-      const cleaned = sanitizeAiSummary(response?.answer);
-      if (!response?.ok || !isValidAiSalesSummary(cleaned)) {
-        throw new Error(response?.error || 'The generated response was not a valid 5-7 sentence sales paragraph. Nothing was changed; please try again.');
-      }
-      setSales((current) => ({
-        ...current,
-        items: current.items.map((currentItem, itemIdx) => itemIdx === idx
-          ? { ...currentItem, prompt: cleaned, description: cleaned }
-          : currentItem),
-      }));
-      setSummaryMessages((current) => ({ ...current, [idx]: 'Sales summary added. You can edit it below.' }));
-    } catch (error: any) {
-      setSummaryMessages((current) => ({ ...current, [idx]: error?.message || 'Could not generate the sales summary.' }));
-    } finally {
-      setGeneratingSummaryItem(null);
     }
   }
 
@@ -5057,13 +4938,7 @@ function QuoteGeneratorWindow(): JSX.Element {
               value={it.prompt || ''}
               onChange={(e) => setSales((s)=>({ ...s, items: s.items.map((x,i)=> (i===idx ? { ...x, prompt: e.target.value } : x)) }))}
             />
-            <div className="flex flex-wrap items-center justify-end gap-2 mt-2">
-              <button type="button" className="px-3 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50" onClick={() => void generateSalesSummaryForItem(idx)} disabled={generatingSummaryItem !== null}>
-                {generatingSummaryItem === idx ? 'Writing...' : 'Generate Sales Summary'}
-              </button>
-              <button type="button" className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600" onClick={() => void copyPromptForItem(idx)}>Copy AI Prompt</button>
-            </div>
-            {summaryMessages[idx] && <div className="mt-1 text-[10px] text-zinc-300" role="status">{summaryMessages[idx]}</div>}
+            <div className="flex items-center justify-end mt-2"><button className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600" onClick={() => copyPromptForItem(idx)}>Copy AI Prompt</button></div>
           </div>
 
           {/* Build Labor at the bottom */}
@@ -5568,9 +5443,10 @@ function QuoteGeneratorWindow(): JSX.Element {
   // Detect MacBook/iMac/Mac mini contexts across any device type (brand/model or Apple Devices family)
     const isMacBookContext = (() => {
       const family = String(((it.dynamic || ({} as any)).device || '')).toLowerCase();
+      const brand = String(it.brand || '').toLowerCase();
       const model = String(it.model || '').toLowerCase();
       const macFamily = family.includes('macbook');
-      const macBrandModel = model.includes('macbook');
+      const macBrandModel = brand === 'apple' && (model.includes('macbook') || model.includes('air') || model.includes('pro'));
       return macFamily || macBrandModel;
     })();
     const isIMacContext = (() => {
@@ -5760,11 +5636,7 @@ function QuoteGeneratorWindow(): JSX.Element {
       );
       return (
         <div key={f.key} className={colClass}>
-          <label className="block text-xs text-zinc-400 mb-1">
-            {isAppleDevicesSelection && String((it.dynamic || ({} as any)).device || '').toLowerCase() === 'iphone' && f.key === 'carrier'
-              ? 'Cellular'
-              : (f.label || titleCase(f.key))}
-          </label>
+          <label className="block text-xs text-zinc-400 mb-1">{f.label || titleCase(f.key)}</label>
           {control}
         </div>
       );
@@ -6155,37 +6027,6 @@ function QuoteGeneratorWindow(): JSX.Element {
                     </div>
                     {it.expanded && (
                       <div className="gb-quote-item-fields mt-2 grid grid-cols-16 gap-2">
-                        {it.deviceType !== 'Custom Build' && it.deviceType !== 'Custom PC' && (
-                          <div className="col-span-16">
-                            <label className="block text-xs text-zinc-400 mb-1">Source URL</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="url"
-                                className="min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                                value={it.url || ''}
-                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
-                                placeholder="https://example.com/product"
-                              />
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
-                                onClick={async () => {
-                                  try {
-                                    const u = (it.url || '').trim();
-                                    if (!u) return;
-                                    if ((window as any).api?.openUrl) await (window as any).api.openUrl(u);
-                                    else window.open(u, '_blank');
-                                  } catch {
-                                    try { window.open((it.url || ''), '_blank'); } catch {}
-                                  }
-                                }}
-                                disabled={!it.url}
-                                title="Open in default browser"
-                              >Open</button>
-                            </div>
-                            <div className="text-[10px] mt-0.5 text-zinc-400">Optional reference link. Quote fields are entered manually and remain fully editable.</div>
-                          </div>
-                        )}
                         {/* Images at the top */}
                         {it.deviceType !== 'Custom PC' && (
                         <div className="col-span-16">
@@ -6308,23 +6149,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                               <label className="block text-xs text-zinc-400 mb-1">Condition</label>
                               <ComboInput
                                 value={it.condition || ''}
-                                onChange={(v) => setSales((s) => ({
-                                  ...s,
-                                  items: s.items.map((x, i) => {
-                                    if (i !== idx) return x;
-                                    const option = Array.isArray(x.dynamic?._conditionOptions)
-                                      ? x.dynamic._conditionOptions.find((entry: any) => String(entry?.condition || '').toLowerCase() === String(v || '').toLowerCase())
-                                      : undefined;
-                                    const optionCost = Number(option?.price);
-                                    if (!Number.isFinite(optionCost)) return { ...x, condition: v };
-                                    return {
-                                      ...x,
-                                      condition: v,
-                                      internalCost: optionCost,
-                                      price: markedUpPartPrice(optionCost, x.markupPct || QUOTE_AUTOFILL_MARKUP_PCT),
-                                    };
-                                  }),
-                                }))}
+                                onChange={(v) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, condition: v } : x)) }))}
                                 options={['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poor', 'For Parts']}
                                 placeholder="Type or select..."
                               />
@@ -6354,31 +6179,53 @@ function QuoteGeneratorWindow(): JSX.Element {
                               }))
                             }
                           />
-                          <div className="flex flex-wrap items-center justify-end gap-2 mt-2">
+                          <div className="flex items-center justify-end mt-2">
                             <button
-                              type="button"
-                              className="px-3 py-1 text-xs bg-[#39FF14] text-black font-semibold border border-[#39FF14] rounded hover:bg-[#2fe012] disabled:opacity-50"
-                              onClick={() => void generateSalesSummaryForItem(idx)}
-                              disabled={generatingSummaryItem !== null}
-                              title="Write the sales summary from the fields entered above"
-                            >
-                              {generatingSummaryItem === idx ? 'Writing...' : 'Generate Sales Summary'}
-                            </button>
-                            <button
-                              type="button"
                               className="px-3 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
-                              onClick={() => void copyPromptForItem(idx)}
+                              onClick={() => copyPromptForItem(idx)}
                               title="Copy AI prompt to clipboard"
                             >
                               Copy AI Prompt
                             </button>
                           </div>
-                          {summaryMessages[idx] && <div className="mt-1 text-[10px] text-zinc-300" role="status">{summaryMessages[idx]}</div>}
                         </div>
                         )}
                         {it.deviceType !== 'Custom Build' && it.deviceType !== 'Custom PC' && (
-                        <div className="col-span-16">
-                          <div className="mt-2 max-w-md">
+                        <div className="col-span-8 grid grid-cols-8 gap-2 items-start">
+                          <div className="col-span-4">
+                            <label className="block text-xs text-zinc-400 mb-1">Source URL</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="url"
+                                className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+                                value={it.url || ''}
+                                onChange={(e) => setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, url: (e.target as HTMLInputElement).value } : x)) }))}
+                                placeholder="https://example.com/product"
+                              />
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600"
+                                onClick={async () => {
+                                  try {
+                                    const u = (it.url || '').trim();
+                                    if (!u) return;
+                                    // Try to open via preload API; fallback to window.open
+                                    if ((window as any).api?.openUrl) {
+                                      await (window as any).api.openUrl(u);
+                                    } else {
+                                      window.open(u, '_blank');
+                                    }
+                                  } catch (_) {
+                                    try { window.open((it.url || ''), '_blank'); } catch {}
+                                  }
+                                }}
+                                disabled={!it.url}
+                                title="Open in default browser"
+                              >Open</button>
+                            </div>
+                            <div className="text-[10px] text-zinc-400 mt-0.5">Optional link to supplier or reference</div>
+                          </div>
+                          <div className="col-span-4 mt-2">
                             <div className="flex gap-2 items-end">
                               <div className="flex-1">
                                 <label className="block text-xs text-zinc-400 mb-1">Cost (pre-markup)</label>
@@ -7541,7 +7388,6 @@ function QuoteGeneratorWindow(): JSX.Element {
             <CustomerOverviewWindow
               customer={null}
               closeAfterSave
-              childDialog
               onClose={() => setAddingClientFor(null)}
               onSaved={(c) => {
                 applyQuoteClient(addingClientFor, {

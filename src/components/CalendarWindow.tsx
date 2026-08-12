@@ -54,50 +54,23 @@ type CalendarNote = {
   updatedAt?: string;
 };
 
-type CalendarColors = {
-  schedule: string;
-  partsOrdered: string;
-  partsDelivery: string;
-  event: string;
-  consultation: string;
-  streaming: string;
-  content: string;
-  notes: string;
-};
-
-type CalendarPreferences = {
-  colors?: Partial<CalendarColors>;
-  technicianColors?: Record<string, string>;
-};
-
-const DEFAULT_CALENDAR_COLORS: CalendarColors = {
-  schedule: '#39FF14',
-  partsOrdered: '#3B82F6',
-  partsDelivery: '#22C55E',
-  event: '#EF4444',
-  consultation: '#EAB308',
-  streaming: '#D946EF',
-  content: '#22D3EE',
-  notes: '#FBBF24',
-};
-
-function calendarEventVisual(ev: CalendarEvent, colors: CalendarColors = DEFAULT_CALENDAR_COLORS) {
+function calendarEventVisual(ev: CalendarEvent) {
   if (ev.category === 'content') {
     const streaming = ev.source === 'streaming';
     return {
       short: streaming ? 'LIVE' : 'REC',
       letter: streaming ? 'V' : 'R',
-      color: streaming ? colors.streaming : colors.content,
+      color: streaming ? 'bg-fuchsia-500' : 'bg-cyan-400',
       label: streaming ? 'Streaming' : 'Content recording',
     };
   }
-  if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: colors.consultation, label: 'Consultation' };
+  if (ev.category === 'consultation') return { short: 'CONS', letter: 'C', color: 'bg-yellow-500', label: 'Consultation' };
   if (ev.category === 'parts') {
     const delivery = ev.partsStatus === 'delivery' || !ev.partsStatus;
-    return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? colors.partsDelivery : colors.partsOrdered, label: delivery ? 'Expected delivery' : 'Part ordered' };
+    return { short: delivery ? 'DUE' : 'ORD', letter: delivery ? 'D' : 'O', color: delivery ? 'bg-green-500' : 'bg-blue-500', label: delivery ? 'Expected delivery' : 'Part ordered' };
   }
-  if (ev.category === 'schedule') return { short: 'SHIFT', letter: 'S', color: colors.schedule, label: 'Technician schedule' };
-  return { short: 'EVENT', letter: 'E', color: colors.event, label: 'Event' };
+  if (ev.category === 'schedule') return { short: 'SHIFT', letter: 'S', color: 'bg-[#39FF14]', label: 'Technician schedule' };
+  return { short: 'EVENT', letter: 'E', color: 'bg-red-500', label: 'Event' };
 }
 
 function fmtDate(d: Date) {
@@ -121,29 +94,21 @@ function addDays(d: Date, days: number) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
 }
 
-function activeShiftEvents(day: Date, events: CalendarEvent[]) {
-  const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
-  return events.filter((event) => {
-    const shift = event.category === 'schedule' ? event.schedule?.[dayKey] : null;
-    return Boolean(shift && !shift.off && (shift.start || shift.end));
-  });
-}
-
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; technicianColors: Record<string, string>; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, colors, technicianColors, onPick, onEdit, onOpenNotes, onOpenShifts, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; onPick: (day: Date) => void; onEdit: (ev: CalendarEvent) => void; onOpenNotes: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, onPick, onEdit, onOpenNotes, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
-    if (ev.category === 'event') return { letter: 'E', color: colors.event, title: `${formatTime12FromHHmm(ev.time || '')} ${ev.title}`.trim() };
+    if (ev.category === 'event') return { letter: 'E', color: 'bg-red-500', title: `${formatTime12FromHHmm(ev.time || '')} ${ev.title}`.trim() };
     if (ev.category === 'parts') {
       const status = ev.partsStatus || 'ordered';
       const isSale = ev.source === 'sale';
-      const colorDelivery = isSale ? colors.content : colors.partsDelivery;
-      const colorOrdered = isSale ? colors.content : colors.partsOrdered;
+      const colorDelivery = isSale ? 'bg-teal-500' : 'bg-green-500';
+      const colorOrdered = isSale ? 'bg-teal-500' : 'bg-blue-500';
       if (status === 'delivery') return { letter: 'D', color: colorDelivery, title: `${formatTime12FromHHmm(ev.time || '')} Est. Delivery ${ev.partName || ev.title || ''}`.trim() };
       return { letter: 'O', color: colorOrdered, title: `${formatTime12FromHHmm(ev.time || '')} Ordered ${ev.partName || ev.title || ''}`.trim() };
     }
-    if (ev.category === 'consultation') return { letter: 'C', color: colors.consultation, title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
+    if (ev.category === 'consultation') return { letter: 'C', color: 'bg-yellow-500', title: `${formatTime12FromHHmm(ev.time || '')} Consult ${ev.customerName || ''} ${ev.title || ''}`.trim() };
     if (ev.category === 'content') {
       const visual = calendarEventVisual(ev);
       return { letter: visual.letter, color: visual.color, title: `${formatTime12FromHHmm(ev.time || '')} ${visual.label}: ${ev.title || ''}`.trim() };
@@ -155,34 +120,56 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       const daySchedule = ev.schedule?.[dayKey];
       
       if (daySchedule?.off) {
-        return { letter: 'X', color: '#71717A', title: `${ev.technician} - Off` };
+        return { letter: 'X', color: 'bg-gray-500', title: `${ev.technician} - Off` };
       } else if (daySchedule?.start && daySchedule?.end) {
         const startTime = formatTime12FromHHmm(daySchedule.start);
         const endTime = formatTime12FromHHmm(daySchedule.end);
-        return { letter: 'T', color: technicianColors[ev.technician || ''] || colors.schedule, title: `${ev.technician}: ${startTime} - ${endTime}` };
+        return { letter: 'T', color: 'bg-[#39FF14]', title: `${ev.technician}: ${startTime} - ${endTime}` };
       }
       return null; // No schedule for this day
     }
-    return { letter: ev.title?.[0]?.toUpperCase?.() || '?', color: '#71717A', title: ev.title || '' };
+    return { letter: ev.title?.[0]?.toUpperCase?.() || '?', color: 'bg-zinc-500', title: ev.title || '' };
   }
   // Separate schedule and other events
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
   const otherEvents = events.filter(ev => ev.category !== 'schedule');
-  const activeShifts = activeShiftEvents(day, scheduleEvents);
 
   return (
-    <div className="p-2 h-full min-h-0 flex flex-col overflow-hidden">
+    <div className="p-2 h-full flex flex-col">
       <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
-          {activeShifts.length ? <button type="button" className="shrink-0 inline-flex items-center gap-1 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-1.5 py-0.5 text-[11px] font-bold text-[#d9ffd2] hover:bg-[#39FF14]/20" title={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#39FF14] text-[8px] text-zinc-950">S</span>{activeShifts.length}</button> : null}
-        </div>
+        <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
         <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>
           + Add
         </button>
       </div>
       
-      <div className="flex-1 min-h-0" />
+      {/* Schedule text display */}
+      <div className="flex-1 space-y-1">
+        {scheduleEvents.map(ev => {
+          const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+          const dayKey = dayNames[day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
+          const daySchedule = ev.schedule?.[dayKey];
+          
+          // Only show if working (not off day and has times)
+          if (daySchedule && !daySchedule.off && daySchedule.start && daySchedule.end) {
+            const startTime = formatTime12FromHHmm(daySchedule.start);
+            const endTime = formatTime12FromHHmm(daySchedule.end);
+            const nickname = ev.technician?.split(' ')[0] || ev.technician; // Get first name or nickname
+            
+            return (
+              <div
+                key={ev.id || ev.title + ev.date}
+                onClick={() => onEdit(ev)}
+                className="text-xs text-[#39FF14] cursor-pointer hover:text-[#32E610] transition-colors font-medium whitespace-nowrap"
+                title={`${ev.technician}: ${startTime} - ${endTime}`}
+              >
+                {nickname}: {startTime} - {endTime}
+              </div>
+            );
+          }
+          return null;
+        })}
+      </div>
       
       {/* Other event icons at bottom */}
       {otherEvents.length > 0 && (
@@ -195,8 +182,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
                 key={ev.id || ev.title + ev.date}
                 title={b.title}
                 onClick={() => onEdit(ev)}
-                className="w-5 h-5 rounded-md text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105"
-                style={{ backgroundColor: b.color }}
+                className={`w-5 h-5 rounded-md ${b.color} text-black font-bold text-[10px] flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 border border-black/10 transition-all hover:scale-105`}
               >
                 {b.letter}
               </div>
@@ -204,27 +190,24 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
           })}
         </div>
       )}
-      {notesVisible && (
-        <button
-          type="button"
-          onClick={() => onOpenNotes(day)}
-          title={notes.length ? notes.map(note => note.subject).filter(Boolean).join('\n') : 'No notes for this day. Click to add one.'}
-          className={`mt-2 min-h-9 w-full border rounded px-2 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'text-black hover:brightness-110' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
-          style={notes.length ? { borderColor: colors.notes, backgroundColor: colors.notes } : undefined}
-        >
-          Notes{notes.length ? ` (${notes.length})` : ''}
-        </button>
-      )}
+      <button
+        type="button"
+        className={`mt-1 w-full rounded border px-2 py-1 text-xs font-semibold ${notes.length ? 'border-amber-400/70 bg-amber-400/15 text-amber-100' : 'border-zinc-700 bg-zinc-800 text-zinc-400'}`}
+        onClick={() => onOpenNotes(day)}
+        title={notes.length ? notes.map(note => note.subject).join('\n') : 'Add an important note'}
+      >
+        Notes{notes.length ? ` (${notes.length})` : ''}
+      </button>
     </div>
   );
 };
 
 const CalendarWindow: React.FC = () => {
-  const calendarPayload = useMemo(() => consumeWindowPayload('calendar'), []);
   const targetEventId = useMemo(() => {
+    const payload = consumeWindowPayload('calendar');
     const queryId = new URLSearchParams(window.location.search).get('calendarEventId');
-    return Number(calendarPayload?.calendarEventId || queryId || 0) || 0;
-  }, [calendarPayload]);
+    return Number(payload?.calendarEventId || queryId || 0) || 0;
+  }, []);
   const targetOpenedRef = useRef(false);
   const [current, setCurrent] = useState<Date>(new Date());
   const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
@@ -232,24 +215,18 @@ const CalendarWindow: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>([]);
   const [notesDate, setNotesDate] = useState<string | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [composingNote, setComposingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
-  const [shiftDay, setShiftDay] = useState<string | null>(null);
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
-  const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
+  const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(false);
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
   const [dailyLookAssignedTo, setDailyLookAssignedTo] = useState<string>('');
-  const [calendarColors, setCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
-  const [savedCalendarColors, setSavedCalendarColors] = useState<CalendarColors>(DEFAULT_CALENDAR_COLORS);
-  const [technicianColors, setTechnicianColors] = useState<Record<string, string>>({});
-  const [savedTechnicianColors, setSavedTechnicianColors] = useState<Record<string, string>>({});
-  const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
-  const [calendarSettingsSaving, setCalendarSettingsSaving] = useState(false);
   // For adding multiple estimated delivery dates in one go (parts only)
   const [deliveryDates, setDeliveryDates] = useState<string[]>([]);
   const [deliveryDateInput, setDeliveryDateInput] = useState<string>('');
@@ -265,42 +242,6 @@ const CalendarWindow: React.FC = () => {
     content: true,
     notes: true,
   });
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const rows = await (window as any).api.dbGet('calendarPreferences');
-        const stored = Array.isArray(rows) ? rows[0] as CalendarPreferences | null : null;
-        if (!active || !stored?.colors || typeof stored.colors !== 'object') return;
-        const colors = { ...DEFAULT_CALENDAR_COLORS, ...stored.colors };
-        setCalendarColors(colors);
-        setSavedCalendarColors(colors);
-        const savedTechnicians = stored?.technicianColors && typeof stored.technicianColors === 'object' ? stored.technicianColors : {};
-        setTechnicianColors(savedTechnicians);
-        setSavedTechnicianColors(savedTechnicians);
-      } catch {
-        // Calendar presentation uses defaults until preferences can be read.
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  const saveCalendarColors = async () => {
-    setCalendarSettingsSaving(true);
-    try {
-      const rows = await (window as any).api.dbGet('calendarPreferences');
-      const existing = Array.isArray(rows) ? rows[0] : null;
-      const payload = { ...(existing || {}), colors: calendarColors, technicianColors, updatedAt: new Date().toISOString() };
-      if (existing?.id != null) await (window as any).api.dbUpdate('calendarPreferences', existing.id, payload);
-      else await (window as any).api.dbAdd('calendarPreferences', { ...payload, createdAt: new Date().toISOString() });
-      setSavedCalendarColors(calendarColors);
-      setSavedTechnicianColors(technicianColors);
-      setCalendarSettingsOpen(false);
-    } finally {
-      setCalendarSettingsSaving(false);
-    }
-  };
 
   useEffect(() => {
     if (!editing) setNotesExpanded(false);
@@ -402,14 +343,6 @@ const CalendarWindow: React.FC = () => {
   // Load events on open
   useEffect(() => {
     let alive = true;
-    const refreshNotes = async () => {
-      try {
-        const list = await (window as any).api.dbGet('calendarNotes');
-        if (alive && Array.isArray(list)) setCalendarNotes(list);
-      } catch (error) {
-        console.error('load calendar notes failed', error);
-      }
-    };
     const refreshEvents = async () => {
       try {
         const [list, customers] = await Promise.all([
@@ -436,30 +369,36 @@ const CalendarWindow: React.FC = () => {
       } catch (e) { console.error('load calendar events failed', e); }
     };
     void refreshEvents();
-    void refreshNotes();
     // Live updates
     const off = (window as any).api.onCalendarEventsChanged?.(() => { void refreshEvents(); });
-    const offNotes = (window as any).api.onCalendarNotesChanged?.(() => { void refreshNotes(); });
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void refreshEvents();
-        void refreshNotes();
-      }
+      if (document.visibilityState === 'visible') void refreshEvents();
     }, 30_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void refreshEvents();
-        void refreshNotes();
-      }
+      if (document.visibilityState === 'visible') void refreshEvents();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       alive = false;
       if (off) off();
-      if (offNotes) offNotes();
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const refreshNotes = async () => {
+      try {
+        const list = await (window as any).api.dbGet('calendarNotes');
+        if (alive && Array.isArray(list)) setCalendarNotes(list);
+      } catch (error) {
+        console.error('load calendar notes failed', error);
+      }
+    };
+    void refreshNotes();
+    const off = (window as any).api.onCalendarNotesChanged?.(() => { void refreshNotes(); });
+    return () => { alive = false; if (off) off(); };
   }, []);
 
   // Load technicians for live schedule derivation
@@ -556,23 +495,23 @@ const CalendarWindow: React.FC = () => {
   }, [calendarDays, events, filters, techs]);
 
   const notesByDay = useMemo(() => {
-    const map: Record<string, CalendarNote[]> = {};
+    const grouped: Record<string, CalendarNote[]> = {};
     for (const note of calendarNotes) {
-      const key = String(note?.date || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
-      if (!map[key]) map[key] = [];
-      map[key].push(note);
+      const date = String(note.date || '').slice(0, 10);
+      if (!date) continue;
+      (grouped[date] ||= []).push(note);
     }
-    for (const list of Object.values(map)) {
-      list.sort((left, right) => String(left.createdAt || '').localeCompare(String(right.createdAt || '')));
-    }
-    return map;
+    for (const list of Object.values(grouped)) list.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    return grouped;
   }, [calendarNotes]);
 
-  function openNotes(day: Date) {
-    setNotesDate(fmtDate(day));
+  function openNotes(day: Date | string) {
+    const date = typeof day === 'string' ? day : fmtDate(day);
+    const dayNotes = notesByDay[date] || [];
+    setNotesDate(date);
+    setSelectedNoteId(dayNotes.length ? String(dayNotes[dayNotes.length - 1].id) : null);
+    setComposingNote(dayNotes.length === 0);
     setNoteDraft({ subject: '', body: '' });
-    setEditingNoteId(null);
   }
 
   async function saveNote() {
@@ -582,27 +521,29 @@ const CalendarWindow: React.FC = () => {
     if (!date || !subject || !body || noteSaving) return;
     setNoteSaving(true);
     try {
-      const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === editingNoteId);
-      const saved = existing
-        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
-        : await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (saved) setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
+      const added = await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString() });
+      if (!added) throw new Error('The note was not saved.');
+      setCalendarNotes(currentNotes => [...currentNotes.filter(note => String(note.id) !== String(added.id)), added]);
+      setSelectedNoteId(String(added.id));
+      setComposingNote(false);
       setNoteDraft({ subject: '', body: '' });
-      setEditingNoteId(null);
-    } catch (error) {
-      console.error('save calendar note failed', error);
+    } catch (error: any) {
+      alert(error?.message || 'The note could not be saved.');
     } finally {
       setNoteSaving(false);
     }
   }
 
   async function deleteNote(note: CalendarNote) {
-    if (!note.id) return;
+    if (note.id == null || !confirm(`Delete "${note.subject}"?`)) return;
     try {
       const deleted = await (window as any).api.dbDelete('calendarNotes', note.id);
-      if (deleted) setCalendarNotes(list => list.filter(item => item.id !== note.id));
-    } catch (error) {
-      console.error('delete calendar note failed', error);
+      if (!deleted) throw new Error('The note was not deleted.');
+      setCalendarNotes(currentNotes => currentNotes.filter(item => String(item.id) !== String(note.id)));
+      setSelectedNoteId(null);
+      setComposingNote(true);
+    } catch (error: any) {
+      alert(error?.message || 'The note could not be deleted.');
     }
   }
 
@@ -855,8 +796,9 @@ const CalendarWindow: React.FC = () => {
     const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
 
-    return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered };
-  }, [dailyLookDate, dailyLookAssignedTo, events, techs]);
+    const importantNotes = notesByDay[ymd] || [];
+    return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered, importantNotes };
+  }, [dailyLookDate, dailyLookAssignedTo, events, notesByDay, techs]);
 
   useEffect(() => {
     if (isMobileCalendar && calendarView === 'day') setDailyLookDate(fmtDate(current));
@@ -896,29 +838,31 @@ const CalendarWindow: React.FC = () => {
   }, [current]);
 
   return (
-    <div className="gb-calendar-window box-border p-4 bg-zinc-900 text-gray-100 h-[100dvh] max-h-[100dvh] min-h-0 flex flex-col overflow-hidden">
-      <div className="gb-calendar-header flex shrink-0 flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="gb-calendar-title-actions flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
+    <div className="gb-calendar-window p-4 bg-zinc-900 text-gray-100 h-screen flex flex-col overflow-hidden">
+      <div className="gb-calendar-header flex items-center justify-between mb-3">
+        <h2 className="text-2xl font-semibold">Calendar - Schedule Management</h2>
+        <div className="gb-calendar-controls flex items-center gap-2">
           <button
             className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
             onClick={() => setContentScheduleOpen(true)}
           >
             Streaming/Content Schedule
           </button>
-        </div>
-        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
-          <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
+          <button
+            className="gb-calendar-daily-look px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
+            onClick={() => {
+              setDailyLookDate(fmtDate(new Date()));
+              setDailyLookAssignedTo('');
+              setDailyLookOpen(true);
+            }}
+          >
+            Daily Look
+          </button>
+          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
           <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
             {periodLabel}
           </div>
-          <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
-          <button
-            className="gb-calendar-settings px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm"
-            onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(true); }}
-          >
-            Settings
-          </button>
+          <button className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Next calendar period" onClick={() => movePeriod(1)}>&gt;</button>
         </div>
       </div>
 
@@ -939,8 +883,8 @@ const CalendarWindow: React.FC = () => {
       </div>
 
       {/* Event Type Filters */}
-      <div className="gb-calendar-filters shrink-0 mb-2 p-2 bg-zinc-800 rounded-lg">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
+      <div className="gb-calendar-filters mb-2 p-2 bg-zinc-800 rounded-lg">
+        <div className="flex items-center gap-3 text-sm">
           <span className="text-zinc-400 font-medium">Show:</span>
           
           <label className="flex items-center gap-2 cursor-pointer">
@@ -951,7 +895,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, schedule: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.schedule }}>S</div>
+              <div className="w-4 h-4 bg-[#39FF14] rounded text-black text-xs flex items-center justify-center font-bold">S</div>
               <span className="text-sm text-zinc-300">Schedules</span>
             </div>
           </label>
@@ -964,7 +908,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, parts: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.partsOrdered }}>O</div>
+              <div className="w-4 h-4 bg-blue-500 rounded text-black text-xs flex items-center justify-center font-bold">O</div>
               <span className="text-sm text-zinc-300">Orders/Parts</span>
             </div>
           </label>
@@ -977,7 +921,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, events: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.event }}>E</div>
+              <div className="w-4 h-4 bg-red-500 rounded text-white text-xs flex items-center justify-center font-bold">E</div>
               <span className="text-sm text-zinc-300">Events</span>
             </div>
           </label>
@@ -990,7 +934,7 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, consultation: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.consultation }}>C</div>
+              <div className="w-4 h-4 bg-yellow-500 rounded text-black text-xs flex items-center justify-center font-bold">C</div>
               <span className="text-sm text-zinc-300">Consultations</span>
             </div>
           </label>
@@ -1003,34 +947,26 @@ const CalendarWindow: React.FC = () => {
               onChange={(e) => setFilters(prev => ({ ...prev, content: e.target.checked }))}
             />
             <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-[9px] flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.streaming }}>V</div>
+              <div className="w-4 h-4 bg-fuchsia-500 rounded text-white text-[9px] flex items-center justify-center font-bold">V</div>
               <span className="text-sm text-zinc-300">Content</span>
             </div>
           </label>
 
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              className="w-4 h-4 accent-amber-400"
-              checked={filters.notes}
-              onChange={(event) => setFilters(previous => ({ ...previous, notes: event.target.checked }))}
-            />
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 rounded text-black text-xs flex items-center justify-center font-bold" style={{ backgroundColor: calendarColors.notes }}>N</div>
-              <span className="text-sm text-zinc-300">Important Notes</span>
-            </div>
+            <input type="checkbox" className="w-4 h-4 accent-amber-400" checked={filters.notes} onChange={(e) => setFilters(prev => ({ ...prev, notes: e.target.checked }))} />
+            <div className="flex items-center gap-1"><div className="w-4 h-4 bg-amber-400 rounded text-black text-[9px] flex items-center justify-center font-bold">N</div><span className="text-sm text-zinc-300">Important Notes</span></div>
           </label>
 
           <div className="ml-3 flex gap-2">
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true, notes: true })}
+                onClick={() => setFilters({ schedule: true, parts: true, events: true, consultation: true, content: true, notes: true })}
             >
               Select All
             </button>
             <button
               className="px-2.5 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded hover:bg-zinc-600 transition-colors"
-              onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false, notes: false })}
+                onClick={() => setFilters({ schedule: false, parts: false, events: false, consultation: false, content: false, notes: false })}
             >
               Clear All
             </button>
@@ -1038,36 +974,27 @@ const CalendarWindow: React.FC = () => {
         </div>
       </div>
 
-      {!isMobileCalendar || calendarView === 'month' ? <div className="gb-calendar-month flex-1 min-h-0 flex flex-col overflow-hidden">
+      {!isMobileCalendar || calendarView === 'month' ? <div className="gb-calendar-month flex-1 flex flex-col overflow-hidden">
         <div className="grid grid-cols-7 gap-1.5 bg-zinc-800 rounded-lg overflow-hidden">
           {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
             <div key={d} className="text-sm font-medium text-zinc-300 bg-zinc-800 px-2.5 py-2.5 text-center">{d}</div>
           ))}
         </div>
-        <div
-          className="gb-calendar-month-grid grid grid-cols-7 gap-1.5 mt-1.5 flex-1 min-h-0 overflow-hidden"
-          style={{ gridTemplateRows: `repeat(${Math.ceil(monthDays.length / 7)}, minmax(0, 1fr))` }}
-        >
+        <div className="gb-calendar-month-grid grid grid-cols-7 gap-1.5 mt-1.5 flex-1 overflow-hidden" style={{ gridAutoRows: '1fr' }}>
           {(() => { const todayStr = fmtDate(new Date()); return monthDays.map((day, idx) => {
             const key = fmtDate(day);
             const isCurrentMonth = day.getMonth() === current.getMonth();
             return (
-              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} rounded-lg border border-zinc-700 h-full min-h-0 overflow-hidden`}>
-                {isCurrentMonth || isMobileCalendar ? (
-                  <Cell
-                    day={day}
-                    events={eventsByDay[key] || []}
-                    notes={notesByDay[key] || []}
-                    notesVisible={filters.notes}
-                    colors={calendarColors}
-                    technicianColors={technicianColors}
-                    onPick={onPick}
-                    onEdit={onEdit}
-                    onOpenNotes={openNotes}
-                    onOpenShifts={(day) => setShiftDay(fmtDate(day))}
-                    isToday={key === todayStr}
-                  />
-                ) : null}
+              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} rounded-lg border border-zinc-700 h-full`}>
+                <Cell
+                  day={day}
+                  events={eventsByDay[key] || []}
+                  notes={filters.notes ? (notesByDay[key] || []) : []}
+                  onPick={onPick}
+                  onEdit={onEdit}
+                  onOpenNotes={openNotes}
+                  isToday={key === todayStr}
+                />
               </div>
             );
           }); })()}
@@ -1075,76 +1002,45 @@ const CalendarWindow: React.FC = () => {
       </div> : null}
 
       {isMobileCalendar && calendarView === 'week' ? (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="gb-calendar-week-filter">
-            <label>
-              <span>Week of</span>
-              <input
-                type="date"
-                value={fmtDate(current)}
-                aria-label="Choose a date to show its week"
-                onChange={(event) => {
-                  const selected = new Date(`${event.target.value}T12:00:00`);
-                  if (!Number.isNaN(selected.getTime())) setCurrent(selected);
-                }}
-              />
-            </label>
-          </div>
-          <div className="gb-calendar-week flex-1 min-h-0 overflow-y-auto">
-            {calendarDays.map((day) => {
-              const key = fmtDate(day);
-              const dayEvents = eventsByDay[key] || [];
-              const dayNotes = notesByDay[key] || [];
-              const activeShifts = activeShiftEvents(day, dayEvents);
-              const nonShiftEvents = dayEvents.filter((event) => event.category !== 'schedule');
-              const isToday = key === fmtDate(new Date());
-              return (
-                <section key={key} className={isToday ? 'is-today' : ''}>
-                  <header>
-                    <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
-                      <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
-                      <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                      {isToday ? <em>Today</em> : null}
-                    </button>
-                    <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
-                  </header>
-                  <div className="gb-calendar-agenda-list">
-                    {activeShifts.length ? <button type="button" className="gb-calendar-week-shifts" aria-label={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'} for ${key}`} onClick={() => setShiftDay(key)}><span style={{ backgroundColor: calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
-                    {nonShiftEvents.map((event, index) => {
-                      const visual = calendarEventVisual(event, calendarColors);
-                      return (
-                        <button
-                          key={event.id || `${key}-${index}`}
-                          type="button"
-                          className={`gb-calendar-week-event type-${event.category || 'event'}`}
-                          aria-label={`${visual.label}: ${eventSummary(event)}`}
-                          onClick={() => setViewing(event)}
-                        >
-                          <span className="gb-calendar-event-icon" style={{ backgroundColor: visual.color }}>{visual.short}</span>
-                          <span className="gb-calendar-event-copy">
-                            <strong>{eventSummary(event)}</strong>
-                            <small>{visual.label}</small>
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {filters.notes ? (
+        <div className="gb-calendar-week flex-1 overflow-y-auto">
+          {calendarDays.map((day) => {
+            const key = fmtDate(day);
+            const dayEvents = eventsByDay[key] || [];
+            const isToday = key === fmtDate(new Date());
+            return (
+              <section key={key} className={isToday ? 'is-today' : ''}>
+                <header>
+                  <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
+                    <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
+                    <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    {isToday ? <em>Today</em> : null}
+                  </button>
+                  <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
+                </header>
+                <div className="gb-calendar-agenda-list">
+                  {dayEvents.map((event, index) => {
+                    const visual = calendarEventVisual(event);
+                    return (
                       <button
+                        key={event.id || `${key}-${index}`}
                         type="button"
-                        className={`gb-calendar-week-note${dayNotes.length ? ' has-notes' : ''}`}
-                        aria-label={dayNotes.length ? `${dayNotes.length} important note${dayNotes.length === 1 ? '' : 's'} for ${key}` : `Add an important note for ${key}`}
-                        title={dayNotes.length ? dayNotes.map(note => note.subject).filter(Boolean).join('\n') : 'Add an important note'}
-                        onClick={() => openNotes(day)}
+                        className={`gb-calendar-week-event type-${event.category || 'event'}`}
+                        aria-label={`${visual.label}: ${eventSummary(event)}`}
+                        onClick={() => setViewing(event)}
                       >
-                        <span>N</span>{dayNotes.length ? <strong>{dayNotes.length}</strong> : null}
+                        <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
+                        <span className="gb-calendar-event-copy">
+                          <strong>{eventSummary(event)}</strong>
+                          <small>{visual.label}</small>
+                        </span>
                       </button>
-                    ) : null}
-                    {!activeShifts.length && !nonShiftEvents.length && (!filters.notes || !dayNotes.length) ? <span aria-label="No scheduled activity">—</span> : null}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+                    );
+                  })}
+                  {!dayEvents.length ? <span aria-label="No scheduled activity">—</span> : null}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : null}
 
@@ -1165,97 +1061,20 @@ const CalendarWindow: React.FC = () => {
             {filters.parts ? <section><h3>Parts Ordered <span>{dailyLookData.partsOrdered.length}</span></h3>{dailyLookData.partsOrdered.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.partsOrdered.length ? <p>No parts ordered.</p> : null}</section> : null}
             {filters.events ? <section><h3>Events <span>{dailyLookData.eventItems.length}</span></h3>{dailyLookData.eventItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => onEdit(item)}>{eventSummary(item)}</button>)}{!dailyLookData.eventItems.length ? <p>No events.</p> : null}</section> : null}
             {filters.content ? <section><h3>Streaming/Content <span>{dailyLookData.contentItems.length}</span></h3>{dailyLookData.contentItems.map((item, index) => <button key={item.id || index} type="button" onClick={() => setViewing(item)}>{eventSummary(item)}</button>)}{!dailyLookData.contentItems.length ? <p>No content sessions.</p> : null}</section> : null}
-            {filters.notes ? <section><h3>Important Notes <span>{(notesByDay[dailyLookData.ymd] || []).length}</span></h3>{(notesByDay[dailyLookData.ymd] || []).map((note) => <button key={String(note.id)} type="button" onClick={() => { setNotesDate(dailyLookData.ymd); setEditingNoteId(String(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}><strong>{note.subject}</strong><span className="block text-xs text-zinc-400">{note.body}</span></button>)}{!(notesByDay[dailyLookData.ymd] || []).length ? <p>No important notes.</p> : null}</section> : null}
+            {filters.notes ? <section><h3>Important Notes <span>{dailyLookData.importantNotes.length}</span></h3>{dailyLookData.importantNotes.map(note => <button key={String(note.id)} type="button" onClick={() => openNotes(dailyLookData.ymd)}>{note.subject}</button>)}{!dailyLookData.importantNotes.length ? <p>No important notes.</p> : null}</section> : null}
           </div>
         </div>
       ) : null}
 
-      {notesDate && (
-        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3" onClick={() => setNotesDate(null)}>
-          <div className="calendar-notes-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[1040px] h-[min(82vh,720px)] flex flex-col p-4" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-xl font-semibold">Important Notes</h3>
-                <div className="text-sm text-zinc-400">{new Date(`${notesDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
-              </div>
-              <button type="button" className="gb-icon-button" aria-label="Close notes" onClick={() => setNotesDate(null)}>X</button>
-            </div>
-            <div className="calendar-notes-workspace grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px] gap-3">
-              <section className="calendar-note-reader min-h-0 flex flex-col rounded border border-zinc-700 bg-zinc-950/50 p-3">
-                <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
-                <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
-                <textarea className="mt-2 min-h-0 flex-1 w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed" placeholder="Write the important note..." value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
-                <div className="mt-3 flex justify-end gap-2">
-                {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
-                <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
-                  {noteSaving ? 'Saving...' : editingNoteId === null ? 'Add New Note' : 'Save Note'}
-                </button>
-                </div>
-              </section>
-              <aside className="calendar-note-list min-h-0 overflow-y-auto rounded border border-zinc-700 bg-zinc-950/50 p-2">
-                {(notesByDay[notesDate] || []).length === 0 ? <div className="text-sm text-zinc-500 p-2">No notes for this day yet.</div> : (notesByDay[notesDate] || []).map(note => (
-                  <div key={String(note.id)} className={`mb-2 rounded border p-2 ${String(note.id) === editingNoteId ? 'border-amber-400 bg-amber-400/15' : 'border-zinc-700 bg-zinc-900'}`}>
-                    <button type="button" className="w-full text-left" onClick={() => { setEditingNoteId(String(note.id)); setNoteDraft({ subject: note.subject || '', body: note.body || '' }); }}><strong className="block truncate text-sm text-amber-100">{note.subject}</strong><span className="mt-1 block line-clamp-3 whitespace-pre-wrap text-xs text-zinc-400">{note.body}</span></button>
-                    <button type="button" className="mt-2 text-xs text-zinc-500 hover:text-red-300" onClick={() => { void deleteNote(note); }}>Delete</button>
-                  </div>
-                ))}
-              </aside>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {shiftDay && (() => {
-        const day = new Date(`${shiftDay}T12:00:00`);
-        const shifts = activeShiftEvents(day, eventsByDay[shiftDay] || []);
-        const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
-        return <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
-          <section className="gb-calendar-shifts-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] flex flex-col p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-shifts-title">
-            <div className="flex items-start justify-between gap-3 mb-4"><div><h3 id="calendar-shifts-title" className="text-xl font-semibold">Active Shifts</h3><div className="text-sm text-zinc-400">{day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div><button type="button" className="gb-icon-button" aria-label="Close active shifts" onClick={() => setShiftDay(null)}>X</button></div>
-            <div className="min-h-0 overflow-y-auto space-y-2 pr-1">
-              {shifts.map((event, index) => { const shift = event.schedule?.[dayKey]; return <div key={event.id || `${event.technician}-${index}`} className="flex items-center justify-between gap-3 border border-zinc-700 bg-zinc-800 rounded p-3"><strong>{event.technician || 'Technician'}</strong><span className="text-sm text-zinc-300">{formatTime12FromHHmm(shift?.start || '')} - {formatTime12FromHHmm(shift?.end || '')}</span></div>; })}
-            </div>
-          </section>
-        </div>;
-      })()}
-
-      {calendarSettingsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
-          <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[88vh] overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Settings</h3><p className="text-sm text-zinc-400">Manage appearance and technician shift colors.</p></div>
-              <button type="button" className="gb-icon-button" aria-label="Close calendar settings" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(false); }}>X</button>
-            </div>
-            <details className="rounded border border-zinc-700 bg-zinc-950" open>
-              <summary className="cursor-pointer px-3 py-2 font-semibold">Appearance colors</summary>
-              <div className="grid grid-cols-1 gap-2 border-t border-zinc-800 p-3 sm:grid-cols-2">{([
-                ['schedule', 'Default technician shifts'], ['partsOrdered', 'Parts ordered'], ['partsDelivery', 'Expected deliveries'], ['event', 'Events'], ['consultation', 'Consultations'], ['streaming', 'Streaming'], ['content', 'Content recording'], ['notes', 'Important notes'],
-              ] as Array<[keyof CalendarColors, string]>).map(([key, label]) => <div key={key} className="flex min-w-0 items-center gap-2 rounded border border-zinc-700 bg-zinc-800 p-2"><input className="h-9 w-10 shrink-0 cursor-pointer bg-transparent" type="color" value={calendarColors[key]} aria-label={`${label} custom color`} onChange={(event) => setCalendarColors(colors => ({ ...colors, [key]: event.target.value }))} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span><button type="button" className="shrink-0 text-xs text-zinc-400 hover:text-white" onClick={() => setCalendarColors(colors => ({ ...colors, [key]: DEFAULT_CALENDAR_COLORS[key] }))}>Default</button></div>)}</div>
-            </details>
-            <details className="mt-3 rounded border border-zinc-700 bg-zinc-950">
-              <summary className="cursor-pointer px-3 py-2 font-semibold">Technician shift colors</summary>
-              <div className="space-y-2 border-t border-zinc-800 p-3">
-                {techs.filter((tech: any) => tech?.active !== false).map((tech: any) => { const name = technicianDisplayName(tech); return <div key={tech.id || name} className="flex min-w-0 items-center gap-2 rounded border border-zinc-700 bg-zinc-800 p-2"><input className="h-9 w-10 shrink-0 cursor-pointer bg-transparent" type="color" value={technicianColors[name] || calendarColors.schedule} aria-label={`${name} custom shift color`} onChange={(event) => setTechnicianColors(colors => ({ ...colors, [name]: event.target.value }))} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span><button type="button" className="shrink-0 text-xs text-zinc-400 hover:text-white" onClick={() => setTechnicianColors(colors => { const next = { ...colors }; delete next[name]; return next; })}>Default</button></div>; })}
-                {!techs.length ? <p className="text-sm text-zinc-500">Add technicians in Admin to assign individual shift colors.</p> : null}
-              </div>
-            </details>
-            <div className="mt-5 flex justify-between gap-2">
-              <button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => setCalendarColors(DEFAULT_CALENDAR_COLORS)}>Restore defaults</button>
-              <div className="flex gap-2"><button type="button" className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setCalendarColors(savedCalendarColors); setTechnicianColors(savedTechnicianColors); setCalendarSettingsOpen(false); }}>Cancel</button><button type="button" className="px-3 py-2 bg-[#39FF14] text-black font-semibold rounded disabled:opacity-50" disabled={calendarSettingsSaving} onClick={() => { void saveCalendarColors(); }}>{calendarSettingsSaving ? 'Saving...' : 'Save settings'}</button></div>
-            </div>
-          </section>
-        </div>
-      )}
-
       {viewing && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
+        <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
           <div className="gb-calendar-event-detail bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-800">
               <div className="flex items-center gap-3 min-w-0">
-                <span className="gb-calendar-event-icon" style={{ backgroundColor: calendarEventVisual(viewing, calendarColors).color }}>{calendarEventVisual(viewing, calendarColors).short}</span>
+                <span className={`gb-calendar-event-icon ${calendarEventVisual(viewing).color}`}>{calendarEventVisual(viewing).short}</span>
                 <div className="min-w-0">
-                  <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing, calendarColors).label}</div>
-                  <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing, calendarColors).label}</h3>
+                  <div className="text-xs uppercase text-zinc-400">{calendarEventVisual(viewing).label}</div>
+                  <h3 className="font-semibold text-lg break-words">{viewing.title || calendarEventVisual(viewing).label}</h3>
                 </div>
               </div>
               <button type="button" className="gb-icon-button" aria-label="Close event details" onClick={() => setViewing(null)}>X</button>
@@ -1326,6 +1145,7 @@ const CalendarWindow: React.FC = () => {
                         onClick={() => {
                           setContentEditorLocked(true);
                           setEditing({ date, title: '', time: '', endTime: '', category: 'content', source: 'streaming', technician: '' });
+                          setContentScheduleOpen(false);
                         }}
                       >
                         +
@@ -1339,7 +1159,7 @@ const CalendarWindow: React.FC = () => {
                             key={entry.id || `${date}-${index}`}
                             type="button"
                             aria-label={`${visual.label}: ${eventSummary(entry)}`}
-                            onClick={() => setViewing(entry)}
+                            onClick={() => { setContentScheduleOpen(false); setViewing(entry); }}
                           >
                             <span className={`gb-calendar-event-icon ${visual.color}`}>{visual.short}</span>
                             <span><strong>{eventSummary(entry)}</strong>{entry.location ? <small>{entry.location}</small> : null}</span>
@@ -1356,8 +1176,35 @@ const CalendarWindow: React.FC = () => {
         </div>
       )}
 
+      {notesDate && (() => {
+        const dayNotes = notesByDay[notesDate] || [];
+        const selected = dayNotes.find(note => String(note.id) === selectedNoteId) || dayNotes[dayNotes.length - 1];
+        return (
+          <div className="gb-calendar-notes-backdrop fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-3" onClick={() => setNotesDate(null)}>
+            <div className="gb-calendar-notes-dialog flex h-[78vh] w-full max-w-[900px] overflow-hidden rounded border border-zinc-700 bg-zinc-950 shadow-2xl" role="dialog" aria-modal="true" aria-label="Important notes" onClick={event => event.stopPropagation()}>
+              <section className="flex min-w-0 flex-1 flex-col border-r border-zinc-800 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div><h3 className="text-xl font-semibold">Important Notes</h3><p className="text-xs text-zinc-400">{new Date(`${notesDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p></div>
+                  <button type="button" className="rounded bg-amber-400 px-3 py-2 text-xs font-semibold text-black" onClick={() => { setComposingNote(true); setSelectedNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>New Note</button>
+                </div>
+                {composingNote || !selected ? (
+                  <div className="flex min-h-0 flex-1 flex-col gap-3">
+                    <input autoFocus className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2" placeholder="Note title" value={noteDraft.subject} onChange={event => setNoteDraft(currentDraft => ({ ...currentDraft, subject: event.target.value }))} />
+                    <textarea className="min-h-0 flex-1 resize-none rounded border border-zinc-700 bg-zinc-900 px-3 py-3 leading-relaxed" placeholder="Important information for this day..." value={noteDraft.body} onChange={event => setNoteDraft(currentDraft => ({ ...currentDraft, body: event.target.value }))} />
+                    <div className="flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2" onClick={() => { setComposingNote(false); setSelectedNoteId(dayNotes.length ? String(dayNotes[dayNotes.length - 1].id) : null); }}>Cancel</button><button type="button" className="rounded bg-amber-400 px-4 py-2 font-semibold text-black disabled:opacity-40" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>{noteSaving ? 'Saving...' : 'Save Note'}</button></div>
+                  </div>
+                ) : (
+                  <article className="min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800 bg-zinc-900 p-4"><div className="mb-3 flex items-start justify-between gap-3"><div><h4 className="text-lg font-semibold text-amber-100">{selected.subject}</h4><p className="text-xs text-zinc-500">{selected.createdAt ? new Date(selected.createdAt).toLocaleString() : 'Saved note'}</p></div><button type="button" className="text-xs text-zinc-400 hover:text-red-300" onClick={() => { void deleteNote(selected); }}>Delete</button></div><div className="whitespace-pre-wrap leading-relaxed text-zinc-100">{selected.body}</div></article>
+                )}
+              </section>
+              <aside className="gb-calendar-notes-list w-[240px] shrink-0 overflow-y-auto p-3"><div className="mb-2 text-xs font-semibold uppercase text-zinc-500">Notes for this day</div><div className="space-y-2">{dayNotes.map(note => <button key={String(note.id)} type="button" className={`w-full rounded border px-3 py-2 text-left ${!composingNote && String(note.id) === String(selected?.id) ? 'border-amber-400 bg-amber-400/10' : 'border-zinc-800 bg-zinc-900'}`} onClick={() => { setSelectedNoteId(String(note.id)); setComposingNote(false); }}><span className="block truncate text-sm font-medium">{note.subject}</span><span className="mt-1 block text-[11px] text-zinc-500">{note.createdAt ? new Date(note.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Saved'}</span></button>)}</div></aside>
+            </div>
+          </div>
+        );
+      })()}
+
       {editing && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
           <div className="gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 w-[520px]">
             <h3 className="font-semibold mb-2">
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
@@ -1669,6 +1516,10 @@ const CalendarWindow: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-auto grid grid-cols-2 gap-3">
+              <div className="col-span-2 rounded border border-amber-400/40 bg-amber-400/5 p-3">
+                <div className="mb-2 flex items-center justify-between"><div className="font-semibold text-amber-100">Important Notes</div><button type="button" className="rounded border border-amber-400/50 px-2 py-1 text-xs text-amber-100" onClick={() => openNotes(dailyLookData.ymd)}>Open Notes</button></div>
+                {dailyLookData.importantNotes.length ? <div className="grid gap-2 sm:grid-cols-2">{dailyLookData.importantNotes.map(note => <button key={String(note.id)} type="button" className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-left" onClick={() => { setNotesDate(dailyLookData.ymd); setSelectedNoteId(String(note.id)); setComposingNote(false); }}><strong className="block truncate text-sm">{note.subject}</strong><span className="mt-1 block truncate text-xs text-zinc-400">{note.body}</span></button>)}</div> : <div className="text-sm text-zinc-500">No important notes for this day.</div>}
+              </div>
               <div className="border border-zinc-800 rounded p-3">
                 <div className="font-semibold mb-2">Schedules</div>
                 {dailyLookData.schedules.length === 0 ? (

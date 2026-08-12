@@ -14,13 +14,13 @@ import {
 } from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
+import NotificationConsentPrompt from '../components/NotificationConsentPrompt';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
 const CalendarWindow = React.lazy(() => import('../components/CalendarWindow'));
 const JournalWindow = React.lazy(() => import('../components/JournalWindow'));
-const DailyLookWindow = React.lazy(() => import('../components/DailyLookWindow'));
 const ClockInWindow = React.lazy(() => import('../components/ClockInWindow'));
 const QuoteGeneratorWindow = React.lazy(() => import('../components/QuoteGeneratorWindow'));
 const EODWindow = React.lazy(() => import('../components/EODWindow'));
@@ -50,7 +50,7 @@ const RepairCategoriesWindow = React.lazy(() => import('../repairs/RepairCategor
 const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCategoriesWindow'));
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
-const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
+const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
 
 type StaffProfile = {
   id: string;
@@ -326,7 +326,6 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'newSale': return <SaleWindow />;
     case 'calendar': return <CalendarWindow />;
     case 'journal': return <JournalWindow />;
-    case 'dailyLook': return <DailyLookWindow />;
     case 'clockIn': return <ClockInWindow />;
     case 'quoteGenerator': return <QuoteGeneratorWindow />;
     case 'eod': return <EODWindow />;
@@ -362,6 +361,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'deviceCategories': return <DeviceCategoriesWindow />;
     case 'customBuildItem': return <CustomBuildItemWindow />;
     case 'technicians': return <TechniciansWindow onClose={onClose} />;
+    case 'feedback': return <FeedbackWindow />;
     default: return <div className="mobile-empty-state">Unknown window: {type}</div>;
   }
 }
@@ -417,7 +417,6 @@ function titleForModal(type: string) {
     newSale: 'Sale',
     calendar: 'Calendar',
     journal: 'Journal',
-    dailyLook: 'Daily Look',
     clockIn: 'Clock In',
     quoteGenerator: 'Quote Generator',
     eod: 'Reports',
@@ -450,6 +449,7 @@ function titleForModal(type: string) {
     deviceCategories: 'Device Categories',
     customBuildItem: 'Custom Build',
     technicians: 'Technicians',
+    feedback: 'Feedback',
   };
   return titles[type] || 'Window';
 }
@@ -522,13 +522,6 @@ const MobileApp: React.FC = () => {
 };
 
 const MobileAppRuntime: React.FC = () => {
-  const [clientUpdateToken, setClientUpdateToken] = useState(() => {
-    try {
-      return new URLSearchParams(window.location.search).get('clientUpdateToken') || '';
-    } catch {
-      return '';
-    }
-  });
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
@@ -660,28 +653,12 @@ const MobileAppRuntime: React.FC = () => {
   }
 
   removeInitialHtmlLoader();
-  if (clientUpdateToken) {
-    return (
-      <React.Suspense fallback={<StartupStatusScreen title="Loading Update Client" message="Opening the QR status panel..." />}>
-        <ClientUpdatePanel
-          token={clientUpdateToken}
-          onClose={() => {
-            try {
-              window.history.replaceState({}, '', window.location.pathname);
-            } catch {
-              // The home screen can still open if the browser blocks history updates.
-            }
-            setClientUpdateToken('');
-          }}
-        />
-      </React.Suspense>
-    );
-  }
   const updateCheckKey = `${staffProfile.shop_id}:${staffProfile.id}:${session.user.id}`;
   return (
     <PaginationProvider pageSize={30}>
       <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
       <MobileUpdateCheck checkKey={updateCheckKey} delayMs={900} />
+      <NotificationConsentPrompt />
     </PaginationProvider>
   );
 };
@@ -1116,7 +1093,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       </section>
 
       <nav className="mobile-quickbar" aria-label="Quick actions">
-        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Checkout</button>
+        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Sale</button>
         <button type="button" className="add-client" onClick={() => openModal('addClient')}>Add Client</button>
         <button type="button" className="search-client" onClick={() => openModal('customerSearch')}>Search Client</button>
       </nav>
@@ -1227,6 +1204,7 @@ function MobileDrawer(props: {
   });
   const technicianTools = [
     ['technicians', 'Technicians'],
+    ['calendar', 'Calendar'],
     ['journal', 'Journal'],
     ['diagnosticTools', 'Diagnostic Tools'],
   ] as const;
@@ -1238,15 +1216,13 @@ function MobileDrawer(props: {
     ['dataTools', 'Data Tools'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
-  const handleOpenModal = (type: string, payload?: any) => {
+  const handleOpenModal = (type: string) => {
     onClose();
-    onOpenModal(type, payload);
+    onOpenModal(type);
   };
 
-  if (!open) return null;
-
   return (
-    <div className="mobile-drawer-layer">
+    <div className={`mobile-drawer-layer${open ? ' is-open' : ''}`} aria-hidden={!open}>
       <button type="button" className="mobile-drawer-scrim" onClick={onClose} aria-label="Close menu" />
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">
@@ -1264,8 +1240,6 @@ function MobileDrawer(props: {
         </div>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
-          <DrawerButton label="Calendar" onClick={() => handleOpenModal('calendar')} />
-          <DrawerButton label="Daily Look" onClick={() => handleOpenModal('dailyLook')} />
           {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
@@ -1285,6 +1259,7 @@ function MobileDrawer(props: {
             </button>
           ) : null}
           <button type="button" onClick={onRefresh}>Sync now</button>
+          <button type="button" onClick={() => handleOpenModal('feedback')}>Feedback</button>
           <button type="button" className="danger" onClick={onSignOut}>Sign out</button>
         </div>
       </aside>

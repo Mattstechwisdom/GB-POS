@@ -349,12 +349,7 @@ const DATE_KEYS = [
 function parseDateValue(value: any): Date | null {
   if (value === null || value === undefined || value === '') return null;
   if (value instanceof Date) {
-    try {
-      const timestamp = Date.prototype.getTime.call(value);
-      return Number.isNaN(timestamp) ? null : new Date(timestamp);
-    } catch {
-      return null;
-    }
+    return Number.isNaN(value.getTime()) ? null : value;
   }
   if (typeof value === 'number') {
     const normalized = value > 1e12 ? value : value * 1000;
@@ -712,31 +707,6 @@ function normalizeRow(kind: UnifiedRow['kind'], record: any): UnifiedRow | null 
   };
 }
 
-function recordLineItems(record: any): string {
-  const items = Array.isArray(record?.items) ? record.items : [];
-  const labels = items
-    .map((item: any) => String(item?.description || item?.name || item?.itemDescription || '').trim())
-    .filter(Boolean);
-  return labels.length ? labels.join(', ') : 'No line items recorded';
-}
-
-function recordDeviceName(record: any): string {
-  return String(
-    record?.deviceName
-    || record?.deviceModel
-    || record?.productDescription
-    || record?.productCategory
-    || record?.deviceType
-    || ''
-  ).trim() || 'Device not recorded';
-}
-
-function hasRepairCompleteUpdate(record: any): boolean {
-  const update = String(record?.statusUpdate || '').trim();
-  const repairStatus = String(record?.repairStatus || '').trim();
-  return /^repair complete$/i.test(update) || /^(complete|completed|repair complete)$/i.test(repairStatus);
-}
-
 type UnifiedRow = {
   kind: 'work' | 'sale';
   id: any;
@@ -791,8 +761,6 @@ const EODWindow: React.FC = () => {
   const [deliveryByDistributor, setDeliveryByDistributor] = useState<Record<string, string>>({});
   const [deliveryByRow, setDeliveryByRow] = useState<Record<string, string>>({});
   const [splitDeliveryByDistributor, setSplitDeliveryByDistributor] = useState<Record<string, boolean>>({});
-  const [trackingByDistributor, setTrackingByDistributor] = useState<Record<string, string>>({});
-  const [trackingNoneByDistributor, setTrackingNoneByDistributor] = useState<Record<string, boolean>>({});
   const [purchaseUpdateBusy, setPurchaseUpdateBusy] = useState(false);
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
@@ -1474,12 +1442,12 @@ const EODWindow: React.FC = () => {
     [isCartLayoutPreview, previewDeletedPurchaseKeys, previewLowStockCartIds, purchaseOrders, quantityOverrides, sales, workOrders],
   );
   const purchaseGroups = useMemo(() => groupOrderCartRows(partsPurchaseQueue), [partsPurchaseQueue]);
+  const selectedCartRows = useMemo(() => partsPurchaseQueue.filter(row => selectedPurchaseRows.has(row.key)), [partsPurchaseQueue, selectedPurchaseRows]);
 
   useEffect(() => {
     const activeKeys = new Set(partsPurchaseQueue.map(row => row.key));
-    const activeDistributors = new Set(purchaseGroups.map(group => group.distributor));
     setSelectedPurchaseRows(current => new Set(Array.from(current).filter(key => activeKeys.has(key))));
-    setSelectingDistributors(current => new Set(Array.from(current).filter(distributor => activeDistributors.has(distributor))));
+    setSelectingDistributors(current => new Set(Array.from(current).filter(distributor => purchaseGroups.some(group => group.distributor === distributor))));
     setCheckoutCandidateRows(current => { const next = current?.filter(row => activeKeys.has(row.key)) || []; return next.length ? next : null; });
     setDeleteCandidateRows(current => { const next = current?.filter(row => activeKeys.has(row.key)) || []; return next.length ? next : null; });
   }, [partsPurchaseQueue, purchaseGroups]);
@@ -1805,11 +1773,6 @@ const EODWindow: React.FC = () => {
       || row.estimatedDelivery
       || '',
     ).slice(0, 10);
-    const trackingForRow = (row: OrderCartRow) => {
-      const raw = String(trackingByDistributor[row.distributor] || '').trim();
-      const trackingUrl = /^https?:\/\//i.test(raw) ? normalizePartOrderUrl(raw) : '';
-      return { trackingUrl, trackingNumber: trackingUrl ? '' : raw, trackingUnavailable: trackingNoneByDistributor[row.distributor] === true };
-    };
     const syncDeliveryCalendar = async (row: OrderCartRow, estimatedDelivery: string) => {
       if (!estimatedDelivery || !api.dbGet || !api.dbAdd) return;
       const all = await api.dbGet('calendarEvents').catch(() => []);
@@ -1828,9 +1791,6 @@ const EODWindow: React.FC = () => {
         workOrderId: row.sourceType === 'workOrder' ? row.sourceId : undefined,
         saleId: row.sourceType === 'sale' ? row.sourceId : undefined,
         orderUrl: row.orderUrl || undefined,
-        trackingUrl: trackingForRow(row).trackingUrl || undefined,
-        trackingNumber: trackingForRow(row).trackingNumber || undefined,
-        trackingUnavailable: trackingForRow(row).trackingUnavailable,
         customerName: row.customer,
         updatedAt: now,
       };
@@ -1846,7 +1806,6 @@ const EODWindow: React.FC = () => {
         const taxExempt = distributorIsTaxExempt(row.distributor, purchaseGroups.find(group => group.distributor === row.distributor)?.rows || [row]);
         const finalTotalCost = round2(row.totalCost + supplierTax + additionalCost);
         const estimatedDelivery = deliveryForRow(row);
-        const tracking = trackingForRow(row);
         const ledgerPayload = {
           status: row.sourceType === 'inventory' ? 'processing' : 'checked_out',
           sourceType: row.sourceType,
@@ -1870,9 +1829,6 @@ const EODWindow: React.FC = () => {
           totalCost: finalTotalCost,
           paymentStatus: row.paymentStatus,
           estimatedDelivery,
-          trackingUrl: tracking.trackingUrl,
-          trackingNumber: tracking.trackingNumber,
-          trackingUnavailable: tracking.trackingUnavailable,
           checkedOutAt: now,
           updatedAt: now,
         };
@@ -1927,20 +1883,13 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          const tracking = trackingForRow(cartRow);
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow), ...tracking };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
         });
-        const shipment = selectedForWorkOrder[0];
-        const tracking = trackingForRow(shipment);
         const updated = {
           ...current,
           items,
           partsOrdered: true,
           partsOrderDate: current.partsOrderDate || date,
-          partsEstDelivery: current.partsEstDelivery || deliveryForRow(shipment) || null,
-          partsTrackingUrl: tracking.trackingUrl || current.partsTrackingUrl || '',
-          partsTrackingNumber: tracking.trackingNumber || current.partsTrackingNumber || '',
-          partsTrackingUnavailable: tracking.trackingUnavailable,
           repairStatus: 'Part Ordered',
           statusUpdate: 'Part Ordered',
           statusUpdatedAt: now,
@@ -1982,12 +1931,9 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          const tracking = trackingForRow(cartRow);
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow), ...tracking };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
         });
-        const shipment = selectedForSale[0];
-        const tracking = trackingForRow(shipment);
-        const updated = { ...current, items, orderedDate: current.orderedDate || date, estimatedDeliveryDate: current.estimatedDeliveryDate || deliveryForRow(shipment) || null, partsTrackingUrl: tracking.trackingUrl || current.partsTrackingUrl || '', partsTrackingNumber: tracking.trackingNumber || current.partsTrackingNumber || '', partsTrackingUnavailable: tracking.trackingUnavailable, updatedAt: now };
+        const updated = { ...current, items, updatedAt: now };
         try {
           const saved = await api.dbUpdate?.('sales', current.id, updated);
           setSales(rows => rows.map(row => Number(row?.id) === Number(saleId) ? (saved || updated) : row));
@@ -2009,7 +1955,7 @@ const EODWindow: React.FC = () => {
     } finally {
       setPurchaseUpdateBusy(false);
     }
-  }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, trackingByDistributor, trackingNoneByDistributor, workOrders]);
+  }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
@@ -2143,7 +2089,6 @@ const EODWindow: React.FC = () => {
       setCartRefreshBusy(false);
     }
   }, [cartPriceReview, isCartLayoutPreview, partsPurchaseQueue, purchaseOrders, sales, workOrders]);
-
 
   const workStatusCounts = useMemo(() => {
     let open = 0;
@@ -2577,51 +2522,6 @@ const EODWindow: React.FC = () => {
     };
   }, [sales, unified, workOrders]);
 
-  const unclosedTickets = useMemo(() => {
-    type UnclosedTicket = {
-      kind: UnifiedRow['kind'];
-      id: any;
-      customerName: string;
-      deviceName: string;
-      lineItems: string;
-      paid: number;
-      remaining: number;
-      reasons: string[];
-      repairCompleteSent: boolean;
-    };
-    const tickets: UnclosedTicket[] = [];
-    const addTicket = (kind: UnifiedRow['kind'], record: any) => {
-      const row = normalizeRow(kind, record);
-      if (!row) return;
-      const status = String(row.status || '').trim().toLowerCase();
-      const checkedOut = !!row.checkoutDate && status === 'closed';
-      if (checkedOut) return;
-
-      const repairCompleteSent = kind === 'work' && hasRepairCompleteUpdate(record);
-      const reasons: string[] = [];
-      if (kind === 'work' && row.diagnosticLike && row.paid <= 0.01) reasons.push('Diagnostic fee not taken');
-      if (row.paid > 0.01) reasons.push('Payment taken without checkout');
-      if (repairCompleteSent) reasons.push('Repair Complete update sent while still open');
-      if (!reasons.length) return;
-
-      tickets.push({
-        kind,
-        id: row.id,
-        customerName: row.customerName || 'Client not recorded',
-        deviceName: kind === 'work' ? recordDeviceName(record) : 'Sale',
-        lineItems: recordLineItems(record),
-        paid: row.paid,
-        remaining: row.remaining,
-        reasons,
-        repairCompleteSent,
-      });
-    };
-
-    (workOrders || []).forEach(workOrder => addTicket('work', workOrder));
-    (sales || []).forEach(sale => addTicket('sale', sale));
-    return tickets.sort((left, right) => Number(right.paid) - Number(left.paid));
-  }, [sales, workOrders]);
-
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
 
   const listMeta = useMemo(() => {
@@ -3022,34 +2922,6 @@ const EODWindow: React.FC = () => {
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
                 </div>
-                <section className={`rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h4 className={`text-sm font-semibold ${unclosedTickets.length ? 'text-red-200' : 'text-[#39FF14]'}`}>Unclosed Tickets</h4>
-                      <p className="text-[11px] text-zinc-400">Paid diagnostic, work order, and sale records that still need checkout review.</p>
-                    </div>
-                    <span className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${unclosedTickets.length ? 'border-red-500/50 bg-red-950/50 text-red-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{unclosedTickets.length}</span>
-                  </div>
-                  {unclosedTickets.length ? (
-                    <div className="mt-2 max-h-72 overflow-y-auto rounded border border-red-900/50">
-                      <table className="w-full text-left text-[11px]">
-                        <thead className="sticky top-0 bg-zinc-950 text-zinc-400">
-                          <tr><th className="px-2 py-1.5 font-medium">Client / device</th><th className="px-2 py-1.5 font-medium">Items</th><th className="px-2 py-1.5 text-right font-medium">Taken</th><th className="px-2 py-1.5 text-right font-medium">Owed</th></tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800">
-                          {unclosedTickets.map(ticket => (
-                            <tr key={`${ticket.kind}-${String(ticket.id)}`} className={`${ticket.repairCompleteSent ? 'bg-red-950/30' : ''} cursor-pointer hover:bg-zinc-800/70`} title="Double-click to open invoice" onDoubleClick={() => { void handleRowOpen({ kind: ticket.kind, id: ticket.id } as UnifiedRow); }}>
-                              <td className="px-2 py-1.5 align-top"><div className="font-semibold text-zinc-100">{ticket.customerName}</div><div className="text-zinc-400">{ticket.kind === 'work' ? ticket.deviceName : 'Sale'} · #{String(ticket.id)}</div><div className="mt-0.5 text-amber-200">{ticket.reasons.join(' · ')}</div></td>
-                              <td className="max-w-36 px-2 py-1.5 align-top text-zinc-300">{ticket.lineItems}</td>
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-[#39FF14]">{formatCurrency(ticket.paid)}</td>
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-amber-200">{formatCurrency(ticket.remaining)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : <p className="mt-2 text-[11px] text-zinc-400">No paid or diagnostic tickets require checkout review.</p>}
-                </section>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
                   <button
@@ -3209,7 +3081,7 @@ const EODWindow: React.FC = () => {
 
                   <footer className="gb-eod-cart-footer sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-950 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm"><span className="text-zinc-500">Total checkout cost</span> <strong className="ml-2 text-lg">{formatCurrency(partsPurchaseTotals.checkoutCost)}</strong>{partsPurchaseTotals.supplierTax ? <span className="ml-2 text-zinc-400">{formatCurrency(partsPurchaseTotals.supplierTax)} supplier tax</span> : null}{partsPurchaseTotals.additionalCosts ? <span className="ml-2 text-zinc-400">{formatCurrency(partsPurchaseTotals.additionalCosts)} additional</span> : null}{partsPurchaseTotals.missingCost ? <span className="ml-2 text-red-300">+ {partsPurchaseTotals.missingCost} missing cost</span> : null}</div>
-                    <button type="button" disabled={!purchaseGroups.length || purchaseUpdateBusy} onClick={() => { setVerifiedDistributors(new Set()); setShowCheckoutVerification(true); }} className="rounded bg-[#39FF14] px-5 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : 'Checkout'}</button>
+                    <div className="flex flex-wrap gap-2">{selectedCartRows.length ? <button type="button" disabled={purchaseUpdateBusy} onClick={() => setCheckoutCandidateRows(selectedCartRows)} className="rounded border border-[#BC13FE] bg-[#BC13FE]/15 px-5 py-2 text-sm font-semibold text-fuchsia-100 disabled:opacity-40">Checkout Selected ({selectedCartRows.length})</button> : null}<button type="button" disabled={!purchaseGroups.length || purchaseUpdateBusy} onClick={() => { setVerifiedDistributors(new Set()); setShowCheckoutVerification(true); }} className="rounded bg-[#39FF14] px-5 py-2 text-sm font-semibold text-black disabled:opacity-40">{purchaseUpdateBusy ? 'Updating...' : 'Checkout Whole Cart'}</button></div>
                   </footer>
                 </section>
               </div>
@@ -3284,8 +3156,7 @@ const EODWindow: React.FC = () => {
                   <div className="space-y-2">
                     {purchaseGroups.map(group => {
                       const amounts = purchaseGroupAmounts.get(group.distributor);
-                      const verified = verifiedDistributors.has(group.distributor);
-                      return <div key={group.distributor} className="rounded border border-zinc-700 bg-zinc-900 p-3"><label className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verified} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} Â· {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>{verified ? <div className="mt-3 grid gap-2 border-t border-zinc-800 pt-3 sm:grid-cols-2"><label className="text-xs text-zinc-300">Expected delivery<input type="date" className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm" value={deliveryByDistributor[group.distributor] || group.rows.find(row => row.estimatedDelivery)?.estimatedDelivery || ''} onChange={event => setDeliveryByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></label><label className="text-xs text-zinc-300">Tracking URL or number<input className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm disabled:opacity-40" placeholder="https://... or tracking number" disabled={trackingNoneByDistributor[group.distributor] === true} value={trackingByDistributor[group.distributor] || ''} onChange={event => setTrackingByDistributor(current => ({ ...current, [group.distributor]: event.target.value }))} /></label><label className="flex items-center gap-2 text-xs text-zinc-300 sm:col-span-2"><input type="checkbox" checked={trackingNoneByDistributor[group.distributor] === true} onChange={event => { const unavailable = event.target.checked; setTrackingNoneByDistributor(current => ({ ...current, [group.distributor]: unavailable })); if (unavailable) setTrackingByDistributor(current => ({ ...current, [group.distributor]: '' })); }} />No tracking is available from this distributor</label></div> : null}</div>;
+                      return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} · {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>;
                     })}
                   </div>
                   <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + (purchaseGroupAmounts.get(group.distributor)?.checkoutTotal || 0), 0))}</strong></div>
@@ -3655,8 +3526,9 @@ const EODWindow: React.FC = () => {
                             key={`${row.kind}-${row.id}`}
                             className="hover:bg-zinc-800/50 cursor-pointer transition-colors"
                             onDoubleClick={() => { void handleRowOpen(row); }}
+                            onKeyDown={event => { if (event.key === 'Enter') void handleRowOpen(row); }}
                             tabIndex={0}
-                            onKeyDown={(event) => { if (event.key === 'Enter') void handleRowOpen(row); }}
+                            title="Double-click to open invoice"
                           >
                             <td className="py-2 pr-4">
                               <div className="font-mono text-xs text-zinc-200">{row.id}</div>

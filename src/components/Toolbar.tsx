@@ -3,7 +3,7 @@ import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar, syncNotificationsFromRecords } from '@/lib/notifications';
 import { dispatchOpenModal } from '@/lib/modalBus';
 
-const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void; keyword?: string; onKeywordChange?: (v: string) => void }> = ({ mode, onModeChange, keyword = '', onKeywordChange }) => {
+const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m: 'workorders' | 'sales' | 'all') => void; keyword?: string; onKeywordChange?: (v: string) => void; sidebarOpen?: boolean; onToggleSidebar?: () => void }> = ({ mode, onModeChange, keyword = '', onKeywordChange, sidebarOpen = true, onToggleSidebar }) => {
 
   const [isFull, setIsFull] = useState<boolean>(false);
   const [appVersion, setAppVersion] = useState<string>('');
@@ -92,6 +92,7 @@ const Toolbar: React.FC<{ mode: 'workorders' | 'sales' | 'all'; onModeChange: (m
     <div className="relative flex flex-wrap items-center justify-between gap-2 border-b border-zinc-700 bg-zinc-900 px-4 py-2">
       {/* Left side: Admin dropdown + action buttons */}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        {onToggleSidebar ? <button type="button" onClick={onToggleSidebar} className="h-9 w-9 rounded border border-zinc-700 bg-zinc-800 text-zinc-100 hover:border-[#39FF14] hover:text-[#39FF14]" title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}><span aria-hidden="true">☰</span></button> : null}
         {/* Admin dropdown */}
         <div ref={adminRef} className="relative">
           <button

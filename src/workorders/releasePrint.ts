@@ -95,7 +95,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
   const now = new Date();
-  const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  const dateStr = isNaN(now.getTime()) ? '' : `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
   const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
   const displayPhoneAlt = formatPhone(String(wo.phoneAlt || '')) || String(wo.phoneAlt || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
@@ -146,13 +146,13 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Release Form - ${htmlEscape(invoiceDisplay)}</title>
     <style>
-      @page { size: A4; margin: 6mm; }
+      @page { size: A4; margin: 12mm; }
       html, body { background:#fff; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; margin: 0; }
-      .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 5mm; }
-      .brand { display:grid; grid-template-columns:minmax(0, 1.35fr) auto minmax(210px, 0.9fr); align-items:center; gap:0; margin-bottom:10px; }
-      .brand-left { display:flex; align-items:center; gap:12px; min-width:0; }
-      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; white-space:nowrap; }
-      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 10px; }
+      .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 12mm; }
+      .brand { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:0; margin-bottom:10px; }
+      .brand-left { display:flex; align-items:center; gap:12px; }
+      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
+      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 16px; }
       .brand-title { font-weight:700; letter-spacing:0.3px; }
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
@@ -172,9 +172,9 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
       .totals .row { display:flex; gap:12px; align-items:center; }
       .totals .label { width:60%; color:#444; }
-      .terms { width:100%; box-sizing:border-box; font-size:8pt; line-height:1.18; text-align:justify; color:#222; break-inside:avoid-page; page-break-inside:avoid; }
+      .terms { font-size:9pt; text-align:center; color:#222; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
-      .final-block { break-inside:avoid-page; page-break-inside:avoid; margin-top:10px; }
+      .final-block { page-break-inside: avoid; margin-top:12px; }
       .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
       .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
       .muted-label { color:#444; font-size:10pt; }
@@ -215,7 +215,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         </div>
         ${opts?.qrSrc ? `
         <div class="brand-center">
-          <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:64px; height:64px; display:block;" />
+          <img src="${opts.qrSrc}" alt="Tech Status QR" style="width:72px; height:72px; display:block;" />
           <div style="font-size:6.5pt; color:#555; text-align:center; margin-top:3px; letter-spacing:0.4px;">TECH SCAN</div>
         </div>
         ` : '<div class="brand-center"></div>'}
@@ -267,7 +267,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
 
       <div class="section final-block">
         <div class="terms" style="margin-bottom:14px;">
-          By signing this form, you confirm the client, phone, email, and device information above is correct and authorize GADGETBOY LLC to diagnose and/or repair your device. Repairs are performed to the best of our ability but are not guaranteed beyond the stated warranty. A diagnostic assessment will be completed prior to repairs, and a non-refundable diagnostic fee of $25 or $50, depending on the service required, may be charged at drop-off. Additional costs will be communicated and must be approved before work continues. If an ordered part for which payment was collected does not resolve the diagnosed issue or cannot be used to complete the repair, the amount paid for that part may be refunded. The separately charged diagnostic fee remains non-refundable and is not included in the part refund. Labor charges reflect diagnostic, installation, testing, and other work already performed and are not automatically refundable. Any labor refund will be determined by GADGETBOY LLC in its discretion and may be declined or issued as a partial refund based on the services completed and the circumstances of the repair. You are responsible for backing up all data; GADGETBOY LLC is not liable for data loss or incidental access to personal files. Certain repairs, including liquid or severe board damage, may not restore full functionality, and pre-existing issues may worsen. Customer-supplied or third-party parts are installed at your risk and are not warrantied. All repairs include a 90-day limited warranty from the completion date, covering only the specific repair performed. The warranty does not cover unrelated issues, software problems, physical or liquid damage, or devices tampered with after service. Full payment is due at pickup. Devices must be collected within 7 days of completion or will incur a $25/day storage fee. Any device left unclaimed 45 days after completion becomes the property of GADGETBOY LLC.
+          By signing this form, you authorize GADGETBOY LLC to diagnose and/or repair your device. Repairs are performed to the best of our ability but are not guaranteed beyond the stated warranty. A diagnostic assessment will be completed prior to repairs, and a non-refundable diagnostic fee of up to $50 may be charged at drop-off. Additional costs will be communicated and must be approved before work continues. You are responsible for backing up all data; GADGETBOY LLC is not liable for data loss or incidental access to personal files. Certain repairs, including liquid or severe board damage, may not restore full functionality, and pre-existing issues may worsen. Customer-supplied or third-party parts are installed at your risk and are not warrantied. All repairs include a 90-day limited warranty from the completion date, covering only the specific repair performed. The warranty does not cover unrelated issues, software problems, physical or liquid damage, or devices tampered with after service. Full payment is due at pickup. Devices must be collected within 7 days of completion or will incur a $25/day storage fee. Any device left unclaimed 45 days after completion becomes the property of GADGETBOY LLC.
         </div>
         <div class="sig-row">
           <div class="muted-label">Signature</div>
@@ -389,21 +389,23 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
   if (recordId > 0) {
     try {
       const type = workOrder.type || 'repair';
-      let qrUrl = '';
+      let lanIp = 'localhost';
       try {
-        const result = await window.api?.qrGetStatusUrl?.(type, recordId);
-        if (result?.ok && result.url) qrUrl = result.url;
-      } catch { /* QR helper unavailable */ }
-      if (qrUrl) {
-        const QRCode = (await import('qrcode')).default;
-        const dataUrl: string = await QRCode.toDataURL(qrUrl, {
-          width: 176, margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
-      }
-    } catch (error) { console.error('Cloud QR generation failed; printing without a QR code.', error); }
+        const ipRes = await fetch('http://localhost:7777/ip');
+        if (ipRes.ok) {
+          const json = await ipRes.json();
+          if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
+        }
+      } catch { /* QR server not running */ }
+      const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl: string = await QRCode.toDataURL(qrUrl, {
+        width: 176, margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+      if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
+    } catch { /* QR generation failed — print without it */ }
   }
 
   const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });
