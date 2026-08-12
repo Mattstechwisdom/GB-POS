@@ -257,7 +257,7 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
             disabled={opening}
             className="flex-1 rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black"
           >
-            {opening ? 'Opening...' : 'Update now'}
+            {opening ? 'Opening installer...' : 'Download and install'}
           </button>
           <button
             type="button"

@@ -92,6 +92,8 @@ jobs:
           npm run test:technician-sync
           npm run test:windows-update-install
           npm run test:release-0593-features
+          npm run test:auto-update-relaunch
+          npm run test:eod-ticket-close
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

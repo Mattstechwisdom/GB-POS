@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.94 (2026-08-12)
+- End of Day: restores the visible open-ticket reconciliation warning, keeps it live as work orders and sales sync, and adds desktop right-click/mobile hold actions to open or close an invoice without treating its unpaid balance as collected revenue.
+- Windows Updates: restores a one-click Auto Update and Relaunch action while retaining a download-only fallback, and clarifies the Android system-installer action.
+- Mobile Navigation: restores the hamburger drawer by applying its visible and interactive open state when rendered.
+- Hidden Game Menu: adds CPU-driven Tic-Tac-Toe, Connect Four, and Blackjack alongside Ship, Captain & Crew, with responsive Windows and Android layouts.
+
 ## v0.5.93 (2026-08-12)
 - Calendar Workflow: places task assignment before task entry, adds invoice/order/tracking/delete context actions for right-click and mobile press-and-hold, and preserves tracking URLs across desktop Supabase sync.
 - Calendar Styling: adds synced per-category icon customization using letters, symbols, emoji, or small uploaded images.

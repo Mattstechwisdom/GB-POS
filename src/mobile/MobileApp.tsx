@@ -1276,7 +1276,7 @@ function MobileDrawer(props: {
   if (!open) return null;
 
   return (
-    <div className="mobile-drawer-layer">
+    <div className="mobile-drawer-layer is-open">
       <button type="button" className="mobile-drawer-scrim" onClick={onClose} aria-label="Close menu" />
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">

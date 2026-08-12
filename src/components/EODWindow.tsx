@@ -6,6 +6,8 @@ import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRo
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -723,6 +725,31 @@ type UnifiedRow = {
   diagnosticLike?: boolean;
 };
 
+function recordLineItems(record: any): string {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const labels = items
+    .map((item: any) => String(item?.description || item?.repair || item?.name || item?.itemDescription || '').trim())
+    .filter(Boolean);
+  return labels.length ? labels.join(', ') : 'No line items recorded';
+}
+
+function recordDeviceName(record: any): string {
+  return String(
+    record?.deviceName
+    || record?.deviceModel
+    || record?.productDescription
+    || record?.productCategory
+    || record?.deviceType
+    || ''
+  ).trim() || 'Device not recorded';
+}
+
+function hasRepairCompleteUpdate(record: any): boolean {
+  const update = String(record?.statusUpdate || '').trim();
+  const repairStatus = String(record?.repairStatus || '').trim();
+  return /^repair complete$/i.test(update) || /^(complete|completed|repair complete)$/i.test(repairStatus);
+}
+
 function cartPaymentLabel(row: OrderCartRow) {
   if (row.paymentStatus === 'not_required') return 'Shop purchase';
   if (row.paymentStatus === 'paid') return 'Paid';
@@ -802,6 +829,10 @@ const EODWindow: React.FC = () => {
   const [commissionRange, setCommissionRange] = useState<CommissionRangeKey>('currentMonth');
   const [commissionCustomFrom, setCommissionCustomFrom] = useState('');
   const [commissionCustomTo, setCommissionCustomTo] = useState('');
+  const ticketContext = useContextMenu<UnifiedRow>();
+  const [closeTicketCandidate, setCloseTicketCandidate] = useState<UnifiedRow | null>(null);
+  const [closingTicket, setClosingTicket] = useState(false);
+  const [ticketActionMessage, setTicketActionMessage] = useState('');
 
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [techSummary, setTechSummary] = useState<string>('');
@@ -952,10 +983,14 @@ const EODWindow: React.FC = () => {
     const api = (window as any).api || {};
     const offPurchases = api.onPurchaseOrdersChanged?.(() => load());
     const offProducts = api.onProductsChanged?.(() => load());
+    const offWorkOrders = api.onWorkOrdersChanged?.(() => load());
+    const offSales = api.onSalesChanged?.(() => load());
     return () => {
       disposed = true;
       try { offPurchases?.(); } catch {}
       try { offProducts?.(); } catch {}
+      try { offWorkOrders?.(); } catch {}
+      try { offSales?.(); } catch {}
     };
   }, []);
 
@@ -2522,6 +2557,44 @@ const EODWindow: React.FC = () => {
     };
   }, [sales, unified, workOrders]);
 
+  const unclosedTickets = useMemo(() => {
+    type UnclosedTicket = {
+      row: UnifiedRow;
+      customerName: string;
+      deviceName: string;
+      lineItems: string;
+      reasons: string[];
+      repairCompleteSent: boolean;
+    };
+    const tickets: UnclosedTicket[] = [];
+    const addTicket = (kind: UnifiedRow['kind'], record: any) => {
+      const row = normalizeRow(kind, record);
+      if (!row) return;
+      const status = String(row.status || '').trim().toLowerCase();
+      if (status === 'closed' && !!row.checkoutDate) return;
+
+      const repairCompleteSent = kind === 'work' && hasRepairCompleteUpdate(record);
+      const reasons: string[] = [];
+      if (kind === 'work' && row.diagnosticLike && row.paid <= 0.01) reasons.push('Diagnostic fee not taken');
+      if (row.paid > 0.01) reasons.push('Payment taken without checkout');
+      if (repairCompleteSent) reasons.push('Repair Complete update sent while still open');
+      if (!reasons.length) return;
+
+      tickets.push({
+        row,
+        customerName: row.customerName || 'Client not recorded',
+        deviceName: kind === 'work' ? recordDeviceName(record) : 'Sale',
+        lineItems: recordLineItems(record),
+        reasons,
+        repairCompleteSent,
+      });
+    };
+
+    (workOrders || []).forEach(record => addTicket('work', record));
+    (sales || []).forEach(record => addTicket('sale', record));
+    return tickets.sort((left, right) => Number(right.row.paid) - Number(left.row.paid));
+  }, [sales, workOrders]);
+
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
 
   const listMeta = useMemo(() => {
@@ -2716,6 +2789,62 @@ const EODWindow: React.FC = () => {
       console.error('Failed to open record', err);
     }
   }
+
+  async function handleCloseTicket(row: UnifiedRow) {
+    if (closingTicket) return;
+    const api = (window as any).api;
+    if (!api?.dbUpdate) {
+      setTicketActionMessage('Ticket checkout is unavailable on this installation.');
+      return;
+    }
+    const source = row.kind === 'work' ? workOrders : sales;
+    const record = source.find((candidate: any) => String(candidate?.id) === String(row.id));
+    if (!record) {
+      setTicketActionMessage('The ticket could not be found. Refresh EOD Report and try again.');
+      return;
+    }
+
+    setClosingTicket(true);
+    setTicketActionMessage('');
+    try {
+      const now = new Date().toISOString();
+      const preservedPayments = collectPayments(record);
+      const next = {
+        ...record,
+        status: 'closed',
+        checkoutDate: now,
+        activityAt: now,
+        updatedAt: now,
+        payments: preservedPayments,
+      };
+      const saved = await api.dbUpdate(row.kind === 'work' ? 'workOrders' : 'sales', record.id, next);
+      const persisted = saved || next;
+      if (row.kind === 'work') {
+        setWorkOrders(current => current.map(item => String(item?.id) === String(row.id) ? persisted : item));
+      } else {
+        setSales(current => current.map(item => String(item?.id) === String(row.id) ? persisted : item));
+      }
+      setCloseTicketCandidate(null);
+      setTicketActionMessage(`${row.kind === 'work' ? 'Work order' : 'Sale'} #${String(row.id)} was closed. ${formatCurrency(row.remaining)} remains due and was not added to today's collected totals.`);
+    } catch (err) {
+      console.error('Failed to close EOD ticket', err);
+      setTicketActionMessage('The ticket could not be closed. No payment or totals were changed.');
+    } finally {
+      setClosingTicket(false);
+    }
+  }
+
+  const ticketContextItems = useMemo<ContextMenuItem[]>(() => {
+    const row = ticketContext.state.data;
+    if (!row) return [];
+    const alreadyClosed = String(row.status || '').toLowerCase() === 'closed' && !!row.checkoutDate;
+    return [
+      { type: 'header', label: `${row.kind === 'work' ? 'Work Order' : 'Sale'} #${String(row.id)}` },
+      { label: 'Open Invoice', onClick: () => handleRowOpen(row) },
+      { type: 'separator' },
+      { label: 'Close Ticket', disabled: alreadyClosed, onClick: () => setCloseTicketCandidate(row) },
+    ];
+  }, [ticketContext.state.data]);
 
   async function handleSend() {
     if (sending) return;
@@ -2922,7 +3051,42 @@ const EODWindow: React.FC = () => {
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                {ticketActionMessage ? <div className="rounded border border-[#39FF14]/30 bg-[#39FF14]/5 px-3 py-2 text-[11px] text-zinc-200">{ticketActionMessage}</div> : null}
+                <section className={`min-h-0 rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className={`text-sm font-semibold ${unclosedTickets.length ? 'text-red-200' : 'text-[#39FF14]'}`}>Open Ticket Warnings</h4>
+                      <p className="text-[11px] text-zinc-400">Diagnostic, paid, or repair-complete tickets that still need checkout review.</p>
+                    </div>
+                    <span className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${unclosedTickets.length ? 'border-red-500/50 bg-red-950/50 text-red-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{unclosedTickets.length}</span>
+                  </div>
+                  {unclosedTickets.length ? (
+                    <div className="mt-2 max-h-52 overflow-y-auto rounded border border-red-900/50">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="sticky top-0 z-[1] bg-zinc-950 text-zinc-400">
+                          <tr><th className="px-2 py-1.5 font-medium">Client / device</th><th className="px-2 py-1.5 font-medium">Items</th><th className="px-2 py-1.5 text-right font-medium">Taken</th><th className="px-2 py-1.5 text-right font-medium">Owed</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          {unclosedTickets.map(ticket => (
+                            <tr
+                              key={`${ticket.row.kind}-${String(ticket.row.id)}`}
+                              className={`${ticket.repairCompleteSent ? 'bg-red-950/30' : ''} cursor-pointer hover:bg-zinc-800/70`}
+                              title="Double-click to open. Right-click or hold for options."
+                              onDoubleClick={() => { void handleRowOpen(ticket.row); }}
+                              onContextMenu={event => ticketContext.openFromEvent(event, ticket.row)}
+                            >
+                              <td className="px-2 py-1.5 align-top"><div className="font-semibold text-zinc-100">{ticket.customerName}</div><div className="text-zinc-400">{ticket.deviceName} - #{String(ticket.row.id)}</div><div className="mt-0.5 text-amber-200">{ticket.reasons.join(' - ')}</div></td>
+                              <td className="max-w-36 px-2 py-1.5 align-top text-zinc-300">{ticket.lineItems}</td>
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-[#39FF14]">{formatCurrency(ticket.row.paid)}</td>
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-amber-200">{formatCurrency(ticket.row.remaining)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : <p className="mt-2 text-[11px] text-zinc-400">No paid, diagnostic, or repair-complete tickets require checkout review.</p>}
+                </section>
+                <div className="min-h-0 overflow-y-auto grid grid-cols-2 gap-2 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
                   <button
                     type="button"
@@ -3526,9 +3690,10 @@ const EODWindow: React.FC = () => {
                             key={`${row.kind}-${row.id}`}
                             className="hover:bg-zinc-800/50 cursor-pointer transition-colors"
                             onDoubleClick={() => { void handleRowOpen(row); }}
+                            onContextMenu={event => ticketContext.openFromEvent(event, row)}
                             onKeyDown={event => { if (event.key === 'Enter') void handleRowOpen(row); }}
                             tabIndex={0}
-                            title="Double-click to open invoice"
+                            title="Double-click to open. Right-click or hold for options."
                           >
                             <td className="py-2 pr-4">
                               <div className="font-mono text-xs text-zinc-200">{row.id}</div>
@@ -3559,6 +3724,35 @@ const EODWindow: React.FC = () => {
               </div>
               </div>
             ) : null}
+
+            {closeTicketCandidate ? (
+              <div className="fixed inset-0 z-[100500] flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4" onClick={() => { if (!closingTicket) setCloseTicketCandidate(null); }}>
+                <section className="w-full max-w-lg rounded-t-lg border border-amber-500/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.8)] sm:rounded-lg" role="dialog" aria-modal="true" aria-label="Close ticket confirmation" onClick={event => event.stopPropagation()}>
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-600 sm:hidden" />
+                  <h3 className="text-xl font-semibold text-amber-200">Close ticket without collecting the balance?</h3>
+                  <p className="mt-2 text-sm text-zinc-300">{closeTicketCandidate.kind === 'work' ? 'Work order' : 'Sale'} #{String(closeTicketCandidate.id)} will be marked checked out and closed. Existing payments remain unchanged.</p>
+                  <div className="mt-4 grid grid-cols-2 gap-2 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm">
+                    <div><span className="block text-xs text-zinc-500">Already collected</span><strong>{formatCurrency(closeTicketCandidate.paid)}</strong></div>
+                    <div><span className="block text-xs text-zinc-500">Still owed</span><strong className="text-amber-200">{formatCurrency(closeTicketCandidate.remaining)}</strong></div>
+                  </div>
+                  <p className="mt-3 text-xs text-zinc-400">The remaining balance will stay on the invoice and will not be counted as money collected today.</p>
+                  <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <button type="button" disabled={closingTicket} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm disabled:opacity-50" onClick={() => setCloseTicketCandidate(null)}>Cancel</button>
+                    <button type="button" disabled={closingTicket} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { void handleCloseTicket(closeTicketCandidate); }}>{closingTicket ? 'Closing...' : 'Close Ticket'}</button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            <ContextMenu
+              id="eod-ticket-context-menu"
+              open={ticketContext.state.open}
+              x={ticketContext.state.x}
+              y={ticketContext.state.y}
+              items={ticketContextItems}
+              onClose={ticketContext.close}
+              zIndex={100600}
+            />
 
             <details className="hidden rounded-lg border border-zinc-800 bg-zinc-950/60">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-[#39FF14]">Daily email and batch settings</summary>

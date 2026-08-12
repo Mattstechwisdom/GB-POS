@@ -1077,6 +1077,7 @@ let autoUpdateInitialized = false;
 let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
+let autoInstallAfterDownload = false;
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1262,6 +1263,7 @@ function updateUiHtml(initialState: any): string {
       border-top: 1px solid var(--line);
       padding-top: 16px;
     }
+    .footer .spacer { flex: 1; }
     button {
       min-width: 116px;
       height: 36px;
@@ -1328,7 +1330,9 @@ function updateUiHtml(initialState: any): string {
     </div>
     <div class="footer">
       <button id="secondaryBtn">Skip for Now</button>
-      <button id="primaryBtn" class="primary">Update Now</button>
+      <span class="spacer" aria-hidden="true"></span>
+      <button id="downloadBtn">Download Only</button>
+      <button id="primaryBtn" class="primary">Auto Update and Relaunch</button>
     </div>
   </div>
   <script>
@@ -1340,6 +1344,7 @@ function updateUiHtml(initialState: any): string {
     const percentEl = document.getElementById('percent');
     const primaryBtn = document.getElementById('primaryBtn');
     const secondaryBtn = document.getElementById('secondaryBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
     const busyDots = '<span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
 
     function pct(value) {
@@ -1356,12 +1361,18 @@ function updateUiHtml(initialState: any): string {
       barWrap.style.display = 'none';
       primaryBtn.disabled = false;
       secondaryBtn.disabled = false;
+      downloadBtn.disabled = false;
+      downloadBtn.style.display = 'inline-flex';
+      downloadBtn.style.alignItems = 'center';
+      downloadBtn.style.justifyContent = 'center';
 
       if (phase === 'available') {
         titleEl.textContent = 'Update Available';
-        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready to download. Choose Update Now to download the latest release; Skip for Now will remind you again next launch.';
-        primaryBtn.textContent = 'Update Now';
-        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
+        messageEl.textContent = 'GadgetBoy POS ' + label + ' is ready. Auto Update and Relaunch will download, install, close, and reopen the app automatically.';
+        primaryBtn.textContent = 'Auto Update and Relaunch';
+        primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'auto-download-install');
+        downloadBtn.textContent = 'Download Only';
+        downloadBtn.onclick = () => ipcRenderer.send('updater-window-action', 'download');
         secondaryBtn.textContent = 'Skip for Now';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
       } else if (phase === 'downloading') {
@@ -1373,6 +1384,7 @@ function updateUiHtml(initialState: any): string {
         primaryBtn.textContent = 'Downloading';
         primaryBtn.disabled = true;
         primaryBtn.onclick = null;
+        downloadBtn.style.display = 'none';
         secondaryBtn.textContent = 'Keep Open';
         secondaryBtn.disabled = true;
         secondaryBtn.onclick = null;
@@ -1384,6 +1396,7 @@ function updateUiHtml(initialState: any): string {
         percentEl.textContent = '100%';
         primaryBtn.textContent = 'Install and Relaunch';
         primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'install');
+        downloadBtn.style.display = 'none';
         secondaryBtn.textContent = 'Later';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'later');
       } else if (phase === 'applying') {
@@ -1395,6 +1408,7 @@ function updateUiHtml(initialState: any): string {
         primaryBtn.textContent = 'Applying';
         primaryBtn.disabled = true;
         primaryBtn.onclick = null;
+        downloadBtn.style.display = 'none';
         secondaryBtn.textContent = 'Please Wait';
         secondaryBtn.disabled = true;
         secondaryBtn.onclick = null;
@@ -1404,6 +1418,7 @@ function updateUiHtml(initialState: any): string {
         messageEl.textContent = state && state.detail ? state.detail : 'The update could not be completed. You can try again the next time you open the app.';
         primaryBtn.textContent = 'Close';
         primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
+        downloadBtn.style.display = 'none';
         secondaryBtn.textContent = 'Releases';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
       }
@@ -1421,6 +1436,10 @@ function ensureUpdateUiIpc() {
   ipcMain.on('updater-window-action', (_event: any, action: string) => {
     try {
       if (action === 'download') {
+        autoInstallAfterDownload = false;
+        void startUpdateDownload();
+      } else if (action === 'auto-download-install') {
+        autoInstallAfterDownload = true;
         void startUpdateDownload();
       } else if (action === 'install') {
         void installDownloadedUpdate();
@@ -1540,6 +1559,11 @@ async function promptToInstallDownloadedUpdate(info: any) {
   if (!autoUpdater) return;
   updateUiInfo = info;
   autoUpdateDownloading = false;
+  if (autoInstallAfterDownload) {
+    autoInstallAfterDownload = false;
+    await installDownloadedUpdate();
+    return;
+  }
   showUpdateUi({ phase: 'downloaded', label: getUpdateLabel(info), percent: 100 });
 }
 
@@ -1577,6 +1601,7 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('error', (err: any) => {
     autoUpdateDownloading = false;
+    autoInstallAfterDownload = false;
     try { console.error('[AutoUpdate] error:', err?.message || err); } catch {}
     showUpdateUi({
       phase: 'error',

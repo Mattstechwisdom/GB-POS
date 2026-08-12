@@ -18,8 +18,9 @@ export default function ContextMenu(props: {
 	onClose: () => void;
 	minWidth?: number;
 	id?: string;
+	zIndex?: number;
 }) {
-	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu' } = props;
+	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu', zIndex = 50 } = props;
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -67,12 +68,12 @@ export default function ContextMenu(props: {
 
 	return createPortal(
 		<>
-			<div className="fixed inset-0 z-40" onMouseDown={onClose} />
+			<div className="fixed inset-0" style={{ zIndex: zIndex - 1 }} onMouseDown={onClose} />
 			<div
 				id={id}
 				ref={menuRef}
-				className="fixed z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1"
-				style={{ left: displayPos.left, top: displayPos.top, minWidth }}
+				className="fixed bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1"
+				style={{ left: displayPos.left, top: displayPos.top, minWidth, zIndex }}
 				role="menu"
 			>
 				{items.map((it, idx) => {

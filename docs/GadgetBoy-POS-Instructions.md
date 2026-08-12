@@ -390,7 +390,10 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ### Hidden Game Menu
 
 - Enter the exact uppercase keyword `GADGETBOY` in the main search field to reveal GAME MENU.
-- Open Ship, Captain & Crew for a five-round dice game. Secure a 6, then 5, then 4 within three rolls; the remaining two dice are cargo points.
+- Ship, Captain & Crew is a five-round dice game against Gidget. Secure a 6, then 5, then 4 within three rolls; the remaining two dice are cargo points.
+- Tic-Tac-Toe uses a minimax CPU that evaluates every available outcome.
+- Connect Four uses a tactical CPU that takes winning moves, blocks immediate wins, and favors useful board positions.
+- Blackjack uses a dealer CPU that draws through 16 and stands on 17 or higher.
 - Game scores stay inside the game window and never modify clients, tickets, reporting, or other shop data.
 
 ### Technician Analytics
@@ -439,6 +442,10 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Mark a cart checked out only after checkout on the distributor site succeeds.
 - Marking an order paid can update the linked work order and client update workflow.
 - EOD Report Email stores recipients and the email subject, and can send the completed daily summary.
+- Open Ticket Warnings restores the focused reconciliation list for unpaid diagnostics, tickets with payment taken but no checkout, and work orders whose Repair Complete update was sent while the ticket remains open.
+- Double-click a warning row to open its invoice. On Windows, right-click the row for Open Invoice or Close Ticket; on Android, press and hold the row for the same menu.
+- Close Ticket marks the invoice checked out and closed without collecting more money. Existing payment history remains unchanged, the unpaid balance stays visible on the invoice, and that balance is not added to EOD collected totals.
+- Use Close Ticket only when the device or sale is leaving with an approved balance still due. Use normal Checkout whenever the shop is actually collecting payment.
 - Open Daily Batch Settings from inside EOD Report Email to set the shop-local Batch Out cutoff, email schedule, and daily email time.
 - Batch Out runs independently from the email schedule. Manual-only email delivery does not disable the daily accounting cutoff.
 - If the Windows app is closed at the cutoff, it records the missed batch once after the next successful Supabase login. It never marks a batch complete before cloud data is available.
@@ -731,6 +738,11 @@ Use this directory as a map of the POS. Detailed operating steps remain in the e
 - Confirm Install unknown apps is enabled for GadgetBoy POS.
 - Confirm the APK is newer and signed with the same certificate as the installed app.
 - Re-download the APK from the official release if the file is incomplete.
+
+### Update Controls
+
+- On Windows, Auto Update and Relaunch downloads the release, closes GadgetBoy POS, installs it, and reopens the app without a second in-app confirmation. Download Only stages the update and leaves installation for later.
+- On Android, Download and Install downloads the signed APK and opens Android's package installer. Android's system confirmation cannot be bypassed by the POS.
 
 ### Notifications Keep Loading
 

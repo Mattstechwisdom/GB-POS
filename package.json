@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.93",
+  "version": "0.5.94",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -59,6 +59,8 @@
     "test:calendar-tasks": "node tools/test-calendar-tasks.cjs",
     "test:daily-look-shifts": "node tools/test-daily-look-shifts.cjs",
     "test:release-0593-features": "node tools/test-release-0593-features.cjs",
+    "test:auto-update-relaunch": "node tools/test-auto-update-relaunch.cjs",
+    "test:eod-ticket-close": "node tools/test-eod-ticket-close.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {

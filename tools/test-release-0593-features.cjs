@@ -39,6 +39,12 @@ assert.match(main, /tracking_url: toCloudString\(item\.trackingUrl\)/);
 assert.match(game, /Ship, Captain & Crew/);
 assert.match(game, /lockShipCaptainCrew/);
 assert.match(game, /round > 5/);
+assert.match(game, /Tic-Tac-Toe/);
+assert.match(game, /ticMinimax/);
+assert.match(game, /Connect Four/);
+assert.match(game, /bestConnectMove/);
+assert.match(game, /Blackjack/);
+assert.match(game, /while \(handValue\(next\) < 17\)/);
 
 assert.match(builder, /requestedExecutionLevel:\s*asInvoker/);
 assert.match(builder, /perMachine:\s*false/);
