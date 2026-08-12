@@ -600,6 +600,7 @@ const AppInner: React.FC<{
             onDateToChange={setDateTo}
             onOpenCustomerSearch={() => setShowCustomerSearch(true)}
             onAddCustomer={() => openModal('customerOverview', 0)}
+            onQuickCheckout={() => openModal('quickSale')}
             mode={mode}
             onModeChange={setMode}
             invoiceQuery={invoiceQuery}
