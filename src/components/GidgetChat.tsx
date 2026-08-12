@@ -27,11 +27,11 @@ const STARTERS = [
   'What should I check before probing a motherboard?',
 ];
 
-function contextEndpoint() {
+function contextEndpoint(): string | null {
   const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').replace(/\/+$/, '');
   if (configured) return `${configured}/api/gidget/context`;
   const hosted = ['http:', 'https:'].includes(window.location.protocol) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-  return hosted ? `${window.location.origin}/api/gidget/context` : 'https://gb-pos-production.up.railway.app/api/gidget/context';
+  return hosted ? `${window.location.origin}/api/gidget/context` : null;
 }
 
 function messageId() {
@@ -235,17 +235,21 @@ export default function GidgetChat({ open, onClose }: Props) {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Your shop session expired. Sign in again to use Gidget.');
-      const response = await fetch(contextEndpoint(), {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          conversation_id: activeConversationId,
-          messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
-        }),
-      });
-      const context = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(context?.error || `Gidget context request failed (${response.status}).`);
+      const endpoint = contextEndpoint();
+      let context: any = {};
+      if (endpoint) {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            conversation_id: activeConversationId,
+            messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
+          }),
+        });
+        context = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(context?.error || `Gidget context request failed (${response.status}).`);
+      }
       const body = await generateWithGidget({
         ...context,
         messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),

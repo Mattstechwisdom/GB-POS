@@ -19,6 +19,8 @@ expect(panel.includes("supabase.functions.invoke('client-updates'"), 'Update Cli
 expect(!panel.includes('gb-pos-production.up.railway.app'), 'Update Client still contains a Railway fallback.');
 expect(desktop.includes('https://mattstechwisdom.github.io/GB-POS'), 'Desktop QR links must use the free GitHub Pages app.');
 expect(mobile.includes('https://mattstechwisdom.github.io/GB-POS'), 'Mobile QR links must use the free GitHub Pages app.');
+expect(!mobile.includes('railway.app'), 'Mobile QR routing must not fall back to Railway.');
+expect(!read('src/components/GidgetChat.tsx').includes('railway.app'), 'Gidget must not fall back to Railway.');
 expect(mobileApp.includes("get('clientUpdateToken')"), 'The hosted mobile app must read QR update tokens.');
 expect(mobileApp.includes('<ClientUpdatePanel'), 'The hosted mobile app must open the Update Client panel for QR links.');
 expect(updateFunction.includes('Sign in before sending a client update.'), 'The client-updates function must require authentication.');

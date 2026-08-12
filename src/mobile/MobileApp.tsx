@@ -51,6 +51,7 @@ const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCate
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
 const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
+const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
 
 type StaffProfile = {
   id: string;
@@ -522,6 +523,13 @@ const MobileApp: React.FC = () => {
 };
 
 const MobileAppRuntime: React.FC = () => {
+  const [clientUpdateToken, setClientUpdateToken] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('clientUpdateToken') || '';
+    } catch {
+      return '';
+    }
+  });
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
@@ -653,6 +661,21 @@ const MobileAppRuntime: React.FC = () => {
   }
 
   removeInitialHtmlLoader();
+  if (clientUpdateToken) {
+    return (
+      <React.Suspense fallback={<StartupStatusScreen title="Loading Update Client" message="Opening the QR status panel..." />}>
+        <ClientUpdatePanel
+          token={clientUpdateToken}
+          onClose={() => {
+            try {
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {}
+            setClientUpdateToken('');
+          }}
+        />
+      </React.Suspense>
+    );
+  }
   const updateCheckKey = `${staffProfile.shop_id}:${staffProfile.id}:${session.user.id}`;
   return (
     <PaginationProvider pageSize={30}>

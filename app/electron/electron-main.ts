@@ -6,6 +6,7 @@ const https = require('https');
 const http = require('http');
 const { pathToFileURL } = require('url');
 const os = require('os');
+const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 
@@ -6554,6 +6555,99 @@ function getQrServerInfo(): { hostname: string; ip: string; port: number; hostUr
   };
 }
 
+type QrStatusType = 'repair' | 'sale' | 'consult';
+
+function getPublicAppUrl(): string {
+  const configured = String(process.env.GBPOS_PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || '').trim();
+  return (configured || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
+}
+
+function normalizeQrStatusType(value: any): QrStatusType {
+  const raw = String(value || '').trim().toLowerCase();
+  if (/^(sale|sales|invoice|inv)$/.test(raw)) return 'sale';
+  if (/^(consult|consultation|appointment)$/.test(raw)) return 'consult';
+  return 'repair';
+}
+
+function cloudRecordKeyForQrType(type: QrStatusType): string {
+  if (type === 'sale') return 'sales';
+  if (type === 'consult') return 'calendarEvents';
+  return 'workOrders';
+}
+
+function makeQrToken(): string {
+  return nodeCrypto.randomBytes(24).toString('base64url');
+}
+
+function cloudQrUrl(type: QrStatusType, token: string): string {
+  return type === 'consult'
+    ? `${getPublicAppUrl()}/consultation.html?token=${encodeURIComponent(token)}`
+    : `${getPublicAppUrl()}/?clientUpdateToken=${encodeURIComponent(token)}`;
+}
+
+async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<string | null> {
+  const client = getCloudClient();
+  if (!client || !cloudSession?.shopId || !id) return null;
+
+  const existing = await client
+    .from('qr_status_tokens')
+    .select('token')
+    .eq('shop_id', cloudSession.shopId)
+    .eq('record_type', type)
+    .eq('legacy_record_id', id)
+    .is('revoked_at', null)
+    .maybeSingle();
+  if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
+  if (existing.data?.token) return cloudQrUrl(type, existing.data.token);
+
+  const recordTable = CLOUD_TABLE_BY_KEY[cloudRecordKeyForQrType(type)];
+  let recordCloudId: string | null = null;
+  try {
+    const record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();
+    if (!record.error && record.data?.id) recordCloudId = record.data.id;
+  } catch {}
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const inserted = await client
+      .from('qr_status_tokens')
+      .insert({ shop_id: cloudSession.shopId, token: makeQrToken(), record_type: type, legacy_record_id: id, record_id: recordCloudId, metadata: { createdBy: 'gb-pos' } })
+      .select('token')
+      .single();
+    if (!inserted.error && inserted.data?.token) return cloudQrUrl(type, inserted.data.token);
+    if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {
+      throw new Error(`Cloud QR token create failed: ${inserted.error?.message || 'Unknown error'}`);
+    }
+  }
+  throw new Error('Cloud QR token create failed after duplicate retries.');
+}
+
+async function resolveCloudQrStatusToken(token: string) {
+  const client = getCloudClient();
+  if (!client || !cloudSession?.shopId) throw new Error('Cloud session is not ready.');
+  const cleaned = String(token || '').trim();
+  if (!cleaned) throw new Error('Missing QR token.');
+
+  const tokenRes = await client.from('qr_status_tokens').select('*').eq('token', cleaned).eq('shop_id', cloudSession.shopId).is('revoked_at', null).maybeSingle();
+  if (tokenRes.error) throw new Error(`Cloud QR token read failed: ${tokenRes.error.message}`);
+  if (!tokenRes.data) throw new Error('QR token was not found for this shop.');
+  if (tokenRes.data.expires_at && new Date(tokenRes.data.expires_at).getTime() < Date.now()) throw new Error('This QR token is expired.');
+
+  void client.from('qr_status_tokens').update({ last_opened_at: new Date().toISOString() }).eq('id', tokenRes.data.id).then(() => undefined);
+  const type = normalizeQrStatusType(tokenRes.data.record_type);
+  const recordRes = await client.from(CLOUD_TABLE_BY_KEY[cloudRecordKeyForQrType(type)]).select('*').eq('shop_id', cloudSession.shopId).eq('legacy_id', Number(tokenRes.data.legacy_record_id)).maybeSingle();
+  if (recordRes.error) throw new Error(`Cloud QR record read failed: ${recordRes.error.message}`);
+  if (!recordRes.data) throw new Error('The QR record no longer exists.');
+
+  const record = fromCloudRow(cloudRecordKeyForQrType(type), recordRes.data);
+  let customer: any = null;
+  const customerId = Number(record?.customerId || 0) || 0;
+  if (customerId > 0) {
+    const customerRes = await client.from('customers').select('*').eq('shop_id', cloudSession.shopId).eq('legacy_id', customerId).maybeSingle();
+    if (!customerRes.error && customerRes.data) customer = fromCloudRow('customers', customerRes.data);
+  }
+  return { token: tokenRes.data, type, record, customer };
+}
+
 function escHtml(s: any): string {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -7624,9 +7718,20 @@ ipcMain.handle('notifications:open-system-settings', async () => {
 
 ipcMain.handle('qr:getStatusUrl', async (_event: any, type: string, id: any) => {
   try {
-    const t = String(type || '') === 'sale' ? 'sale' : 'repair';
+    const t = normalizeQrStatusType(type);
     const safeId = Number(id) || 0;
-    return { ok: true, url: qrStatusUrl(t as 'repair' | 'sale', safeId) };
+    if (!safeId) return { ok: false, error: 'Save the record before creating its QR code.' };
+    const url = await ensureCloudQrStatusUrl(t, safeId);
+    if (!url) return { ok: false, error: 'Sign in and sync the record before creating its QR code.' };
+    return { ok: true, url };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('qr:resolveStatusToken', async (_event: any, token: string) => {
+  try {
+    return { ok: true, ...(await resolveCloudQrStatusToken(token)) };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }

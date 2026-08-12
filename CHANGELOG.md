@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.90 (2026-08-11)
+- QR Codes: desktop and mobile now create and resolve opaque status tokens directly in Supabase, and every generated public QR link opens the GitHub Pages client-update or consultation page.
+- Hosting: removes the remaining Railway runtime fallbacks from QR routing, mobile public-app URLs, and Gidget context loading. Gidget continues with its local model when no optional context endpoint is configured.
+- Mobile: opens the authenticated Update Client panel when a Supabase QR token is present in a hosted link.
+- Release Safety: adds source-level checks to prevent Railway QR or Gidget fallbacks from returning.
+
 ## v0.5.79 (2026-08-11)
 - Hosting: removes the Railway server, runtime configuration, and deployment files; the public mobile and QR experience now deploys to GitHub Pages without a recurring hosting bill.
 - Shared Data: keeps Windows and Android records synchronized directly through Supabase, preserving the existing shop database and offline queue behavior.

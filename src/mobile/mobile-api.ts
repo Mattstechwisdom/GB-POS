@@ -995,7 +995,7 @@ function getHostedAppUrl(): string {
   } catch {
     // ignore
   }
-  return 'https://gb-pos-production.up.railway.app';
+  return 'https://mattstechwisdom.github.io/GB-POS';
 }
 
 function makeQrToken(): string {
