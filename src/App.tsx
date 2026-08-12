@@ -587,8 +587,9 @@ const AppInner: React.FC<{
 
   return (
     <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
-      <div className="flex flex-1">
-        <aside className={`shrink-0 bg-zinc-800 border-r border-zinc-700 flex flex-col gap-6 overflow-hidden transition-[width,transform,padding] duration-300 ease-out ${sidebarOpen ? 'w-[320px] p-4' : 'w-0 -translate-x-full border-r-0 p-0'}`}>
+      <div className="flex flex-1 min-h-0">
+        {sidebarOpen ? <button type="button" aria-label="Close navigation menu" className="fixed inset-0 z-[90] cursor-default bg-black/45" onClick={() => setSidebarOpen(false)} /> : null}
+        <aside className={`fixed inset-y-0 left-0 z-[100] flex w-[320px] flex-col gap-6 overflow-y-auto border-r border-zinc-700 bg-zinc-800 p-4 shadow-2xl transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}`}>
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}

@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.91 (2026-08-11)
+- Desktop Navigation: restores the slide-out side menu as an overlay drawer with the existing toolbar menu control and click-away backdrop, while retaining all current filters, client actions, Feedback, and Quick Checkout.
+
 ## v0.5.90 (2026-08-11)
 - QR Codes: desktop and mobile now create and resolve opaque status tokens directly in Supabase, and every generated public QR link opens the GitHub Pages client-update or consultation page.
 - Hosting: removes the remaining Railway runtime fallbacks from QR routing, mobile public-app URLs, and Gidget context loading. Gidget continues with its local model when no optional context endpoint is configured.
