@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.91",
+  "version": "0.5.92",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -38,8 +38,11 @@
     "test:gidget-desktop": "electron tools/test-gidget-desktop-runtime.cjs",
     "test:notifications:windows": "electron tools/test-native-notifications.cjs",
     "test:notifications:routing": "node tools/test-notification-routing.cjs",
+    "test:windows-update-install": "node tools/test-windows-update-install.cjs",
+    "test:desktop-navigation": "node tools/test-desktop-navigation.cjs",
     "test:quote-sales-prompt": "node tools/test-quote-sales-prompt.cjs",
     "test:sale-product-picker": "node tools/test-sale-product-picker.cjs",
+    "test:repair-device-filters": "node tools/test-repair-device-filters.cjs",
     "test:mobile-long-press": "electron tools/test-mobile-long-press.cjs",
     "test:mobile-navigation": "node tools/test-mobile-navigation.cjs",
     "test:order-accounting": "node tools/test-order-accounting.cjs",
@@ -47,10 +50,14 @@
     "test:customer-contact": "node tools/test-customer-contact-validation.cjs",
     "test:consultation-location": "node tools/test-consultation-location.cjs",
     "test:consultation-pricing": "node tools/test-consultation-pricing.cjs",
+    "test:main-record-types": "node tools/test-main-record-types.cjs",
+    "test:technician-sync": "node tools/test-technician-sync-parity.cjs",
     "test:distributor-url": "node tools/test-distributor-url.cjs",
     "test:inventory-consumption": "node tools/test-inventory-consumption.cjs",
     "test:inventory-reorder": "node tools/test-inventory-reorder.cjs",
     "test:calendar-journal-sync": "node tools/test-calendar-journal-sync.cjs",
+    "test:calendar-tasks": "node tools/test-calendar-tasks.cjs",
+    "test:daily-look-shifts": "node tools/test-daily-look-shifts.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {

@@ -415,6 +415,9 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
+      taskCompleted: row.task_completed === true,
+      taskCompletedAt: cloudDate(row.task_completed_at),
+      taskCompletedBy: row.task_completed_by || '',
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -756,6 +759,9 @@ function toCloudRow(key: string, item: any): any | null {
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
+      task_completed: toCloudBool(item.taskCompleted),
+      task_completed_at: item.taskCompleted ? toCloudIso(item.taskCompletedAt) : null,
+      task_completed_by: toCloudString(item.taskCompletedBy),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -1023,7 +1029,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {
     return type === 'consult'
-      ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(existing.data.token)}`
+      ? `${getHostedAppUrl()}/consultation.html?token=${encodeURIComponent(existing.data.token)}`
       : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(existing.data.token)}`;
   }
 
@@ -1056,7 +1062,7 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
       .single();
     if (!inserted.error && inserted.data?.token) {
       return type === 'consult'
-        ? `${getHostedAppUrl()}/api/consultation-reminder?token=${encodeURIComponent(inserted.data.token)}`
+        ? `${getHostedAppUrl()}/consultation.html?token=${encodeURIComponent(inserted.data.token)}`
         : `${getHostedAppUrl()}/?clientUpdateToken=${encodeURIComponent(inserted.data.token)}`;
     }
     if (!/duplicate|unique/i.test(String(inserted.error?.message || ''))) {

@@ -105,9 +105,13 @@ function mapCloudRow(type: UpdateType, row: any): any {
       category: row.category || 'Consultation',
       statusUpdate: row.status_update || '',
       statusUpdatedAt: row.status_updated_at || row.updated_at || '',
-      appointmentDate: row.appointment_date || '',
-      appointmentTime: row.appointment_time || '',
-      consultationAddress: row.consultation_address || '',
+      appointmentDate: row.event_date || '',
+      appointmentTime: row.event_time || '',
+      consultationAddress: row.location || '',
+      assignedTo: row.assigned_to || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: row.last_update_at || '',
     };
   }
   return {
@@ -285,7 +289,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       throw new Error('This QR token is expired.');
     }
     const nextType = normalizeType(tokenRes.data.record_type);
-    const table = nextType === 'sale' || nextType === 'consult' ? 'sales' : 'work_orders';
+    const table = nextType === 'sale' ? 'sales' : nextType === 'consult' ? 'calendar_events' : 'work_orders';
     const recordRes = await supabase
       .from(table)
       .select('*')

@@ -13,7 +13,6 @@ interface Props {
   onDateToChange?: (v: string) => void;
   onOpenCustomerSearch?: () => void;
   onAddCustomer?: () => void;
-  onQuickCheckout?: () => void;
   mode?: 'workorders' | 'sales' | 'all';
   onModeChange?: (m: 'workorders' | 'sales' | 'all') => void;
   invoiceQuery?: string;
@@ -23,11 +22,11 @@ interface Props {
   onClear?: () => void;
   onRefresh?: () => void;
   onSignOut?: () => void;
-  onOpenFeedback?: () => void;
   onOpenGidget?: () => void;
+  navigationShell?: boolean;
 }
 
-const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, onQuickCheckout, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenFeedback, onOpenGidget }) => {
+const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterChange, statusFilter, onStatusFilterChange, dateFrom = '', dateTo = '', onDateFromChange, onDateToChange, onOpenCustomerSearch, onAddCustomer, mode = 'all', onModeChange, invoiceQuery = '', onInvoiceQueryChange, woQuery = '', onWoQueryChange, onClear, onRefresh, onSignOut, onOpenGidget, navigationShell = false }) => {
   const [techs, setTechs] = useState<any[]>([]);
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
   useEffect(() => {
@@ -51,22 +50,25 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
       }}
     >
       {/* App title above logo */}
-      <div className="w-full flex flex-col items-center justify-center pt-1 pb-0">
+      {!navigationShell ? <div className="w-full flex flex-col items-center justify-center pt-1 pb-0">
         <div className="flex w-full items-center justify-center gap-2">
           <div className="gbpos-title text-2xl text-center leading-tight">GADGETBOY POS</div>
           {onSignOut && (
-            <div className="flex flex-col gap-1">
-              {onOpenFeedback ? <button type="button" onClick={onOpenFeedback} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white">Feedback</button> : null}
-              <button type="button" onClick={onSignOut} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white">Sign out</button>
-            </div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:border-[#39FF14] hover:text-white"
+            >
+              Sign out
+            </button>
           )}
         </div>
         {appVersion && (
           <div className="text-xs text-zinc-500 mt-0.5">v{appVersion}</div>
         )}
-      </div>
+      </div> : null}
       {/* The logo is the intentionally quiet entry point for Gidget. */}
-      <div className="w-full mb-2 flex items-center justify-center">
+      {!navigationShell ? <div className="w-full mb-2 flex items-center justify-center">
         <button
           type="button"
           onClick={onOpenGidget}
@@ -76,7 +78,7 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         >
           <img src={publicAsset('logo.png')} alt="GadgetBoy logo" className="w-full h-auto object-contain" />
         </button>
-      </div>
+      </div> : null}
       <div>
         <label className="block text-xs mb-1 leading-none">Status</label>
         <select
@@ -148,7 +150,7 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
       </div>
       )}
       {/* Mode toggle moved from top toolbar */}
-      <div className="w-full flex items-center justify-center gap-2 mt-2">
+      {!navigationShell ? <div className="w-full flex items-center justify-center gap-2 mt-2">
           <button
             type="button"
             className={`text-sm font-semibold px-4 py-2 rounded border transition-colors ${mode==='all'
@@ -173,13 +175,13 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
             `}
             onClick={() => onModeChange && onModeChange('sales')}
           >Sales</button>
-        </div>
+        </div> : null}
       
       <div className="flex gap-2 mt-1">
         <button type="button" className="flex-1 bg-zinc-700 rounded px-2 py-1 text-xs" onClick={onClear}>Clear</button>
         <button type="button" className="flex-1 bg-[#39FF14] text-black rounded px-2 py-1 text-xs font-bold" onClick={onRefresh}>Refresh</button>
       </div>
-      <div className="mt-2 flex gap-2">
+      {!navigationShell ? <div className="mt-2 flex gap-2">
         <button
           type="button"
           onClick={() => onAddCustomer && onAddCustomer()}
@@ -187,15 +189,10 @@ const SidebarFilters: React.FC<Props> = ({ technicianFilter, onTechnicianFilterC
         >Add Client</button>
         <button
           type="button"
-          onClick={() => onQuickCheckout && onQuickCheckout()}
-          className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
-        >Quick Checkout</button>
-        <button
-          type="button"
           onClick={() => onOpenCustomerSearch && onOpenCustomerSearch()}
           className="flex-1 bg-zinc-900 border border-zinc-700 hover:border-[#39FF14] hover:text-[#39FF14] transition rounded px-3 py-2 text-xs font-semibold text-zinc-300"
         >Search Client</button>
-      </div>
+      </div> : null}
     </form>
   );
 };

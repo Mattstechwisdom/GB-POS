@@ -14,13 +14,14 @@ import {
 } from '../lib/notifications';
 import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, type MobileUpdate } from './MobileUpdateCheck';
 import GidgetChat from '../components/GidgetChat';
-import NotificationConsentPrompt from '../components/NotificationConsentPrompt';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
+import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
 const CalendarWindow = React.lazy(() => import('../components/CalendarWindow'));
 const JournalWindow = React.lazy(() => import('../components/JournalWindow'));
+const DailyLookWindow = React.lazy(() => import('../components/DailyLookWindow'));
 const ClockInWindow = React.lazy(() => import('../components/ClockInWindow'));
 const QuoteGeneratorWindow = React.lazy(() => import('../components/QuoteGeneratorWindow'));
 const EODWindow = React.lazy(() => import('../components/EODWindow'));
@@ -48,9 +49,9 @@ const BackupWindow = React.lazy(() => import('../components/BackupWindow'));
 const ClearDatabaseWindow = React.lazy(() => import('../components/ClearDatabaseWindow'));
 const RepairCategoriesWindow = React.lazy(() => import('../repairs/RepairCategoriesWindow'));
 const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCategoriesWindow'));
+const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
-const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
 const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
 
 type StaffProfile = {
@@ -68,6 +69,7 @@ type StatusFilter = 'all' | 'open' | 'closed';
 type ModalEntry = { id: string; type: string };
 type MobileRow = {
   type: 'workorder' | 'sale';
+  displayType: MainRecordKind;
   id: number;
   customerId?: number;
   customerName: string;
@@ -327,6 +329,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'newSale': return <SaleWindow />;
     case 'calendar': return <CalendarWindow />;
     case 'journal': return <JournalWindow />;
+    case 'dailyLook': return <DailyLookWindow />;
     case 'clockIn': return <ClockInWindow />;
     case 'quoteGenerator': return <QuoteGeneratorWindow />;
     case 'eod': return <EODWindow />;
@@ -371,6 +374,9 @@ function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zInde
   const requestClose = useCallback(() => {
     if (entry.type === 'productPicker') {
       window.dispatchEvent(new CustomEvent('gbpos:mobile-product-picker-cancelled'));
+    }
+    if (entry.type === 'workOrderRepairPicker') {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-repair-picker-cancelled'));
     }
     onClose();
   }, [entry.type, onClose]);
@@ -418,6 +424,7 @@ function titleForModal(type: string) {
     newSale: 'Sale',
     calendar: 'Calendar',
     journal: 'Journal',
+    dailyLook: 'Daily Look',
     clockIn: 'Clock In',
     quoteGenerator: 'Quote Generator',
     eod: 'Reports',
@@ -435,6 +442,7 @@ function titleForModal(type: string) {
     checkout: 'Checkout',
     devMenu: 'Developer Tools',
     dataTools: 'Data Tools',
+    feedback: 'Feedback',
     reporting: 'Reporting',
     reportEmail: 'Report Email',
     charts: 'Charts',
@@ -450,7 +458,6 @@ function titleForModal(type: string) {
     deviceCategories: 'Device Categories',
     customBuildItem: 'Custom Build',
     technicians: 'Technicians',
-    feedback: 'Feedback',
   };
   return titles[type] || 'Window';
 }
@@ -669,7 +676,9 @@ const MobileAppRuntime: React.FC = () => {
           onClose={() => {
             try {
               window.history.replaceState({}, '', window.location.pathname);
-            } catch {}
+            } catch {
+              // The home screen can still open if the browser blocks history updates.
+            }
             setClientUpdateToken('');
           }}
         />
@@ -681,7 +690,6 @@ const MobileAppRuntime: React.FC = () => {
     <PaginationProvider pageSize={30}>
       <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
       <MobileUpdateCheck checkKey={updateCheckKey} delayMs={900} />
-      <NotificationConsentPrompt />
     </PaginationProvider>
   );
 };
@@ -844,6 +852,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       };
     });
     const originalProductPicker = api?.pickSaleProduct;
+    const originalRepairPicker = api?.pickRepairItem;
     if (api) {
       api.pickSaleProduct = () => new Promise((resolve) => {
         let settled = false;
@@ -860,6 +869,21 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         window.addEventListener('gbpos:mobile-product-picker-cancelled', onCancelled, { once: true });
         openModal('productPicker');
       });
+      api.pickRepairItem = (filters?: { deviceCategory?: string; deviceName?: string }) => new Promise((resolve) => {
+        let settled = false;
+        const finish = (value: any) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('gbpos:mobile-repair-picked', onPicked as EventListener);
+          window.removeEventListener('gbpos:mobile-repair-picker-cancelled', onCancelled);
+          resolve(value);
+        };
+        const onPicked = (event: Event) => finish((event as CustomEvent).detail || null);
+        const onCancelled = () => finish(null);
+        window.addEventListener('gbpos:mobile-repair-picked', onPicked as EventListener, { once: true });
+        window.addEventListener('gbpos:mobile-repair-picker-cancelled', onCancelled, { once: true });
+        openModal('workOrderRepairPicker', filters || {});
+      });
     }
     return () => {
       unregisterOpenModal();
@@ -867,6 +891,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
         try { api[method] = fn; } catch {}
       });
       if (api && originalProductPicker) api.pickSaleProduct = originalProductPicker;
+      if (api && originalRepairPicker) api.pickRepairItem = originalRepairPicker;
     };
   }, [openModal]);
 
@@ -906,6 +931,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       const title = getItemSummary(wo) || wo?.productDescription || wo?.productCategory || 'Work order';
       return {
         type: 'workorder',
+        displayType: mainRecordKind('workorder', wo),
         id: Number(wo?.id || 0),
         customerId: Number.isFinite(customerId) ? customerId : undefined,
         customerName: customer?.name || wo?.customerName || [wo?.firstName, wo?.lastName].filter(Boolean).join(' ').trim() || 'No client attached',
@@ -932,6 +958,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       const technicianId = String(sale?.assignedTo || '').trim();
       return {
         type: 'sale',
+        displayType: mainRecordKind('sale', sale),
         id: Number(sale?.id || 0),
         customerId: Number.isFinite(customerId) ? customerId : undefined,
         customerName: customer?.name || sale?.customerName || 'Walk-in sale',
@@ -1116,7 +1143,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
       </section>
 
       <nav className="mobile-quickbar" aria-label="Quick actions">
-        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Sale</button>
+        <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Checkout</button>
         <button type="button" className="add-client" onClick={() => openModal('addClient')}>Add Client</button>
         <button type="button" className="search-client" onClick={() => openModal('customerSearch')}>Search Client</button>
       </nav>
@@ -1166,7 +1193,7 @@ function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: 
   const { wasLongPress, ...longPressHandlers } = longPress;
   return (
     <article
-      className={`mobile-record-card ${row.type} ${row.status === 'closed' ? 'closed' : 'open'}`}
+      className={`mobile-record-card ${row.displayType} ${row.status === 'closed' ? 'closed' : 'open'}`}
       {...longPressHandlers}
       onClick={() => {
         if (wasLongPress()) return;
@@ -1191,13 +1218,13 @@ function MobileRecordCard({ row, onOpen, onActions }: { row: MobileRow; onOpen: 
         </button>
       </div>
       <div className="mobile-card-main">
-        <h2>{row.title || (row.type === 'workorder' ? 'Work order' : 'Sale')}</h2>
+        <h2>{row.title || mainRecordTypeLabel(row.displayType)}</h2>
         <p>{row.customerName}</p>
         {row.subtitle ? <span>{row.subtitle}</span> : null}
       </div>
       <div className="mobile-card-meta">
         <span className={`mobile-status-pill ${row.status.replace(' ', '-')}`}>{row.status}</span>
-        <span>{row.type === 'workorder' ? 'WO' : 'Sale'}</span>
+        <span>{mainRecordTypeLabel(row.displayType, true)}</span>
         {row.technicianLabel ? <span>{row.technicianLabel}</span> : <span>Unassigned</span>}
       </div>
       <div className="mobile-card-money">
@@ -1227,7 +1254,6 @@ function MobileDrawer(props: {
   });
   const technicianTools = [
     ['technicians', 'Technicians'],
-    ['calendar', 'Calendar'],
     ['journal', 'Journal'],
     ['diagnosticTools', 'Diagnostic Tools'],
   ] as const;
@@ -1239,21 +1265,23 @@ function MobileDrawer(props: {
     ['dataTools', 'Data Tools'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
-  const handleOpenModal = (type: string) => {
+  const handleOpenModal = (type: string, payload?: any) => {
     onClose();
-    onOpenModal(type);
+    onOpenModal(type, payload);
   };
 
+  if (!open) return null;
+
   return (
-    <div className={`mobile-drawer-layer${open ? ' is-open' : ''}`} aria-hidden={!open}>
+    <div className="mobile-drawer-layer">
       <button type="button" className="mobile-drawer-scrim" onClick={onClose} aria-label="Close menu" />
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">
+          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
           <div>
             <strong>{profileName || 'Shop Access'}</strong>
             <span>{role} session</span>
           </div>
-          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
         </header>
 
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
@@ -1263,6 +1291,8 @@ function MobileDrawer(props: {
         </div>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>
+          <DrawerButton label="Calendar" onClick={() => handleOpenModal('calendar')} />
+          <DrawerButton label="Daily Look" onClick={() => handleOpenModal('dailyLook')} />
           {technicianTools.map(([type, label]) => <DrawerButton key={type} label={label} onClick={() => handleOpenModal(type)} />)}
         </DrawerSection>
 
@@ -1339,7 +1369,7 @@ function ActionSheet({ row, actions, onClose }: { row: MobileRow; actions: Sheet
           {...drag.handleProps}
         />
         <header>
-          <span>{row.type === 'workorder' ? 'Work Order' : 'Sale'}</span>
+          <span>{mainRecordTypeLabel(row.displayType)}</span>
           <strong>{invoiceNumber(row.id)}</strong>
           <p>{row.customerName}</p>
         </header>

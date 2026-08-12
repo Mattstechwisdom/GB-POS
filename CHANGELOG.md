@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.92 (2026-08-11)
+- Desktop Navigation: restores the approved slide-out desktop menu, top client actions, filter dropdown, right notification rail, Gidget logo entry point, Feedback button, and animated drawer closing without reverting newer features.
+- Calendar Tasks: adds an explicit All Technicians assignment, carries shared incomplete tasks into every technician's Daily Look, and synchronizes completion state through Supabase on Windows and Android.
+- Technician Sync: restores authoritative Supabase staff-profile loading and Realtime refresh on desktop while keeping private technician passcodes out of Realtime.
+- Client Updates: aligns consultation QR records with Supabase calendar fields and redeploys the authenticated client-update and Gmail app-password email functions.
+- Release Safety: expands release regressions for desktop navigation, Tasks, Daily Look shifts, technician sync, repair filtering, record types, client updates, mobile long-press, and silent non-elevated Windows updates.
+
 ## v0.5.91 (2026-08-11)
 - Desktop Navigation: restores the slide-out side menu as an overlay drawer with the existing toolbar menu control and click-away backdrop, while retaining all current filters, client actions, Feedback, and Quick Checkout.
 

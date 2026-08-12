@@ -142,6 +142,7 @@ contextBridge.exposeInMainWorld('api', {
   dbResetAll: (): Promise<any> => ipcRenderer.invoke('db-reset-all'),
   cloudSetSession: (payload: any): Promise<any> => ipcRenderer.invoke('cloud:setSession', payload),
   cloudClearSession: (): Promise<any> => ipcRenderer.invoke('cloud:clearSession'),
+  cloudCollectionChanged: (key: string): Promise<any> => ipcRenderer.invoke('cloud:collectionChanged', key),
   sendRepairSelected: (repair: any) => ipcRenderer.send('repair-selected', repair),
   _emitCheckoutSave: (result: any) => ipcRenderer.send('workorder:checkout:save', result),
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),
@@ -241,7 +242,7 @@ contextBridge.exposeInMainWorld('api', {
   restoreEncryptedBackup: (password: string): Promise<any> => ipcRenderer.invoke('restore-encrypted-backup', password),
   getLastBackupPath: (): Promise<string> => ipcRenderer.invoke('get-last-backup-path'),
   // QR Code status server
-  qrGetStatusUrl: (type: 'repair' | 'sale', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
+  qrGetStatusUrl: (type: 'repair' | 'sale' | 'consult', id: number): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke('qr:getStatusUrl', type, id),
   qrGetDataUrl: (url: string): Promise<{ ok: boolean; dataUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getDataUrl', url),
   qrGetServerInfo: (): Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }> => ipcRenderer.invoke('qr:getServerInfo'),
 });

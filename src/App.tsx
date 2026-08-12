@@ -10,6 +10,7 @@ import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
 import GidgetChat from './components/GidgetChat';
+import DesktopNotificationDrawer from './components/DesktopNotificationDrawer';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
@@ -18,11 +19,16 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
+import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
+import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
+import { publicAsset } from './lib/publicAsset';
+import './styles/desktop-nav-preview.css';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
 const NewWorkOrderWindow        = React.lazy(() => import('./workorders/NewWorkOrderWindow'));
 const SaleWindow                = React.lazy(() => import('./sales/SaleWindow'));
 const CalendarWindow            = React.lazy(() => import('./components/CalendarWindow'));
+const DailyLookWindow           = React.lazy(() => import('./components/DailyLookWindow'));
 const ClockInWindow             = React.lazy(() => import('./components/ClockInWindow'));
 const QuoteGeneratorWindow      = React.lazy(() => import('./components/QuoteGeneratorWindow'));
 const EODWindow                 = React.lazy(() => import('./components/EODWindow'));
@@ -41,6 +47,8 @@ const ReportEmailWindow         = React.lazy(() => import('./components/ReportEm
 const ChartsWindow              = React.lazy(() => import('./components/ChartsWindow'));
 const NotificationsWindow       = React.lazy(() => import('./components/NotificationsWindow'));
 const NotificationSettingsWindow = React.lazy(() => import('./components/NotificationSettingsWindow'));
+const JournalWindow             = React.lazy(() => import('./components/JournalWindow'));
+const TechniciansWindow         = React.lazy(() => import('./components/TechniciansWindow'));
 const ReleaseFormWindow         = React.lazy(() => import('./workorders/ReleaseFormWindow'));
 const CustomerReceiptWindow     = React.lazy(() => import('./workorders/CustomerReceiptWindow'));
 const ProductFormWindow         = React.lazy(() => import('./sales/ProductFormWindow'));
@@ -99,7 +107,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-hidden pr-12 pt-12"
+      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12"
       style={{ zIndex }}
       data-modal-shell="1"
     >
@@ -129,7 +137,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
         )}
       </div>
       <React.Suspense fallback={
-        <div className="flex items-center justify-center h-screen text-zinc-500">Loading…</div>
+        <div className="flex min-h-[100dvh] items-center justify-center text-zinc-500">Loading…</div>
       }>
         <ModalContent type={entry.type} onClose={onClose} />
       </React.Suspense>
@@ -143,6 +151,7 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'newWorkOrder':           return <NewWorkOrderWindow />;
     case 'newSale':                return <SaleWindow />;
     case 'calendar':               return <CalendarWindow />;
+    case 'dailyLook':              return <DailyLookWindow />;
     case 'clockIn':                return <ClockInWindow />;
     case 'quoteGenerator':         return <QuoteGeneratorWindow />;
     case 'eod':                    return <EODWindow />;
@@ -162,6 +171,14 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'charts':                 return <ChartsWindow />;
     case 'notifications':          return <NotificationsWindow />;
     case 'notificationSettings':   return <NotificationSettingsWindow />;
+    case 'journal':                return <JournalWindow />;
+    case 'technicians':            return <TechniciansWindow onClose={onClose} />;
+    case 'diagnosticTools':        return (
+      <section className="mx-auto mt-12 max-w-3xl border border-zinc-700 bg-zinc-950 p-8">
+        <h2 className="text-2xl font-bold text-blue-300">Diagnostic Tools</h2>
+        <p className="mt-3 text-zinc-400">This workspace is ready for symptom checklists, electrical test references, intake helpers, and field diagnostics.</p>
+      </section>
+    );
     case 'releaseForm':            return <ReleaseFormWindow />;
     case 'customerReceipt':        return <CustomerReceiptWindow />;
     case 'productForm':            return <ProductFormWindow />;
@@ -340,6 +357,25 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [session?.access_token, staffProfile?.shop_id]);
 
+  useEffect(() => {
+    const shopId = staffProfile?.shop_id;
+    const api = (window as any).api;
+    if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
+
+    const channel = supabase
+      .channel(`gbpos-desktop-technicians-${shopId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'staff_profiles', filter: `shop_id=eq.${shopId}` },
+        () => { void api.cloudCollectionChanged('technicians'); },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [cloudReady, staffProfile?.shop_id]);
+
   if (authLoading) {
     return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;
   }
@@ -462,7 +498,37 @@ const AppInner: React.FC<{
   const [invoiceQuery, setInvoiceQuery] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
   const [gidgetOpen, setGidgetOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const desktopNavigationEnabled = true;
+  const desktopDrawerPreviewOpen = new URLSearchParams(window.location.search).get('desktopNavPreview') === '1';
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(desktopDrawerPreviewOpen);
+  const [desktopDrawerClosing, setDesktopDrawerClosing] = useState(false);
+  const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopDrawerPreviewOpen);
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
+  const [desktopNotificationsOpen, setDesktopNotificationsOpen] = useState(false);
+  const desktopFiltersRef = useRef<HTMLDivElement>(null);
+  const desktopDrawerCloseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (desktopDrawerCloseTimerRef.current !== null) {
+      window.clearTimeout(desktopDrawerCloseTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!desktopNavigationEnabled || !desktopFiltersOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!desktopFiltersRef.current?.contains(event.target as Node)) setDesktopFiltersOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDesktopFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [desktopFiltersOpen, desktopNavigationEnabled]);
 
   // ── Modal stack ──────────────────────────────────────────────────────────
   const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
@@ -585,11 +651,124 @@ const AppInner: React.FC<{
     setKeyword('');
   };
 
+  const showDesktopDrawer = (pinned = false) => {
+    if (desktopDrawerCloseTimerRef.current !== null) {
+      window.clearTimeout(desktopDrawerCloseTimerRef.current);
+      desktopDrawerCloseTimerRef.current = null;
+    }
+    setDesktopDrawerClosing(false);
+    setDesktopDrawerPinned(pinned);
+    setDesktopDrawerOpen(true);
+  };
+
+  const closeDesktopDrawer = (immediate = false) => {
+    setDesktopDrawerPinned(false);
+    if (desktopDrawerCloseTimerRef.current !== null) {
+      window.clearTimeout(desktopDrawerCloseTimerRef.current);
+      desktopDrawerCloseTimerRef.current = null;
+    }
+    if (immediate || !desktopDrawerOpen) {
+      setDesktopDrawerClosing(false);
+      setDesktopDrawerOpen(false);
+      return;
+    }
+    setDesktopDrawerClosing(true);
+    desktopDrawerCloseTimerRef.current = window.setTimeout(() => {
+      setDesktopDrawerOpen(false);
+      setDesktopDrawerClosing(false);
+      desktopDrawerCloseTimerRef.current = null;
+    }, 180);
+  };
+
+  const openDrawerModal = (type: string, payload?: any) => {
+    closeDesktopDrawer(true);
+    openModal(type, payload);
+  };
+
   return (
-    <div className="bg-zinc-900 min-h-screen text-white flex flex-col relative">
-      <div className="flex flex-1 min-h-0">
-        {sidebarOpen ? <button type="button" aria-label="Close navigation menu" className="fixed inset-0 z-[90] cursor-default bg-black/45" onClick={() => setSidebarOpen(false)} /> : null}
-        <aside className={`fixed inset-y-0 left-0 z-[100] flex w-[320px] flex-col gap-6 overflow-y-auto border-r border-zinc-700 bg-zinc-800 p-4 shadow-2xl transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}`}>
+    <div className={`bg-zinc-900 min-h-screen text-white flex flex-col relative${desktopNavigationEnabled ? ' desktop-nav-preview' : ''}`}>
+      {desktopNavigationEnabled ? (
+        <>
+          <div
+            className="desktop-drawer-hotspot"
+            onMouseEnter={() => showDesktopDrawer(false)}
+            aria-hidden="true"
+          />
+          {desktopDrawerOpen ? (
+            <div className={`desktop-drawer-layer${desktopDrawerClosing ? ' closing' : ''}`}>
+              <button type="button" className="desktop-drawer-scrim" onClick={() => closeDesktopDrawer()} aria-label="Close navigation menu" />
+              <aside
+                className="desktop-drawer"
+                onMouseLeave={() => {
+                  if (!desktopDrawerPinned) closeDesktopDrawer();
+                }}
+              >
+                <header className="desktop-drawer-header">
+                  <div className="desktop-drawer-close-row">
+                    <button type="button" className="desktop-drawer-close" onClick={() => closeDesktopDrawer()} aria-label="Close navigation menu">x</button>
+                  </div>
+                  <button type="button" className="desktop-drawer-brand" onClick={() => setGidgetOpen(true)} title="Open Gidget">
+                    <img src={publicAsset('logo.png')} alt="GadgetBoy" />
+                  </button>
+                </header>
+
+                <div className="desktop-drawer-priority">
+                  <button type="button" className="eod" onClick={() => openDrawerModal('eod')}>
+                    <span>End of Day Report</span><small>Review today and purchasing</small>
+                  </button>
+                  <button type="button" className="daily" onClick={() => openDrawerModal('dailyLook')}>
+                    <span>Daily Look</span><small>Schedule, notes and priorities</small>
+                  </button>
+                </div>
+
+                <div className="desktop-drawer-primary">
+                  <button type="button" className="quote" onClick={() => openDrawerModal('quoteGenerator')}>Generate Quote</button>
+                  <button type="button" className="consult" onClick={() => openDrawerModal('consultation')}>Consultation</button>
+                </div>
+
+                <details className="desktop-drawer-section" open>
+                  <summary>Technician Tools <span>+</span></summary>
+                  <div>
+                    <button type="button" onClick={() => openDrawerModal('calendar')}>Calendar</button>
+                    <button type="button" onClick={() => openDrawerModal('clockIn')}>Clock In / Out</button>
+                    <button type="button" onClick={() => openDrawerModal('technicians')}>Technicians</button>
+                    <button type="button" onClick={() => openDrawerModal('journal')}>Journal</button>
+                    <button type="button" onClick={() => openDrawerModal('diagnosticTools')}>Diagnostic Tools</button>
+                  </div>
+                </details>
+
+                <details className="desktop-drawer-section admin">
+                  <summary>Admin <span>+</span></summary>
+                  <div>
+                    <button type="button" onClick={() => openDrawerModal('repairCategories')}>Devices / Repairs</button>
+                    <button type="button" onClick={() => openDrawerModal('inventory')}>Inventory</button>
+                    <button type="button" onClick={() => openDrawerModal('vendors')}>Distributors / Vendors</button>
+                    <button type="button" onClick={() => openDrawerModal('reporting')}>Reporting</button>
+                    <button type="button" onClick={() => openDrawerModal('dataTools')}>Data Tools</button>
+                    <button type="button" onClick={() => openDrawerModal('devMenu')}>Dev Menu</button>
+                  </div>
+                </details>
+
+                <footer className="desktop-drawer-footer">
+                  <button type="button" className="desktop-drawer-feedback" onClick={() => openDrawerModal('feedback')}>Send Feedback</button>
+                  <button type="button" onClick={onSignOut}>Sign out</button>
+                </footer>
+              </aside>
+            </div>
+          ) : null}
+          <DesktopNotificationDrawer
+            open={desktopNotificationsOpen}
+            onOpen={() => {
+              closeDesktopDrawer(true);
+              setDesktopFiltersOpen(false);
+              setDesktopNotificationsOpen(true);
+            }}
+            onClose={() => setDesktopNotificationsOpen(false)}
+          />
+        </>
+      ) : null}
+      <div className={`flex flex-1${desktopNavigationEnabled ? ' desktop-preview-workspace' : ''}`}>
+        {!desktopNavigationEnabled ? <aside className="w-[320px] shrink-0 bg-zinc-800 border-r border-zinc-700 p-4 flex flex-col gap-6 overflow-y-auto">
           <SidebarFilters
             technicianFilter={technicianFilter}
             onTechnicianFilterChange={setTechnicianFilter}
@@ -601,7 +780,6 @@ const AppInner: React.FC<{
             onDateToChange={setDateTo}
             onOpenCustomerSearch={() => setShowCustomerSearch(true)}
             onAddCustomer={() => openModal('customerOverview', 0)}
-            onQuickCheckout={() => openModal('quickSale')}
             mode={mode}
             onModeChange={setMode}
             invoiceQuery={invoiceQuery}
@@ -611,16 +789,78 @@ const AppInner: React.FC<{
             onClear={handleClear}
             onRefresh={() => setRefreshKey(refreshKey + 1)}
             onSignOut={onSignOut}
-            onOpenFeedback={() => openModal('feedback')}
             onOpenGidget={() => setGidgetOpen(true)}
           />
           <div>
             <RecentCustomers />
           </div>
-        </aside>
+        </aside> : null}
         <main className="flex-1 min-w-0 flex flex-col">
-          <Toolbar mode={mode} onModeChange={setMode} keyword={keyword} onKeywordChange={setKeyword} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen(open => !open)} />
-          <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <Toolbar
+            mode={mode}
+            onModeChange={setMode}
+            keyword={keyword}
+            onKeywordChange={setKeyword}
+            drawerMode={desktopNavigationEnabled}
+            onOpenMenu={() => {
+              setDesktopNotificationsOpen(false);
+              setDesktopFiltersOpen(false);
+              showDesktopDrawer(true);
+            }}
+            onOpenNotifications={() => {
+              closeDesktopDrawer(true);
+              setDesktopFiltersOpen(false);
+              setDesktopNotificationsOpen(true);
+            }}
+            onSearchClient={() => openModal('customerSearch')}
+            onAddClient={() => openModal('customerOverview', 0)}
+          />
+          {desktopNavigationEnabled ? (
+            <div className="desktop-preview-tabs" aria-label="Record type">
+              <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
+              <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button>
+              <div className="desktop-preview-filter-control" ref={desktopFiltersRef}>
+                <button
+                  type="button"
+                  className={`filters${desktopFiltersOpen ? ' active-filter-menu' : ''}`}
+                  aria-expanded={desktopFiltersOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setDesktopNotificationsOpen(false);
+                    setDesktopFiltersOpen(open => !open);
+                  }}
+                >Filters</button>
+                {desktopFiltersOpen ? (
+                  <div className="desktop-preview-filter-menu" role="dialog" aria-label="List filters">
+                    <header>
+                      <strong>Filter Activity</strong>
+                      <button type="button" onClick={() => setDesktopFiltersOpen(false)} aria-label="Close filters">x</button>
+                    </header>
+                    <SidebarFilters
+                      technicianFilter={technicianFilter}
+                      onTechnicianFilterChange={setTechnicianFilter}
+                      statusFilter={statusFilter}
+                      onStatusFilterChange={setStatusFilter}
+                      dateFrom={dateFrom}
+                      dateTo={dateTo}
+                      onDateFromChange={setDateFrom}
+                      onDateToChange={setDateTo}
+                      mode={mode}
+                      invoiceQuery={invoiceQuery}
+                      onInvoiceQueryChange={setInvoiceQuery}
+                      woQuery={woQuery}
+                      onWoQueryChange={setWoQuery}
+                      onClear={handleClear}
+                      onRefresh={() => setRefreshKey(refreshKey + 1)}
+                      navigationShell
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="flex-1 min-h-0 overflow-auto">
             {mode === 'workorders' && (
               <WorkOrdersTable statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} woQuery={woQuery} keyword={keyword} refreshKey={refreshKey} />
             )}
@@ -650,6 +890,7 @@ const AppInner: React.FC<{
         />
       ))}
       <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
+      <PlatformPermissionHandshake />
     </div>
   );
 };
@@ -715,8 +956,8 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     refreshTechs();
     refreshCustomers();
     const api = (window as any).api;
-    const offCustomers = api.onCustomersChanged?.(() => refreshCustomers());
-    const offTechs = api.onTechniciansChanged?.(() => refreshTechs());
+    const offCustomers = api?.onCustomersChanged?.(() => refreshCustomers());
+    const offTechs = api?.onTechniciansChanged?.(() => refreshTechs());
     return () => { try { offCustomers && offCustomers(); } catch {} try { offTechs && offTechs(); } catch {} };
   }, []);
 
@@ -738,6 +979,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     return [
       ...wo.map(w => ({
         type: 'workorder' as const,
+        displayType: mainRecordKind('workorder', w),
         id: w.id,
         customerId: (w as any).customerId as number | undefined,
         date: getActivityDate(w),
@@ -783,6 +1025,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
       })),
       ...sa.map(s => ({
         type: 'sale' as const,
+        displayType: mainRecordKind('sale', s),
         id: s.id,
         customerId: (s as any).customerId as number | undefined,
         date: new Date(s.checkInAt || s.createdAt || 0),
@@ -962,9 +1205,9 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
       ];
     }
 
-    // Sale
+    const saleTypeLabel = mainRecordTypeLabel(ctxRow.displayType);
     return [
-      { type: 'header', label: `Sale ${inv}` },
+      { type: 'header', label: `${saleTypeLabel} ${inv}` },
       { label: 'Edit / Open', onClick: async () => { await api?.openNewSale?.({ id: ctxRow.id }); } },
       { label: 'View Customer', disabled: !hasCustomer, onClick: async () => { await api?.openCustomerOverview?.(ctxRow.customerId); } },
       { type: 'separator' },
@@ -975,7 +1218,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         label: 'Delete…',
         danger: true,
         onClick: async () => {
-          const ok = window.confirm(`Delete sale ${inv}? This cannot be undone.`);
+          const ok = window.confirm(`Delete ${saleTypeLabel.toLowerCase()} ${inv}? This cannot be undone.`);
           if (!ok) return;
           await api?.dbDelete?.('sales', ctxRow.id);
         },
@@ -991,7 +1234,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
             <th className="px-2 py-1 text-left w-[110px]">Invoice #</th>
             <th className="px-2 py-1 text-left w-[105px]">Date</th>
             <th className="px-2 py-1 text-left w-[70px]">Status</th>
-            <th className="px-2 py-1 text-left w-[56px]">Type</th>
+            <th className="px-2 py-1 text-left w-[64px] xl:w-[112px]">Type</th>
             <th className="px-2 py-1 text-left w-[110px]">Tech</th>
             <th className="px-2 py-1 text-left">Customer</th>
             <th className="px-2 py-1 text-left">Items</th>
@@ -1025,7 +1268,10 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
                 <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
                 <td className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
                 <td className="px-2 py-1 capitalize">{r.status}</td>
-                <td className="px-2 py-1 font-semibold">{r.type === 'workorder' ? 'WO' : 'Sale'}</td>
+                <td className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
+                  <span className="xl:hidden">{mainRecordTypeLabel(r.displayType, true)}</span>
+                  <span className="hidden xl:inline">{mainRecordTypeLabel(r.displayType)}</span>
+                </td>
                 <td className="px-2 py-1">{r.tech}</td>
                 <td className="px-2 py-1" title={r.customer}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">

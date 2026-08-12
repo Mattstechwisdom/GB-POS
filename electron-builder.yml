@@ -25,11 +25,15 @@ win:
   target:
     - nsis
   icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
 nsis:
   include: build/installer-options.nsh
   oneClick: false
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  packElevateHelper: false
+  runAfterFinish: true
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico

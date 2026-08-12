@@ -1,5 +1,5 @@
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage, Notification } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, safeStorage, Notification, session } = electron;
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -26,6 +26,16 @@ try {
 
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
+
+function isTrustedRendererPermissionRequest(requestingUrl: string) {
+  try {
+    const url = new URL(String(requestingUrl || ''));
+    return url.protocol === 'file:'
+      || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname));
+  } catch {
+    return false;
+  }
+}
 
 function isExternalUrl(url: string, sourceUrl?: string) {
   try {
@@ -4112,6 +4122,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   settings: 'shop_settings',
   preferences: 'preferences',
   systemLogs: 'system_logs',
+  technicians: 'staff_profiles',
 };
 
 function shouldUseCloudDb(key: string): boolean {
@@ -4202,6 +4213,13 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
 ipcMain.handle('cloud:clearSession', async () => {
   cloudSession = null;
   cloudClient = null;
+  return { ok: true };
+});
+
+ipcMain.handle('cloud:collectionChanged', async (_e: any, key: string) => {
+  const collection = String(key || '').trim();
+  if (!CLOUD_TABLE_BY_KEY[collection]) return { ok: false, error: 'Unknown cloud collection.' };
+  scheduleCollectionChanged(collection);
   return { ok: true };
 });
 
@@ -4323,7 +4341,7 @@ function toCloudPayload(v: any): any {
   return { value: v };
 }
 
-function fromCloudRow(key: string, row: any): any {
+function fromCloudRow(key: string, row: any, extra?: any): any {
   const id = normalizeCloudId(row);
   if (key === 'customers') {
     return {
@@ -4470,6 +4488,9 @@ function fromCloudRow(key: string, row: any): any {
       orderUrl: row.order_url || '',
       partsStatus: row.parts_status || '',
       consultationType: row.consultation_type || '',
+      taskCompleted: row.task_completed === true,
+      taskCompletedAt: cloudDate(row.task_completed_at),
+      taskCompletedBy: row.task_completed_by || '',
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4571,6 +4592,28 @@ function fromCloudRow(key: string, row: any): any {
       cloudId: row.id,
     };
   }
+  if (key === 'technicians') {
+    const credential = extra?.credentialsByStaffId?.get(String(row.id))
+      || extra?.credentialsByLegacyId?.get(String(row.legacy_id || ''))
+      || {};
+    return {
+      id: row.legacy_id || row.id,
+      legacyId: row.legacy_id || '',
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      nickname: row.nickname || '',
+      phone: row.phone || '',
+      email: row.email || '',
+      passcode: credential.legacy_passcode || '',
+      schedule: cloudObject(row.schedule),
+      role: row.role || 'technician',
+      status: row.status || 'active',
+      createdAt: cloudDate(row.created_at),
+      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      cloudId: row.id,
+      isLoginProfile: !row.legacy_id,
+    };
+  }
   return {
     ...(cloudObject(row.payload)),
     id,
@@ -4583,6 +4626,7 @@ function fromCloudRow(key: string, row: any): any {
 
 function cloudConflictForKey(key: string): string {
   if (key === 'preferences') return 'shop_id,key';
+  if (key === 'technicians') return 'shop_id,legacy_id';
   return 'shop_id,legacy_id';
 }
 
@@ -4728,6 +4772,9 @@ function toCloudRow(key: string, item: any): any | null {
       order_url: toCloudString(item.orderUrl),
       parts_status: toCloudString(item.partsStatus),
       consultation_type: toCloudString(item.consultationType),
+      task_completed: toCloudBool(item.taskCompleted),
+      task_completed_at: item.taskCompleted ? toCloudIso(item.taskCompletedAt) : null,
+      task_completed_by: toCloudString(item.taskCompletedBy),
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4890,6 +4937,23 @@ function toCloudRow(key: string, item: any): any | null {
       logged_at: toCloudIso(item.loggedAt || item.createdAt) || new Date().toISOString(),
     };
   }
+  if (key === 'technicians') {
+    const legacyId = toCloudTextId(item.id);
+    if (!legacyId) return null;
+    return {
+      shop_id,
+      legacy_id: legacyId,
+      first_name: toCloudString(item.firstName),
+      last_name: toCloudString(item.lastName),
+      nickname: toCloudString(item.nickname),
+      phone: toCloudString(item.phone),
+      email: toCloudString(item.email).trim() || `legacy-technician-${legacyId}@local.gbpos.invalid`,
+      schedule: toCloudObject(item.schedule),
+      status: item.status || 'active',
+      role: item.role || 'technician',
+      legacy_updated_at: toCloudIso(item.updatedAt),
+    };
+  }
   if (key === 'invoices' || key === 'payments' || key === 'repairItems') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
@@ -4910,6 +4974,7 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     quotes: { id: 'legacy_id', updatedAt: 'updated_at', contentUpdatedAt: 'content_updated_at', createdAt: 'created_at' },
     customers: { id: 'legacy_id', updatedAt: 'updated_at', createdAt: 'created_at' },
     calendarNotes: { id: 'legacy_id', date: 'note_date', updatedAt: 'updated_at', createdAt: 'created_at' },
+    technicians: { id: 'legacy_id', updatedAt: 'updated_at', firstName: 'first_name', lastName: 'last_name' },
   };
   if (map[key]?.[s]) return map[key][s];
   if (!s) {
@@ -4917,9 +4982,33 @@ function cloudSortColumn(key: string, sortBy?: string): string {
     if (key === 'sales') return 'check_in_at';
     if (key === 'quotes') return 'content_updated_at';
     if (key === 'calendarNotes') return 'note_date';
+    if (key === 'technicians') return 'first_name';
     return 'legacy_id';
   }
   return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s) ? s : 'legacy_id';
+}
+
+async function getDesktopTechnicianCredentials() {
+  const client = getCloudClient();
+  if (!client || !cloudSession) return { credentialsByStaffId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  const res = await client.from('technician_private_credentials')
+    .select('staff_profile_id,legacy_technician_id,legacy_passcode')
+    .eq('shop_id', cloudSession.shopId);
+  if (res.error) return { credentialsByStaffId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  const credentialsByStaffId = new Map<string, any>();
+  const credentialsByLegacyId = new Map<string, any>();
+  for (const row of Array.isArray(res.data) ? res.data : []) {
+    if (row.staff_profile_id) credentialsByStaffId.set(String(row.staff_profile_id), row);
+    if (row.legacy_technician_id) credentialsByLegacyId.set(String(row.legacy_technician_id), row);
+  }
+  return { credentialsByStaffId, credentialsByLegacyId };
+}
+
+function isAssignableDesktopTechnicianRow(row: any): boolean {
+  if (!row || row.active === false || row.status === 'disabled') return false;
+  if (!row.isLoginProfile) return true;
+  return !!(String(row.nickname || '').trim() || String(row.passcode || '').trim() || String(row.phone || '').trim()
+    || (row.schedule && typeof row.schedule === 'object' && Object.keys(row.schedule).length > 0));
 }
 
 async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) {
@@ -4934,13 +5023,21 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   }
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  return (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row));
+  const extra = key === 'technicians' ? await getDesktopTechnicianCredentials() : undefined;
+  let rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, extra));
+  if (key === 'technicians') rows = rows.filter(isAssignableDesktopTechnicianRow);
+  return rows;
 }
 
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
   try {
-    if (!Array.isArray(rows) || rows.length === 0) return;
+    if (!Array.isArray(rows)) return;
     const db: any = readDb();
+    if (key === 'technicians') {
+      writeDb({ ...db, technicians: rows.slice() });
+      return;
+    }
+    if (rows.length === 0) return;
     const existing = Array.isArray(db[key]) ? db[key] : [];
     const byId = new Map<string, any>();
     for (const item of existing) {
@@ -4987,14 +5084,32 @@ async function cloudDbUpsert(key: string, item: any) {
     ignoreDuplicates: false,
   });
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
+  if (key === 'technicians') await syncDesktopTechnicianCredential(item);
   return { ok: true };
+}
+
+async function syncDesktopTechnicianCredential(item: any) {
+  if (!cloudSession || typeof item?.passcode === 'undefined') return;
+  const client = getCloudClient();
+  const legacyId = toCloudTextId(item.id);
+  if (!client || !legacyId) return;
+  const profile = await client.from('staff_profiles').select('id')
+    .eq('shop_id', cloudSession.shopId).eq('legacy_id', legacyId).maybeSingle();
+  if (profile.error) throw new Error(`Cloud technician profile lookup failed: ${profile.error.message}`);
+  const result = await client.from('technician_private_credentials').upsert({
+    shop_id: cloudSession.shopId,
+    staff_profile_id: profile.data?.id || null,
+    legacy_technician_id: legacyId,
+    legacy_passcode: String(item.passcode || '').slice(0, 4),
+  }, { onConflict: 'shop_id,legacy_technician_id' });
+  if (result.error) throw new Error(`Cloud technician passcode write failed: ${result.error.message}`);
 }
 
 async function cloudDbDelete(key: string, legacyId: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
-  const id = key === 'repairCategories' || key === 'calendarNotes' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'calendarNotes' || key === 'technicians' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
@@ -5007,7 +5122,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
 function legacyIdForCloudItem(key: string, item: any): number | string | null {
   if (!item || typeof item !== 'object') return null;
   if (key === 'preferences') return toCloudString(item.key || item.name || item.id).trim() || null;
-  if (key === 'repairCategories' || key === 'calendarNotes' || key === 'feedbackEntries') return toCloudTextId(item.id);
+  if (key === 'repairCategories' || key === 'calendarNotes' || key === 'feedbackEntries' || key === 'technicians') return toCloudTextId(item.id);
   return toCloudIntId(item.id);
 }
 
@@ -7749,6 +7864,15 @@ ipcMain.handle('qr:getServerInfo', async () => {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.gadgetboy.pos');
+    session.defaultSession.setPermissionCheckHandler((_webContents: any, permission: string, requestingOrigin: string) => {
+      return permission === 'notifications'
+        || (permission === 'media' && isTrustedRendererPermissionRequest(requestingOrigin));
+    });
+    session.defaultSession.setPermissionRequestHandler((webContents: any, permission: string, callback: (allowed: boolean) => void, details: any) => {
+      const requestedMedia = Array.isArray(details?.mediaTypes) ? details.mediaTypes : [];
+      const allowsMicrophone = permission === 'media' && requestedMedia.includes('audio');
+      callback(permission === 'notifications' || (allowsMicrophone && isTrustedRendererPermissionRequest(webContents?.getURL?.())));
+    });
     // Set a global application menu so Ctrl/Cmd+C/V and other edit shortcuts work everywhere
     setupApplicationMenu();
     ensureBatchOutScheduler();

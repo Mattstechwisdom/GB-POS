@@ -2,19 +2,25 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { dispatchOpenModal } from '../lib/modalBus';
 import { technicianDisplayName } from '../lib/admin';
 import { formatTime12FromHHmm } from '../lib/datetime';
+import { isSharedTaskAssignment, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '../lib/calendarTasks';
+import { technicianShiftsForDate } from '../lib/technicianSchedule';
 
 type CalendarEvent = {
   id?: number;
   date: string;
   time?: string;
   title?: string;
-  category?: 'parts' | 'event' | 'consultation' | 'schedule' | 'content';
+  category?: 'parts' | 'event' | 'consultation' | 'schedule' | 'content' | 'task';
   partsStatus?: 'ordered' | 'delivery';
   partName?: string;
   customerName?: string;
   technician?: string;
   location?: string;
   source?: string;
+  taskCompleted?: boolean;
+  taskCompletedAt?: string;
+  taskCompletedBy?: string;
+  shiftEnd?: string;
 };
 
 type CalendarNote = {
@@ -44,7 +50,10 @@ const summaryFor = (event: CalendarEvent) => {
   const time = formatTime12FromHHmm(event.time || '');
   if (event.category === 'parts') return `${time ? `${time} - ` : ''}${event.partName || event.title || 'Part'}`;
   if (event.category === 'consultation') return `${time ? `${time} - ` : ''}${event.customerName || 'Client'}${event.title ? `: ${event.title}` : ''}`;
-  if (event.category === 'schedule') return event.technician || event.title || 'Technician shift';
+  if (event.category === 'schedule') {
+    const range = [formatTime12FromHHmm(event.time || ''), formatTime12FromHHmm(event.shiftEnd || '')].filter(Boolean).join(' - ');
+    return `${event.technician || event.title || 'Technician shift'}${range ? `: ${range}` : ''}`;
+  }
   return `${time ? `${time} - ` : ''}${event.title || 'Calendar event'}`;
 };
 
@@ -74,21 +83,55 @@ export default function DailyLookWindow() {
 
   useEffect(() => {
     const api: any = window.api;
-    const reload = async () => {
+    const reloadNotes = async () => {
       const rows = await api?.dbGet?.('calendarNotes').catch(() => []);
       setNotes(Array.isArray(rows) ? rows : []);
     };
-    return api?.onCalendarNotesChanged?.(() => { void reload(); });
+    const reloadEvents = async () => {
+      const rows = await api?.dbGet?.('calendarEvents').catch(() => []);
+      setEvents(Array.isArray(rows) ? rows : []);
+    };
+    const reloadTechnicians = async () => {
+      const rows = await api?.dbGet?.('technicians').catch(() => []);
+      setTechs(Array.isArray(rows) ? rows.filter((item: any) => item?.active !== false) : []);
+    };
+    const offNotes = api?.onCalendarNotesChanged?.(() => { void reloadNotes(); });
+    const offEvents = api?.onCalendarEventsChanged?.(() => { void reloadEvents(); });
+    const offTechnicians = api?.onTechniciansChanged?.(() => { void reloadTechnicians(); });
+    return () => { offNotes?.(); offEvents?.(); offTechnicians?.(); };
   }, []);
 
   const groups = useMemo(() => {
-    const dayEvents = events.filter((event) => event.date === date && (!technician || event.technician === technician));
-    return groupOrder.map((name) => ({ name, items: dayEvents.filter((event) => groupFor(event) === name) }));
-  }, [date, events, technician]);
+    const dayEvents = events.filter((event) => event.category !== 'task' && event.category !== 'schedule' && event.date === date && (!technician || event.technician === technician));
+    const shifts: CalendarEvent[] = technicianShiftsForDate(techs, date, technician).map(shift => ({
+      date,
+      category: 'schedule',
+      technician: shift.name,
+      title: `${shift.name} - Work Schedule`,
+      time: shift.start,
+      shiftEnd: shift.end,
+    }));
+    return groupOrder.map((name) => ({ name, items: name === 'Shifts' ? shifts : dayEvents.filter((event) => groupFor(event) === name) }));
+  }, [date, events, technician, techs]);
 
   const dayNotes = useMemo(() => notes
     .filter((note) => String(note.date || '').slice(0, 10) === date)
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || ''))), [date, notes]);
+
+  const tasks = useMemo(() => tasksForDailyLook(events, date, technician), [date, events, technician]);
+
+  const setTaskCompleted = async (task: CalendarEvent, completed: boolean) => {
+    if (task.id == null) return;
+    const now = new Date().toISOString();
+    const updated = await (window as any).api.dbUpdate('calendarEvents', task.id, {
+      ...task,
+      taskCompleted: completed,
+      taskCompletedAt: completed ? now : '',
+      taskCompletedBy: completed && !isSharedTaskAssignment(task.technician) ? String(task.technician || '') : '',
+      updatedAt: now,
+    });
+    if (updated) setEvents(list => list.map(item => String(item.id) === String(updated.id) ? updated : item));
+  };
 
   const openCalendarEntry = (event: CalendarEvent) => {
     if (event.id != null) dispatchOpenModal('calendar', { calendarEventId: event.id });
@@ -99,7 +142,7 @@ export default function DailyLookWindow() {
       <header className="mx-auto flex w-full max-w-6xl flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Daily Look</h1>
-          <p className="mt-1 text-sm text-zinc-400">Today&apos;s shifts, consultations, orders, deliveries, events, and content work.</p>
+          <p className="mt-1 text-sm text-zinc-400">Today&apos;s tasks, notes, shifts, consultations, orders, deliveries, events, and content work.</p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
           <input className="min-w-0 rounded border border-zinc-700 bg-zinc-800 px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -110,6 +153,10 @@ export default function DailyLookWindow() {
         </div>
       </header>
       <div className="mx-auto mt-4 grid w-full max-w-6xl grid-cols-1 gap-3 lg:grid-cols-2">
+        <section className="min-w-0 border border-violet-400/30 bg-violet-400/5 p-3 lg:col-span-2">
+          <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-violet-100">Tasks</h2><span className="text-xs text-violet-200/70">{tasks.filter(task => !taskIsCompleted(task)).length} open</span></div>
+          {tasks.length ? <div className="grid gap-2 md:grid-cols-2">{tasks.map((task, index) => <label key={task.id ?? index} className="flex min-w-0 items-start gap-3 border-l-2 border-violet-400 bg-zinc-900 px-3 py-2"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><span className={`min-w-0 text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}><strong className="block break-words">{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">{task.date < date ? `Carried from ${task.date}` : taskAssignmentLabel(task.technician)}</small></span></label>)}</div> : <p className="text-sm text-zinc-500">No tasks for this day.</p>}
+        </section>
         <section className="min-w-0 border border-amber-400/30 bg-amber-400/5 p-3 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-amber-100">Important Notes</h2><span className="text-xs text-amber-200/70">{dayNotes.length}</span></div>
           {dayNotes.length ? <div className="grid gap-2 md:grid-cols-2">{dayNotes.map((note) => <article key={String(note.id)} className="min-w-0 border-l-2 border-amber-400 bg-zinc-900 px-3 py-2"><strong className="block break-words font-medium text-amber-100">{note.subject}</strong><p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-300">{note.body}</p></article>)}</div> : <p className="text-sm text-zinc-500">No important notes for this day.</p>}
