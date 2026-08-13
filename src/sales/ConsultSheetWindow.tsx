@@ -145,7 +145,7 @@ const ConsultSheetWindow: React.FC = () => {
   const firstHourTotalLabel = String((data as any).firstHourTotalLabel || '').trim();
 
   return (
-    <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
+    <div className="gb-consult-sheet-window" style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
       <style>{`
         @page { size: Letter; margin: 12mm; }
         @media print { html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

@@ -6,6 +6,7 @@ declare global {
   const __APP_VERSION__: string;
 
   interface ImportMetaEnv {
+    readonly DEV: boolean;
     readonly VITE_SUPABASE_URL?: string;
     readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
     readonly VITE_SHOP_LOGIN_USERNAME?: string;

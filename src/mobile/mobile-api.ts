@@ -1956,3 +1956,31 @@ export function installMobileApi() {
     drainPending().catch(() => undefined);
   });
 }
+
+export function installMobilePreviewApi() {
+  if (!import.meta.env.DEV) return;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get('mobileWindowPreview')) return;
+  const api = (window as any).api || {};
+  const empty = async () => [];
+  const unchanged = async (...args: any[]) => args[1] ?? args[0] ?? { ok: true };
+  Object.assign(api, {
+    cloudSetSession: async () => ({ ok: true, preview: true }),
+    cloudClearSession: async () => ({ ok: true, preview: true }),
+    dbGet: empty,
+    dbCount: async () => 0,
+    dbAdd: unchanged,
+    dbUpdate: unchanged,
+    dbDelete: async () => ({ ok: true, preview: true }),
+    deleteFromCollection: async () => ({ ok: true, preview: true }),
+    getCustomers: empty,
+    findCustomers: empty,
+    getWorkOrders: empty,
+    findWorkOrders: empty,
+    getDeviceCategories: empty,
+    getProductCategories: empty,
+    getBatchOutInfo: async () => ({ ok: true, preview: true }),
+    emailGetConfig: async () => ({ ok: true, hasAppPassword: false, fromEmail: '', fromName: 'GadgetBoy Repair & Retail' }),
+  });
+  (window as any).api = api;
+}

@@ -148,7 +148,7 @@ const ReleaseFormWindow: React.FC = () => {
   const email = (data as any).customerEmail || (data as any).customer?.email || '';
 
   return (
-    <div style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
+    <div className="gb-release-form-window" style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
       <style>{`
         @page { size: A4; margin: 12mm; }
         @media print { html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
@@ -162,9 +162,9 @@ const ReleaseFormWindow: React.FC = () => {
           .footer { position: absolute; left: 0; right: 0; bottom: 25mm; margin-top: 0; page-break-inside: avoid; }
         }
       `}</style>
-      <div className="page">
+      <div className="page gb-release-page">
         <div className="page-inner">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
+      <div className="gb-release-header" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
         {/* Left — logo + shop name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
@@ -245,7 +245,7 @@ const ReleaseFormWindow: React.FC = () => {
         </table>
       </div>
 
-      <div className="footer" style={{ display: 'flex', gap: 24, alignItems: 'stretch' }}>
+      <div className="footer gb-release-footer" style={{ display: 'flex', gap: 24, alignItems: 'stretch' }}>
         <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, background: '#fff' }}>
           <div style={{ fontWeight: 600, marginBottom: 10 }}>Totals</div>
           <Row label="Parts" value={Number(data.partCosts || data.parts || 0).toFixed(2)} />

@@ -526,12 +526,22 @@ function shouldOpenMobileDrawer() {
   }
 }
 
+function mobileWindowPreviewType() {
+  if (!import.meta.env.DEV) return '';
+  try {
+    return new URLSearchParams(window.location.search).get('mobileWindowPreview') || '';
+  } catch {
+    return '';
+  }
+}
+
 const MobileApp: React.FC = () => {
   useEffect(() => installMobileLongPressContextMenu(), []);
   return <MobileAppRuntime />;
 };
 
 const MobileAppRuntime: React.FC = () => {
+  const previewWindow = mobileWindowPreviewType();
   const [clientUpdateToken, setClientUpdateToken] = useState(() => {
     try {
       return new URLSearchParams(window.location.search).get('clientUpdateToken') || '';
@@ -596,6 +606,7 @@ const MobileAppRuntime: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (previewWindow) return;
     let alive = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
@@ -608,9 +619,10 @@ const MobileAppRuntime: React.FC = () => {
       alive = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadStaffProfile]);
+  }, [loadStaffProfile, previewWindow]);
 
   useEffect(() => {
+    if (previewWindow) return;
     const api = window.api as any;
     let cancelled = false;
     if (!api?.cloudSetSession) {
@@ -644,7 +656,30 @@ const MobileAppRuntime: React.FC = () => {
       setCloudReady(true);
     });
     return () => { cancelled = true; };
-  }, [session?.access_token, staffProfile?.shop_id]);
+  }, [previewWindow, session?.access_token, staffProfile?.shop_id]);
+
+  if (previewWindow) {
+    removeInitialHtmlLoader();
+    const previewProfile: StaffProfile = {
+      id: 'mobile-window-preview',
+      shop_id: 'mobile-window-preview',
+      role: 'admin',
+      status: 'active',
+      first_name: 'Preview',
+      last_name: 'Technician',
+      email: 'preview@example.invalid',
+    };
+    return (
+      <PaginationProvider pageSize={30}>
+        <MobileHome
+          profile={previewProfile}
+          cloudWarning="Read-only layout preview. No Supabase records are loaded or changed."
+          onSignOut={() => undefined}
+          initialWindow={previewWindow}
+        />
+      </PaginationProvider>
+    );
+  }
 
   if (authLoading) {
     return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;
@@ -710,7 +745,7 @@ function MobileBrandTitle() {
   );
 }
 
-function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void }) {
+function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void; initialWindow?: string }) {
   const [drawerOpen, setDrawerOpen] = useState(shouldOpenMobileDrawer);
   const [mode, setMode] = useState<MobileMode>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -722,7 +757,7 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   const [refreshKey, setRefreshKey] = useState(0);
   const [visibleCount, setVisibleCount] = useState(35);
   const [sheetRow, setSheetRow] = useState<MobileRow | null>(null);
-  const [modalStack, setModalStack] = useState<ModalEntry[]>([]);
+  const [modalStack, setModalStack] = useState<ModalEntry[]>(() => initialWindow ? [{ id: `${initialWindow}-preview`, type: initialWindow }] : []);
   const [mobileUpdate, setMobileUpdate] = useState<MobileUpdate | null>(null);
   const [mobileUpdateOpening, setMobileUpdateOpening] = useState(false);
   const [gidgetOpen, setGidgetOpen] = useState(false);

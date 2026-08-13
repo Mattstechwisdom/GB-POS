@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.96 (2026-08-13)
+- Mobile Calendar Settings: opens the complete settings workspace above the mobile shell with reliable scrolling, visible save/cancel controls, business-date options, color wheels, and icon settings in portrait and landscape.
+- Mobile Window Reliability: adds an automated read-only audit covering all 38 registered daughter windows at phone portrait and landscape sizes without loading or changing Supabase shop records.
+- Responsive Tools and Forms: removes clipped desktop widths from Developer Tools, release forms, consultation sheets, and mobile print tables while retaining their desktop and print layouts.
+- Receipt Rendering: fixes invalid SVG gradient properties that generated runtime warnings when customer receipts opened.
+
 ## v0.5.95 (2026-08-13)
 - Calendar Sync: keeps important notes, new tasks, edits, completions, and deletions synchronized through the existing authenticated Supabase calendar tables on Windows and Android.
 - Sync Reliability: adds collision-resistant calendar IDs for simultaneous multi-device entry and foreground refreshes for Calendar, Daily Look, and Journal so open desktop windows do not remain stale.

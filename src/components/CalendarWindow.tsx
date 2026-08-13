@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { formatPhone } from '../lib/format';
 import { useAutosave } from '@/lib/useAutosave';
 import { formatTime12FromHHmm } from '@/lib/datetime';
@@ -1540,8 +1541,8 @@ const CalendarWindow: React.FC = () => {
         </div>;
       })()}
 
-      {calendarSettingsOpen && (
-        <div className="gb-calendar-settings-layer fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3">
+      {calendarSettingsOpen && createPortal((
+        <div className="gb-calendar-settings-layer fixed inset-0 z-[100500] bg-black/70 flex items-center justify-center p-3" data-modal-shell="1">
           <section className="gb-calendar-settings-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[860px] max-h-[90vh] flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="calendar-settings-title">
             <div className="gb-calendar-settings-header flex items-center justify-between gap-3 border-b border-zinc-700 p-4">
               <div><h3 id="calendar-settings-title" className="text-xl font-semibold">Calendar Settings</h3><p className="text-sm text-zinc-400">Choose business dates, calendar colors, and Technician shift colors.</p></div>
@@ -1594,7 +1595,7 @@ const CalendarWindow: React.FC = () => {
             </div>
           </section>
         </div>
-      )}
+      ), document.body)}
 
       {viewingGroup && viewingGroup.length ? (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3" onClick={() => setViewingGroup(null)}>

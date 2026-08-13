@@ -436,8 +436,8 @@ const CustomerReceiptWindow: React.FC = () => {
         <svg className="circuit" width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <defs>
             <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#39FF14" stopOpacity="0.5" />
-              <stop offset="100%" stop-color="#39FF14" stopOpacity="0.2" />
+              <stop offset="0%" stopColor="#39FF14" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#39FF14" stopOpacity="0.2" />
             </linearGradient>
           </defs>
           <g fill="none" stroke="url(#g1)" strokeWidth="1.2">

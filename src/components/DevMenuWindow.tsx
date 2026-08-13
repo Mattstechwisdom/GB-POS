@@ -819,14 +819,14 @@ const DevMenuWindow: React.FC = () => {
 	}
 
 		return (
-				<div className="h-screen bg-zinc-900 text-gray-100 p-4">
+				<div className="gb-dev-window h-screen bg-zinc-900 text-gray-100 p-4">
 					<div className="text-xl font-bold mb-4">Developer Menu</div>
 				{!hasElectron && (
 					<div className="mb-4 text-sm text-yellow-300">Electron bridge not detected. Actions are disabled in browser preview; open via the Electron app to use these tools.</div>
 				)}
-						<div className="h-[calc(100%-4rem)] flex gap-4">
+						<div className="gb-dev-layout h-[calc(100%-4rem)] flex gap-4">
 							{/* Left sidebar: grouped actions (scrollable only here) */}
-							<aside className="w-96 shrink-0 space-y-4 overflow-y-auto pr-1">
+							<aside className="gb-dev-actions w-96 shrink-0 space-y-4 overflow-y-auto pr-1">
 						<section className="bg-zinc-950 border border-zinc-800 rounded p-3">
 							<div className="text-sm font-semibold text-zinc-300 mb-2">Validation</div>
 							<div className="space-y-2">
@@ -893,7 +893,7 @@ const DevMenuWindow: React.FC = () => {
 						</section>
 					</aside>
 							{/* Main log view (larger, fixed; page not scrollable except sidebar) */}
-							<main className="flex-1 min-w-0 flex flex-col">
+							<main className="gb-dev-log flex-1 min-w-0 flex flex-col">
 					{mergeView !== null ? (
 						// ---- Merge review panel ----
 						<>
