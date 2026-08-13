@@ -179,8 +179,11 @@
 }
 
 .mobile-shell {
-  min-height: 100dvh;
-  padding: calc(env(safe-area-inset-top) + 0.75rem) 0 calc(env(safe-area-inset-bottom) + 5.75rem);
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  padding: 0 0 calc(env(safe-area-inset-bottom) + 5.75rem);
   background:
     linear-gradient(180deg, rgba(57, 255, 20, 0.08), transparent 14rem),
     #09090b;
@@ -195,7 +198,8 @@
   grid-template-columns: 2.75rem 4.95rem minmax(0, 1fr) 2.75rem;
   gap: 0.55rem;
   align-items: center;
-  padding: 0.12rem 0.8rem;
+  min-height: calc(env(safe-area-inset-top) + 5.2rem);
+  padding: calc(env(safe-area-inset-top) + 0.12rem) 0.8rem 0.12rem;
   border-bottom: 1px solid rgba(63, 63, 70, 0.82);
   background: rgba(9, 9, 11, 0.94);
   backdrop-filter: blur(16px);
@@ -743,9 +747,26 @@
 
 .mobile-drawer-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.75rem;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
   gap: 0.75rem;
   align-items: center;
+}
+
+.mobile-drawer-header .mobile-icon-button {
+  grid-column: 1;
+}
+
+.mobile-drawer-session {
+  grid-column: 2;
+  min-width: 0;
+  text-align: center;
+}
+
+.mobile-drawer-session strong,
+.mobile-drawer-session span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-drawer-header strong {
@@ -1076,6 +1097,7 @@
   overflow-x: hidden;
   background: #09090b;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .mobile-modal-content > * {
@@ -2640,16 +2662,25 @@
   .gbpos-mobile .gb-calendar-window {
     height: 100% !important;
     min-height: 0;
-    padding: 0.75rem !important;
+    padding: 0.45rem !important;
     overflow: hidden !important;
+    overscroll-behavior: contain;
   }
 
   .gbpos-mobile .gb-calendar-header {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    gap: 0.5rem;
+    gap: 0.35rem;
     align-items: center;
-    margin-bottom: 0.6rem !important;
+    margin-bottom: 0.35rem !important;
+    text-align: center;
+  }
+
+  .gbpos-mobile .gb-calendar-title-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    justify-items: center;
+    gap: 0.3rem !important;
   }
 
   .gbpos-mobile .gb-calendar-header h2 {
@@ -2662,6 +2693,7 @@
     grid-template-columns: 2.5rem minmax(7.5rem, auto) 2.5rem !important;
     gap: 0.35rem !important;
     flex-wrap: nowrap !important;
+    justify-content: center !important;
   }
 
   .gbpos-mobile .gb-calendar-controls > button {
@@ -2670,9 +2702,16 @@
   }
 
   .gbpos-mobile .gb-calendar-content-schedule {
-    grid-column: 1 / -1;
-    min-height: 2.75rem !important;
+    width: min(100%, 21rem);
+    min-height: 2.3rem !important;
     font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-calendar-settings {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: min(100%, 9rem);
+    min-height: 2.25rem !important;
   }
 
   .gbpos-mobile .gb-calendar-period {
@@ -2689,7 +2728,7 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 0.35rem;
-    margin-bottom: 0.55rem;
+    margin-bottom: 0.3rem;
     padding: 0.25rem;
     border: 1px solid #3f3f46;
     border-radius: 8px;
@@ -2697,7 +2736,7 @@
   }
 
   .gbpos-mobile .gb-calendar-view-toggle button {
-    min-height: 2.65rem;
+    min-height: 2.2rem;
     border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
@@ -2715,7 +2754,8 @@
   .gbpos-mobile .gb-calendar-filters {
     overflow-x: auto;
     scrollbar-width: none;
-    padding: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+    padding: 0.22rem !important;
   }
 
   .gbpos-mobile .gb-calendar-filters::-webkit-scrollbar {
@@ -2829,12 +2869,23 @@
   .gbpos-mobile .gb-calendar-week,
   .gbpos-mobile .gb-calendar-day {
     min-height: 0;
-    padding-right: 0.15rem;
+    padding-right: 0;
+  }
+
+  .gbpos-mobile .gb-calendar-week-filter {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-calendar-week {
+    display: grid;
+    grid-template-rows: repeat(7, minmax(0, 1fr));
+    gap: 0.2rem;
+    overflow: hidden !important;
   }
 
   .gbpos-mobile .gb-calendar-week > section,
   .gbpos-mobile .gb-calendar-day-sections > section {
-    margin-bottom: 0.28rem;
+    margin-bottom: 0;
     overflow: hidden;
     border: 1px solid #3f3f46;
     border-radius: 6px;
@@ -2849,13 +2900,13 @@
 
   .gbpos-mobile .gb-calendar-week > section {
     display: grid;
-    grid-template-columns: minmax(7.5rem, 34%) minmax(0, 1fr);
-    min-height: 3.25rem;
+    grid-template-columns: 5.15rem minmax(0, 1fr);
+    min-height: 0;
   }
 
   .gbpos-mobile .gb-calendar-week section > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2rem;
+    grid-template-columns: minmax(0, 1fr) 2.25rem;
     align-items: stretch;
     border-right: 1px solid #27272a;
   }
@@ -2866,20 +2917,20 @@
     align-content: center;
     gap: 0.05rem 0.35rem;
     min-width: 0;
-    padding: 0.35rem 0.4rem;
+    padding: 0.2rem 0.28rem;
     text-align: left;
   }
 
   .gbpos-mobile .gb-calendar-week header button:first-child strong {
     color: #f4f4f5;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     line-height: 1;
   }
 
   .gbpos-mobile .gb-calendar-week header button:first-child span {
     overflow: hidden;
     color: #a1a1aa;
-    font-size: 0.66rem;
+    font-size: 0.58rem;
     line-height: 1;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2888,7 +2939,7 @@
   .gbpos-mobile .gb-calendar-week header button:first-child em {
     grid-column: 1 / -1;
     color: #39ff14;
-    font-size: 0.58rem;
+    font-size: 0.5rem;
     font-style: normal;
     font-weight: 900;
     line-height: 1;
@@ -2904,11 +2955,14 @@
   .gbpos-mobile .gb-calendar-agenda-list {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.3rem;
     min-width: 0;
     overflow-x: auto;
-    padding: 0.35rem;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    padding: 0.2rem 0.3rem;
     scrollbar-width: none;
+    touch-action: pan-x;
   }
 
   .gbpos-mobile .gb-calendar-agenda-list::-webkit-scrollbar {
@@ -2935,6 +2989,61 @@
     padding: 0 !important;
     border: 0 !important;
     background: transparent !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week-shifts,
+  .gbpos-mobile .gb-calendar-week-note {
+    position: relative;
+    flex: 0 0 2rem;
+    width: 2rem !important;
+    min-width: 2rem !important;
+    height: 2rem;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+    border: 0 !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week-shifts {
+    margin-right: 0.3rem;
+  }
+
+  .gbpos-mobile .gb-calendar-week-shifts > span,
+  .gbpos-mobile .gb-calendar-week-note > span {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #09090b;
+    font-size: 0.68rem;
+    font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-week-note > span {
+    background: #f59e0b;
+  }
+
+  .gbpos-mobile .gb-calendar-week-shifts > strong,
+  .gbpos-mobile .gb-calendar-week-note > strong {
+    position: absolute;
+    top: -0.3rem;
+    right: -0.25rem;
+    min-width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #fff;
+    color: #09090b;
+    font-size: 0.55rem;
+    line-height: 1;
   }
 
   .gbpos-mobile .gb-calendar-week .gb-calendar-event-icon {
@@ -3285,6 +3394,157 @@
   .gbpos-mobile .mobile-modal-content .w-screen,
   .gbpos-mobile .mobile-modal-content .min-h-screen {
     width: 100% !important;
+  }
+
+  .gbpos-mobile .gb-eod-activity {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .gbpos-mobile .gb-eod-activity.is-expanded {
+    position: fixed;
+    inset: calc(env(safe-area-inset-top) + 0.5rem) 0.5rem calc(env(safe-area-inset-bottom) + 0.5rem);
+    z-index: 100070;
+    width: auto;
+    max-width: none;
+    overflow-y: auto;
+    background: #111113;
+    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.82);
+  }
+
+  .gbpos-mobile .gb-eod-activity:not(.is-expanded) .grid.grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gbpos-mobile .gb-eod-list-layer {
+    align-items: stretch !important;
+    padding: max(env(safe-area-inset-top), 0.35rem) 0.35rem max(env(safe-area-inset-bottom), 0.35rem) !important;
+  }
+
+  .gbpos-mobile .gb-eod-list-dialog {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    padding: 0.6rem !important;
+  }
+
+  .gbpos-mobile .gb-eod-list-scroll {
+    width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  .gbpos-mobile .gb-eod-list-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    font-size: 0.7rem !important;
+  }
+
+  .gbpos-mobile .gb-eod-list-table th:nth-child(2),
+  .gbpos-mobile .gb-eod-list-table td:nth-child(2),
+  .gbpos-mobile .gb-eod-list-table th:nth-child(4),
+  .gbpos-mobile .gb-eod-list-table td:nth-child(4),
+  .gbpos-mobile .gb-eod-list-table th:nth-child(5),
+  .gbpos-mobile .gb-eod-list-table td:nth-child(5) {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-eod-list-table th,
+  .gbpos-mobile .gb-eod-list-table td {
+    overflow: hidden;
+    padding: 0.5rem 0.25rem !important;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) {
+  .gbpos-mobile .gb-calendar-window {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 0.45rem 0.7rem !important;
+    overflow: hidden !important;
+  }
+
+  .gbpos-mobile .gb-calendar-header {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    text-align: left;
+  }
+
+  .gbpos-mobile .gb-calendar-title-actions {
+    grid-template-columns: auto minmax(10rem, 1fr) !important;
+    justify-items: start;
+  }
+
+  .gbpos-mobile .gb-calendar-controls {
+    grid-template-columns: 2.5rem minmax(8rem, auto) 2.5rem auto !important;
+  }
+
+  .gbpos-mobile .gb-calendar-settings {
+    grid-column: auto;
+    width: auto;
+  }
+
+  .gbpos-mobile .gb-calendar-week {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: 0.3rem;
+    overflow: hidden !important;
+  }
+
+  .gbpos-mobile .gb-calendar-week-filter {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section {
+    display: grid;
+    grid-column: auto !important;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    min-height: 0 !important;
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    background: #111114;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2.25rem;
+    min-width: 0;
+    border-right: 1px solid #27272a;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section > header > button:first-child {
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.2rem 0.3rem;
+    text-align: left;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section > header > button:first-child strong,
+  .gbpos-mobile .gb-calendar-week > section > header > button:first-child span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gbpos-mobile .gb-calendar-week > section > header > button:last-child {
+    min-width: 2.25rem;
+    border-left: 1px solid #27272a;
+    color: #39ff14;
+  }
+
+  .gbpos-mobile .gb-calendar-week .gb-calendar-agenda-list {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    padding: 0.2rem 0.3rem;
+    touch-action: pan-x;
   }
 }
 

@@ -98,7 +98,22 @@ export default function DailyLookWindow() {
     const offNotes = api?.onCalendarNotesChanged?.(() => { void reloadNotes(); });
     const offEvents = api?.onCalendarEventsChanged?.(() => { void reloadEvents(); });
     const offTechnicians = api?.onTechniciansChanged?.(() => { void reloadTechnicians(); });
-    return () => { offNotes?.(); offEvents?.(); offTechnicians?.(); };
+    const refreshSharedCalendar = () => {
+      if (document.visibilityState !== 'visible') return;
+      void reloadNotes();
+      void reloadEvents();
+    };
+    const timer = window.setInterval(refreshSharedCalendar, 20_000);
+    document.addEventListener('visibilitychange', refreshSharedCalendar);
+    window.addEventListener('focus', refreshSharedCalendar);
+    return () => {
+      offNotes?.();
+      offEvents?.();
+      offTechnicians?.();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshSharedCalendar);
+      window.removeEventListener('focus', refreshSharedCalendar);
+    };
   }, []);
 
   const groups = useMemo(() => {

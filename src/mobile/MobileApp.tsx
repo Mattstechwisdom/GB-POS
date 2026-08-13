@@ -810,6 +810,55 @@ function MobileHome({ profile, cloudWarning, onSignOut }: { profile: StaffProfil
   }, [openModal]);
 
   useEffect(() => {
+    const handleAndroidBack = (event: Event) => {
+      event.preventDefault();
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
+        .filter((dialog) => dialog.offsetParent !== null);
+      const topDialog = dialogs[dialogs.length - 1];
+      if (topDialog) {
+        const closeControl = Array.from(topDialog.querySelectorAll<HTMLButtonElement>('button')).find((button) => {
+          const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.trim();
+          return /^(close|cancel|back|x)(\b|$)/i.test(label);
+        });
+        if (closeControl) {
+          closeControl.click();
+          return;
+        }
+      }
+      const expandedActivity = document.querySelector<HTMLElement>('.gb-eod-activity.is-expanded');
+      const collapseActivity = expandedActivity?.querySelector<HTMLButtonElement>('.gb-eod-activity-expand');
+      if (collapseActivity) {
+        collapseActivity.click();
+        return;
+      }
+      if (gidgetOpen) {
+        setGidgetOpen(false);
+        return;
+      }
+      if (sheetRow) {
+        setSheetRow(null);
+        return;
+      }
+      if (filtersOpen) {
+        setFiltersOpen(false);
+        return;
+      }
+      if (drawerOpen) {
+        setDrawerOpen(false);
+        return;
+      }
+      if (modalStack.length) {
+        setModalStack((stack) => stack.slice(0, -1));
+        setRefreshKey((value) => value + 1);
+        return;
+      }
+      window.GBPosAndroid?.moveAppToBackground?.();
+    };
+    window.addEventListener('gbpos:android-back', handleAndroidBack);
+    return () => window.removeEventListener('gbpos:android-back', handleAndroidBack);
+  }, [drawerOpen, filtersOpen, gidgetOpen, modalStack.length, sheetRow]);
+
+  useEffect(() => {
     registerOpenModal(openModal);
     const api = window.api as any;
     const methods = {
@@ -1281,7 +1330,7 @@ function MobileDrawer(props: {
       <aside className="mobile-drawer">
         <header className="mobile-drawer-header">
           <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="Close menu">x</button>
-          <div>
+          <div className="mobile-drawer-session">
             <strong>{profileName || 'Shop Access'}</strong>
             <span>{role} session</span>
           </div>

@@ -14,6 +14,7 @@ assert.match(app, /drawerMode=\{desktopNavigationEnabled\}/, 'The production too
 assert.match(app, /onMouseEnter=\{\(\) => showDesktopDrawer\(false\)\}/, 'The left edge must open the desktop drawer on hover.');
 assert.match(app, /desktopDrawerClosing[\s\S]*?desktop-drawer-layer/, 'The desktop drawer must preserve its close animation state.');
 assert.match(app, /<DesktopNotificationDrawer/, 'The production desktop shell must include the notification drawer.');
+assert.match(app, /desktop-preview-tabs[\s\S]*?desktop-preview-filter-control[\s\S]*?>All Activity</, 'Desktop record controls must place Filters before the invoice-type buttons.');
 assert.doesNotMatch(app, /desktop-drawer-primary[\s\S]*?Quick Checkout[\s\S]*?<\/div>/, 'Quick Checkout must not be duplicated in the desktop drawer.');
 assert.match(toolbar, /desktop-preview-client-actions[\s\S]*?Search Client[\s\S]*?Add Client[\s\S]*?Quick Checkout/, 'Desktop client actions must place Search Client, Add Client, and Quick Checkout together above search.');
 assert.match(styles, /\.desktop-drawer-primary\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,[\s\S]*?margin-inline:\s*auto;/, 'Generate Quote and Consultation must remain centered as a two-button drawer row.');

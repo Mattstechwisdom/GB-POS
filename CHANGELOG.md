@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.95 (2026-08-13)
+- Calendar Sync: keeps important notes, new tasks, edits, completions, and deletions synchronized through the existing authenticated Supabase calendar tables on Windows and Android.
+- Sync Reliability: adds collision-resistant calendar IDs for simultaneous multi-device entry and foreground refreshes for Calendar, Daily Look, and Journal so open desktop windows do not remain stale.
+- Mobile Calendar: tightens the seven-day portrait layout, preserves landscape behavior, keeps event icons independently scrollable, and protects the app toolbar from the Android status-bar inset while scrolling.
+- Mobile Navigation: aligns Shop Access in the drawer and makes the Android Back button close the current in-app daughter window before leaving the POS.
+- End of Day: contains Activity Drill Down and its detail lists within mobile widths, moves open-ticket review into the expanded drill-down, and keeps the desktop overview concise.
+- Desktop Main Screen: places Filters first beside the All Activity, Work Orders, and Sales & Consultations controls.
+
 ## v0.5.94 (2026-08-12)
 - End of Day: restores the visible open-ticket reconciliation warning, keeps it live as work orders and sales sync, and adds desktop right-click/mobile hold actions to open or close an invoice without treating its unpaid balance as collected revenue.
 - Windows Updates: restores a one-click Auto Update and Relaunch action while retaining a download-only fallback, and clarifies the Android system-installer action.

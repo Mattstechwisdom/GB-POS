@@ -10,6 +10,7 @@ const preload = read('app/electron/preload.ts');
 const mobileApi = read('src/mobile/mobile-api.ts');
 const calendar = read('src/components/CalendarWindow.tsx');
 const journal = read('src/components/JournalWindow.tsx');
+const dailyLook = read('src/components/DailyLookWindow.tsx');
 const mobileApp = read('src/mobile/MobileApp.tsx');
 const eod = read('src/components/EODWindow.tsx');
 
@@ -19,9 +20,13 @@ assert.match(migration, /enable row level security/i, 'Calendar notes must use R
 assert.match(migration, /alter publication supabase_realtime add table public\.calendar_notes/i, 'Calendar note changes must stream to other devices.');
 assert.match(electron, /calendarNotes:\s*'calendar_notes'/, 'Desktop must map calendar notes to Supabase.');
 assert.match(mobileApi, /calendarNotes:\s*'calendar_notes'/, 'Mobile must map calendar notes to Supabase.');
+assert.match(electron, /key === 'calendarEvents'[\s\S]*Date\.now\(\) \* 1000[\s\S]*nodeCrypto\.randomInt\(0, 1000\)/, 'Desktop calendar events need collision-resistant cross-device IDs.');
+assert.match(mobileApi, /key === 'calendarEvents'[\s\S]*crypto\.getRandomValues/, 'Mobile calendar events need collision-resistant cross-device IDs.');
 assert.match(preload, /onCalendarNotesChanged/, 'Desktop preload must expose note-change events.');
 assert.match(mobileApi, /onCalendarNotesChanged:\s*'calendarNotes:changed'/, 'Mobile API must expose note-change events.');
 assert.match(calendar, /id:\s*crypto\.randomUUID\(\)/, 'New notes need collision-resistant cross-device IDs.');
+assert.match(dailyLook, /setInterval\(refreshSharedCalendar, 20_000\)/, 'Daily Look must refresh shared notes and tasks while open.');
+assert.match(journal, /setInterval\(refreshSharedNotes, 30_000\)/, 'Journal must refresh shared calendar notes while open.');
 assert.match(calendar, /dailyLookData\.importantNotes/, 'Daily Look must include important notes.');
 assert.match(calendar, /Streaming\/Content Schedule/, 'Adding notes must preserve the content schedule.');
 assert.match(calendar, /calendarView === 'week'/, 'Adding notes must preserve the mobile weekly calendar.');

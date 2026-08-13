@@ -1327,6 +1327,11 @@ async function getCloudCount(key: string): Promise<number | null> {
 
 async function nextLegacyId(key: string): Promise<number | string> {
   if (key === 'repairCategories' || key === 'technicians' || key === 'calendarNotes' || key === 'feedbackEntries') return crypto.randomUUID();
+  if (key === 'calendarEvents') {
+    const random = new Uint16Array(1);
+    crypto.getRandomValues(random);
+    return (Date.now() * 1000) + (random[0] % 1000);
+  }
   const table = CLOUD_TABLE_BY_KEY[key];
   const session = requireCloudSession();
   let max = 0;

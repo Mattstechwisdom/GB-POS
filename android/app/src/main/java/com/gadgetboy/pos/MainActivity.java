@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.activity.OnBackPressedCallback;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -76,6 +77,16 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().addJavascriptInterface(new GBPosAndroidBridge(), "GBPosAndroid");
         }
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (getBridge() != null) {
+                    getBridge().triggerWindowJSEvent("gbpos:android-back", "{}");
+                } else {
+                    moveTaskToBack(true);
+                }
+            }
+        });
     }
 
     @Override
@@ -103,6 +114,11 @@ public class MainActivity extends BridgeActivity {
     }
 
     public class GBPosAndroidBridge {
+        @JavascriptInterface
+        public void moveAppToBackground() {
+            MainActivity.this.runOnUiThread(() -> moveTaskToBack(true));
+        }
+
         @JavascriptInterface
         public String getNotificationPermissionStatus() {
             return notificationPermissionStatus();

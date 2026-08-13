@@ -2596,6 +2596,7 @@ const EODWindow: React.FC = () => {
   }, [sales, workOrders]);
 
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
+  const [activityExpanded, setActivityExpanded] = useState(false);
 
   const listMeta = useMemo(() => {
     if (!activeList) return null;
@@ -3046,13 +3047,16 @@ const EODWindow: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-span-12 min-h-0 overflow-hidden lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+              <div className={`gb-eod-activity col-span-12 min-h-0 overflow-hidden lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 shadow-[0_10px_40px_rgba(0,0,0,0.35)]${activityExpanded ? ' is-expanded' : ''}`}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Activity drill-down</h3>
-                  <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500">{loadingData ? '...' : `${summary.woTotals.count + summary.saTotals.count} records`}</span>
+                    <button type="button" className="gb-eod-activity-expand rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs font-semibold hover:border-[#39FF14]" onClick={() => setActivityExpanded(value => !value)}>{activityExpanded ? 'Collapse' : 'Expand'}</button>
+                  </div>
                 </div>
                 {ticketActionMessage ? <div className="rounded border border-[#39FF14]/30 bg-[#39FF14]/5 px-3 py-2 text-[11px] text-zinc-200">{ticketActionMessage}</div> : null}
-                <section className={`min-h-0 rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
+                {activityExpanded ? <section className={`gb-eod-open-ticket-warning min-h-0 rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h4 className={`text-sm font-semibold ${unclosedTickets.length ? 'text-red-200' : 'text-[#39FF14]'}`}>Open Ticket Warnings</h4>
@@ -3085,7 +3089,7 @@ const EODWindow: React.FC = () => {
                       </table>
                     </div>
                   ) : <p className="mt-2 text-[11px] text-zinc-400">No paid, diagnostic, or repair-complete tickets require checkout review.</p>}
-                </section>
+                </section> : null}
                 <div className="min-h-0 overflow-y-auto grid grid-cols-2 gap-2 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
                   <button
@@ -3125,7 +3129,7 @@ const EODWindow: React.FC = () => {
                     <div className="text-[11px] text-zinc-400">{filteredLists.outstanding.length} with balance</div>
                   </button>
                   <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Ticket status</div>
-                  <button
+                  {activityExpanded ? <button
                     type="button"
                     className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
                     onClick={() => setActiveList(prev => (prev === 'openTickets' ? null : 'openTickets'))}
@@ -3133,7 +3137,7 @@ const EODWindow: React.FC = () => {
                     <div className="text-xs text-zinc-500">Open tickets</div>
                     <div className="text-xl font-semibold">{filteredLists.openTickets.length}</div>
                     <div className="text-[11px] text-zinc-400">not closed / needs checkout</div>
-                  </button>
+                  </button> : null}
                   <button
                     type="button"
                     className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'collected' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
@@ -3657,8 +3661,8 @@ const EODWindow: React.FC = () => {
             ) : null}
 
             {listMeta ? (
-              <div className="fixed inset-0 z-[100090] flex items-center justify-center bg-black/75 p-3" onClick={() => setActiveList(null)}>
-              <div className="flex h-[94vh] max-h-[94vh] w-full max-w-[1280px] flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.7)]" role="dialog" aria-modal="true" aria-label={listMeta.title} onClick={(event) => event.stopPropagation()}>
+              <div className="gb-eod-list-layer fixed inset-0 z-[100090] flex items-center justify-center bg-black/75 p-3" onClick={() => setActiveList(null)}>
+              <div className="gb-eod-list-dialog flex h-[94vh] max-h-[94vh] w-full max-w-[1280px] flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.7)]" role="dialog" aria-modal="true" aria-label={listMeta.title} onClick={(event) => event.stopPropagation()}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold">{listMeta.title}</h3>
@@ -3671,8 +3675,8 @@ const EODWindow: React.FC = () => {
                   >Close</button>
                 </div>
                 {listMeta.rows.length ? (
-                  <div className="min-h-0 overflow-auto">
-                    <table className="min-w-full text-sm">
+                  <div className="gb-eod-list-scroll min-h-0 overflow-auto">
+                    <table className="gb-eod-list-table min-w-full text-sm">
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                           <th className="py-2 pr-4">Ticket</th>

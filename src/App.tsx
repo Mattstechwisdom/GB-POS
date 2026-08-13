@@ -819,9 +819,6 @@ const AppInner: React.FC<{
           />
           {desktopNavigationEnabled ? (
             <div className="desktop-preview-tabs" aria-label="Record type">
-              <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
-              <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
-              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button>
               <div className="desktop-preview-filter-control" ref={desktopFiltersRef}>
                 <button
                   type="button"
@@ -860,6 +857,9 @@ const AppInner: React.FC<{
                   </div>
                 ) : null}
               </div>
+              <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
+              <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button>
             </div>
           ) : null}
           <div className="flex-1 min-h-0 overflow-auto">

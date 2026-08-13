@@ -25,6 +25,8 @@ for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /task_completed:\s*toCloudBool\(item\.taskCompleted\)/);
   assert.match(source, /task_completed_at:/);
 }
+assert.match(desktopCloud, /key === 'calendarEvents'[\s\S]*Date\.now\(\) \* 1000/, 'Desktop tasks need cross-device-safe calendar ids.');
+assert.match(mobileCloud, /key === 'calendarEvents'[\s\S]*crypto\.getRandomValues/, 'Mobile tasks need cross-device-safe calendar ids.');
 assert.match(migration, /calendar_events_open_tasks_idx/);
 assert.match(migration, /where category = 'task' and task_completed = false/);
 

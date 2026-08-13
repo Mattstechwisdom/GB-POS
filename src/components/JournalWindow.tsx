@@ -81,7 +81,19 @@ export default function JournalWindow() {
     void load();
     const api = (window as any).api || {};
     const unsubs = [api.onCalendarNotesChanged?.(load), api.onWorkOrdersChanged?.(load), api.onSalesChanged?.(load)].filter(Boolean);
-    return () => { active = false; unsubs.forEach((unsubscribe: any) => unsubscribe?.()); };
+    const refreshSharedNotes = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    const timer = window.setInterval(refreshSharedNotes, 30_000);
+    document.addEventListener('visibilitychange', refreshSharedNotes);
+    window.addEventListener('focus', refreshSharedNotes);
+    return () => {
+      active = false;
+      unsubs.forEach((unsubscribe: any) => unsubscribe?.());
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshSharedNotes);
+      window.removeEventListener('focus', refreshSharedNotes);
+    };
   }, []);
 
   const entries = useMemo<JournalEntry[]>(() => {

@@ -415,7 +415,6 @@
 }
 
 .desktop-preview-filter-control {
-  margin-left: auto;
   position: relative;
 }
 
@@ -434,7 +433,7 @@
   position: absolute;
   z-index: 230;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   width: min(360px, calc(100vw - 32px));
   border: 1px solid #52525b;
   border-radius: 6px;
@@ -447,7 +446,7 @@
   content: '';
   position: absolute;
   top: -6px;
-  right: 21px;
+  left: 21px;
   width: 10px;
   height: 10px;
   transform: rotate(45deg);

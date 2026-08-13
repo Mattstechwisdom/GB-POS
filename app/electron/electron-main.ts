@@ -5406,9 +5406,15 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   } else {
     // For other collections, assign incremental id per-collection if missing
     if (!nextItem.id) {
-      let max = 0;
-      for (const it of prevList) max = Math.max(max, (it as any)?.id || 0);
-      nextItem.id = max + 1;
+      if (key === 'calendarEvents') {
+        // Calendar events are created on multiple devices. A timestamp plus a
+        // random suffix avoids two offline devices reusing the same legacy id.
+        nextItem.id = (Date.now() * 1000) + nodeCrypto.randomInt(0, 1000);
+      } else {
+        let max = 0;
+        for (const it of prevList) max = Math.max(max, (it as any)?.id || 0);
+        nextItem.id = max + 1;
+      }
       dbLog('[DB-ADD] Assigned new ID:', nextItem.id, 'for', key);
     }
   }
