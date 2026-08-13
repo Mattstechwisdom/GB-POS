@@ -8,6 +8,7 @@ import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryR
 import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
+import { supabase } from '../lib/supabase';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -88,6 +89,26 @@ function escapeHtml(text: string) {
 
 function round2(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+async function sendCartClientUpdate(payload: {
+  recordType: 'repair' | 'sale';
+  recordId: number;
+  statusKey: 'part_ordered' | 'product_ordered';
+  estimatedDate?: string;
+  notes?: string;
+}) {
+  const request = supabase.functions.invoke('client-updates', { body: { ...payload, deliveryMode: 'email', preserveTechNotes: true } });
+  const timeout = new Promise<never>((_, reject) => {
+    window.setTimeout(() => reject(new DOMException('Supabase did not respond in time.', 'AbortError')), 25_000);
+  });
+  const { data, error } = await Promise.race([request, timeout]);
+  if (error) {
+    const contextBody = (error as any)?.context?.body;
+    throw new Error(String(contextBody?.error || (error as any)?.message || 'Client update failed.'));
+  }
+  if (!data?.ok) throw new Error(String(data?.error || 'Client update failed.'));
+  return data;
 }
 
 function allocateSupplierTax(rows: OrderCartRow[], taxExempt: boolean) {
@@ -1802,6 +1823,8 @@ const EODWindow: React.FC = () => {
     const date = now.slice(0, 10);
     let updatedCount = 0;
     let emailCount = 0;
+    let queuedEmailCount = 0;
+    let skippedEmailCount = 0;
     const failures: string[] = [];
     const deliveryForRow = (row: OrderCartRow) => String(
       (splitDeliveryByDistributor[row.distributor] ? deliveryByRow[row.key] : deliveryByDistributor[row.distributor])
@@ -1937,17 +1960,19 @@ const EODWindow: React.FC = () => {
 
           const customer = customers.find((row) => Number(row?.id) === Number(current.customerId));
           const email = String(current.customerEmail || customer?.email || '').trim();
-          if (email && api.emailSendReportHtml) {
-            const subject = `Part ordered for WO-${workOrderId}`;
-            const clientName = current.customerName || [customer?.firstName, customer?.lastName].filter(Boolean).join(' ').trim() || 'Client';
-            const result = await api.emailSendReportHtml({
-              to: email,
-              subject,
-              html: `<div style="font-family:Arial,sans-serif;color:#18181b"><h2 style="color:#7e22ce">GadgetBoy Repair Update</h2><p>Hi ${clientName},</p><p>The part for work order <strong>WO-${workOrderId}</strong> has been ordered. We will update you again when it arrives.</p><p>GadgetBoy Repair &amp; Retail</p></div>`,
-              text: `Hi ${clientName},\n\nThe part for work order WO-${workOrderId} has been ordered. We will update you again when it arrives.\n\nGadgetBoy Repair & Retail`,
+          if (!email) {
+            skippedEmailCount += 1;
+          } else {
+            const deliveryDates = selectedForWorkOrder.map(row => deliveryForRow(row)).filter(Boolean).sort();
+            const result = await sendCartClientUpdate({
+              recordType: 'repair',
+              recordId: Number(workOrderId),
+              statusKey: 'part_ordered',
+              estimatedDate: deliveryDates[deliveryDates.length - 1] || '',
+              notes: `Ordered: ${selectedForWorkOrder.map(row => row.title).join(', ')}`,
             });
-            if (result?.ok) emailCount += 1;
-            else if (result?.error && !String(result.error).includes('desktop-only')) failures.push(`WO #${workOrderId} email: ${result.error}`);
+            if (result?.deliveryStatus === 'sent') emailCount += 1;
+            else queuedEmailCount += 1;
           }
         } catch (error: any) {
           failures.push(`WO #${workOrderId}: ${error?.message || error}`);
@@ -1968,11 +1993,28 @@ const EODWindow: React.FC = () => {
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
           return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
         });
-        const updated = { ...current, items, updatedAt: now };
+        const updated = { ...current, items, status: 'Product Ordered', statusUpdate: 'Product Ordered', statusUpdatedAt: now, updatedAt: now };
         try {
           const saved = await api.dbUpdate?.('sales', current.id, updated);
           setSales(rows => rows.map(row => Number(row?.id) === Number(saleId) ? (saved || updated) : row));
           for (const cartRow of selectedForSale) await syncDeliveryCalendar(cartRow, deliveryForRow(cartRow));
+
+          const customer = customers.find(row => Number(row?.id) === Number(current.customerId));
+          const email = String(current.customerEmail || customer?.email || '').trim();
+          if (!email) {
+            skippedEmailCount += 1;
+          } else {
+            const deliveryDates = selectedForSale.map(row => deliveryForRow(row)).filter(Boolean).sort();
+            const result = await sendCartClientUpdate({
+              recordType: 'sale',
+              recordId: Number(saleId),
+              statusKey: 'product_ordered',
+              estimatedDate: deliveryDates[deliveryDates.length - 1] || '',
+              notes: `Ordered: ${selectedForSale.map(row => row.title).join(', ')}`,
+            });
+            if (result?.deliveryStatus === 'sent') emailCount += 1;
+            else queuedEmailCount += 1;
+          }
         } catch (error: any) {
           failures.push(`Sale #${saleId}: ${error?.message || error}`);
         }
@@ -1986,7 +2028,7 @@ const EODWindow: React.FC = () => {
         });
         return next;
       });
-      setPurchaseUpdateMessage(`${updatedCount} item${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
+      setPurchaseUpdateMessage(`${updatedCount} item${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${queuedEmailCount ? ` ${queuedEmailCount} client email${queuedEmailCount === 1 ? '' : 's'} queued.` : ''}${skippedEmailCount ? ` ${skippedEmailCount} client update${skippedEmailCount === 1 ? '' : 's'} skipped because no email is on file.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
     } finally {
       setPurchaseUpdateBusy(false);
     }

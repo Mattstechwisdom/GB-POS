@@ -1721,6 +1721,90 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.55rem;
 }
 
+.gb-calendar-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.gb-calendar-color-row {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #18181b;
+  padding: 0.6rem;
+}
+
+.gb-calendar-color-picker {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  cursor: pointer;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  background: #27272a;
+}
+
+.gb-calendar-color-wheel {
+  width: 2.2rem;
+  height: 2.2rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+}
+
+.gb-calendar-color-info {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.gb-calendar-color-info strong {
+  overflow: hidden;
+  color: #f4f4f5;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-calendar-color-info small {
+  color: #a1a1aa;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.gb-calendar-color-info code {
+  color: #d8b4fe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.gb-calendar-color-reset {
+  min-height: 2.25rem;
+  cursor: pointer;
+  border: 1px solid #52525b;
+  border-radius: 6px;
+  background: #27272a;
+  color: #e4e4e7;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.gb-calendar-color-reset:hover {
+  border-color: #a855f7;
+  background: #3b0764;
+  color: #fff;
+}
+
 .gb-calendar-icon-row {
   display: grid;
   grid-template-columns: 2.4rem minmax(0, 1fr) auto auto;
@@ -1784,6 +1868,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 @media (max-width: 760px) {
+  .gb-calendar-color-grid { grid-template-columns: minmax(0, 1fr); }
   .gb-calendar-icon-grid { grid-template-columns: minmax(0, 1fr); }
   .gb-calendar-icon-row { grid-template-columns: 2.4rem minmax(0, 1fr) auto; }
   .gb-calendar-icon-row > button { grid-column: 2 / -1; }

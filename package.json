@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.5.96",
+  "version": "0.5.97",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -31,7 +31,7 @@
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "predist": "npm run generate:icon && npm run generate:instructions && npm run typecheck && npm run electron:buildmain && npm run build",
     "dist": "electron-builder --win nsis",
-    "postdist": "node -e \"const fs=require('fs'),p=require('path'),pkg=require('./package.json'),v=pkg.version,src=p.join('release','GadgetBoy-POS-Setup-'+v+'.exe'),dst=p.join('release','GadgetBoy-POS-Update-'+v+'.exe');if(fs.existsSync(src)){fs.copyFileSync(src,dst);console.log('Created '+dst);}else{console.warn('Setup exe not found:',src);}\"",
+    "postdist": "node -e \"const fs=require('fs'),p=require('path'),v=require('./package.json').version,installer=p.join('release','Windows-Installer-x64-'+v+'.exe');if(!fs.existsSync(installer))throw new Error('Installer not found: '+installer);console.log('Verified '+installer);\"",
     "changelog": "node tools/generate-patch-notes.js",
     "verify:update-feed": "node tools/verify-update-feed.cjs",
     "test:client-update-api": "node tools/test-supabase-client-updates.cjs",
@@ -62,6 +62,7 @@
     "test:release-0593-features": "node tools/test-release-0593-features.cjs",
     "test:auto-update-relaunch": "node tools/test-auto-update-relaunch.cjs",
     "test:eod-ticket-close": "node tools/test-eod-ticket-close.cjs",
+    "test:cart-client-updates": "node tools/test-cart-client-updates.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {

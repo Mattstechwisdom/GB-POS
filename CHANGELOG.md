@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.97 (2026-08-13)
+- Automatic Order Updates: checking out linked work-order and sale cart items now sends the client one authenticated Part Ordered or Product Ordered email per invoice, archives it in client update history, and preserves existing technician notes.
+- Checkout Delivery Feedback: cart results distinguish sent, queued, skipped, and failed client notifications without undoing successfully recorded supplier purchases.
+- Calendar Color Settings: replaces ambiguous Default labels with clearer current-color details, prominent color controls, and separate Reset actions on desktop and mobile.
+
 ## v0.5.96 (2026-08-13)
 - Mobile Calendar Settings: opens the complete settings workspace above the mobile shell with reliable scrolling, visible save/cancel controls, business-date options, color wheels, and icon settings in portrait and landscape.
 - Mobile Window Reliability: adds an automated read-only audit covering all 38 registered daughter windows at phone portrait and landscape sizes without loading or changing Supabase shop records.

@@ -123,6 +123,9 @@ async function inspectWindow(win, type, orientation) {
         closeVisible: Boolean(close && close.getBoundingClientRect().width >= 32),
         footerVisible: Boolean(footerRect && rect && footerRect.left >= rect.left - 2 && footerRect.right <= rect.right + 2 && footerRect.bottom <= rect.bottom + 2),
         colorControls: dialog?.querySelectorAll('input[type="color"]').length || 0,
+        colorDetails: dialog?.querySelectorAll('.gb-calendar-color-info small').length || 0,
+        colorResetControls: dialog?.querySelectorAll('.gb-calendar-color-reset').length || 0,
+        ambiguousDefaultButtons: Array.from(dialog?.querySelectorAll('.gb-calendar-color-row button') || []).filter((entry) => entry.textContent.trim() === 'Default').length,
         businessControls: dialog?.querySelectorAll('.gb-business-calendar-options input[type="checkbox"]').length || 0,
         dialogRect: rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } : null,
         footerRect: footerRect ? { left: footerRect.left, right: footerRect.right, top: footerRect.top, bottom: footerRect.bottom } : null,
@@ -138,6 +141,9 @@ async function inspectWindow(win, type, orientation) {
     assert.equal(settings.closeVisible, true, `Calendar Settings close control was not usable in ${orientation.name}.`);
     assert.equal(settings.footerVisible, true, `Calendar Settings actions were not visible in ${orientation.name}: ${JSON.stringify(settings)}`);
     assert.ok(settings.colorControls >= 6, `Calendar Settings color controls did not load in ${orientation.name}.`);
+    assert.equal(settings.colorDetails, settings.colorControls, `Calendar Settings color details did not match its controls in ${orientation.name}.`);
+    assert.equal(settings.colorResetControls, settings.colorControls, `Calendar Settings Reset actions did not match its controls in ${orientation.name}.`);
+    assert.equal(settings.ambiguousDefaultButtons, 0, `Calendar Settings still showed ambiguous Default color buttons in ${orientation.name}.`);
     assert.ok(settings.businessControls >= 3, `Calendar Settings business options did not load in ${orientation.name}.`);
     const saved = await win.webContents.executeJavaScript(`(() => {
       const dialog = document.querySelector('.gb-calendar-settings-dialog');

@@ -94,6 +94,7 @@ jobs:
           npm run test:release-0593-features
           npm run test:auto-update-relaunch
           npm run test:eod-ticket-close
+          npm run test:cart-client-updates
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json

@@ -833,16 +833,31 @@
   border: 1px solid #27272a;
   border-radius: 6px;
   background: #18181b;
-  padding: 0.45rem;
+  padding: 0.5rem;
+}
+
+.gbpos-mobile .gb-calendar-color-picker {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 7px;
 }
 
 .gbpos-mobile .gb-calendar-color-wheel {
-  width: 2.35rem !important;
-  height: 2.35rem !important;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  padding: 0;
+  width: 1.9rem !important;
+  height: 1.9rem !important;
+}
+
+.gbpos-mobile .gb-calendar-color-info strong {
+  font-size: 0.78rem;
+}
+
+.gbpos-mobile .gb-calendar-color-info small {
+  font-size: 0.64rem;
+}
+
+.gbpos-mobile .gb-calendar-color-reset {
+  min-width: 3.25rem;
+  padding-inline: 0.5rem;
 }
 
 .gbpos-mobile .gb-calendar-color-row > button,

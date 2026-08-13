@@ -109,14 +109,14 @@ function customerDetails(type: UpdateType, record: JsonRecord, customer: JsonRec
   return { name, email, phone, item, order };
 }
 
-function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, estimatedDate: string, estimatedTime: string, notes: string) {
+function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, estimatedDate: string, estimatedTime: string, notes: string, preserveTechNotes = false) {
   const now = new Date().toISOString();
   const manual = statusKey === "manual_update";
   const patch: JsonRecord = {
     status_updated_at: now,
     estimated_date: estimatedDate || null,
-    tech_notes: notes || "",
   };
+  if (!preserveTechNotes) patch.tech_notes = notes || "";
   if (manual) {
     patch.last_update_note = notes || statusLabel;
     patch.last_update_at = now;
@@ -241,6 +241,7 @@ Deno.serve(async (req: Request) => {
     const estimatedDate = safeString(body.estimatedDate, 40);
     const estimatedTime = safeString(body.estimatedTime, 40);
     const notes = safeString(body.notes, 5000);
+    const preserveTechNotes = body.preserveTechNotes === true;
     if (statusKey === "manual_update" && !notes) throw httpError(400, "Enter the message you want to send to the client.");
     if (statusKey === "consultation_delayed" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the proposed consultation date and time.");
 
@@ -251,7 +252,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: savedRows, error: saveError } = await admin
       .from(table)
-      .update(buildPatch(type, statusKey, statusLabel, estimatedDate, estimatedTime, notes))
+      .update(buildPatch(type, statusKey, statusLabel, estimatedDate, estimatedTime, notes, preserveTechNotes))
       .eq("shop_id", profile.shop_id)
       .eq("legacy_id", legacyRecordId)
       .select("*");
