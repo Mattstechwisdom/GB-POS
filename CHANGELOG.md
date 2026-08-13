@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.98 (2026-08-13)
+- Calendar Day Controls: replaces the stretched daily Notes control on desktop with equal Notes and Tasks buttons; Tasks opens the selected date's checklist and shows open/total progress.
+- Task Scheduling: adds an All Day choice or synchronized Start Time and End Time fields, displays the saved range in task details, and rejects incomplete or backwards time ranges.
+
 ## v0.5.97 (2026-08-13)
 - Automatic Order Updates: checking out linked work-order and sale cart items now sends the client one authenticated Part Ordered or Product Ordered email per invoice, archives it in client update history, and preserves existing technician notes.
 - Checkout Delivery Feedback: cart results distinguish sent, queued, skipped, and failed client notifications without undoing successfully recorded supplier purchases.

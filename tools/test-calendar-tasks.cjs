@@ -15,6 +15,16 @@ assert.match(calendar, /category\?:[^;]*'task'/, 'Calendar must support task rec
 assert.match(calendar, /calendarEventGroupKey/, 'Calendar must group repeated event icons.');
 assert.match(calendar, /group\.length > 1/, 'Grouped icons must display a count.');
 assert.match(calendar, /setTaskCompleted/, 'Calendar must complete tasks from its checklist.');
+assert.match(calendar, /gb-calendar-day-actions/, 'Desktop calendar dates must split Notes and Tasks into dedicated controls.');
+assert.match(calendar, /onOpenTasks/, 'The daily Tasks control must open that date task list.');
+assert.match(calendar, />All Day</, 'Task editor must provide an All Day option.');
+assert.match(calendar, />Start time</, 'Timed tasks must provide a start time.');
+assert.match(calendar, />End time</, 'Timed tasks must provide an end time.');
+assert.match(calendar, /Task end time must be later than its start time/, 'Timed tasks must reject an invalid range.');
+for (const source of [desktopCloud, mobileCloud]) {
+  assert.match(source, /endTime:\s*row\.end_time/, 'Task end time must load from the shared calendar record.');
+  assert.match(source, /end_time:\s*toCloudString\(item\.endTime\)/, 'Task end time must save to the shared calendar record.');
+}
 assert.match(dailyLook, /tasksForDailyLook/, 'Daily Look must include carried-forward tasks.');
 assert.match(dailyLook, /dbUpdate\('calendarEvents'/, 'Daily Look completion must save to the shared calendar record.');
 assert.match(taskLogic, /eventDate < date && taskIsCompleted\(event\)/, 'Only unfinished older tasks may carry forward.');

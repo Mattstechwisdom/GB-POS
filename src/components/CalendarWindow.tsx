@@ -288,8 +288,8 @@ function activeShiftEvents(day: Date, events: CalendarEvent[]) {
   });
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; colors: CalendarColors; icons: Record<CalendarIconKey, CalendarIconChoice>; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onContextGroup: (event: React.MouseEvent, events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, colors, icons, technicianColors, onPick, onOpenGroup, onContextGroup, onOpenNotes, onOpenShifts, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; tasksVisible: boolean; colors: CalendarColors; icons: Record<CalendarIconKey, CalendarIconChoice>; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onContextGroup: (event: React.MouseEvent, events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenTasks: (day: Date, tasks: CalendarEvent[]) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, tasksVisible, colors, icons, technicianColors, onPick, onOpenGroup, onContextGroup, onOpenNotes, onOpenTasks, onOpenShifts, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -331,7 +331,9 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   }
   // Separate schedule and other events
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
-  const otherEvents = events.filter(ev => ev.category !== 'schedule');
+  const tasks = events.filter(ev => ev.category === 'task');
+  const openTasks = tasks.filter(task => !taskIsCompleted(task));
+  const otherEvents = events.filter(ev => ev.category !== 'schedule' && ev.category !== 'task');
   const activeShifts = activeShiftEvents(day, scheduleEvents);
   const groupedEvents = Array.from(otherEvents.reduce((groups, event) => {
     const key = calendarEventGroupKey(event);
@@ -379,17 +381,26 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
           })}
         </div>
       )}
-      {notesVisible && (
-        <button
-          type="button"
-          onClick={() => onOpenNotes(day)}
-          title={notes.length ? notes.map(note => note.subject).filter(Boolean).join('\n') : 'No notes for this day. Click to add one.'}
-          className={`mt-2 min-h-9 w-full border rounded px-2 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'text-black hover:brightness-110' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
-          style={notes.length ? { borderColor: colors.notes, backgroundColor: colors.notes } : undefined}
-        >
-          Notes{notes.length ? ` (${notes.length})` : ''}
-        </button>
-      )}
+      {(notesVisible || tasksVisible) && <div className={`gb-calendar-day-actions mt-2 grid gap-1 ${notesVisible && tasksVisible ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {notesVisible && <button
+            type="button"
+            onClick={() => onOpenNotes(day)}
+            title={notes.length ? notes.map(note => note.subject).filter(Boolean).join('\n') : 'No notes for this day. Click to add one.'}
+            className={`min-h-9 min-w-0 border rounded px-1.5 py-1.5 text-sm font-semibold transition-colors ${notes.length ? 'text-black hover:brightness-110' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+            style={notes.length ? { borderColor: colors.notes, backgroundColor: colors.notes } : undefined}
+          >
+            Notes{notes.length ? ` (${notes.length})` : ''}
+          </button>}
+        {tasksVisible && <button
+            type="button"
+            onClick={() => onOpenTasks(day, tasks)}
+            title={tasks.length ? `${openTasks.length} open, ${tasks.length - openTasks.length} completed` : 'No tasks for this day. Click to add one.'}
+            className={`min-h-9 min-w-0 border rounded px-1.5 py-1.5 text-sm font-semibold transition-colors ${tasks.length ? 'text-black hover:brightness-110' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+            style={tasks.length ? { borderColor: colors.task, backgroundColor: colors.task } : undefined}
+          >
+            Tasks{tasks.length ? ` (${openTasks.length}/${tasks.length})` : ''}
+          </button>}
+      </div>}
     </div>
   );
 };
@@ -879,6 +890,18 @@ const CalendarWindow: React.FC = () => {
   }
 
   async function saveEvent(ev: CalendarEvent) {
+    if (ev.category === 'task') {
+      const hasStart = Boolean(ev.time);
+      const hasEnd = Boolean(ev.endTime);
+      if (hasStart !== hasEnd) {
+        alert('Timed tasks require both a start time and an end time. Select All Day to create an untimed task.');
+        return;
+      }
+      if (hasStart && hasEnd && toMinutes(ev.endTime || '') <= toMinutes(ev.time || '')) {
+        alert('Task end time must be later than its start time.');
+        return;
+      }
+    }
     try {
       // Derive title for certain categories if missing
       const payload: CalendarEvent = { ...ev };
@@ -1040,6 +1063,24 @@ const CalendarWindow: React.FC = () => {
     console.log('=== DELETE EVENT END ===');
   }
 
+  function openTasks(day: Date, tasks: CalendarEvent[]) {
+    if (tasks.length) {
+      setViewingGroup(tasks);
+      return;
+    }
+    setContentEditorLocked(false);
+    setEditing({
+      date: fmtDate(day),
+      title: '',
+      time: '',
+      endTime: '',
+      category: 'task',
+      technician: ALL_TECHNICIANS,
+    });
+    setDeliveryDates([]);
+    setDeliveryDateInput('');
+  }
+
   async function openCalendarInvoice(ev: CalendarEvent) {
     const api: any = (window as any).api;
     if (Number(ev.workOrderId || 0) > 0) {
@@ -1104,7 +1145,12 @@ const CalendarWindow: React.FC = () => {
     if (ev.category === 'event') return !!(ev.title || ev.location || ev.time);
     if (ev.category === 'consultation') return !!(ev.customerName || ev.title);
     if (ev.category === 'content') return !!(ev.title && ev.technician);
-    if (ev.category === 'task') return !!ev.title.trim();
+    if (ev.category === 'task') {
+      const hasStart = Boolean(ev.time);
+      const hasEnd = Boolean(ev.endTime);
+      const validTiming = (!hasStart && !hasEnd) || (hasStart && hasEnd && toMinutes(ev.endTime || '') > toMinutes(ev.time || ''));
+      return !!ev.title.trim() && validTiming;
+    }
     return true;
   }
 
@@ -1191,6 +1237,11 @@ const CalendarWindow: React.FC = () => {
       const kind = ev.source === 'streaming' ? 'Stream' : 'Record';
       const end = formatTime12FromHHmm(ev.endTime || '');
       return `${time ? `${time}${end ? ` - ${end}` : ''} - ` : ''}${kind}: ${ev.title || 'Content session'}${ev.technician ? ` with ${ev.technician}` : ''}`;
+    }
+    if (ev.category === 'task') {
+      const end = formatTime12FromHHmm(ev.endTime || '');
+      const timing = time ? `${time}${end ? ` - ${end}` : ''}` : 'All Day';
+      return `${timing} - ${ev.title || 'Task'}`;
     }
     return `${time ? `${time} - ` : ''}${ev.title || 'Event'}`;
   }
@@ -1369,6 +1420,7 @@ const CalendarWindow: React.FC = () => {
                     events={eventsByDay[key] || []}
                     notes={notesByDay[key] || []}
                     notesVisible={filters.notes}
+                    tasksVisible={filters.tasks}
                     colors={calendarColors}
                     icons={calendarIcons}
                     technicianColors={technicianColors}
@@ -1376,6 +1428,7 @@ const CalendarWindow: React.FC = () => {
                     onOpenGroup={setViewingGroup}
                     onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
                     onOpenNotes={openNotes}
+                    onOpenTasks={openTasks}
                     onOpenShifts={(day) => setShiftDay(fmtDate(day))}
                     isToday={key === todayStr}
                   />
@@ -1628,7 +1681,7 @@ const CalendarWindow: React.FC = () => {
             </div>
             <div className="gb-calendar-detail-grid p-4">
               <div><span>Date</span><strong>{new Date(`${viewing.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong></div>
-              <div><span>Time</span><strong>{formatTime12FromHHmm(viewing.time || '') || 'Not specified'}{viewing.endTime ? ` - ${formatTime12FromHHmm(viewing.endTime)}` : ''}</strong></div>
+              <div><span>Time</span><strong>{viewing.category === 'task' && !viewing.time && !viewing.endTime ? 'All Day' : (formatTime12FromHHmm(viewing.time || '') || 'Not specified')}{viewing.endTime ? ` - ${formatTime12FromHHmm(viewing.endTime)}` : ''}</strong></div>
               {viewing.technician ? <div><span>Assigned</span><strong>{viewing.technician}</strong></div> : null}
               {viewing.customerName ? <div><span>Client</span><strong>{viewing.customerName}</strong></div> : null}
               {viewing.customerPhone ? <div><span>Phone</span><strong>{formatPhone(viewing.customerPhone)}</strong></div> : null}
@@ -1750,10 +1803,32 @@ const CalendarWindow: React.FC = () => {
                 <label className="block text-xs text-zinc-400">Date</label>
                 <input type="date" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.date} onChange={e => setEditing({ ...editing, date: e.target.value })} />
               </div>
-              <div>
-                <label className="block text-xs text-zinc-400">Time</label>
-                <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.time || ''} onChange={e => setEditing({ ...editing, time: e.target.value })} />
-              </div>
+              {editing.category === 'task' ? (
+                <label className="mt-5 flex min-h-9 items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-violet-400"
+                    checked={!editing.time && !editing.endTime}
+                    onChange={event => setEditing(event.target.checked
+                      ? { ...editing, time: '', endTime: '' }
+                      : { ...editing, time: editing.time || '09:00', endTime: editing.endTime || '10:00' })}
+                  />
+                  <span>All Day</span>
+                </label>
+              ) : <div>
+                  <label className="block text-xs text-zinc-400">Time</label>
+                  <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.time || ''} onChange={e => setEditing({ ...editing, time: e.target.value })} />
+                </div>}
+              {editing.category === 'task' && (editing.time || editing.endTime) && <>
+                <div>
+                  <label className="block text-xs text-zinc-400">Start time</label>
+                  <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.time || ''} onChange={event => setEditing({ ...editing, time: event.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400">End time</label>
+                  <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.endTime || ''} onChange={event => setEditing({ ...editing, endTime: event.target.value })} />
+                </div>
+              </>}
               {editing.category === 'content' && (
                 <div>
                   <label className="block text-xs text-zinc-400">End time</label>
