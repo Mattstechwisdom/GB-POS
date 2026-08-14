@@ -21,9 +21,16 @@ expect(preload.includes("ipcRenderer.on('gidget:model-progress'"), 'Electron mod
 const main = read('app/electron/electron-main.ts');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
 
+const localRuntime = read('app/electron/gidget-local.ts');
+expect(localRuntime.includes('if (downloadPromise) return downloadPromise'), 'Desktop Gidget setup must serialize competing model downloads.');
+expect(localRuntime.includes('await cancelActiveDownload()'), 'Desktop Gidget repair must wait for an active model download to release its file.');
+expect(localRuntime.includes("headers.Range = `bytes=${existingBytes}-`"), 'Desktop Gidget must resume an interrupted model download.');
+expect(localRuntime.includes('return ipcFailure(error)'), 'Desktop Gidget IPC must return actionable setup errors instead of remote-method exceptions.');
+
 const engine = read('src/lib/gidgetLocalEngine.ts');
 expect(engine.includes('Array.isArray(result?.models)'), 'Android model discovery must unwrap native plugin results.');
 expect(engine.includes('downloadResult?.localPath'), 'Android model download must unwrap its local path.');
+expect(engine.includes("if (!result?.ok) throw new Error(result?.error"), 'The Gidget UI must surface structured desktop setup failures.');
 
 const chat = read('src/components/GidgetChat.tsx');
 expect(chat.includes('buildReadOnlyPosContext'), 'Gidget must have standalone read-only POS context.');

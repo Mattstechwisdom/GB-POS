@@ -123,7 +123,10 @@ function titleFrom(content: string) {
 }
 
 function friendlyError(error: any) {
-  const raw = String(error?.message || '');
+  const raw = String(error?.message || '')
+    .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim();
   if (/local model|node-llama|llama/i.test(raw)) return `${raw} Try "Retry model startup" first. Use "Repair local model" only if retrying does not work.`;
   if (/failed to fetch|networkerror|load failed/i.test(raw)) return 'Gidget could not load authenticated shop context. Check the connection and try again.';
   if (/gidget_memories|gidget_conversations|schema cache/i.test(raw)) return 'Gidget history is waiting for its secure database migration. Chat remains available for this session.';

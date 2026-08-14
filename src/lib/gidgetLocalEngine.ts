@@ -107,7 +107,11 @@ export function subscribeGidgetProgress(callback: (value: GidgetModelProgress) =
 }
 
 export async function setupGidgetModel(onProgress: (value: GidgetModelProgress) => void) {
-  if (isDesktopBridge()) return window.api.gidgetLocalSetup!();
+  if (isDesktopBridge()) {
+    const result = await window.api.gidgetLocalSetup!();
+    if (!result?.ok) throw new Error(result?.error || 'Gidget setup failed.');
+    return result;
+  }
   if (Capacitor.getPlatform() !== 'android') throw new Error('Local Gidget inference is available in the installed Windows and Android apps.');
   const api = await nativeApi();
   const existing = await findNativeModel();
@@ -186,7 +190,8 @@ export async function resetGidgetModel(onProgress: (value: GidgetModelProgress) 
   nativeContext = null;
   nativeModelPath = '';
   if (isDesktopBridge()) {
-    await window.api.gidgetLocalRemove?.();
+    const removed = await window.api.gidgetLocalRemove?.();
+    if (removed && !removed.ok) throw new Error(removed.error || 'Gidget could not clear the local model.');
     return setupGidgetModel(onProgress);
   }
   localStorage.removeItem(ANDROID_VERIFIED_KEY);

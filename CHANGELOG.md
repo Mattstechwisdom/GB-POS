@@ -732,3 +732,9 @@
 
 ## v0.5.15 (2026-07-19)
 - No commits recorded.
+## v0.6.0 (2026-08-13)
+
+- Gidget / Windows: serializes model setup so repeated setup or repair actions cannot open the same model download twice and trigger Electron remote-method errors.
+- Gidget / Windows: safely cancels active downloads before repair, waits for Windows to release the partial model file, and returns actionable setup errors to the Gidget window.
+- Gidget / Windows: resumes interrupted model downloads from their existing partial file instead of restarting the 2.5 GB transfer.
+- Release safety: adds a real resumable model-download regression test to the release workflow and retains the packaged native CPU runtime verification.

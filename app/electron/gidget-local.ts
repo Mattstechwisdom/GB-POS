@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 
@@ -16,6 +17,8 @@ type DownloadState = { status: string; progress: number; downloadedBytes: number
 
 let state: DownloadState = { status: 'idle', progress: 0, downloadedBytes: 0, totalBytes: 0 };
 let downloadRequest: any = null;
+let downloadOutput: any = null;
+let downloadPromise: Promise<string> | null = null;
 let llamaRuntime: any = null;
 let loadedModel: any = null;
 let activeAbort: AbortController | null = null;
@@ -79,13 +82,22 @@ async function reportRuntimeError(app: any, error: any, sender?: any) {
   if (sender) emit(sender);
 }
 
+async function cancelActiveDownload() {
+  if (!downloadPromise) return;
+  try { downloadRequest?.destroy?.(new Error('Download canceled.')); } catch {}
+  try { downloadOutput?.destroy?.(new Error('Download canceled.')); } catch {}
+  try { await downloadPromise; } catch {}
+}
+
 async function removeModelCache(app: any, sender?: any) {
+  await cancelActiveDownload();
   try { await loadedModel?.dispose?.(); } catch {}
   loadedModel = null;
   try { await llamaRuntime?.llama?.dispose?.(); } catch {}
   llamaRuntime = null;
-  try { fs.rmSync(modelPath(app), { force: true }); } catch {}
-  try { fs.rmSync(verifiedPath(app), { force: true }); } catch {}
+  for (const file of [modelPath(app), verifiedPath(app), `${modelPath(app)}.part`]) {
+    try { await fs.promises.rm(file, { force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
+  }
   state = { status: 'idle', progress: 0, downloadedBytes: 0, totalBytes: 0 };
   if (sender) emit(sender);
 }
@@ -93,21 +105,35 @@ async function removeModelCache(app: any, sender?: any) {
 function requestDownload(url: string, destination: string, sender: any, redirects = 0): Promise<void> {
   return new Promise((resolve, reject) => {
     if (redirects > 6) return reject(new Error('The model download redirected too many times.'));
-    const request = https.get(url, { headers: { 'User-Agent': 'GadgetBoy-POS' } }, (response: any) => {
+    const existingBytes = fs.existsSync(destination) ? fs.statSync(destination).size : 0;
+    const headers: Record<string, string> = { 'User-Agent': 'GadgetBoy-POS' };
+    if (existingBytes > 0) headers.Range = `bytes=${existingBytes}-`;
+    const transport = new URL(url).protocol === 'http:' ? http : https;
+    const request = transport.get(url, { headers }, (response: any) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
         const next = new URL(response.headers.location, url).toString();
         void requestDownload(next, destination, sender, redirects + 1).then(resolve, reject);
         return;
       }
-      if (response.statusCode !== 200) {
+      if (response.statusCode !== 200 && response.statusCode !== 206) {
         response.resume();
         reject(new Error(`Model download failed (${response.statusCode}).`));
         return;
       }
-      const total = Number(response.headers['content-length'] || 0);
-      state = { status: 'downloading', progress: 0, downloadedBytes: 0, totalBytes: total };
-      const output = fs.createWriteStream(destination);
+      const appending = response.statusCode === 206 && existingBytes > 0;
+      const contentRange = String(response.headers['content-range'] || '');
+      const rangeTotal = Number(contentRange.match(/\/(\d+)$/)?.[1] || 0);
+      const responseBytes = Number(response.headers['content-length'] || 0);
+      const total = rangeTotal || responseBytes + (appending ? existingBytes : 0);
+      state = {
+        status: 'downloading',
+        progress: total > 0 ? Math.min(99, Math.round(((appending ? existingBytes : 0) / total) * 100)) : 0,
+        downloadedBytes: appending ? existingBytes : 0,
+        totalBytes: total,
+      };
+      const output = fs.createWriteStream(destination, { flags: appending ? 'a' : 'w' });
+      downloadOutput = output;
       response.on('data', (chunk: Buffer) => {
         state.downloadedBytes += chunk.length;
         state.progress = total > 0 ? Math.min(99, Math.round((state.downloadedBytes / total) * 100)) : 0;
@@ -124,13 +150,13 @@ function requestDownload(url: string, destination: string, sender: any, redirect
   });
 }
 
-async function ensureDownloaded(app: any, sender: any) {
+async function downloadAndVerify(app: any, sender: any) {
   if (await isVerified(app)) return modelPath(app);
   fs.mkdirSync(modelDir(app), { recursive: true });
   const finalPath = modelPath(app);
   const partialPath = `${finalPath}.part`;
-  try { fs.rmSync(partialPath, { force: true }); } catch {}
-  state = { status: 'downloading', progress: 0, downloadedBytes: 0, totalBytes: 0 };
+  const partialBytes = fs.existsSync(partialPath) ? fs.statSync(partialPath).size : 0;
+  state = { status: 'downloading', progress: 0, downloadedBytes: partialBytes, totalBytes: 0 };
   emit(sender);
   try {
     await requestDownload(MODEL.url, partialPath, sender);
@@ -150,7 +176,28 @@ async function ensureDownloaded(app: any, sender: any) {
     throw error;
   } finally {
     downloadRequest = null;
+    downloadOutput = null;
   }
+}
+
+async function ensureDownloaded(app: any, sender: any) {
+  if (await isVerified(app)) return modelPath(app);
+  // A second Setup click joins the existing transfer instead of opening the same
+  // 2.5 GB partial file twice. Windows rejects that race at the IPC boundary.
+  if (downloadPromise) return downloadPromise;
+  downloadPromise = downloadAndVerify(app, sender);
+  try {
+    return await downloadPromise;
+  } finally {
+    downloadPromise = null;
+    downloadRequest = null;
+    downloadOutput = null;
+  }
+}
+
+function ipcFailure(error: any) {
+  const message = String(error?.message || error || 'Gidget could not complete the request.').trim();
+  return { ok: false, error: message || 'Gidget could not complete the request.' };
 }
 
 async function getModel(app: any, sender?: any) {
@@ -196,9 +243,15 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
     return { ok: true, ready: !!loadedModel, downloaded, modelPath: downloaded ? modelPath(app) : undefined, model: MODEL, ...state };
   });
   ipcMain.handle('gidget:localSetup', async (event: any) => {
-    const file = await ensureDownloaded(app, event.sender);
-    await getModel(app, event.sender);
-    return { ok: true, ready: true, path: file, model: MODEL };
+    try {
+      const file = await ensureDownloaded(app, event.sender);
+      await getModel(app, event.sender);
+      return { ok: true, ready: true, path: file, model: MODEL };
+    } catch (error: any) {
+      state = { ...state, status: 'error', error: String(error?.message || error || 'Gidget setup failed.') };
+      emit(event.sender);
+      return ipcFailure(error);
+    }
   });
   ipcMain.handle('gidget:localGenerate', async (event: any, payload: any) => {
     const model = await getModel(app, event.sender);
@@ -222,14 +275,18 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
     }
   });
   ipcMain.handle('gidget:localCancel', async () => {
-    try { downloadRequest?.destroy?.(new Error('Download canceled.')); } catch {}
+    await cancelActiveDownload();
     activeAbort?.abort();
     return { ok: true };
   });
   ipcMain.handle('gidget:localRemove', async (event: any) => {
-    await removeModelCache(app, event.sender);
-    return { ok: true };
+    try {
+      await removeModelCache(app, event.sender);
+      return { ok: true };
+    } catch (error: any) {
+      return ipcFailure(error);
+    }
   });
 }
 
-export const _test = { MODEL, buildPrompt, sha256File };
+export const _test = { MODEL, buildPrompt, sha256File, requestDownload };

@@ -95,9 +95,13 @@ jobs:
           npm run test:auto-update-relaunch
           npm run test:eod-ticket-close
           npm run test:cart-client-updates
+          npm run test:feedback-gidget
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json
+
+      - name: Test Gidget resumable model download
+        run: npm run test:gidget-download
 
       - name: Validate Supabase build config
         shell: pwsh
@@ -117,6 +121,13 @@ jobs:
 
       - name: Package installer (electron-builder)
         run: npx electron-builder --win nsis --publish never
+
+      - name: Test packaged Gidget native runtime
+        shell: pwsh
+        run: |
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          & '.\release\win-unpacked\GadgetBoy POS.exe' '.\tools\test-gidget-packaged-runtime.cjs' '.\release\win-unpacked\resources\app.asar'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record release version
         shell: pwsh
