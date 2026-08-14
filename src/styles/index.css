@@ -384,7 +384,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 .gb-customer-primary-actions.is-unsaved-client {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
   gap: 0.75rem;
 }
@@ -401,10 +401,16 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
-.gb-customer-primary-actions.is-unsaved-client button:last-child {
+.gb-customer-primary-actions.is-unsaved-client button.is-sale {
   border-color: #3b82f6;
   background: rgba(59, 130, 246, 0.1);
   color: #60a5fa;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button.is-consultation {
+  border-color: #bc13fe;
+  background: rgba(188, 19, 254, 0.1);
+  color: #e879f9;
 }
 
 .gb-customer-primary-actions.is-unsaved-client button:hover,
@@ -413,9 +419,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: #09090b;
 }
 
-.gb-customer-primary-actions.is-unsaved-client button:last-child:hover,
-.gb-customer-primary-actions.is-unsaved-client button:last-child:focus-visible {
+.gb-customer-primary-actions.is-unsaved-client button.is-sale:hover,
+.gb-customer-primary-actions.is-unsaved-client button.is-sale:focus-visible {
   background: #3b82f6;
+  color: #ffffff;
+}
+
+.gb-customer-primary-actions.is-unsaved-client button.is-consultation:hover,
+.gb-customer-primary-actions.is-unsaved-client button.is-consultation:focus-visible {
+  background: #bc13fe;
   color: #ffffff;
 }
 

@@ -253,12 +253,26 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     },
   });
 
-  async function makePayloadForCustomer(): Promise<{ customerId: number; customerName: string; customerPhone: string } | null> {
+  async function makePayloadForCustomer(): Promise<{
+    customerId: number;
+    customerName: string;
+    customerPhone: string;
+    customerPhoneAlt: string;
+    customerEmail: string;
+    customerAddress: string;
+  } | null> {
     const saved = await ensureCustomerSaved();
     if (!saved?.id) return null;
     const c = saved as any;
     const name = (c.name || `${c.firstName || ''} ${c.lastName || ''}`).trim();
-    return { customerId: c.id, customerName: name, customerPhone: c.phone || '' };
+    return {
+      customerId: c.id,
+      customerName: name,
+      customerPhone: c.phone || '',
+      customerPhoneAlt: c.phoneAlt || '',
+      customerEmail: c.email || '',
+      customerAddress: c.address || '',
+    };
   }
 
   return (
@@ -306,7 +320,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
             {/* Primary actions above filters */}
             <div className={`gb-customer-primary-actions is-unsaved-client flex items-center gap-2 mb-1`}>
               <Button
-                className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
+                className="is-workorder px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
                   if (!payload) return;
@@ -314,13 +328,21 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
                 }}
               >New Work Order</Button>
               <Button
-                className="px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
+                className="is-sale px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]"
                 onClick={async () => {
                   const payload = await makePayloadForCustomer();
                   if (!payload) return;
                   await (window as any).api.openNewSale(payload);
                 }}
               >New Sale</Button>
+              <Button
+                className="is-consultation px-4 py-2 text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-[#BC13FE] hover:text-fuchsia-300"
+                onClick={async () => {
+                  const payload = await makePayloadForCustomer();
+                  if (!payload) return;
+                  await (window as any).api.openConsultation(payload);
+                }}
+              >Consultation</Button>
             </div>
             {/* Filter toggle (smaller) with hover-highlight / solid-when-selected */}
             <div className="gb-customer-history-filters flex items-center gap-2 mb-1">

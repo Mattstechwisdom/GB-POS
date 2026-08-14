@@ -42,6 +42,8 @@ assert.equal(buildSaleProductPickerPayload({ id: 43, itemDescription: '' }), nul
 
 const saleItemsTable = fs.readFileSync(path.join(__dirname, '..', 'src', 'sales', 'SaleItemsTable.tsx'), 'utf8');
 const quickSale = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'QuickSaleWindow.tsx'), 'utf8');
+const productsWindow = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ProductsWindow.tsx'), 'utf8');
+const electronMain = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
 assert.match(saleItemsTable, /onContextMenu=/, 'Quick Checkout sale items must support desktop right-click.');
 assert.match(saleItemsTable, /onPointerDown=\{\(event\) => startHold\(event, it\)\}/, 'Quick Checkout sale items must support mobile press-and-hold.');
 assert.match(saleItemsTable, /zIndex=\{100600\}/, 'The line-item menu must render above desktop and mobile modal shells.');
@@ -50,6 +52,11 @@ assert.match(saleItemsTable, /gb-sale-items-table-wrap overflow-y-auto/, 'Only t
 assert.match(saleItemsTable, /Catalog records stay unchanged|temporarily edit its details/, 'Quick Checkout edits must be described as ticket-only changes.');
 assert.match(quickSale, /allowAddItems=\{false\}/, 'Quick repair lines must use the editable line-item table without duplicate add controls.');
 assert.match(quickSale, /layout="split"/, 'Quick Checkout must keep line-item fields fixed beside the scrolling list on desktop.');
+assert.match(quickSale, /gb-quick-checkout-layout[\s\S]*grid-rows-\[auto_minmax\(0,1fr\)_auto\]/, 'Quick Checkout must reserve a separate non-overlapping totals row.');
+assert.match(quickSale, /gb-quick-checkout-totals/, 'Quick Checkout totals need an isolated footer surface.');
+assert.match(productsWindow, /gb-sale-catalog-results[\s\S]*min-h-0 flex-1 overflow-y-auto/, 'The product result list must be the desktop picker scroll surface.');
+assert.match(productsWindow, /gb-sale-catalog-editor min-h-0 overflow-hidden/, 'The desktop product detail fields must remain stationary.');
+assert.match(electronMain, /title: windowTitle\('Quick Checkout'\)[\s\S]*?width: 1180|width: 1180[\s\S]*?title: windowTitle\('Quick Checkout'\)/, 'Quick Checkout needs enough desktop room for its fixed editor and totals.');
 assert.doesNotMatch(quickSale, />\s*Close\s*</, 'Quick Checkout must rely on its window X instead of rendering a duplicate Close button.');
 
 console.log('Sale product picker tests passed.');

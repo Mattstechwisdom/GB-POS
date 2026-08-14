@@ -23,6 +23,10 @@ assert.deepEqual(c.selectedSalesCommissionTechnicians(techs, c.normalizeCommissi
 const reportingSource = fs.readFileSync(path.resolve('src/components/ReportingWindow.tsx'), 'utf8');
 const eodSource = fs.readFileSync(path.resolve('src/components/EODWindow.tsx'), 'utf8');
 assert.match(reportingSource, /Array\.isArray\(sale\?\.items\).*return 0;/s);
+assert.match(reportingSource, /<option value="summary">Summary Report<\/option>[\s\S]*<option value="eod">End of Day Report<\/option>[\s\S]*<option value="monthEnd">End of the Month Report<\/option>/, 'All reporting destinations must remain in the Reports selector.');
+assert.match(reportingSource, />Reporting Settings<\/h2>[\s\S]*>Summary report defaults<[\s\S]*>Commission</, 'Reporting settings must include both display defaults and commission rules.');
+assert.match(reportingSource, /defaultSummaryRange: 'all'/, 'Summary Report should default to the complete saved reporting collection.');
+assert.match(reportingSource, />Repair Revenue<[\s\S]*>Commission<[\s\S]*>Profit &amp; Vendors<[\s\S]*>Verified Purchasing</, 'Month-end headline figures must stay grouped by purpose.');
 assert.match(eodSource, /\(driver\|distance\|travel\|fee\)/);
 assert.match(eodSource, /breakdown\.consultationHours[\s\S]*consultationCollectionRatio/, 'EOD commission must use saved consultation hours instead of inferring hours from customer charges.');
 assert.doesNotMatch(eodSource, /consultationCollected\s*\/\s*CONSULTATION_HOURLY_RATE/, 'Changing the customer rate must not change hourly technician commission.');

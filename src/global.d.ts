@@ -64,7 +64,7 @@ declare global {
     openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;
   openQuickSale: () => Promise<any>;
-  openConsultation: () => Promise<any>;
+  openConsultation: (payload?: any) => Promise<any>;
   openCheckout: (payload: any) => Promise<any>;
   openEod: () => Promise<any>;
     getDeviceCategories: () => Promise<any[]>;

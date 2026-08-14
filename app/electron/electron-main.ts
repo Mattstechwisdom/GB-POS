@@ -8318,10 +8318,10 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
   const child = new BrowserWindow({
-    width: 920,
-    height: 640,
-    minWidth: 820,
-    minHeight: 560,
+    width: 1180,
+    height: 840,
+    minWidth: 1040,
+    minHeight: 760,
     resizable: true,
     parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
     modal: false,
@@ -8346,7 +8346,7 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
 });
 
 // IPC handler for opening a Consultation Booking window
-ipcMain.handle('open-consultation', async (event: any) => {
+ipcMain.handle('open-consultation', async (event: any, payload?: any) => {
   const parentFromSender = (() => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
@@ -8371,9 +8371,10 @@ ipcMain.handle('open-consultation', async (event: any) => {
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const encoded = payload == null ? '1' : encodeURIComponent(JSON.stringify(payload));
   const url = isDev
-    ? `${DEV_SERVER_URL}/?consultation=1&t=${Date.now()}`
-    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?consultation=1`;
+    ? `${DEV_SERVER_URL}/?consultation=${encoded}&t=${Date.now()}`
+    : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?consultation=${encoded}`;
   child.loadURL(url).catch((e: any) => console.error('[Consultation] loadURL failed', e));
   return { ok: true };
 });

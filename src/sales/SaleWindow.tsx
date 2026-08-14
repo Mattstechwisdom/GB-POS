@@ -633,6 +633,8 @@ const SaleWindow: React.FC = () => {
 
   function buildSaleRecordBase(): SaleRecord {
     const now = new Date().toISOString();
+    const consultation = !!(sale as any).consultationType
+      || String((sale as any).category || '').toLowerCase() === 'consultation';
     const record: SaleRecord = {
       ...sale,
       // legacy fields: mirror first row for compatibility
@@ -643,10 +645,10 @@ const SaleWindow: React.FC = () => {
         ? Number(sale.items[0].consultationHours ?? itemUnits(sale.items[0])) || undefined
         : (sale as any).consultationHours,
       // If inStock, null out order/delivery fields to avoid confusion
-      orderedDate: sale.inStock ? null : sale.orderedDate || null,
-      estimatedDeliveryDate: sale.inStock ? null : sale.estimatedDeliveryDate || null,
-      partsOrderUrl: sale.inStock ? '' : (sale.partsOrderUrl || ''),
-      partsTrackingUrl: sale.inStock ? '' : (sale.partsTrackingUrl || ''),
+      orderedDate: consultation || sale.inStock ? null : sale.orderedDate || null,
+      estimatedDeliveryDate: consultation || sale.inStock ? null : sale.estimatedDeliveryDate || null,
+      partsOrderUrl: consultation || sale.inStock ? '' : (sale.partsOrderUrl || ''),
+      partsTrackingUrl: consultation || sale.inStock ? '' : (sale.partsTrackingUrl || ''),
       createdAt: (sale as any).id ? (sale.createdAt || now) : now,
       updatedAt: now,
       total: total,
@@ -1704,7 +1706,8 @@ const SaleWindow: React.FC = () => {
             />
 
 
-            {/* Ordered and ETA date inputs side-by-side */}
+            {/* Ordering belongs to product sales, never consultation billing. */}
+            {!((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? <>
             <div className="col-span-2 grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
@@ -1755,6 +1758,7 @@ const SaleWindow: React.FC = () => {
                 {(sale as any).partsTrackingUnavailable ? <div className="mt-2 text-xs text-zinc-400">Distributor did not provide tracking.</div> : null}
               </div>
             </div>
+            </> : null}
           <div className="col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea

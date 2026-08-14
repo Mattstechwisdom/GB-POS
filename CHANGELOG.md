@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.7 (2026-08-14)
+- Client Actions: adds an equal-size Consultation button beside New Work Order and New Sale on saved and newly added client profiles, with distinct green, blue, and purple styling on Windows and Android.
+- Consultation Handoff: opens the booking window with the selected client already saved and selected across desktop and mobile workflows.
+- Consultation Records: removes product-order dates, delivery dates, part URLs, and tracking fields from consultation sales and clears inherited ordering metadata when a consultation is saved.
+- Quick Checkout: gives the desktop workspace enough room for line-item editing and isolates the tax/totals footer so it cannot overlap the product actions after an item is added.
+- Product Selection: keeps the desktop catalog list as the only scrolling pane while sale-only product fields remain stationary on the right; mobile retains its compact vertical flow.
+- Reporting Navigation: consolidates Summary, End of Day, and End of Month reports into one selector and makes the all-records Summary the default overview.
+- Reporting Settings: combines commission rules with persistent date-range, record inclusion, tax, payment, and visible-section preferences without changing saved financial records.
+- Month-End Layout: groups headline totals into Repair Revenue, Commission, Profit and Vendors, and Verified Purchasing sections instead of one long metric row.
+
 ## v0.6.6 (2026-08-14)
 - End of Day Activity: restores a prominent Tickets Not Closed section whenever Activity Drill Down is expanded, covering every open or unchecked-out work order and sale.
 - Ticket Review: opens the complete actionable ticket list from the section while preserving double-click invoice opening, desktop right-click, mobile hold, and close-ticket accounting safeguards.

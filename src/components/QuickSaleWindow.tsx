@@ -277,7 +277,7 @@ const QuickSaleWindow: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-100 font-sans">
+    <div className="gb-quick-checkout flex h-screen min-h-0 flex-col overflow-hidden bg-zinc-900 text-zinc-100 font-sans">
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>
@@ -285,7 +285,7 @@ const QuickSaleWindow: React.FC = () => {
         </div>
       </div>
 
-      <div className="p-4 grid grid-cols-1 gap-4 lg:h-[calc(100dvh-73px)] lg:grid-rows-[auto_minmax(0,1fr)_auto] lg:overflow-hidden">
+      <div className="gb-quick-checkout-layout grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 overflow-hidden p-4">
         <div className="flex items-center gap-1 self-start rounded border border-zinc-700 bg-zinc-950/40 p-1">
           {(['sale', 'repair'] as const).map((type) => (
             <button
@@ -346,7 +346,7 @@ const QuickSaleWindow: React.FC = () => {
           />
         )}
 
-        <div className="bg-zinc-950/40 border border-zinc-800 rounded p-4 space-y-3">
+        <div className="gb-quick-checkout-totals relative z-10 shrink-0 bg-zinc-950 border border-zinc-700 rounded p-3 space-y-2 shadow-[0_-8px_20px_rgba(9,9,11,0.75)]">
           <div className="flex items-center justify-between gap-3">
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
               <input

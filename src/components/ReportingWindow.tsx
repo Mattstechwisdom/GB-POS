@@ -79,6 +79,55 @@ const PERIODS = [
   { key: 'year', label: 'Yearly' },
 ] as const;
 
+type SummaryRange = 'today' | 'week' | 'month' | 'year' | 'all';
+
+type ReportingSettings = {
+  defaultSummaryRange: SummaryRange;
+  includeRepairs: boolean;
+  includeSales: boolean;
+  onlyPaid: boolean;
+  excludeTax: boolean;
+  showPaymentSummary: boolean;
+  showTypeBreakdown: boolean;
+  showTopItems: boolean;
+  showDetailTable: boolean;
+  showCsvPreview: boolean;
+};
+
+const DEFAULT_REPORTING_SETTINGS: ReportingSettings = {
+  defaultSummaryRange: 'all',
+  includeRepairs: true,
+  includeSales: true,
+  onlyPaid: true,
+  excludeTax: true,
+  showPaymentSummary: true,
+  showTypeBreakdown: true,
+  showTopItems: true,
+  showDetailTable: true,
+  showCsvPreview: false,
+};
+
+function normalizeReportingSettings(value: any): ReportingSettings {
+  const source = value && typeof value === 'object' ? value : {};
+  const range: SummaryRange = ['today', 'week', 'month', 'year', 'all'].includes(source.defaultSummaryRange)
+    ? source.defaultSummaryRange
+    : DEFAULT_REPORTING_SETTINGS.defaultSummaryRange;
+  return {
+    ...DEFAULT_REPORTING_SETTINGS,
+    ...source,
+    defaultSummaryRange: range,
+    includeRepairs: source.includeRepairs !== false,
+    includeSales: source.includeSales !== false,
+    onlyPaid: source.onlyPaid !== false,
+    excludeTax: source.excludeTax !== false,
+    showPaymentSummary: source.showPaymentSummary !== false,
+    showTypeBreakdown: source.showTypeBreakdown !== false,
+    showTopItems: source.showTopItems !== false,
+    showDetailTable: source.showDetailTable !== false,
+    showCsvPreview: source.showCsvPreview === true,
+  };
+}
+
 function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
@@ -452,6 +501,8 @@ const ReportingWindow: React.FC = () => {
   const [commissionDraft, setCommissionDraft] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
   const [showCommissionSettings, setShowCommissionSettings] = useState(false);
   const [savingCommissionSettings, setSavingCommissionSettings] = useState(false);
+  const [reportingSettings, setReportingSettings] = useState<ReportingSettings>(DEFAULT_REPORTING_SETTINGS);
+  const [reportingDraft, setReportingDraft] = useState<ReportingSettings>(DEFAULT_REPORTING_SETTINGS);
   const [csv, setCsv] = useState<string>('');
   const [topRepairs, setTopRepairs] = useState<Array<{title: string; count: number}>>([]);
   const [topSales, setTopSales] = useState<Array<{title: string; count: number}>>([]);
@@ -478,8 +529,15 @@ const ReportingWindow: React.FC = () => {
       setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
       const settingsRecord = Array.isArray(eodRows) ? eodRows[0] : null;
       const loadedCommission = normalizeCommissionSettings(settingsRecord?.commissionSettings);
+      const loadedReporting = normalizeReportingSettings(settingsRecord?.reportingSettings);
       setCommissionSettings(loadedCommission);
       setCommissionDraft(loadedCommission);
+      setReportingSettings(loadedReporting);
+      setReportingDraft(loadedReporting);
+      setIncludeRepairs(loadedReporting.includeRepairs);
+      setIncludeSales(loadedReporting.includeSales);
+      setOnlyPaid(loadedReporting.onlyPaid);
+      setExcludeTax(loadedReporting.excludeTax);
       setCommissionSettingsRecordId(settingsRecord?.id ?? null);
       // Tag repairs and normalize sales
       const mappedWOs = (Array.isArray(wos) ? wos : []).map((w: any) => ({ ...w, kind: 'repair' as const }));
@@ -503,7 +561,9 @@ const ReportingWindow: React.FC = () => {
           items,
         };
       });
-      setData([...(mappedWOs || []), ...mappedSales]);
+      const combined = [...(mappedWOs || []), ...mappedSales];
+      setData(combined);
+      applySummaryRange(loadedReporting.defaultSummaryRange, [...combined, ...(Array.isArray(purchaseRows) ? purchaseRows : [])]);
     } catch (e) { console.error(e); }
   })();
     const off = (window as any).api?.onPurchaseOrdersChanged?.(() => {
@@ -574,23 +634,30 @@ const ReportingWindow: React.FC = () => {
   async function saveCommissionSettings() {
     const api = (window as any).api;
     const normalized = normalizeCommissionSettings(commissionDraft);
-    if (!normalized.salesCommissionTechnicianIds.length) {
+    const activeTechnicians = technicians.filter((row: any) => row?.active !== false);
+    if (activeTechnicians.length && !normalized.salesCommissionTechnicianIds.length) {
       alert('Select at least one technician to receive the shared sales commission.');
       return;
     }
     setSavingCommissionSettings(true);
     try {
       if (commissionSettingsRecordId !== null && commissionSettingsRecordId !== undefined) {
-        await api.dbUpdate('settings', commissionSettingsRecordId, { commissionSettings: normalized, updatedAt: new Date().toISOString() });
+        await api.dbUpdate('settings', commissionSettingsRecordId, { commissionSettings: normalized, reportingSettings: reportingDraft, updatedAt: new Date().toISOString() });
       } else {
-        const created = await api.dbAdd('settings', { commissionSettings: normalized, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        const created = await api.dbAdd('settings', { commissionSettings: normalized, reportingSettings: reportingDraft, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
         setCommissionSettingsRecordId(created?.id ?? null);
       }
       setCommissionSettings(normalized);
       setCommissionDraft(normalized);
+      setReportingSettings(reportingDraft);
+      setIncludeRepairs(reportingDraft.includeRepairs);
+      setIncludeSales(reportingDraft.includeSales);
+      setOnlyPaid(reportingDraft.onlyPaid);
+      setExcludeTax(reportingDraft.excludeTax);
+      applySummaryRange(reportingDraft.defaultSummaryRange, data);
       setShowCommissionSettings(false);
     } catch (error: any) {
-      alert(error?.message || 'Commission settings could not be saved.');
+      alert(error?.message || 'Reporting settings could not be saved.');
     } finally {
       setSavingCommissionSettings(false);
     }
@@ -916,7 +983,7 @@ const ReportingWindow: React.FC = () => {
     URL.revokeObjectURL(url);
   }
 
-  function setQuickRange(key: 'today'|'week'|'month'|'year') {
+  function applySummaryRange(key: SummaryRange, records: any[] = data) {
     const now = new Date();
     if (key === 'today') {
       const d = new Date(); d.setHours(0,0,0,0); setFrom(d.toISOString().slice(0,10)); setTo(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString().slice(0,10)); setPeriod('day');
@@ -929,7 +996,19 @@ const ReportingWindow: React.FC = () => {
     } else if (key === 'year') {
       const start = startOfPeriod(now, 'year'); const end = new Date(start.getFullYear(), 11, 31);
       setFrom(start.toISOString().slice(0,10)); setTo(end.toISOString().slice(0,10)); setPeriod('year');
+    } else {
+      const dates = records
+        .map(record => reportDate(record.checkInAt || record.repairCompletionDate || record.checkoutDate || purchaseReportDate(record) || record.createdAt))
+        .filter((date): date is Date => Boolean(date))
+        .sort((a, b) => a.getTime() - b.getTime());
+      setFrom(dates[0]?.toISOString().slice(0, 10) || todayInputValue());
+      setTo(dates[dates.length - 1]?.toISOString().slice(0, 10) || todayInputValue());
+      setPeriod('year');
     }
+  }
+
+  function setQuickRange(key: SummaryRange) {
+    applySummaryRange(key);
   }
 
   return (
@@ -951,29 +1030,30 @@ const ReportingWindow: React.FC = () => {
                   : technicians.filter((row: any) => row?.active !== false).map(technicianCommissionId).filter(Boolean),
                 consultationCommissionTechnicianIds: commissionSettings.consultationCommissionTechnicianIds,
               });
+              setReportingDraft(reportingSettings);
               setShowCommissionSettings(true);
             }}
           >
-            Commission
+            Settings
           </button>
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <span className="text-xs text-zinc-500">Reports</span>
             <select
               className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2"
               value={reportView}
-              onChange={e => setReportView(e.target.value as any)}
+              onChange={e => {
+                if (e.target.value === 'eod') {
+                  dispatchOpenModal('eod');
+                  return;
+                }
+                setReportView(e.target.value as 'summary' | 'monthEnd');
+              }}
             >
               <option value="summary">Summary Report</option>
+              <option value="eod">End of Day Report</option>
               <option value="monthEnd">End of the Month Report</option>
             </select>
           </label>
-          <button
-            type="button"
-            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#39FF14]"
-            onClick={() => dispatchOpenModal('eod')}
-          >
-            End of Day Reports
-          </button>
           <button
             type="button"
             className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded hover:border-[#BC13FE]"
@@ -993,12 +1073,61 @@ const ReportingWindow: React.FC = () => {
           <section className="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border border-[#BC13FE]/70 bg-zinc-950 p-4 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
             <header className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
               <div>
-                <h2 className="text-xl font-semibold text-white">Commission Settings</h2>
-                <p className="mt-1 text-xs text-zinc-400">Saved rules recalculate EOD and monthly reporting from the current sales and consultation records.</p>
+                <h2 className="text-xl font-semibold text-white">Reporting Settings</h2>
+                <p className="mt-1 text-xs text-zinc-400">Choose reporting defaults and commission rules without changing any saved sales, work orders, or payments.</p>
               </div>
-              <button type="button" aria-label="Close commission settings" className="px-2 py-1 text-zinc-400 hover:text-white" onClick={() => setShowCommissionSettings(false)}>x</button>
+              <button type="button" aria-label="Close reporting settings" className="px-2 py-1 text-zinc-400 hover:text-white" onClick={() => setShowCommissionSettings(false)}>x</button>
             </header>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3">
+              <div className="text-sm font-semibold text-zinc-100">Summary report defaults</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm text-zinc-300">Default date range
+                  <select className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-white" value={reportingDraft.defaultSummaryRange} onChange={event => setReportingDraft(current => ({ ...current, defaultSummaryRange: event.target.value as SummaryRange }))}>
+                    <option value="all">All records</option>
+                    <option value="today">Today</option>
+                    <option value="week">This week</option>
+                    <option value="month">This month</option>
+                    <option value="year">This year</option>
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {([
+                    ['includeRepairs', 'Repairs'],
+                    ['includeSales', 'Sales'],
+                    ['onlyPaid', 'Paid only'],
+                    ['excludeTax', 'Exclude tax'],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-950 px-3 py-2">
+                      <input type="checkbox" className="h-4 w-4 accent-[#39FF14]" checked={reportingDraft[key]} onChange={event => setReportingDraft(current => ({ ...current, [key]: event.target.checked }))} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-zinc-500">These defaults control the opening Summary Report. Date and technician filters can still be changed for an individual report.</div>
+            </div>
+            <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3">
+              <div className="text-sm font-semibold text-zinc-100">Summary sections</div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {([
+                  ['showPaymentSummary', 'Payment totals'],
+                  ['showTypeBreakdown', 'Repairs vs. sales'],
+                  ['showTopItems', 'Top repairs and sales'],
+                  ['showDetailTable', 'Period detail table'],
+                  ['showCsvPreview', 'CSV preview'],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                    <input type="checkbox" className="h-4 w-4 accent-[#39FF14]" checked={reportingDraft[key]} onChange={event => setReportingDraft(current => ({ ...current, [key]: event.target.checked }))} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <div className="text-base font-semibold text-[#BC13FE]">Commission</div>
+              <div className="mt-1 text-xs text-zinc-500">Commission is calculated only from factual saved sales, consultation hours, and technician assignments.</div>
+            </div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <label className="block text-sm text-zinc-300">Sales commission percentage
                 <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 focus-within:border-[#BC13FE]">
                   <input type="number" min="0" max="100" step="0.01" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white outline-none" value={commissionDraft.salesCommissionPercent} onChange={event => setCommissionDraft(current => ({ ...current, salesCommissionPercent: Number(event.target.value) }))} />
@@ -1046,7 +1175,7 @@ const ReportingWindow: React.FC = () => {
             </div>
             <footer className="mt-4 flex justify-end gap-2">
               <button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowCommissionSettings(false)}>Cancel</button>
-              <button type="button" disabled={savingCommissionSettings || !technicians.length} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void saveCommissionSettings()}>{savingCommissionSettings ? 'Saving...' : 'Save Commission Settings'}</button>
+              <button type="button" disabled={savingCommissionSettings} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void saveCommissionSettings()}>{savingCommissionSettings ? 'Saving...' : 'Save Settings'}</button>
             </footer>
           </section>
         </div>
@@ -1082,56 +1211,43 @@ const ReportingWindow: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-11 gap-3">
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Parts Cost</div>
-                <div className="mt-1 text-2xl font-bold text-amber-300">{money(monthRepairFinancials.partsCost)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Parts Charged</div>
-                <div className="mt-1 text-2xl font-bold">{money(monthRepairFinancials.partsCharged)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Labor Charged</div>
-                <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(monthRepairFinancials.laborCharged)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Sales Commission Base</div>
-                <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.physicalSalesBase)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Sales Commission Pool</div>
-                <div className="mt-1 text-2xl font-bold">{money(endOfMonthReport.summary.physicalSalesCommissionPool)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Known Gross Profit</div>
-                <div className="mt-1 text-2xl font-bold">{money(endOfMonthReport.summary.knownProfit)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Total Commission</div>
-                <div className="mt-1 text-2xl font-bold text-[#BC13FE]">{money(endOfMonthReport.summary.totalCommission)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Vendor Payouts Owed</div>
-                <div className="mt-1 text-2xl font-bold text-red-300">{money(endOfMonthReport.summary.vendorPayoutTotal)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Vendor-Sale Profit</div>
-                <div className="mt-1 text-2xl font-bold text-[#39FF14]">{money(endOfMonthReport.summary.vendorProfitTotal)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Parts Supplier Spend</div>
-                <div className="mt-1 text-2xl font-bold text-amber-300">{money(endOfMonthReport.summary.supplierSpendParts)}</div>
-              </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-                <div className="text-xs text-zinc-500">Products Supplier Spend</div>
-                <div className="mt-1 text-2xl font-bold text-amber-300">{money(endOfMonthReport.summary.supplierSpendProducts)}</div>
-              </div>
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
+              <section className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Repair Revenue</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MonthMetric label="Parts Cost" value={money(monthRepairFinancials.partsCost)} tone="text-amber-300" />
+                  <MonthMetric label="Parts Charged" value={money(monthRepairFinancials.partsCharged)} />
+                  <MonthMetric label="Labor Charged" value={money(monthRepairFinancials.laborCharged)} tone="text-[#39FF14]" />
+                </div>
+              </section>
+              <section className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Commission</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MonthMetric label="Sales Base" value={money(endOfMonthReport.summary.physicalSalesBase)} tone="text-[#39FF14]" />
+                  <MonthMetric label="Sales Pool" value={money(endOfMonthReport.summary.physicalSalesCommissionPool)} />
+                  <MonthMetric label="Total Commission" value={money(endOfMonthReport.summary.totalCommission)} tone="text-[#BC13FE]" />
+                </div>
+              </section>
+              <section className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Profit &amp; Vendors</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MonthMetric label="Known Profit" value={money(endOfMonthReport.summary.knownProfit)} />
+                  <MonthMetric label="Vendor Owed" value={money(endOfMonthReport.summary.vendorPayoutTotal)} tone="text-red-300" />
+                  <MonthMetric label="Vendor Profit" value={money(endOfMonthReport.summary.vendorProfitTotal)} tone="text-[#39FF14]" />
+                </div>
+              </section>
+              <section className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Verified Purchasing</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <MonthMetric label="Parts Spend" value={money(endOfMonthReport.summary.supplierSpendParts)} tone="text-amber-300" />
+                  <MonthMetric label="Products Spend" value={money(endOfMonthReport.summary.supplierSpendProducts)} tone="text-amber-300" />
+                </div>
+              </section>
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm text-zinc-300 space-y-2">
               <div className="font-semibold text-zinc-100">Audit Rules</div>
-              <div>Repairs are excluded from commission. Eligible sales contribute {commissionSettings.salesCommissionPercent}% of the saved sale total after discounts to one pool, split evenly across the technicians selected in Commission Settings.</div>
+              <div>Repairs are excluded from commission. Eligible sales contribute {commissionSettings.salesCommissionPercent}% of the saved sale total after discounts to one pool, split evenly across the technicians selected in Reporting Settings.</div>
               <div>Consultation commission is saved consultation hours multiplied by {money(commissionSettings.consultationTechHourlyRate)} and assigned only to the saved technician on that consultation.</div>
               <div>Internal cost is pulled only from saved line item cost values. Missing costs, missing hours, and missing technician assignments are flagged instead of estimated.</div>
               <div>Consignment payouts use the exact product vendor and saved vendor-share percentage. Wholesale parts distributors do not create vendor payouts.</div>
@@ -1266,6 +1382,10 @@ const ReportingWindow: React.FC = () => {
         </>
       ) : (
         <>
+      <div className="rounded border border-zinc-800 bg-zinc-950 px-4 py-3">
+        <div className="font-semibold text-zinc-100">Summary Report</div>
+        <div className="mt-1 text-xs text-zinc-500">A consolidated overview of saved POS revenue, payments, costs, profit, work orders, sales, and purchasing for the selected range.</div>
+      </div>
   <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs mb-1">Period</label>
@@ -1313,6 +1433,7 @@ const ReportingWindow: React.FC = () => {
         <QuickRange onPick={setQuickRange} />
       </div>
 
+      {reportingSettings.showPaymentSummary && <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400">Grand Total</div>
@@ -1338,6 +1459,7 @@ const ReportingWindow: React.FC = () => {
           <div className="mt-2 text-2xl font-bold text-zinc-100">${paymentTotals.card.toFixed(2)}</div>
         </div>
       </div>
+      </>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
@@ -1362,7 +1484,7 @@ const ReportingWindow: React.FC = () => {
           {summary.missingCost ? <div className="mt-2 text-xs text-amber-300">{summary.missingCost} charged physical line{summary.missingCost === 1 ? '' : 's'} need internal cost before profit is final.</div> : null}
         </div>
         {/* Repairs vs Sales split */}
-        {(() => {
+        {reportingSettings.showTypeBreakdown && (() => {
           const repOnly = filtered.filter((x:any) => x.kind !== 'sale');
           const salOnly = filtered.filter((x:any) => x.kind === 'sale');
           const accum = (arr: any[]) => arr.reduce((acc, w) => {
@@ -1406,7 +1528,7 @@ const ReportingWindow: React.FC = () => {
         {/* Trends moved to Charts window */}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {reportingSettings.showTopItems && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
           <div className="text-sm text-zinc-400 mb-2">Top Repairs</div>
           <ul className="text-sm space-y-1">
@@ -1425,11 +1547,11 @@ const ReportingWindow: React.FC = () => {
             {topSales.length === 0 && <li className="text-zinc-500 text-sm">No data.</li>}
           </ul>
         </div>
-      </div>
+      </div>}
 
       {/* Popular Days moved to Charts window */}
 
-      <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+      {reportingSettings.showDetailTable && <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
         <div className="text-sm text-zinc-400 mb-2">Detail (by {period})</div>
         <div className="overflow-auto">
           <table className="w-full text-sm">
@@ -1470,12 +1592,12 @@ const ReportingWindow: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
+      {reportingSettings.showCsvPreview && <div className="bg-zinc-950 border border-zinc-800 rounded p-3">
         <div className="text-sm text-zinc-400 mb-2">CSV Preview</div>
         <pre className="text-xs whitespace-pre-wrap max-h-48 overflow-auto">{csv || 'No rows.'}</pre>
-      </div>
+      </div>}
         </>
       )}
     </div>
@@ -1484,13 +1606,21 @@ const ReportingWindow: React.FC = () => {
 
 export default ReportingWindow;
 
-const QuickRange: React.FC<{ onPick: (k: 'today'|'week'|'month'|'year') => void }> = ({ onPick }) => (
+const MonthMetric: React.FC<{ label: string; value: string; tone?: string }> = ({ label, value, tone = 'text-zinc-100' }) => (
+  <div className="min-w-0 rounded border border-zinc-800 bg-zinc-950 px-2 py-3">
+    <div className="text-[11px] leading-tight text-zinc-500">{label}</div>
+    <div className={`mt-1 truncate text-base font-bold sm:text-lg ${tone}`} title={value}>{value}</div>
+  </div>
+);
+
+const QuickRange: React.FC<{ onPick: (k: SummaryRange) => void }> = ({ onPick }) => (
   <div className="flex items-center gap-2">
     <span className="text-xs text-zinc-400">Quick range:</span>
     <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded" onClick={() => onPick('today')}>Today</button>
     <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded" onClick={() => onPick('week')}>This week</button>
     <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded" onClick={() => onPick('month')}>This month</button>
     <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded" onClick={() => onPick('year')}>This year</button>
+    <button className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded" onClick={() => onPick('all')}>All records</button>
   </div>
 );
 

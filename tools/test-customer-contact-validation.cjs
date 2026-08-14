@@ -9,6 +9,11 @@ const formSource = fs.readFileSync(path.join(root, 'src', 'components', 'Custome
 const overviewSource = fs.readFileSync(path.join(root, 'src', 'components', 'CustomerOverviewWindow.tsx'), 'utf8');
 const mobileApiSource = fs.readFileSync(path.join(root, 'src', 'mobile', 'mobile-api.ts'), 'utf8');
 const electronMainSource = fs.readFileSync(path.join(root, 'app', 'electron', 'electron-main.ts'), 'utf8');
+const preloadSource = fs.readFileSync(path.join(root, 'app', 'electron', 'preload.ts'), 'utf8');
+const consultationSource = fs.readFileSync(path.join(root, 'src', 'components', 'ConsultationBookingWindow.tsx'), 'utf8');
+const saleWindowSource = fs.readFileSync(path.join(root, 'src', 'sales', 'SaleWindow.tsx'), 'utf8');
+const desktopStyles = fs.readFileSync(path.join(root, 'src', 'styles', 'index.css'), 'utf8');
+const mobileStyles = fs.readFileSync(path.join(root, 'src', 'mobile', 'mobile.css'), 'utf8');
 const migrationSource = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260814153326_add_customer_declined_contact_flags.sql'), 'utf8');
 const output = path.join(root, 'tmp', 'test-customer-contact-validation.cjs');
 fs.mkdirSync(path.dirname(output), { recursive: true });
@@ -39,6 +44,19 @@ for (const [label, source] of [['Android', mobileApiSource], ['Windows', electro
 }
 assert.match(migrationSource, /declined_phone boolean not null default false/);
 assert.match(migrationSource, /declined_email boolean not null default false/);
-assert.equal((overviewSource.match(/if \(!payload\) return;/g) || []).length, 2);
+assert.equal((overviewSource.match(/if \(!payload\) return;/g) || []).length, 3);
+assert.match(overviewSource, />New Work Order<\/Button>/);
+assert.match(overviewSource, />New Sale<\/Button>/);
+assert.match(overviewSource, />Consultation<\/Button>/);
+assert.match(overviewSource, /openConsultation\(payload\)/, 'The Consultation action must launch with the saved client payload.');
+assert.match(preloadSource, /openConsultation: \(payload\?: any\).*open-consultation', payload/s, 'Windows must forward the client payload to Consultation.');
+assert.match(electronMainSource, /consultation=\$\{encoded\}/, 'The Windows consultation window must carry its client payload.');
+assert.match(consultationSource, /consumeWindowPayload\('consultation'\)/, 'Mobile consultation must consume its client payload.');
+assert.match(consultationSource, /setSelectedCustomer\(matched\)/, 'Consultation must preselect the matching saved client.');
+assert.match(desktopStyles, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/, 'Desktop client actions must share one equal three-button row.');
+assert.match(mobileStyles, /\.gbpos-mobile \.gb-customer-primary-actions[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/, 'Mobile client actions must share one equal three-button row.');
+assert.match(saleWindowSource, /Ordering belongs to product sales, never consultation billing/);
+assert.match(saleWindowSource, /orderedDate:\s*consultation \|\| sale\.inStock \? null/);
+assert.match(saleWindowSource, /partsOrderUrl:\s*consultation \|\| sale\.inStock \? ''/);
 
 console.log('New-client phone and email decision checks passed.');

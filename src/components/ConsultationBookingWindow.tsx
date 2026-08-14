@@ -8,6 +8,7 @@ import { customerMatchesSearchText } from '../lib/customerDuplicates';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { SHOP_CONSULTATION_LOCATION } from '../lib/consultationLocation';
 import { calculateConsultationPricing, CONSULTATION_BASE_RATE, CONSULTATION_EXTRA_RATE } from '../lib/consultationPricing';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 const CONSULTATION_DISTANCE_FEE = 20;
 const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
@@ -119,6 +120,19 @@ function addHour(time: string): string {
 
 export default function ConsultationBookingWindow() {
   const api = (window as any).api;
+  const customerPayload = useMemo(() => {
+    try {
+      const stored = consumeWindowPayload('consultation');
+      if (stored !== null) return stored;
+    } catch {}
+    try {
+      const raw = new URLSearchParams(window.location.search).get('consultation');
+      if (!raw || raw === '1') return null;
+      return JSON.parse(decodeURIComponent(raw));
+    } catch {
+      return null;
+    }
+  }, []);
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
   }, []);
@@ -277,12 +291,18 @@ export default function ConsultationBookingWindow() {
     (async () => {
       try {
         const list = await api.dbGet('customers');
-        setAllCustomers(Array.isArray(list) ? list : []);
+        const customers = Array.isArray(list) ? list : [];
+        setAllCustomers(customers);
+        const customerId = Number(customerPayload?.customerId || 0);
+        if (customerId > 0) {
+          const matched = customers.find((customer: Customer) => Number(customer.id) === customerId);
+          if (matched) setSelectedCustomer(matched);
+        }
       } catch {
         setAllCustomers([]);
       }
     })();
-  }, [api]);
+  }, [api, customerPayload]);
 
   useEffect(() => {
     try {
