@@ -26,6 +26,9 @@ expect(localRuntime.includes('if (downloadPromise) return downloadPromise'), 'De
 expect(localRuntime.includes('await cancelActiveDownload()'), 'Desktop Gidget repair must wait for an active model download to release its file.');
 expect(localRuntime.includes("headers.Range = `bytes=${existingBytes}-`"), 'Desktop Gidget must resume an interrupted model download.');
 expect(localRuntime.includes('return ipcFailure(error)'), 'Desktop Gidget IPC must return actionable setup errors instead of remote-method exceptions.');
+expect(localRuntime.includes('if (modelLoadPromise) return modelLoadPromise'), 'Desktop Gidget must serialize model startup.');
+expect(localRuntime.includes('void getModel(app, event.sender).catch'), 'Desktop status checks must start model loading without blocking the UI.');
+expect(localRuntime.includes('Gidget took too long to answer'), 'Desktop generation must not leave Gidget checking forever.');
 
 const engine = read('src/lib/gidgetLocalEngine.ts');
 expect(engine.includes('Array.isArray(result?.models)'), 'Android model discovery must unwrap native plugin results.');
@@ -39,5 +42,10 @@ const chat = read('src/components/GidgetChat.tsx');
 expect(chat.includes('buildReadOnlyPosContext'), 'Gidget must have standalone read-only POS context.');
 expect(chat.includes("from('gidget_memories')"), 'Gidget must load explicit learned memories.');
 expect(!chat.includes('/api/gidget/context'), 'Gidget must not depend on the retired hosted context endpoint.');
+expect(chat.includes('if (open && !wasOpenRef.current) newConversation()'), 'Opening Gidget must start a fresh chat.');
+expect(chat.includes('onContextMenu='), 'Desktop chat history must expose right-click actions.');
+expect(chat.includes('startHistoryHold'), 'Mobile chat history must expose touch-and-hold actions.');
+expect(chat.includes(".from('gidget_conversations')\n      .delete()"), 'Chat history must support deleting a selected conversation.');
+expect(chat.includes('await withTimeout(generateWithGidget'), 'The Gidget UI must recover if the native model never returns.');
 
 console.log('Feedback retention and Gidget integration checks passed.');

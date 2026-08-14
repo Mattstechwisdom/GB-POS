@@ -744,3 +744,10 @@
 - Gidget / Windows: validates the complete 2.5 GB Qwen3 model by loading it, creating the production 4096-token context, and generating a real response before release.
 - Release safety: corrects the packaged Gidget test so it executes extracted release code and fails if the native runtime test does not actually run.
 - Existing verified Gidget downloads remain in place and are reused after updating.
+
+## v0.6.2 (2026-08-14)
+
+- Gidget startup: loads the verified local model in the background, serializes concurrent startup requests, and prevents the interface from remaining stuck on a status check.
+- Gidget responses: adds native and renderer time limits so an interrupted or unresponsive generation returns an actionable message instead of displaying "Gidget is checking" indefinitely.
+- Gidget chats: starts a fresh chat whenever the assistant opens and presents the latest 30 conversations in a ChatGPT-style left history drawer.
+- Gidget history: supports desktop right-click and mobile press-and-hold deletion with confirmation while preserving authenticated, shop-scoped Supabase history.

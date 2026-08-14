@@ -18,6 +18,7 @@ type ChatMessage = {
   source?: 'text' | 'voice';
 };
 type Conversation = { id: string; title: string; last_message_at: string; created_at: string };
+type HistoryMenu = { conversation: Conversation; x: number; y: number };
 type Props = { open: boolean; onClose: () => void };
 
 const STARTERS = [
@@ -29,6 +30,21 @@ const STARTERS = [
 
 function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, onTimeout: () => void): Promise<T> {
+  let timer = 0;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => {
+      onTimeout();
+      reject(new Error('Gidget took too long to answer. Try a shorter question.'));
+    }, milliseconds);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 const POS_CONTEXT_COLLECTIONS = ['workOrders', 'sales', 'calendarEvents', 'products', 'quotes', 'technicians'] as const;
@@ -141,6 +157,7 @@ export default function GidgetChat({ open, onClose }: Props) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyMenu, setHistoryMenu] = useState<HistoryMenu | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -154,6 +171,9 @@ export default function GidgetChat({ open, onClose }: Props) {
   const sendRef = useRef<(text: string, source?: 'text' | 'voice') => Promise<void>>(async () => {});
   const abortRef = useRef<AbortController | null>(null);
   const nativeListenerRefs = useRef<PluginListenerHandle[]>([]);
+  const historyHoldRef = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const historyHoldTriggeredRef = useRef(false);
+  const wasOpenRef = useRef(false);
   const nativeVoice = useMemo(() => Capacitor.isNativePlatform(), []);
   const speechSupported = useMemo(() => nativeVoice || (typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)), [nativeVoice]);
 
@@ -349,10 +369,13 @@ export default function GidgetChat({ open, onClose }: Props) {
         memoryResult = { ...memoryResult, saved: saved.data || null, saveError: saved.error?.message };
       }
       const context: any = { records, memory_result: memoryResult };
-      const body = await generateWithGidget({
-        ...context,
-        messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
-      });
+      const body = await withTimeout(generateWithGidget({
+          ...context,
+          messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
+        }),
+        135000,
+        () => { void cancelGidgetWork().catch(() => undefined); },
+      );
       if (!body?.ok || !body?.answer) throw new Error(body?.error || 'The local model did not return a usable answer.');
       const assistantMessage: ChatMessage = {
         id: messageId(), role: 'assistant', content: String(body.answer || 'I could not produce an answer.'),
@@ -505,13 +528,75 @@ export default function GidgetChat({ open, onClose }: Props) {
     setHistoryOpen(false);
   };
 
-  const newConversation = () => {
+  const newConversation = useCallback(() => {
     stopVoice();
     setConversationId(null);
     setMessages([]);
     setDraft('');
     setHistoryOpen(false);
-  };
+    setHistoryMenu(null);
+  }, [stopVoice]);
+
+  const clearHistoryHold = useCallback(() => {
+    if (historyHoldRef.current) window.clearTimeout(historyHoldRef.current.timer);
+    historyHoldRef.current = null;
+  }, []);
+
+  const openHistoryMenu = useCallback((conversation: Conversation, x: number, y: number) => {
+    setHistoryMenu({ conversation, x, y });
+  }, []);
+
+  const startHistoryHold = useCallback((event: React.PointerEvent, conversation: Conversation) => {
+    if (event.pointerType === 'mouse') return;
+    clearHistoryHold();
+    historyHoldTriggeredRef.current = false;
+    const x = event.clientX;
+    const y = event.clientY;
+    const timer = window.setTimeout(() => {
+      historyHoldTriggeredRef.current = true;
+      openHistoryMenu(conversation, x, y);
+      if (navigator.vibrate) navigator.vibrate(25);
+    }, 550);
+    historyHoldRef.current = { timer, x, y };
+  }, [clearHistoryHold, openHistoryMenu]);
+
+  const moveHistoryHold = useCallback((event: React.PointerEvent) => {
+    const hold = historyHoldRef.current;
+    if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 10) clearHistoryHold();
+  }, [clearHistoryHold]);
+
+  const deleteConversation = useCallback(async (conversation: Conversation) => {
+    setHistoryMenu(null);
+    if (!shopContext || !window.confirm(`Delete "${conversation.title}" and its messages?`)) return;
+    const { error } = await supabase
+      .from('gidget_conversations')
+      .delete()
+      .eq('id', conversation.id)
+      .eq('shop_id', shopContext.shopId)
+      .eq('user_id', shopContext.userId);
+    if (error) {
+      window.alert(`Gidget could not delete that chat: ${friendlyError(error)}`);
+      return;
+    }
+    setConversations((current) => current.filter((item) => item.id !== conversation.id));
+    if (conversation.id === conversationId) newConversation();
+  }, [conversationId, newConversation, shopContext]);
+
+  useEffect(() => {
+    if (open && !wasOpenRef.current) newConversation();
+    wasOpenRef.current = open;
+  }, [newConversation, open]);
+
+  useEffect(() => {
+    if (!historyMenu) return;
+    const dismiss = () => setHistoryMenu(null);
+    window.addEventListener('pointerdown', dismiss);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [historyMenu]);
 
   useEffect(() => {
     if (!open) return;
@@ -535,10 +620,10 @@ export default function GidgetChat({ open, onClose }: Props) {
       <button type="button" className="gidget-scrim" onClick={onClose} aria-label="Close Gidget" />
       <section className="gidget-window" role="dialog" aria-modal="true" aria-labelledby="gidget-title">
         <header className="gidget-header">
+          <button type="button" className="gidget-history-button" onClick={() => setHistoryOpen((current) => !current)} aria-label="Open chat history" aria-expanded={historyOpen} title="Chat history"><i /><i /><i /></button>
           <img src={publicAsset('logo.png')} alt="" />
           <div><h2 id="gidget-title">Gidget</h2><span>Private repair + POS assistant</span></div>
           <span className="gidget-readonly">POS read-only</span>
-          <button type="button" className="gidget-history-button" onClick={() => setHistoryOpen(true)} title="Conversation history">History</button>
           <button type="button" className="gidget-close" onClick={onClose} aria-label="Close Gidget">x</button>
         </header>
 
@@ -557,27 +642,45 @@ export default function GidgetChat({ open, onClose }: Props) {
                 <p className="gidget-model-note">Gidget could not detect the local AI bridge for this window. This usually clears up after a retry or a restart of the app.</p>
                 <button type="button" className="gidget-model-install" onClick={() => void recheckModelStatus()} disabled={settingUpModel}>Check again</button>
               </>
-            ) : (
+            ) : !['downloading', 'verifying', 'loading'].includes(modelState.status) ? (
               <div className="gidget-model-actions">
                 <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry model startup' : 'Download and set up Gidget'}</button>
                 {modelState.status === 'error' ? <button type="button" className="gidget-model-repair" onClick={() => void repairModel()} disabled={settingUpModel}>Repair local model</button> : null}
               </div>
-            )}
+            ) : null}
           </div>
-        ) : historyOpen ? (
-          <div className="gidget-history" aria-label="Gidget conversation history">
-            <div className="gidget-history-title"><div><strong>Conversation history</strong><span>Newest 30 chats</span></div><button type="button" onClick={newConversation}>New chat</button></div>
-            <div className="gidget-history-list">
-              {conversations.length ? conversations.map((conversation) => (
-                <button key={conversation.id} type="button" className={conversation.id === conversationId ? 'active' : ''} onClick={() => void loadConversation(conversation)}>
-                  <strong>{conversation.title}</strong><span>{new Date(conversation.last_message_at).toLocaleString()}</span>
-                </button>
-              )) : <p>No saved conversations yet.</p>}
-            </div>
-            <button type="button" className="gidget-history-back" onClick={() => setHistoryOpen(false)}>Back to chat</button>
-          </div>
-        ) : voiceOpen ? (
-          <div className="gidget-voice-room">
+        ) : (
+          <div className="gidget-chat-shell">
+            {historyOpen ? <button type="button" className="gidget-history-scrim" onClick={() => setHistoryOpen(false)} aria-label="Close chat history" /> : null}
+            <aside className={`gidget-history${historyOpen ? ' open' : ''}`} aria-label="Gidget conversation history" aria-hidden={!historyOpen}>
+              <div className="gidget-history-title"><div><strong>Chats</strong><span>30 most recent</span></div><button type="button" onClick={newConversation}>New chat</button></div>
+              <div className="gidget-history-list">
+                {conversations.length ? conversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    className={conversation.id === conversationId ? 'active' : ''}
+                    onClick={() => { if (historyHoldTriggeredRef.current) { historyHoldTriggeredRef.current = false; return; } void loadConversation(conversation); }}
+                    onContextMenu={(event) => { event.preventDefault(); openHistoryMenu(conversation, event.clientX, event.clientY); }}
+                    onPointerDown={(event) => startHistoryHold(event, conversation)}
+                    onPointerMove={moveHistoryHold}
+                    onPointerUp={clearHistoryHold}
+                    onPointerCancel={clearHistoryHold}
+                  >
+                    <strong>{conversation.title}</strong><span>{new Date(conversation.last_message_at).toLocaleString()}</span>
+                  </button>
+                )) : <p>No saved conversations yet.</p>}
+              </div>
+              <p className="gidget-history-hint">Right-click or press and hold a chat to delete it.</p>
+            </aside>
+            {historyMenu ? (
+              <div className="gidget-history-menu" style={{ left: Math.min(historyMenu.x, window.innerWidth - 180), top: Math.min(historyMenu.y, window.innerHeight - 70) }} onPointerDown={(event) => event.stopPropagation()}>
+                <button type="button" onClick={() => void deleteConversation(historyMenu.conversation)}>Delete chat</button>
+              </div>
+            ) : null}
+            <main className="gidget-chat-main">
+            {voiceOpen ? (
+              <div className="gidget-voice-room">
             <GidgetVoiceSphere active={listening || sending} speaking={speaking} />
             <div className="gidget-voice-state"><strong>{voiceStatus}</strong><span>{speechSupported ? 'Speak naturally. Start talking to interrupt Gidget.' : 'Use text chat on this device.'}</span></div>
             <button type="button" onClick={stopVoice}>End voice conversation</button>
@@ -600,6 +703,9 @@ export default function GidgetChat({ open, onClose }: Props) {
             </form>
             <footer>Gidget never writes to POS records. Verify safety-critical board procedures against the exact model and board revision.</footer>
           </>
+            )}
+            </main>
+          </div>
         )}
       </section>
     </div>
