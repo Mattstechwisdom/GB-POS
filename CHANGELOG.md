@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.4 (2026-08-14)
+- Gidget Responses: bounds shop-session, POS-context, memory, and history work so a stalled database request can no longer leave the chat permanently checking.
+- Local AI Performance: keeps prompts inside the model context window, requests direct answers without hidden reasoning, and uses a CPU-appropriate response length on Windows and Android.
+- Gidget Feedback: distinguishes shop-context preparation from local answer generation and always clears the active response state on success, failure, or timeout.
+
 ## v0.5.99 (2026-08-13)
 - Android Startup: removes an unsafe forced reporting bundle that caused the published 0.5.98 APK to fail before React mounted, and adds a visible startup recovery screen instead of an unexplained black page.
 - Release Safety: opens the built production mobile bundle during release validation and blocks publication when startup logs an error or leaves an empty app root.

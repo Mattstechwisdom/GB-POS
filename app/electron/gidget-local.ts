@@ -229,13 +229,13 @@ async function getModel(app: any, sender?: any) {
 }
 
 function buildPrompt(messages: any[], records: any, memoryResult: any, webSources: any[]) {
-  const history = (Array.isArray(messages) ? messages : []).slice(-12)
-    .map((message) => `${message.role === 'assistant' ? 'Gidget' : 'Technician'}: ${String(message.content || '').slice(0, 5000)}`)
+  const history = (Array.isArray(messages) ? messages : []).slice(-4)
+    .map((message) => `${message.role === 'assistant' ? 'Gidget' : 'Technician'}: ${String(message.content || '').slice(0, 600)}`)
     .join('\n');
   const recordContext = records ? `\nAuthenticated read-only POS result:\n${JSON.stringify(records)}\n` : '';
   const memoryContext = memoryResult ? `\nMemory request result:\n${JSON.stringify(memoryResult)}\n` : '';
   const webContext = Array.isArray(webSources) && webSources.length ? `\nCurrent web research sources:\n${JSON.stringify(webSources)}\n` : '';
-  return `${history}${recordContext}${memoryContext}${webContext}\nAnswer the technician's latest message. POS facts must come only from the authenticated POS result above. If no POS result was supplied, say you cannot verify shop records instead of guessing. Use web snippets only as leads, cite their source titles, and state uncertainty when the source is incomplete.`;
+  return `${history}${recordContext}${memoryContext}${webContext}\n/no_think\nAnswer the technician's latest message directly and concisely. POS facts must come only from the authenticated POS result above. If no POS result was supplied, say you cannot verify shop records instead of guessing. Use web snippets only as leads, cite their source titles, and state uncertainty when the source is incomplete.`;
 }
 
 export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: any }) {
@@ -261,7 +261,7 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
   ipcMain.handle('gidget:localGenerate', async (event: any, payload: any) => {
     try {
       const model = await getModel(app, event.sender);
-      const context = await model.createContext({ contextSize: 4096 });
+      const context = await model.createContext({ contextSize: 3072 });
       const sequence = context.getSequence();
       const session = new llamaRuntime.module.LlamaChatSession({
         contextSequence: sequence,
@@ -271,7 +271,7 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
       const timeout = setTimeout(() => activeAbort?.abort(), 120000);
       try {
       const answer = await session.prompt(buildPrompt(payload?.messages, payload?.records, payload?.memory_result, payload?.web_sources), {
-        maxTokens: 640,
+        maxTokens: 320,
         temperature: 0.35,
         signal: activeAbort.signal,
       });

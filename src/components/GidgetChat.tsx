@@ -32,18 +32,26 @@ function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function withTimeout<T>(promise: Promise<T>, milliseconds: number, onTimeout: () => void): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, onTimeout: () => void, message = 'Gidget took too long to answer. Try a shorter question.'): Promise<T> {
   let timer = 0;
   const timeout = new Promise<never>((_, reject) => {
     timer = window.setTimeout(() => {
       onTimeout();
-      reject(new Error('Gidget took too long to answer. Try a shorter question.'));
+      reject(new Error(message));
     }, milliseconds);
   });
   try {
     return await Promise.race([promise, timeout]);
   } finally {
     window.clearTimeout(timer);
+  }
+}
+
+async function optionalWithin<T>(promise: Promise<T>, milliseconds: number, fallback: T): Promise<T> {
+  try {
+    return await withTimeout(promise, milliseconds, () => undefined, 'Optional Gidget context timed out.');
+  } catch {
+    return fallback;
   }
 }
 
@@ -126,7 +134,7 @@ async function buildReadOnlyPosContext(query: string) {
   let contextCharacters = 0;
   for (const record of candidates) {
     const size = JSON.stringify(record).length;
-    if (selected.length >= 80 || contextCharacters + size > 12000) break;
+    if (selected.length >= 40 || contextCharacters + size > 5000) break;
     selected.push(record);
     contextCharacters += size;
   }
@@ -156,6 +164,7 @@ export default function GidgetChat({ open, onClose }: Props) {
   const [shopContext, setShopContext] = useState<{ shopId: string; userId: string } | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [requestStage, setRequestStage] = useState('Checking shop context');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyMenu, setHistoryMenu] = useState<HistoryMenu | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -340,25 +349,32 @@ export default function GidgetChat({ open, onClose }: Props) {
     setMessages(nextMessages);
     setDraft('');
     setSending(true);
+    setRequestStage('Preparing shop context');
     setVoiceStatus(source === 'voice' ? 'Thinking' : voiceStatus);
-    const activeConversationId = await ensureConversation(content);
-    if (activeConversationId) await persistMessage(activeConversationId, userMessage);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       if (!modelState.ready) throw new Error('Finish Gidget\'s one-time local model setup before chatting.');
-      const { data } = await supabase.auth.getSession();
+      const activeConversationId = await optionalWithin(ensureConversation(content), 6000, null);
+      if (activeConversationId) void optionalWithin(persistMessage(activeConversationId, userMessage), 6000, undefined);
+      const { data } = await withTimeout(supabase.auth.getSession(), 6000, () => undefined, 'Gidget could not verify the shop session. Check the connection and try again.');
       const token = data.session?.access_token;
       if (!token) throw new Error('Your shop session expired. Sign in again to use Gidget.');
-      const records = await buildReadOnlyPosContext(content);
-      const { data: memories } = await supabase.from('gidget_memories')
+      const records = await optionalWithin(buildReadOnlyPosContext(content), 12000, { available: false, reason: 'POS context timed out.' });
+      const memoryResponse = await optionalWithin<any>(Promise.resolve(supabase.from('gidget_memories')
         .select('content,updated_at')
         .eq('shop_id', shopContext?.shopId || '')
         .eq('user_id', shopContext?.userId || '')
         .order('updated_at', { ascending: false })
-        .limit(40);
+        .limit(8)), 6000, { data: [], error: null });
+      const memories = memoryResponse.data;
       const remember = content.match(/^\s*(?:please\s+)?remember(?:\s+that)?\s+(.{2,1000})\s*$/is)?.[1]?.trim();
-      let memoryResult: any = { memories: memories || [] };
+      let memoryResult: any = {
+        memories: (memories || []).slice(0, 8).map((memory: any) => ({
+          content: String(memory?.content || '').slice(0, 500),
+          updated_at: memory?.updated_at,
+        })),
+      };
       if (remember && shopContext) {
         const saved = await supabase.from('gidget_memories').insert({
           shop_id: shopContext.shopId,
@@ -369,6 +385,7 @@ export default function GidgetChat({ open, onClose }: Props) {
         memoryResult = { ...memoryResult, saved: saved.data || null, saveError: saved.error?.message };
       }
       const context: any = { records, memory_result: memoryResult };
+      setRequestStage('Generating answer');
       const body = await withTimeout(generateWithGidget({
           ...context,
           messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
@@ -382,9 +399,9 @@ export default function GidgetChat({ open, onClose }: Props) {
         citations: [], source,
       };
       setMessages((current) => [...current, assistantMessage]);
-      if (activeConversationId) await persistMessage(activeConversationId, assistantMessage);
+      if (activeConversationId) void optionalWithin(persistMessage(activeConversationId, assistantMessage), 6000, undefined);
       if (source === 'voice') speak(assistantMessage.content);
-      await refreshHistory();
+      void optionalWithin(refreshHistory(), 6000, undefined);
     } catch (error: any) {
       if (error?.name === 'AbortError' || controller.signal.aborted) return;
       if (/local model|node-llama|llama/i.test(String(error?.message || ''))) {
@@ -396,6 +413,7 @@ export default function GidgetChat({ open, onClose }: Props) {
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setSending(false);
+      setRequestStage('Checking shop context');
       if (source === 'voice' && !window.speechSynthesis?.speaking) setVoiceStatus('Listening');
     }
   }, [draft, ensureConversation, messages, modelState.ready, persistMessage, refreshHistory, sending, shopContext, speak, voiceStatus]);
@@ -694,7 +712,7 @@ export default function GidgetChat({ open, onClose }: Props) {
               {messages.map((message) => (
                 <article key={message.id} className={`gidget-message ${message.role}${message.error ? ' error' : ''}`}><span>{message.role === 'assistant' ? 'Gidget' : 'You'}</span><p>{message.content}</p>{message.citations?.length ? <div className="gidget-citations" aria-label="Sources">{message.citations.map((citation, index) => citation.url ? <a key={`${citation.url}-${index}`} href={citation.url} target="_blank" rel="noreferrer">{citation.title}</a> : <span key={`${citation.fileId}-${index}`}>{citation.title}</span>)}</div> : null}</article>
               ))}
-              {sending ? <div className="gidget-thinking"><i /><i /><i /><span>Gidget is checking...</span></div> : null}<div ref={endRef} />
+              {sending ? <div className="gidget-thinking"><i /><i /><i /><span>{requestStage}...</span></div> : null}<div ref={endRef} />
             </div>
             <form className="gidget-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
               <textarea ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } }} rows={2} maxLength={5000} placeholder="Ask Gidget or say 'remember that...'" />

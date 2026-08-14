@@ -22,6 +22,7 @@ const main = read('app/electron/electron-main.ts');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
 
 const localRuntime = read('app/electron/gidget-local.ts');
+const chat = read('src/components/GidgetChat.tsx');
 expect(localRuntime.includes('if (downloadPromise) return downloadPromise'), 'Desktop Gidget setup must serialize competing model downloads.');
 expect(localRuntime.includes('await cancelActiveDownload()'), 'Desktop Gidget repair must wait for an active model download to release its file.');
 expect(localRuntime.includes("headers.Range = `bytes=${existingBytes}-`"), 'Desktop Gidget must resume an interrupted model download.');
@@ -29,6 +30,12 @@ expect(localRuntime.includes('return ipcFailure(error)'), 'Desktop Gidget IPC mu
 expect(localRuntime.includes('if (modelLoadPromise) return modelLoadPromise'), 'Desktop Gidget must serialize model startup.');
 expect(localRuntime.includes('void getModel(app, event.sender).catch'), 'Desktop status checks must start model loading without blocking the UI.');
 expect(localRuntime.includes('Gidget took too long to answer'), 'Desktop generation must not leave Gidget checking forever.');
+expect(chat.includes("setRequestStage('Preparing shop context')"), 'Gidget must expose its request preparation stage.');
+expect(chat.includes("setRequestStage('Generating answer')"), 'Gidget must expose its local generation stage.');
+expect(chat.includes('optionalWithin(ensureConversation(content), 6000, null)'), 'Gidget history persistence must not block a response forever.');
+expect(localRuntime.includes('/no_think'), 'Desktop Gidget must request a direct answer instead of spending its response budget on hidden reasoning.');
+expect(localRuntime.includes('maxTokens: 320'), 'Desktop Gidget must use a CPU-appropriate response budget.');
+expect(localRuntime.includes(".slice(-4)"), 'Desktop Gidget must keep prompts within its local context window.');
 
 const engine = read('src/lib/gidgetLocalEngine.ts');
 expect(engine.includes('Array.isArray(result?.models)'), 'Android model discovery must unwrap native plugin results.');
@@ -38,7 +45,6 @@ expect(engine.includes("if (!result?.ok) throw new Error(result?.error"), 'The G
 const packageJson = JSON.parse(read('package.json'));
 expect(packageJson.dependencies['node-llama-cpp'] === '3.8.1', 'Desktop Gidget must use the Qwen3-capable Electron 29 runtime.');
 
-const chat = read('src/components/GidgetChat.tsx');
 expect(chat.includes('buildReadOnlyPosContext'), 'Gidget must have standalone read-only POS context.');
 expect(chat.includes("from('gidget_memories')"), 'Gidget must load explicit learned memories.');
 expect(!chat.includes('/api/gidget/context'), 'Gidget must not depend on the retired hosted context endpoint.');
