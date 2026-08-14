@@ -45,7 +45,7 @@ expect(!chat.includes('/api/gidget/context'), 'Gidget must not depend on the ret
 expect(chat.includes('if (open && !wasOpenRef.current) newConversation()'), 'Opening Gidget must start a fresh chat.');
 expect(chat.includes('onContextMenu='), 'Desktop chat history must expose right-click actions.');
 expect(chat.includes('startHistoryHold'), 'Mobile chat history must expose touch-and-hold actions.');
-expect(chat.includes(".from('gidget_conversations')\n      .delete()"), 'Chat history must support deleting a selected conversation.');
+expect(chat.includes('const deleteConversation = useCallback') && chat.includes(".eq('id', conversation.id)"), 'Chat history must support deleting a selected conversation.');
 expect(chat.includes('await withTimeout(generateWithGidget'), 'The Gidget UI must recover if the native model never returns.');
 
 console.log('Feedback retention and Gidget integration checks passed.');
