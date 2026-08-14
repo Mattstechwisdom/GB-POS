@@ -9,6 +9,9 @@ const os = require('os');
 const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
+const { registerGidgetLocalIpc } = require('./gidget-local');
+
+registerGidgetLocalIpc({ ipcMain, app });
 
 let autoUpdater: any = null;
 try {

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.99 (2026-08-13)
+- Android Startup: removes an unsafe forced reporting bundle that caused the published 0.5.98 APK to fail before React mounted, and adds a visible startup recovery screen instead of an unexplained black page.
+- Release Safety: opens the built production mobile bundle during release validation and blocks publication when startup logs an error or leaves an empty app root.
+- Mobile Work Orders: removes repeated device labels from repair line items, keeps the actual catalog repair title ahead of supporting descriptions, and centers Add Product below the catalog and custom-item actions.
+- Parts Tracking: gives mobile order and estimated-delivery date controls stable responsive widths without changing the desktop work-order arrangement.
+- Feedback: retains completed submissions for three days, supports explicit deletion, and keeps active/completed feedback easier to distinguish.
+- Gidget: improves local-model discovery, download-path handling, retry and repair controls, and read-only POS record analysis while preserving authenticated, shop-scoped memories.
+
 ## v0.5.98 (2026-08-13)
 - Calendar Day Controls: replaces the stretched daily Notes control on desktop with equal Notes and Tasks buttons; Tasks opens the selected date's checklist and shows open/total progress.
 - Task Scheduling: adds an All Day choice or synchronized Start Time and End Time fields, displays the saved range in task details, and rejects incomplete or backwards time ranges.

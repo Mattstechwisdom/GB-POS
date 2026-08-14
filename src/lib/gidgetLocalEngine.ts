@@ -41,7 +41,8 @@ async function nativeApi() {
 
 async function findNativeModel() {
   const api = await nativeApi();
-  const models = await api.getAvailableModels();
+  const result = await api.getAvailableModels();
+  const models = Array.isArray(result) ? result : (Array.isArray(result?.models) ? result.models : []);
   const match = (models || []).find((model: any) =>
     String(model.name || '').toLowerCase() === ANDROID_MODEL.filename.toLowerCase()
     || String(model.path || '').toLowerCase().endsWith(ANDROID_MODEL.filename.toLowerCase()));
@@ -130,7 +131,9 @@ export async function setupGidgetModel(onProgress: (value: GidgetModelProgress) 
     })).catch(() => undefined);
   }, 500);
   try {
-    nativeModelPath = await api.downloadModel(ANDROID_MODEL.url, ANDROID_MODEL.filename);
+    const downloadResult = await api.downloadModel(ANDROID_MODEL.url, ANDROID_MODEL.filename);
+    nativeModelPath = typeof downloadResult === 'string' ? downloadResult : String(downloadResult?.localPath || downloadResult?.path || '');
+    if (!nativeModelPath) throw new Error('Android finished the model download but did not return its saved location.');
     onProgress({ status: 'verifying', progress: 99, model: ANDROID_MODEL });
     await verifyAndroidModel(nativeModelPath);
     localStorage.setItem(ANDROID_VERIFIED_KEY, nativeModelPath);
@@ -176,6 +179,21 @@ export async function cancelGidgetWork() {
   if (progressTimer !== null && nativeModule) await nativeModule.cancelDownload(ANDROID_MODEL.url).catch(() => undefined);
   await nativeContext?.stopCompletion?.().catch(() => undefined);
   return { ok: true };
+}
+
+export async function resetGidgetModel(onProgress: (value: GidgetModelProgress) => void) {
+  await nativeContext?.release?.().catch(() => undefined);
+  nativeContext = null;
+  nativeModelPath = '';
+  if (isDesktopBridge()) {
+    await window.api.gidgetLocalRemove?.();
+    return setupGidgetModel(onProgress);
+  }
+  localStorage.removeItem(ANDROID_VERIFIED_KEY);
+  const api = await nativeApi();
+  const existing = await findNativeModel();
+  if (existing && typeof api.deleteModel === 'function') await api.deleteModel(existing).catch(() => undefined);
+  return setupGidgetModel(onProgress);
 }
 
 export const GIDGET_ANDROID_MODEL = ANDROID_MODEL;

@@ -26,8 +26,6 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) return 'vendor';
-            if (id.includes('ReportingWindow') || id.includes('EODWindow') || id.includes('ChartsWindow')) return 'reporting';
-            if (id.includes('BackupWindow') || id.includes('DevMenuWindow')) return 'admin-tools';
             return undefined;
           },
         },

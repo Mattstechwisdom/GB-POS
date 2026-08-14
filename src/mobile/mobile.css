@@ -2656,13 +2656,18 @@
 }
 
 .gbpos-mobile .gb-wo-items-card td[data-label="Device"] {
-  color: #f4f4f5;
-  font-size: 1rem;
-  font-weight: 800;
+  display: none !important;
+}
+
+.gbpos-mobile .gb-wo-items-card td[data-label="Type"] {
+  color: #a1a1aa;
+  font-size: 0.76rem;
 }
 
 .gbpos-mobile .gb-wo-items-card td[data-label="Repair"] {
-  color: #e4e4e7;
+  color: #f4f4f5;
+  font-size: 1rem;
+  font-weight: 800;
   line-height: 1.25;
 }
 
@@ -2700,8 +2705,15 @@
   min-height: 2.75rem;
 }
 
+.gbpos-mobile .gb-wo-items-actions .gb-wo-add-product {
+  grid-column: 1 / -1;
+  width: min(100%, 14rem);
+  justify-self: center;
+}
+
 .gbpos-mobile .gb-wo-items-actions > div {
   grid-column: 1 / -1;
+  text-align: center;
 }
 
 .gbpos-mobile .gb-wo-parts-card {
@@ -2747,6 +2759,7 @@
 
 .gbpos-mobile .gb-wo-parts-grid > .gb-wo-parts-date-field {
   grid-column: auto !important;
+  min-width: 0;
 }
 
 .gbpos-mobile .gb-wo-parts-url-field,
@@ -2761,8 +2774,14 @@
 }
 
 .gbpos-mobile .gb-wo-parts-control {
+  width: 100%;
+  min-width: 0;
   min-height: 2.75rem;
   font-size: 0.95rem;
+}
+
+.gbpos-mobile .gb-wo-parts-control[type="date"] {
+  padding-inline: 0.45rem;
 }
 
 .gbpos-mobile .gb-wo-parts-grid button {

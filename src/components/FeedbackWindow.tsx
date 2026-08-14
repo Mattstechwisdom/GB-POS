@@ -11,6 +11,13 @@ type FeedbackEntry = {
 };
 
 const blankDraft = () => ({ subject: '', body: '' });
+const COMPLETED_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+
+function completedExpiry(entry: FeedbackEntry) {
+  if (!entry.completed) return 0;
+  const completedAt = new Date(entry.completedAt || entry.updatedAt || '').getTime();
+  return Number.isNaN(completedAt) ? 0 : completedAt + COMPLETED_RETENTION_MS;
+}
 
 function formatDate(value?: string) {
   if (!value) return '';
@@ -29,7 +36,16 @@ export default function FeedbackWindow() {
   const loadEntries = async () => {
     try {
       const list = await window.api.dbGet('feedbackEntries');
-      setEntries((Array.isArray(list) ? list : []).sort((left: FeedbackEntry, right: FeedbackEntry) => {
+      const loaded = Array.isArray(list) ? list as FeedbackEntry[] : [];
+      const now = Date.now();
+      const expired = loaded.filter(entry => {
+        const expiry = completedExpiry(entry);
+        return expiry > 0 && expiry <= now;
+      });
+      if (expired.length) {
+        await Promise.all(expired.map(entry => window.api.dbDelete('feedbackEntries', entry.id)));
+      }
+      setEntries(loaded.filter(entry => !expired.some(item => String(item.id) === String(entry.id))).sort((left: FeedbackEntry, right: FeedbackEntry) => {
         if (!!left.completed !== !!right.completed) return left.completed ? 1 : -1;
         return String(right.updatedAt || right.createdAt || '').localeCompare(String(left.updatedAt || left.createdAt || ''));
       }));
@@ -102,6 +118,23 @@ export default function FeedbackWindow() {
     }
   };
 
+  const deleteSelected = async () => {
+    if (!selected) return;
+    if (!window.confirm(`Delete feedback "${selected.subject}"? This cannot be undone.`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await window.api.dbDelete('feedbackEntries', selected.id);
+      setEditorOpen(false);
+      setSelected(null);
+      await loadEntries();
+    } catch {
+      setError('Feedback could not be deleted.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const counts = useMemo(() => ({ open: entries.filter(entry => !entry.completed).length, completed: entries.filter(entry => entry.completed).length }), [entries]);
 
   return (
@@ -119,7 +152,7 @@ export default function FeedbackWindow() {
           <button key={String(entry.id)} type="button" onClick={() => openEntry(entry)} className="flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-3 text-left last:border-b-0 hover:bg-zinc-900">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${entry.completed ? 'bg-zinc-600' : 'bg-[#39FF14]'}`} />
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{entry.subject}</span>
-            <span className={`shrink-0 text-xs ${entry.completed ? 'text-zinc-500' : 'text-[#39FF14]'}`}>{entry.completed ? 'Completed' : 'Open'}</span>
+            <span className={`shrink-0 text-xs ${entry.completed ? 'text-zinc-500' : 'text-[#39FF14]'}`}>{entry.completed ? 'Completed - retained 3 days' : 'Open'}</span>
             <span className="hidden shrink-0 text-xs text-zinc-500 sm:block">{formatDate(entry.updatedAt || entry.createdAt)}</span>
           </button>
         ))}
@@ -131,8 +164,12 @@ export default function FeedbackWindow() {
             <label className="mb-3 block text-sm font-semibold text-zinc-300">Subject<input value={draft.subject} onChange={event => setDraft(current => ({ ...current, subject: event.target.value }))} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-[#39FF14]" /></label>
             <label className="block text-sm font-semibold text-zinc-300">Details<textarea value={draft.body} onChange={event => setDraft(current => ({ ...current, body: event.target.value }))} rows={8} className="mt-1 w-full resize-y rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-[#39FF14]" /></label>
             {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
+            {selected?.completed ? <p className="mt-3 text-xs text-zinc-400">Completed feedback is automatically removed three days after completion.</p> : null}
             <div className="mt-5 flex flex-wrap justify-between gap-2">
-              {selected ? <button type="button" disabled={saving} onClick={() => void toggleCompleted()} className="rounded border border-amber-400 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-60">{selected.completed ? 'Reopen' : 'Mark Completed'}</button> : <span />}
+              <div className="flex flex-wrap gap-2">
+                {selected ? <button type="button" disabled={saving} onClick={() => void toggleCompleted()} className="rounded border border-amber-400 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-60">{selected.completed ? 'Reopen' : 'Mark Completed'}</button> : null}
+                {selected ? <button type="button" disabled={saving} onClick={() => void deleteSelected()} className="rounded border border-red-500 px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10 disabled:opacity-60">Delete</button> : null}
+              </div>
               <button type="button" disabled={saving} onClick={() => void save()} className="rounded border border-[#39FF14] bg-[#39FF14] px-4 py-2 text-sm font-bold text-black hover:brightness-110 disabled:opacity-60">{saving ? 'Saving...' : 'Save'}</button>
             </div>
           </div>

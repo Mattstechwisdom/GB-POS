@@ -1734,43 +1734,43 @@ const NewWorkOrderWindow: React.FC = () => {
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
           {/* Parts dates + order URL (under line items) */}
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-2">
-            <div className="flex items-center justify-between mb-1">
+          <div className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-2">
+            <div className="gb-wo-parts-header flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4>
               <div className="text-[11px] text-zinc-500">Not shown on printouts</div>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              <div>
+            <div className="gb-wo-parts-grid grid grid-cols-4 gap-2">
+              <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Order date</label>
                 <input
                   type="date"
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   value={(wo as any).partsOrderDate ? String((wo as any).partsOrderDate).substring(0, 10) : ''}
                   onChange={e => setWo(w => ({ ...w, partsOrderDate: e.target.value || null }))}
                 />
               </div>
-              <div>
+              <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Est. delivery</label>
                 <input
                   type="date"
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   value={(wo as any).partsEstDelivery ? String((wo as any).partsEstDelivery).substring(0, 10) : ''}
                   onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null }))}
                 />
               </div>
-              <div>
+              <div className="gb-wo-parts-url-field">
                 <label className="block text-xs text-zinc-400">Tracking URL</label>
                 <input
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   placeholder="https://..."
                   value={(wo as any).partsTrackingUrl || ''}
                   onChange={e => setWo(w => ({ ...w, partsTrackingUrl: e.target.value }))}
                 />
               </div>
-              <div className="col-span-4">
+              <div className="gb-wo-parts-notes-field col-span-4">
                 <label className="block text-xs text-zinc-400">Dates/notes</label>
                 <input
-                  className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                   placeholder="e.g. Ordered 10/04, ETA 10/10"
                   value={(wo as any).partsDates || ''}
                   onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}

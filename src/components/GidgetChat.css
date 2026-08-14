@@ -56,6 +56,10 @@
 .gidget-model-progress p { margin-top: 7px; color: #d8d8df; font-size: 13px; }
 .gidget-model-install { min-height: 44px; padding: 0 18px; border: 1px solid #7c19a6; background: #bc13fe; color: #fff; font-weight: 800; cursor: pointer; }
 .gidget-model-install:disabled { opacity: .55; cursor: default; }
+.gidget-model-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.gidget-model-repair { min-height: 44px; padding: 0 16px; border: 1px solid #52525b; background: #18181b; color: #e4e4e7; font-weight: 700; cursor: pointer; }
+.gidget-model-repair:hover { border-color: #ef4444; color: #fecaca; }
+.gidget-model-repair:disabled { opacity: .55; cursor: default; }
 .gidget-model-error { color: #ff8585 !important; }
 .gidget-model-note { color: #a9a9b5 !important; }
 

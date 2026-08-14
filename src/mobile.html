@@ -8,9 +8,51 @@
     />
     <meta name="theme-color" content="#09090b" />
     <title>GadgetBoy POS Mobile</title>
+    <style>
+      html, body, #root { min-height: 100%; margin: 0; background: #09090b; }
+      #gbpos-initial-loader {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+        color: #f4f4f5;
+        font: 600 15px/1.5 system-ui, sans-serif;
+        text-align: center;
+      }
+      #gbpos-initial-loader strong { display: block; color: #d45cff; font-size: 20px; }
+      #gbpos-initial-loader button {
+        display: none;
+        margin: 16px auto 0;
+        border: 1px solid #bc13fe;
+        border-radius: 6px;
+        background: #bc13fe;
+        color: #09090b;
+        padding: 10px 18px;
+        font: inherit;
+      }
+      #gbpos-initial-loader[data-error="true"] button { display: block; }
+    </style>
+    <script>
+      window.addEventListener('error', function () {
+        var loader = document.getElementById('gbpos-initial-loader');
+        if (!loader) return;
+        loader.dataset.error = 'true';
+        var message = loader.querySelector('[data-startup-message]');
+        if (message) message.textContent = 'The app could not finish starting. Relaunch it or tap Retry.';
+      });
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="gbpos-initial-loader">
+        <div>
+          <strong>GADGETBOY POS</strong>
+          <span data-startup-message>Loading your shop...</span>
+          <button type="button" onclick="location.reload()">Retry</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/mobile.tsx"></script>
   </body>
 </html>

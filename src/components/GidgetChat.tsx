@@ -4,7 +4,7 @@ import { SpeechRecognition as NativeSpeechRecognition } from '@capgo/capacitor-s
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { publicAsset } from '../lib/publicAsset';
 import { supabase } from '../lib/supabase';
-import { cancelGidgetWork, generateWithGidget, gidgetLocalStatus, setupGidgetModel, subscribeGidgetProgress, type GidgetModelProgress } from '../lib/gidgetLocalEngine';
+import { cancelGidgetWork, generateWithGidget, gidgetLocalStatus, resetGidgetModel, setupGidgetModel, subscribeGidgetProgress, type GidgetModelProgress } from '../lib/gidgetLocalEngine';
 import GidgetVoiceSphere from './GidgetVoiceSphere';
 import './GidgetChat.css';
 
@@ -27,15 +27,94 @@ const STARTERS = [
   'What should I check before probing a motherboard?',
 ];
 
-function contextEndpoint(): string | null {
-  const configured = String(import.meta.env.VITE_PUBLIC_APP_URL || '').replace(/\/+$/, '');
-  if (configured) return `${configured}/api/gidget/context`;
-  const hosted = ['http:', 'https:'].includes(window.location.protocol) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-  return hosted ? `${window.location.origin}/api/gidget/context` : null;
-}
-
 function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const POS_CONTEXT_COLLECTIONS = ['workOrders', 'sales', 'calendarEvents', 'products', 'quotes', 'technicians'] as const;
+const QUERY_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'check', 'checked', 'data', 'did', 'do', 'find', 'for', 'from', 'how', 'i', 'in', 'is',
+  'many', 'me', 'month', 'of', 'on', 'order', 'orders', 'our', 'record', 'records', 'show', 'the', 'this', 'ticket',
+  'tickets', 'to', 'today', 'we', 'week', 'what', 'when', 'with', 'yesterday',
+]);
+
+function compactPosRecord(collection: string, record: any) {
+  const base: Record<string, any> = { collection, id: record?.id };
+  const fields = [
+    'invoice', 'invoiceNumber', 'type', 'status', 'repairStatus', 'partsStatus', 'title', 'name', 'description',
+    'deviceType', 'device', 'deviceName', 'category', 'assignedTo', 'technician', 'technicianName', 'customerName',
+    'activityAt', 'createdAt', 'updatedAt', 'date', 'start', 'startDate', 'endDate', 'checkoutDate', 'completedAt',
+    'consultationType', 'consultationHours', 'task', 'taskCompleted', 'quantity', 'stock', 'cost', 'price', 'total', 'amountPaid',
+  ];
+  for (const field of fields) {
+    const value = record?.[field];
+    if (value !== undefined && value !== null && value !== '') base[field] = value;
+  }
+  const lines = Array.isArray(record?.items) ? record.items : Array.isArray(record?.repairs) ? record.repairs : [];
+  if (lines.length) {
+    base.items = lines.slice(0, 20).map((item: any) => ({
+      title: item?.title || item?.name || item?.description || item?.repair || '',
+      quantity: item?.quantity,
+      status: item?.status,
+      partCost: item?.partCost ?? item?.cost,
+      charged: item?.charged ?? item?.price ?? item?.total,
+    }));
+  }
+  return base;
+}
+
+async function buildReadOnlyPosContext(query: string) {
+  if (typeof window.api?.dbGet !== 'function') return { available: false, reason: 'POS data bridge unavailable.' };
+  const settled = await Promise.allSettled(POS_CONTEXT_COLLECTIONS.map(collection => window.api.dbGet(collection)));
+  const terms = query.toLowerCase().match(/[a-z0-9#-]{2,}/g)
+    ?.filter(term => !QUERY_STOP_WORDS.has(term))
+    .map(term => term.endsWith('s') && term.length > 3 ? term.slice(0, -1) : term) || [];
+  const totals: Record<string, number> = {};
+  const periods: Record<string, any> = {};
+  const matchedPeriods: Record<string, any> = {};
+  const matches: any[] = [];
+  const recent: any[] = [];
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7)).getTime();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const timestamp = (record: any) => new Date(record.activityAt || record.checkoutDate || record.start || record.date || record.updatedAt || record.createdAt || 0).getTime() || 0;
+  const periodCounts = (records: any[]) => records.reduce((counts, record) => {
+    const time = timestamp(record);
+    if (time >= todayStart) counts.today += 1;
+    if (time >= weekStart) counts.thisWeek += 1;
+    if (time >= monthStart) counts.thisMonth += 1;
+    return counts;
+  }, { today: 0, thisWeek: 0, thisMonth: 0 });
+  settled.forEach((result, index) => {
+    const collection = POS_CONTEXT_COLLECTIONS[index];
+    const rows = result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : [];
+    totals[collection] = rows.length;
+    const collectionRecords: any[] = [];
+    const collectionMatches: any[] = [];
+    for (const row of rows) {
+      const compact = compactPosRecord(collection, row);
+      collectionRecords.push(compact);
+      const haystack = JSON.stringify(compact).toLowerCase();
+      if (terms.length && terms.every(term => haystack.includes(term))) {
+        matches.push(compact);
+        collectionMatches.push(compact);
+      }
+      recent.push(compact);
+    }
+    periods[collection] = periodCounts(collectionRecords);
+    matchedPeriods[collection] = periodCounts(collectionMatches);
+  });
+  const candidates = (matches.length ? matches : recent).sort((left, right) => timestamp(right) - timestamp(left));
+  const selected: any[] = [];
+  let contextCharacters = 0;
+  for (const record of candidates) {
+    const size = JSON.stringify(record).length;
+    if (selected.length >= 80 || contextCharacters + size > 12000) break;
+    selected.push(record);
+    contextCharacters += size;
+  }
+  return { available: true, generatedAt: new Date().toISOString(), query, totals, periods, matched: matches.length, matchedPeriods, records: selected, recordsTruncated: selected.length < candidates.length };
 }
 
 function titleFrom(content: string) {
@@ -45,7 +124,7 @@ function titleFrom(content: string) {
 
 function friendlyError(error: any) {
   const raw = String(error?.message || '');
-  if (/local model|node-llama|llama/i.test(raw)) return `${raw} Select "Retry setup" to download a fresh optional copy.`;
+  if (/local model|node-llama|llama/i.test(raw)) return `${raw} Try "Retry model startup" first. Use "Repair local model" only if retrying does not work.`;
   if (/failed to fetch|networkerror|load failed/i.test(raw)) return 'Gidget could not load authenticated shop context. Check the connection and try again.';
   if (/gidget_memories|gidget_conversations|schema cache/i.test(raw)) return 'Gidget history is waiting for its secure database migration. Chat remains available for this session.';
   return raw || 'Gidget could not connect. Check the connection and try again.';
@@ -103,6 +182,19 @@ export default function GidgetChat({ open, onClose }: Props) {
     try {
       await setupGidgetModel((progress) => setModelState((current) => ({ ...current, ...progress, ready: progress.status === 'ready' })));
       setModelState((current) => ({ ...current, status: 'ready', progress: 100, ready: true }));
+    } catch (error: any) {
+      setModelState((current) => ({ ...current, status: 'error', error: friendlyError(error), ready: false }));
+    } finally {
+      setSettingUpModel(false);
+    }
+  }, []);
+
+  const repairModel = useCallback(async () => {
+    setSettingUpModel(true);
+    setModelState((current) => ({ ...current, status: 'downloading', progress: 0, error: undefined, ready: false }));
+    try {
+      await resetGidgetModel((progress) => setModelState((current) => ({ ...current, ...progress, ready: progress.status === 'ready' })));
+      setModelState((current) => ({ ...current, status: 'ready', progress: 100, ready: true, error: undefined }));
     } catch (error: any) {
       setModelState((current) => ({ ...current, status: 'error', error: friendlyError(error), ready: false }));
     } finally {
@@ -235,21 +327,25 @@ export default function GidgetChat({ open, onClose }: Props) {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Your shop session expired. Sign in again to use Gidget.');
-      const endpoint = contextEndpoint();
-      let context: any = {};
-      if (endpoint) {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            conversation_id: activeConversationId,
-            messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
-          }),
-        });
-        context = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(context?.error || `Gidget context request failed (${response.status}).`);
+      const records = await buildReadOnlyPosContext(content);
+      const { data: memories } = await supabase.from('gidget_memories')
+        .select('content,updated_at')
+        .eq('shop_id', shopContext?.shopId || '')
+        .eq('user_id', shopContext?.userId || '')
+        .order('updated_at', { ascending: false })
+        .limit(40);
+      const remember = content.match(/^\s*(?:please\s+)?remember(?:\s+that)?\s+(.{2,1000})\s*$/is)?.[1]?.trim();
+      let memoryResult: any = { memories: memories || [] };
+      if (remember && shopContext) {
+        const saved = await supabase.from('gidget_memories').insert({
+          shop_id: shopContext.shopId,
+          user_id: shopContext.userId,
+          content: remember,
+          source_conversation_id: activeConversationId,
+        }).select('id,content,updated_at').single();
+        memoryResult = { ...memoryResult, saved: saved.data || null, saveError: saved.error?.message };
       }
+      const context: any = { records, memory_result: memoryResult };
       const body = await generateWithGidget({
         ...context,
         messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
@@ -257,7 +353,7 @@ export default function GidgetChat({ open, onClose }: Props) {
       if (!body?.ok || !body?.answer) throw new Error(body?.error || 'The local model did not return a usable answer.');
       const assistantMessage: ChatMessage = {
         id: messageId(), role: 'assistant', content: String(body.answer || 'I could not produce an answer.'),
-        citations: Array.isArray(context.web_sources) ? context.web_sources.map((item: any) => ({ title: item.title, url: item.url, kind: 'web' as const })) : [], source,
+        citations: [], source,
       };
       setMessages((current) => [...current, assistantMessage]);
       if (activeConversationId) await persistMessage(activeConversationId, assistantMessage);
@@ -459,7 +555,10 @@ export default function GidgetChat({ open, onClose }: Props) {
                 <button type="button" className="gidget-model-install" onClick={() => void recheckModelStatus()} disabled={settingUpModel}>Check again</button>
               </>
             ) : (
-              <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry setup' : 'Download and set up Gidget'}</button>
+              <div className="gidget-model-actions">
+                <button type="button" className="gidget-model-install" onClick={() => void installModel()} disabled={settingUpModel}>{modelState.status === 'error' ? 'Retry model startup' : 'Download and set up Gidget'}</button>
+                {modelState.status === 'error' ? <button type="button" className="gidget-model-repair" onClick={() => void repairModel()} disabled={settingUpModel}>Repair local model</button> : null}
+              </div>
             )}
           </div>
         ) : historyOpen ? (

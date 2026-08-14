@@ -168,7 +168,9 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         id: crypto.randomUUID(),
         device: selected.category || selected.deviceCategoryName || selected.device || '',
         repairCategory: selected.repairCategory || '',
-        repair: selected.altDescription || selected.title || selected.repair || '',
+        // The catalog title is the billable repair name. altDescription is
+        // supporting catalog copy and must not replace it in the line item.
+        repair: selected.title || selected.repair || selected.altDescription || '',
         parts: Number(selected.partCost ?? 0) || 0,
         labor: Number(selected.laborCost ?? 0) || 0,
         status: 'pending',
@@ -352,7 +354,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
         {onAddProduct ? (
           <button
-            className="px-3 py-1 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="gb-wo-add-product px-3 py-1 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => { void onAddProduct(); }}
             disabled={!!addProductDisabled}
           >

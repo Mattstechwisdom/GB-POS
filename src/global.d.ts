@@ -40,6 +40,7 @@ declare global {
     gidgetLocalSetup?: () => Promise<any>;
     gidgetLocalGenerate?: (payload: any) => Promise<any>;
     gidgetLocalCancel?: () => Promise<any>;
+    gidgetLocalRemove?: () => Promise<any>;
     onGidgetModelProgress?: (cb: (progress: any) => void) => () => void;
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
     storageEnsure: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string; isFirstRun?: boolean; migration?: any; error?: string }>;

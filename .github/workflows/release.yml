@@ -137,6 +137,8 @@ jobs:
           $env:GBPOS_ANDROID_KEYSTORE_PATH = $keyStorePath
           npm.cmd run android:sync
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd run test:mobile-production-startup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location android
           .\gradlew.bat assembleRelease
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
