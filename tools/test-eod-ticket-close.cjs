@@ -10,6 +10,8 @@ function requireMatch(source, pattern, message) {
 }
 
 requireMatch(eod, /Open Ticket Warnings/, 'EOD is missing its visible open-ticket warning.');
+requireMatch(eod, /Tickets Not Closed/, 'Expanded Activity Drill Down is missing its complete unclosed-ticket section.');
+requireMatch(eod, /setActiveList\('openTickets'\)/, 'The unclosed-ticket section cannot open the complete ticket list.');
 requireMatch(eod, /Payment taken without checkout/, 'EOD is missing the prior paid-ticket warning logic.');
 requireMatch(eod, /Diagnostic fee not taken/, 'EOD is missing diagnostic-fee warning logic.');
 requireMatch(eod, /Repair Complete update sent while still open/, 'EOD is missing repair-complete warning logic.');

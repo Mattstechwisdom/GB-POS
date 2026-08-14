@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.6 (2026-08-14)
+- End of Day Activity: restores a prominent Tickets Not Closed section whenever Activity Drill Down is expanded, covering every open or unchecked-out work order and sale.
+- Ticket Review: opens the complete actionable ticket list from the section while preserving double-click invoice opening, desktop right-click, mobile hold, and close-ticket accounting safeguards.
+- Open Ticket Warnings: keeps higher-risk diagnostic, paid, and repair-complete warnings separate from the complete unclosed-ticket count.
+
 ## v0.6.5 (2026-08-14)
 - Client Contact Decisions: saves declined phone and email choices with each client through the authenticated Supabase record on Windows and Android.
 - Client Overview: shows declined contact methods crossed out with a focused Add contact action so technicians can add information later without recreating the client.

@@ -3098,7 +3098,19 @@ const EODWindow: React.FC = () => {
                   </div>
                 </div>
                 {ticketActionMessage ? <div className="rounded border border-[#39FF14]/30 bg-[#39FF14]/5 px-3 py-2 text-[11px] text-zinc-200">{ticketActionMessage}</div> : null}
-                {activityExpanded ? <section className={`gb-eod-open-ticket-warning min-h-0 rounded border p-2 ${unclosedTickets.length ? 'border-red-500/60 bg-red-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
+                {activityExpanded ? <section className={`gb-eod-tickets-not-closed shrink-0 rounded border p-2 ${filteredLists.openTickets.length ? 'border-amber-500/60 bg-amber-950/20' : 'border-[#39FF14]/30 bg-[#39FF14]/5'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h4 className={`text-sm font-semibold ${filteredLists.openTickets.length ? 'text-amber-200' : 'text-[#39FF14]'}`}>Tickets Not Closed</h4>
+                      <p className="text-[11px] text-zinc-400">Every work order or sale that is still open or has not completed checkout.</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={`rounded border px-2 py-1 text-xs font-semibold ${filteredLists.openTickets.length ? 'border-amber-500/50 bg-amber-950/50 text-amber-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{filteredLists.openTickets.length}</span>
+                      <button type="button" className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs font-semibold hover:border-[#39FF14]" onClick={() => setActiveList('openTickets')}>View Tickets</button>
+                    </div>
+                  </div>
+                </section> : null}
+                {activityExpanded && unclosedTickets.length ? <section className="gb-eod-open-ticket-warning min-h-0 rounded border border-red-500/60 bg-red-950/20 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h4 className={`text-sm font-semibold ${unclosedTickets.length ? 'text-red-200' : 'text-[#39FF14]'}`}>Open Ticket Warnings</h4>
@@ -3106,8 +3118,7 @@ const EODWindow: React.FC = () => {
                     </div>
                     <span className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${unclosedTickets.length ? 'border-red-500/50 bg-red-950/50 text-red-200' : 'border-[#39FF14]/40 bg-[#39FF14]/10 text-[#39FF14]'}`}>{unclosedTickets.length}</span>
                   </div>
-                  {unclosedTickets.length ? (
-                    <div className="mt-2 max-h-52 overflow-y-auto rounded border border-red-900/50">
+                  <div className="mt-2 max-h-52 overflow-y-auto rounded border border-red-900/50">
                       <table className="w-full text-left text-[11px]">
                         <thead className="sticky top-0 z-[1] bg-zinc-950 text-zinc-400">
                           <tr><th className="px-2 py-1.5 font-medium">Client / device</th><th className="px-2 py-1.5 font-medium">Items</th><th className="px-2 py-1.5 text-right font-medium">Taken</th><th className="px-2 py-1.5 text-right font-medium">Owed</th></tr>
@@ -3129,8 +3140,7 @@ const EODWindow: React.FC = () => {
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  ) : <p className="mt-2 text-[11px] text-zinc-400">No paid, diagnostic, or repair-complete tickets require checkout review.</p>}
+                  </div>
                 </section> : null}
                 <div className="min-h-0 overflow-y-auto grid grid-cols-2 gap-2 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Records and balances</div>
@@ -3173,12 +3183,12 @@ const EODWindow: React.FC = () => {
                   <div className="col-span-2 mt-1 border-t border-zinc-800 pt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Ticket status</div>
                   {activityExpanded ? <button
                     type="button"
-                    className={`text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
+                    className={`col-span-2 text-left bg-zinc-800 border border-zinc-700 rounded p-2 transition ${activeList === 'openTickets' ? 'border-[#39FF14] shadow-[0_0_0_1px_rgba(57,255,20,0.25)]' : 'hover:border-[#39FF14] hover:shadow-[0_0_0_1px_rgba(57,255,20,0.1)]'}`}
                     onClick={() => setActiveList(prev => (prev === 'openTickets' ? null : 'openTickets'))}
                   >
-                    <div className="text-xs text-zinc-500">Open tickets</div>
+                    <div className="text-xs text-zinc-500">Tickets Not Closed</div>
                     <div className="text-xl font-semibold">{filteredLists.openTickets.length}</div>
-                    <div className="text-[11px] text-zinc-400">not closed / needs checkout</div>
+                    <div className="text-[11px] text-zinc-400">Open the list to review, open invoices, or close tickets.</div>
                   </button> : null}
                   <button
                     type="button"
