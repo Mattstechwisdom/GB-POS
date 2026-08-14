@@ -125,9 +125,19 @@ jobs:
       - name: Test packaged Gidget native runtime
         shell: pwsh
         run: |
-          $env:ELECTRON_RUN_AS_NODE = '1'
-          & '.\release\win-unpacked\GadgetBoy POS.exe' '.\tools\test-gidget-packaged-runtime.cjs' '.\release\win-unpacked\resources\app.asar'
+          $testRoot = Join-Path $env:RUNNER_TEMP 'gbpos-gidget-packaged'
+          $resultPath = Join-Path $env:RUNNER_TEMP 'gbpos-gidget-packaged-result.txt'
+          node_modules\.bin\asar.cmd extract '.\release\win-unpacked\resources\app.asar' $testRoot
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $unpackedModules = '.\release\win-unpacked\resources\app.asar.unpacked\node_modules'
+          if (Test-Path $unpackedModules) {
+            Copy-Item -Path "$unpackedModules\*" -Destination (Join-Path $testRoot 'node_modules') -Recurse -Force
+          }
+          $env:GBPOS_GIDGET_TEST_RESULT = $resultPath
+          & '.\node_modules\.bin\electron.cmd' '.\tools\test-gidget-packaged-runtime.cjs' $testRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path $resultPath)) { throw 'Packaged Gidget test did not execute.' }
+          if ((Get-Content $resultPath -Raw).Trim() -ne 'ok') { throw "Packaged Gidget test failed: $(Get-Content $resultPath -Raw)" }
 
       - name: Record release version
         shell: pwsh

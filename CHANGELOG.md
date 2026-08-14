@@ -738,3 +738,9 @@
 - Gidget / Windows: safely cancels active downloads before repair, waits for Windows to release the partial model file, and returns actionable setup errors to the Gidget window.
 - Gidget / Windows: resumes interrupted model downloads from their existing partial file instead of restarting the 2.5 GB transfer.
 - Release safety: adds a real resumable model-download regression test to the release workflow and retains the packaged native CPU runtime verification.
+## v0.6.1 (2026-08-14)
+
+- Gidget / Windows: replaces the pre-Qwen3 native engine with the Electron 29-compatible `node-llama-cpp` 3.8.1 runtime, fixing `unknown model architecture: qwen3` and `Failed to load model` errors.
+- Gidget / Windows: validates the complete 2.5 GB Qwen3 model by loading it, creating the production 4096-token context, and generating a real response before release.
+- Release safety: corrects the packaged Gidget test so it executes extracted release code and fails if the native runtime test does not actually run.
+- Existing verified Gidget downloads remain in place and are reused after updating.

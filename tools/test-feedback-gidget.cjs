@@ -32,6 +32,9 @@ expect(engine.includes('Array.isArray(result?.models)'), 'Android model discover
 expect(engine.includes('downloadResult?.localPath'), 'Android model download must unwrap its local path.');
 expect(engine.includes("if (!result?.ok) throw new Error(result?.error"), 'The Gidget UI must surface structured desktop setup failures.');
 
+const packageJson = JSON.parse(read('package.json'));
+expect(packageJson.dependencies['node-llama-cpp'] === '3.8.1', 'Desktop Gidget must use the Qwen3-capable Electron 29 runtime.');
+
 const chat = read('src/components/GidgetChat.tsx');
 expect(chat.includes('buildReadOnlyPosContext'), 'Gidget must have standalone read-only POS context.');
 expect(chat.includes("from('gidget_memories')"), 'Gidget must load explicit learned memories.');
