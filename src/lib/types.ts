@@ -112,6 +112,8 @@ export interface Customer {
   email?: string;
   phone?: string;
   phoneAlt?: string;
+  declinedPhone?: boolean;
+  declinedEmail?: boolean;
   zip?: string;
   notes?: string;
   // store removed – single-location deployment

@@ -90,7 +90,16 @@ const CustomerForm: React.FC<Props> = ({
         <div className="mb-1 min-h-4">
           <label className="block text-[12px] text-zinc-400">Phone</label>
         </div>
-        <div className="flex items-start gap-2">
+        {!requireContactDecision && declinedPhone && !local.phone ? (
+          <div className="flex min-h-10 items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-950/50 px-2 py-1.5">
+            <span className="text-sm text-zinc-500 line-through decoration-zinc-400">Phone contact declined</span>
+            <button
+              type="button"
+              className="shrink-0 rounded border border-[#39FF14]/70 bg-zinc-900 px-2 py-1 text-xs font-semibold text-[#39FF14] hover:bg-[#39FF14] hover:text-black"
+              onClick={() => onDeclinedPhoneChange?.(false)}
+            >Add contact</button>
+          </div>
+        ) : <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <Input
               value={local.phone || ''}
@@ -102,7 +111,7 @@ const CustomerForm: React.FC<Props> = ({
             />
           </div>
           {requireContactDecision ? <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] leading-tight text-zinc-400"><input type="checkbox" aria-label="Phone contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedPhone} onChange={event => { const checked = event.target.checked; if (checked) update('phone', ''); onDeclinedPhoneChange?.(checked); }} /><span>Declined Info</span></label> : null}
-        </div>
+        </div>}
         {phoneTouched && local.phone && local.phone.replace(/\D/g, '').length !== 10 ? (
           <div className="mt-1 text-[11px] text-red-400">Phone should be 10 digits (###-###-####)</div>
         ) : null}
@@ -111,7 +120,16 @@ const CustomerForm: React.FC<Props> = ({
         <div className="mb-1 min-h-4">
           <label className="block text-[12px] text-zinc-400">Email</label>
         </div>
-        <div className="flex items-start gap-2">
+        {!requireContactDecision && declinedEmail && !local.email ? (
+          <div className="flex min-h-10 items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-950/50 px-2 py-1.5">
+            <span className="text-sm text-zinc-500 line-through decoration-zinc-400">Email contact declined</span>
+            <button
+              type="button"
+              className="shrink-0 rounded border border-[#39FF14]/70 bg-zinc-900 px-2 py-1 text-xs font-semibold text-[#39FF14] hover:bg-[#39FF14] hover:text-black"
+              onClick={() => onDeclinedEmailChange?.(false)}
+            >Add contact</button>
+          </div>
+        ) : <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <Input
               value={local.email || ''}
@@ -123,7 +141,7 @@ const CustomerForm: React.FC<Props> = ({
             />
           </div>
           {requireContactDecision ? <label className="flex shrink-0 flex-col items-center gap-0.5 text-[10px] leading-tight text-zinc-400"><input type="checkbox" aria-label="Email contact declined" className="h-3.5 w-3.5 shrink-0 accent-[#BC13FE]" style={{ width: 14, minWidth: 14, maxWidth: 14, height: 14, minHeight: 14, maxHeight: 14 }} checked={declinedEmail} onChange={event => { const checked = event.target.checked; if (checked) update('email', ''); onDeclinedEmailChange?.(checked); }} /><span>Declined Info</span></label> : null}
-        </div>
+        </div>}
         {!keyboardSafeEmail ? (
           <datalist id={emailListIdRef.current}>
             {emailSuggestions.map(s => (

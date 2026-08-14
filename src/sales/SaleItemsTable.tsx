@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
@@ -42,6 +42,10 @@ interface Props {
   onChange: (items: SaleItemRow[]) => void;
   onCommit?: (items: SaleItemRow[]) => void | Promise<void>;
   showRequiredIndicator?: boolean;
+  allowAddItems?: boolean;
+  layout?: 'stacked' | 'split';
+  catalogPanel?: React.ReactNode;
+  editRequestId?: string | null;
 }
 
 const MAX_ITEMS = 20;
@@ -64,11 +68,22 @@ function lineTotalFor(row: Partial<SaleItemRow> | null | undefined) {
   return effectiveUnits(row) * (Number(row?.price) || 0);
 }
 
-const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequiredIndicator }) => {
+const SaleItemsTable: React.FC<Props> = ({
+  items,
+  onChange,
+  onCommit,
+  showRequiredIndicator,
+  allowAddItems = true,
+  layout = 'stacked',
+  catalogPanel,
+  editRequestId,
+}) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
   const [scrapingProductUrl, setScrapingProductUrl] = useState(false);
+  const holdRef = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const holdTriggeredRef = useRef(false);
 
   const selectedRow = useMemo(() => {
     if (!selected) return null;
@@ -86,6 +101,15 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
     }
   }, [items, selected]);
 
+  useEffect(() => {
+    if (!editRequestId) return;
+    const requested = items.find(item => item.id === editRequestId);
+    if (!requested) return;
+    setSelected(requested.id);
+    setEditing({ ...requested });
+    setEditingError('');
+  }, [editRequestId, items]);
+
   // Keep the inline editor in sync only after the user explicitly opens it.
   useEffect(() => {
     if (!selectedRow) {
@@ -97,6 +121,33 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
 
   const ctx = useContextMenu<SaleItemRow>();
   const ctxRow = ctx.state.data;
+
+  const clearHold = useCallback(() => {
+    if (holdRef.current) window.clearTimeout(holdRef.current.timer);
+    holdRef.current = null;
+  }, []);
+
+  const startHold = useCallback((event: React.PointerEvent, row: SaleItemRow) => {
+    if (event.pointerType === 'mouse') return;
+    clearHold();
+    holdTriggeredRef.current = false;
+    const x = event.clientX;
+    const y = event.clientY;
+    const timer = window.setTimeout(() => {
+      holdTriggeredRef.current = true;
+      setSelected(row.id);
+      ctx.openAt(x, y, row);
+      navigator.vibrate?.(25);
+    }, 550);
+    holdRef.current = { timer, x, y };
+  }, [clearHold, ctx]);
+
+  const moveHold = useCallback((event: React.PointerEvent) => {
+    const hold = holdRef.current;
+    if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 10) clearHold();
+  }, [clearHold]);
+
+  useEffect(() => clearHold, [clearHold]);
 
   const ctxItems = useMemo<ContextMenuItem[]>(() => {
     if (!ctxRow) return [];
@@ -186,7 +237,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
         };
         onChange([...items, row].slice(0, MAX_ITEMS));
         setSelected(row.id);
-        setEditing(null);
+        setEditing(layout === 'split' ? row : null);
         return;
       } catch (e) {
         console.error('[SaleItemsTable] pickSaleProduct failed', e);
@@ -253,8 +304,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
     }
   }
 
+  const splitLayout = layout === 'split';
+
   return (
-    <div className={`gb-sale-items bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
+    <div className={`gb-sale-items ${splitLayout ? 'flex h-full min-h-0 flex-col' : ''} bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
       <div className="gb-sale-items-header flex items-center justify-between mb-2">
         <h4 className="text-sm font-semibold text-zinc-200">
           Items
@@ -262,8 +315,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
         </h4>
         <div className="text-xs text-zinc-400">Add products (max {MAX_ITEMS})</div>
       </div>
+      <div className={splitLayout ? 'grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(320px,0.9fr)_minmax(430px,1.1fr)]' : ''}>
+      <div className={splitLayout ? 'flex min-h-0 flex-col' : ''}>
+      {catalogPanel}
       {removedPurchaseItems.length ? <div className="mb-2 rounded border border-amber-500/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100"><strong className="text-amber-300">Not ordered:</strong> {removedPurchaseItems.map(item => item.description || 'Product').join(', ')}. Select the item below for payment details or to restore it to the EOD Cart.</div> : null}
-      <div className="gb-sale-items-table-wrap overflow-y-auto border border-zinc-800 rounded" style={{ maxHeight: '12rem' }}>
+      <div className={`gb-sale-items-table-wrap overflow-y-auto border border-zinc-800 rounded ${splitLayout ? 'min-h-[9rem] flex-1' : ''}`} style={{ maxHeight: splitLayout ? undefined : '12rem' }}>
         <table className="gb-sale-items-table w-full text-sm">
           <thead className="bg-zinc-800 text-zinc-400">
             <tr>
@@ -282,7 +338,21 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
               return (
                 <tr
                   key={it.id}
-                  onClick={() => setSelected(it.id)}
+                  onClick={() => {
+                    if (holdTriggeredRef.current) {
+                      holdTriggeredRef.current = false;
+                      return;
+                    }
+                    setSelected(it.id);
+                    if (splitLayout) {
+                      setEditing({ ...it });
+                      setEditingError('');
+                    }
+                  }}
+                  onPointerDown={(event) => startHold(event, it)}
+                  onPointerMove={moveHold}
+                  onPointerUp={clearHold}
+                  onPointerCancel={clearHold}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -322,11 +392,11 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
         </table>
       </div>
 
-      <div className="gb-sale-items-actions flex gap-2 mt-2">
+      {allowAddItems ? <div className="gb-sale-items-actions flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Pick product…</button>
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
-        <div className="self-center text-[11px] text-zinc-400">Right-click an item and choose Edit to open the editor.</div>
-      </div>
+        <div className="self-center text-[11px] text-zinc-400">Right-click or press and hold an item to edit it.</div>
+      </div> : <div className="mt-2 text-[11px] text-zinc-400">Right-click or press and hold a repair line to edit it.</div>}
 
       {selectedRow?.purchaseQueueRemovedAt ? (
         <div className="mt-2 flex flex-col gap-2 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-xs text-amber-100 sm:flex-row sm:items-center sm:justify-between">
@@ -334,9 +404,10 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
           <button type="button" className="shrink-0 rounded bg-amber-500 px-3 py-1.5 font-semibold text-black" onClick={() => onChange(items.map(item => item.id === selectedRow.id ? { ...item, purchaseQueueRemovedAt: undefined, purchaseQueueRemovalNotice: undefined, purchaseQueueRemovalPaymentStatus: undefined } : item))}>Restore to EOD Cart</button>
         </div>
       ) : null}
+      </div>
 
       {editing && (
-        <div className="gb-sale-item-editor mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
+        <div className={`gb-sale-item-editor bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'self-start' : 'mt-2'}`}>
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
@@ -551,6 +622,12 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
           </div>
         </div>
       )}
+      {splitLayout && !editing ? (
+        <div className="flex min-h-[16rem] items-center justify-center rounded border border-dashed border-zinc-700 bg-zinc-950/30 p-6 text-center text-sm text-zinc-400">
+          Select a checkout line to review or temporarily edit its details.
+        </div>
+      ) : null}
+      </div>
 
       <ContextMenu
         id="sale-items-ctx"
@@ -559,6 +636,7 @@ const SaleItemsTable: React.FC<Props> = ({ items, onChange, onCommit, showRequir
         y={ctx.state.y}
         items={ctxItems}
         onClose={ctx.close}
+        zIndex={100600}
       />
     </div>
   );

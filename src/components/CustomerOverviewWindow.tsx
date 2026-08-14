@@ -35,6 +35,11 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
   const editSeqRef = useRef(0);
   const duplicatePromptSignatureRef = useRef('');
 
+  const applyDeclinedContactState = useCallback((value: Partial<Customer> | null | undefined) => {
+    setDeclinedPhone(!!value?.declinedPhone);
+    setDeclinedEmail(!!value?.declinedEmail);
+  }, []);
+
   // If customer not passed, attempt to load by payload store or query param customerOverview
   useEffect(() => {
     if (customer) return; // already have
@@ -54,6 +59,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         const list = await (window as any).api.findCustomers({ id });
         if (Array.isArray(list) && list.length) {
           setLocal(list[0]);
+          applyDeclinedContactState(list[0]);
           setDirty(false);
           editSeqRef.current = 0;
         }
@@ -61,15 +67,14 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
         console.warn('Failed to load customer by id', e);
       }
     })();
-  }, [customer]);
+  }, [applyDeclinedContactState, customer]);
 
   useEffect(() => {
     setLocal(customer || {});
-    setDeclinedPhone(false);
-    setDeclinedEmail(false);
+    applyDeclinedContactState(customer);
     setDirty(false);
     editSeqRef.current = 0;
-  }, [customer]);
+  }, [applyDeclinedContactState, customer]);
 
   // Reload lists when child windows notify about sales changes via postMessage
   useEffect(() => {
@@ -100,7 +105,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     if (!local.firstName || !local.firstName.trim()) errs.push('First name required');
     if (!local.lastName || !local.lastName.trim()) errs.push('Last name required');
     if (!(local as any).id) errs.push(...newCustomerContactErrors(local, { declinedPhone, declinedEmail }));
-    else if (!(local.phone || local.email)) errs.push('Phone or Email required');
+    else if (!(local.phone || local.email || declinedPhone || declinedEmail)) errs.push('Phone or Email required');
     if ((local as any).id && local.phone && !isCompleteCustomerPhone(local.phone)) errs.push('Phone must be 10 digits');
     if ((local as any).id && local.email && !isCompleteCustomerEmail(local.email)) errs.push('Enter a complete email address');
     if (local.zip && !/^[0-9]{5}$/.test(local.zip.toString())) errs.push('Zip must be 5 digits');
@@ -167,7 +172,13 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     if (!validate()) return null;
     setAutoSaving(true);
     const saveSeq = editSeqRef.current;
-    const payload = { ...local, updatedAt: new Date().toISOString(), createdAt: local.createdAt || new Date().toISOString() } as any;
+    const payload = {
+      ...local,
+      declinedPhone,
+      declinedEmail,
+      updatedAt: new Date().toISOString(),
+      createdAt: local.createdAt || new Date().toISOString(),
+    } as any;
     try {
       let saved: Customer | null = null;
       if ((payload as any).id) {
@@ -179,6 +190,7 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
       }
       if (saved) {
         setLocal(saved);
+        applyDeclinedContactState(saved);
         if (editSeqRef.current === saveSeq) setDirty(false);
         if (onSaved) onSaved(saved);
       }
@@ -196,7 +208,13 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
     const saveSeq = editSeqRef.current;
     setAutoSaving(true);
     try {
-      const payload = { ...val, updatedAt: new Date().toISOString(), createdAt: (val as any)?.createdAt || new Date().toISOString() } as any;
+      const payload = {
+        ...val,
+        declinedPhone,
+        declinedEmail,
+        updatedAt: new Date().toISOString(),
+        createdAt: (val as any)?.createdAt || new Date().toISOString(),
+      } as any;
       let saved: Customer | null = null;
       if ((payload as any).id) {
         saved = await window.api.update('customers', payload);

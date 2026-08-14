@@ -43,6 +43,7 @@ const QuickSaleWindow: React.FC = () => {
   const [checkoutType, setCheckoutType] = useState<'sale' | 'repair'>('sale');
   const [repairItems, setRepairItems] = useState<any[]>([]);
   const [repairSearch, setRepairSearch] = useState('');
+  const [editRequestId, setEditRequestId] = useState<string | null>(null);
   const [taxed, setTaxed] = useState<boolean>(true);
   const [busy, setBusy] = useState<boolean>(false);
 
@@ -105,6 +106,7 @@ const QuickSaleWindow: React.FC = () => {
       ...(repair?.orderSourceUrl ? { requiresOrder: true, orderStatus: 'needed' } : {}),
     } as SaleItemRow;
     setRepairLines((current) => [...current, row].slice(0, 20));
+    setEditRequestId(row.id);
   }
 
   async function handleCheckout() {
@@ -281,14 +283,9 @@ const QuickSaleWindow: React.FC = () => {
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>
           <div className="text-xs text-zinc-400">Create a sale or repair checkout without customer info</div>
         </div>
-        {!isModalShell && (
-          <button className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={closeSelf}>
-            Close
-          </button>
-        )}
       </div>
 
-      <div className="p-4 grid grid-cols-1 gap-4">
+      <div className="p-4 grid grid-cols-1 gap-4 lg:h-[calc(100dvh-73px)] lg:grid-rows-[auto_minmax(0,1fr)_auto] lg:overflow-hidden">
         <div className="flex items-center gap-1 self-start rounded border border-zinc-700 bg-zinc-950/40 p-1">
           {(['sale', 'repair'] as const).map((type) => (
             <button
@@ -303,55 +300,50 @@ const QuickSaleWindow: React.FC = () => {
         </div>
 
         {checkoutType === 'sale' ? (
-          <SaleItemsTable items={items} onChange={setItems} showRequiredIndicator={items.length === 0} />
+          <SaleItemsTable items={saleItems} onChange={setSaleItems} showRequiredIndicator={saleItems.length === 0} layout="split" />
         ) : (
-          <div className={`bg-zinc-900 border ${items.length === 0 ? 'border-red-500' : 'border-zinc-700'} rounded p-3 space-y-3`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-100">Repair catalog{items.length === 0 && <span className="ml-1 text-red-500">*</span>}</h2>
-                <p className="text-xs text-zinc-400">Select repairs to add to this anonymous checkout.</p>
-              </div>
-              <input
-                value={repairSearch}
-                onChange={(event) => setRepairSearch(event.target.value)}
-                placeholder="Search repairs"
-                className="w-full sm:w-64 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none"
-              />
-            </div>
-            <div className="max-h-64 overflow-y-auto rounded border border-zinc-800">
-              {visibleRepairItems.length === 0 ? (
-                <p className="p-3 text-sm text-zinc-400">No matching repairs in the catalog.</p>
-              ) : visibleRepairItems.map((repair) => (
-                <button
-                  key={String(repair.id)}
-                  type="button"
-                  onClick={() => addRepair(repair)}
-                  className="flex w-full items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 hover:bg-zinc-800"
-                >
-                  <span>
-                    <span className="block text-sm font-medium text-zinc-100">{repair.title || repair.altDescription || 'Untitled repair'}</span>
-                    <span className="block text-xs text-zinc-400">{repair.repairCategory || repair.category || 'Repair'}</span>
-                  </span>
-                  <span className="text-sm font-semibold text-[#39FF14]">${repairPrice(repair).toFixed(2)}</span>
-                </button>
-              ))}
-            </div>
-            {items.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-300">
-                {items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setRepairLines((current) => current.filter((currentItem) => currentItem.id !== item.id))}
-                    className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 hover:border-red-400"
-                    title="Remove repair"
-                  >
-                    {item.description} x{item.qty}
-                  </button>
-                ))}
+          <SaleItemsTable
+            items={repairLines}
+            onChange={setRepairLines}
+            allowAddItems={false}
+            layout="split"
+            editRequestId={editRequestId}
+            showRequiredIndicator={repairLines.length === 0}
+            catalogPanel={(
+              <div className="mb-3 flex min-h-0 flex-col rounded border border-zinc-700 bg-zinc-950/40 p-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Repair catalog</h2>
+                    <p className="text-xs text-zinc-400">Catalog records stay unchanged. Edits apply only to this checkout.</p>
+                  </div>
+                  <input
+                    value={repairSearch}
+                    onChange={(event) => setRepairSearch(event.target.value)}
+                    placeholder="Search repairs"
+                    className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none sm:w-56"
+                  />
+                </div>
+                <div className="max-h-52 overflow-y-auto rounded border border-zinc-800">
+                  {visibleRepairItems.length === 0 ? (
+                    <p className="p-3 text-sm text-zinc-400">No matching repairs in the catalog.</p>
+                  ) : visibleRepairItems.map((repair) => (
+                    <button
+                      key={String(repair.id)}
+                      type="button"
+                      onClick={() => addRepair(repair)}
+                      className="flex w-full items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 hover:bg-zinc-800"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-zinc-100">{repair.title || repair.altDescription || 'Untitled repair'}</span>
+                        <span className="block truncate text-xs text-zinc-400">{repair.repairCategory || repair.category || 'Repair'}</span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold text-[#39FF14]">${repairPrice(repair).toFixed(2)}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
+          />
         )}
 
         <div className="bg-zinc-950/40 border border-zinc-800 rounded p-4 space-y-3">

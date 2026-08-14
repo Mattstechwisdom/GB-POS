@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.5 (2026-08-14)
+- Client Contact Decisions: saves declined phone and email choices with each client through the authenticated Supabase record on Windows and Android.
+- Client Overview: shows declined contact methods crossed out with a focused Add contact action so technicians can add information later without recreating the client.
+- Quick Checkout: keeps product and repair lists independently scrollable while temporary line-item fields remain fixed beside the list on desktop.
+- Quick Checkout Editing: restores editable repair fields, preserves checkout-only overrides without changing the permanent catalog, and supports desktop right-click and mobile press-and-hold.
+- Quick Checkout Window: removes the redundant header Close button while retaining the native window close control and checkout cancellation action.
+
 ## v0.6.4 (2026-08-14)
 - Gidget Responses: bounds shop-session, POS-context, memory, and history work so a stalled database request can no longer leave the chat permanently checking.
 - Local AI Performance: keeps prompts inside the model context window, requests direct answers without hidden reasoning, and uses a CPU-appropriate response length on Windows and Android.

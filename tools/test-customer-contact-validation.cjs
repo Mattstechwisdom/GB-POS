@@ -7,6 +7,9 @@ const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'src', 'lib', 'customerContactValidation.ts');
 const formSource = fs.readFileSync(path.join(root, 'src', 'components', 'CustomerForm.tsx'), 'utf8');
 const overviewSource = fs.readFileSync(path.join(root, 'src', 'components', 'CustomerOverviewWindow.tsx'), 'utf8');
+const mobileApiSource = fs.readFileSync(path.join(root, 'src', 'mobile', 'mobile-api.ts'), 'utf8');
+const electronMainSource = fs.readFileSync(path.join(root, 'app', 'electron', 'electron-main.ts'), 'utf8');
+const migrationSource = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260814153326_add_customer_declined_contact_flags.sql'), 'utf8');
 const output = path.join(root, 'tmp', 'test-customer-contact-validation.cjs');
 fs.mkdirSync(path.dirname(output), { recursive: true });
 esbuild.buildSync({ entryPoints: [source], outfile: output, bundle: true, platform: 'node', format: 'cjs' });
@@ -23,6 +26,19 @@ assert.equal(newCustomerContactErrors({ phone: '803-555-019', email: 'client@exa
 assert.match(formSource, /aria-label="Phone contact declined"/);
 assert.match(formSource, /aria-label="Email contact declined"/);
 assert.equal((formSource.match(/aria-label=".* contact declined"/g) || []).length, 2);
+assert.match(formSource, /Phone contact declined<\/span>/, 'Saved phone declines must be visible in the client overview.');
+assert.match(formSource, /Email contact declined<\/span>/, 'Saved email declines must be visible in the client overview.');
+assert.equal((formSource.match(/>Add contact<\/button>/g) || []).length, 2, 'Each declined contact method needs an Add contact action.');
+assert.match(overviewSource, /declinedPhone,\s*declinedEmail,\s*updatedAt:/, 'Declined contact choices must be saved with the customer.');
+assert.match(overviewSource, /applyDeclinedContactState\(list\[0\]\)/, 'Declined contact choices must be restored when a customer is loaded.');
+for (const [label, source] of [['Android', mobileApiSource], ['Windows', electronMainSource]]) {
+  assert.match(source, /declinedPhone: !!row\.declined_phone/, `${label} must load declined phone choices from Supabase.`);
+  assert.match(source, /declinedEmail: !!row\.declined_email/, `${label} must load declined email choices from Supabase.`);
+  assert.match(source, /declined_phone: toCloudBool\(item\.declinedPhone\)/, `${label} must save declined phone choices to Supabase.`);
+  assert.match(source, /declined_email: toCloudBool\(item\.declinedEmail\)/, `${label} must save declined email choices to Supabase.`);
+}
+assert.match(migrationSource, /declined_phone boolean not null default false/);
+assert.match(migrationSource, /declined_email boolean not null default false/);
 assert.equal((overviewSource.match(/if \(!payload\) return;/g) || []).length, 2);
 
 console.log('New-client phone and email decision checks passed.');

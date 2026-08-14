@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const esbuild = require('esbuild');
 
@@ -38,5 +39,17 @@ assert.equal(picked.productUrl, 'https://example.test/ps5');
 assert.equal(picked.quantity, 3);
 assert.equal(picked.inStock, false);
 assert.equal(buildSaleProductPickerPayload({ id: 43, itemDescription: '' }), null);
+
+const saleItemsTable = fs.readFileSync(path.join(__dirname, '..', 'src', 'sales', 'SaleItemsTable.tsx'), 'utf8');
+const quickSale = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'QuickSaleWindow.tsx'), 'utf8');
+assert.match(saleItemsTable, /onContextMenu=/, 'Quick Checkout sale items must support desktop right-click.');
+assert.match(saleItemsTable, /onPointerDown=\{\(event\) => startHold\(event, it\)\}/, 'Quick Checkout sale items must support mobile press-and-hold.');
+assert.match(saleItemsTable, /zIndex=\{100600\}/, 'The line-item menu must render above desktop and mobile modal shells.');
+assert.match(saleItemsTable, /layout\?: 'stacked' \| 'split'/, 'Quick Checkout must provide a fixed split list/editor layout.');
+assert.match(saleItemsTable, /gb-sale-items-table-wrap overflow-y-auto/, 'Only the catalog and checkout line lists should scroll.');
+assert.match(saleItemsTable, /Catalog records stay unchanged|temporarily edit its details/, 'Quick Checkout edits must be described as ticket-only changes.');
+assert.match(quickSale, /allowAddItems=\{false\}/, 'Quick repair lines must use the editable line-item table without duplicate add controls.');
+assert.match(quickSale, /layout="split"/, 'Quick Checkout must keep line-item fields fixed beside the scrolling list on desktop.');
+assert.doesNotMatch(quickSale, />\s*Close\s*</, 'Quick Checkout must rely on its window X instead of rendering a duplicate Close button.');
 
 console.log('Sale product picker tests passed.');
