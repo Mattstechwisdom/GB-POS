@@ -201,7 +201,6 @@ const STANDALONE_WINDOW_QUERY_KEYS = [
 	'customerOverview',
 	'repairCategories',
 	'workOrderRepairPicker',
-	'checkout',
 	'devMenu',
 	'dataTools',
 	'calendar',

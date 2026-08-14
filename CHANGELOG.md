@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.8 (2026-08-14)
+- Checkout Window: removes the overlapping in-app close button from the desktop checkout route and relies on the native Windows title bar while preserving Android's mobile close control.
+- Release Safety: adds a regression check that keeps checkout excluded from the global desktop daughter-window close overlay.
+
 ## v0.6.7 (2026-08-14)
 - Client Actions: adds an equal-size Consultation button beside New Work Order and New Sale on saved and newly added client profiles, with distinct green, blue, and purple styling on Windows and Android.
 - Consultation Handoff: opens the booking window with the selected client already saved and selected across desktop and mobile workflows.
