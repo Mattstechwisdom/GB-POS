@@ -7,7 +7,7 @@ const { app, BrowserWindow } = require('electron');
 const PORT = 5197;
 const ROOT = path.resolve(__dirname, '..');
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const WINDOWS = [
+const ALL_WINDOWS = [
   'newWorkOrder', 'newSale', 'calendar', 'journal', 'dailyLook', 'clockIn',
   'quoteGenerator', 'eod', 'products', 'inventory', 'vendors',
   'workOrderRepairPicker', 'addClient', 'customerOverview', 'customerSearch',
@@ -16,7 +16,11 @@ const WINDOWS = [
   'notificationSettings', 'releaseForm', 'customerReceipt', 'consultSheet',
   'productForm', 'backup', 'clearDb', 'repairCategories', 'deviceCategories',
   'customBuildItem', 'technicians', 'feedback', 'gameMenu',
+  'clientUpdate',
 ];
+const WINDOWS = process.env.MOBILE_WINDOW_LAYOUT_TYPE
+  ? [process.env.MOBILE_WINDOW_LAYOUT_TYPE]
+  : ALL_WINDOWS;
 const ORIENTATIONS = [
   { name: 'portrait', width: 390, height: 844 },
   { name: 'landscape', width: 844, height: 390 },
@@ -96,6 +100,31 @@ async function inspectWindow(win, type, orientation) {
   assert.equal(layout.shellFits, true, `${type} (${orientation.name}) escaped the mobile viewport.`);
   assert.equal(layout.closeVisible, true, `${type} (${orientation.name}) hid its close control.`);
   assert.equal(runtimeErrors.length, 0, `${type} (${orientation.name}) logged errors: ${runtimeErrors.join(' | ')}`);
+
+  if (type === 'clientUpdate') {
+    const history = await win.webContents.executeJavaScript(`(async () => {
+      const historyButton = Array.from(document.querySelectorAll('button')).find((entry) => entry.textContent.trim() === 'History');
+      historyButton?.click();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const dialog = document.querySelector('.gb-client-update-history');
+      const rect = dialog?.getBoundingClientRect();
+      const close = dialog?.querySelector('button[aria-label="Close update history"]');
+      return {
+        buttonPresent: Boolean(historyButton),
+        visible: Boolean(dialog && rect && rect.width > 280 && rect.height > 180),
+        fits: Boolean(rect && rect.left >= -2 && rect.right <= window.innerWidth + 2 && rect.top >= -2 && rect.bottom <= window.innerHeight + 2),
+        summaryCount: dialog?.querySelectorAll('.gb-client-update-history-summary > div').length || 0,
+        closeVisible: Boolean(close && close.getBoundingClientRect().width >= 32),
+        horizontalOverflow: Boolean(dialog && dialog.scrollWidth > dialog.clientWidth + 3),
+      };
+    })()`);
+    assert.equal(history.buttonPresent, true, `Update History button was missing in ${orientation.name}.`);
+    assert.equal(history.visible, true, `Update History did not open in ${orientation.name}.`);
+    assert.equal(history.fits, true, `Update History escaped the viewport in ${orientation.name}.`);
+    assert.equal(history.summaryCount, 4, `Update History summary was incomplete in ${orientation.name}.`);
+    assert.equal(history.closeVisible, true, `Update History close control was unusable in ${orientation.name}.`);
+    assert.equal(history.horizontalOverflow, false, `Update History clipped horizontally in ${orientation.name}.`);
+  }
 
   if (type === 'calendar') {
     const opened = await win.webContents.executeJavaScript(`(() => {

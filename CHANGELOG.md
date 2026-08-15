@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.11 (2026-08-15)
+- Client Update History: gives Update Client and scanned QR workflows a prominent History button backed by the existing Supabase invoice archive.
+- Delivery Audit: shows the exact invoice, client, update type, timestamp, recipient, customer message, estimated date, and delivery result with sent, queued, and failed totals.
+- Responsive History Window: replaces the easy-to-miss inline list with a focused daughter window tailored for Windows, Android portrait, and Android landscape.
+- Shop Isolation: scopes history by active shop, invoice type, and invoice ID so similarly numbered records cannot mix across shops.
+- Release Safety: adds Supabase routing assertions and focused Electron portrait/landscape checks for history visibility, controls, summary counts, and horizontal fit.
+
 ## v0.6.10 (2026-08-15)
 - Consultation Partners: adds a third location choice beside In-Store and At-Home / On-Site with a synced directory of grouped businesses, saved addresses, optional unit numbers, and custom hourly pricing.
 - Partner Management: supports Add Partner, remembered group suggestions, grouped partner selection, and desktop right-click or Android press-and-hold actions for editing and deleting saved partners.

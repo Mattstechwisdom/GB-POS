@@ -138,7 +138,10 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Each update must save to the ticket history before or while the customer message is sent.
 - Desktop sends customer updates by email.
 - Android can send email or open the phone messaging app with a prepared message and recipient. The technician still presses Send in the messaging app.
-- History shows previously recorded updates for the ticket.
+- Select History at the top of Update Client to open the invoice's complete update archive. The same History window is available when the page was opened from a scanned QR code.
+- History is scoped to the active shop, invoice type, and invoice number. It shows newest updates first with the timestamp, recipient, message, estimated date, and delivery result.
+- The summary at the top separates total, sent, queued, and failed updates. Use Refresh when an email was queued and you need its latest delivery result.
+- Close History with its X, the Escape key on desktop, or the shaded area outside the window on mobile.
 
 ### Typical Update Stages
 

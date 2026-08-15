@@ -326,6 +326,16 @@ function useSheetDrag(onClose: () => void) {
 
 function MobileModalContent({ type, onClose }: { type: string; onClose: () => void }) {
   switch (type) {
+    case 'clientUpdate': return (
+      <ClientUpdatePanel
+        embedded
+        recordType="repair"
+        recordId={1001}
+        initialRecord={{ id: 1001, customerId: 501, productDescription: 'PlayStation 5', model: 'Disc Edition', status: 'Checked In' }}
+        initialCustomer={{ id: 501, firstName: 'Preview', lastName: 'Customer', phone: '8035550100', email: 'preview@example.invalid' }}
+        onClose={onClose}
+      />
+    );
     case 'newWorkOrder': return <NewWorkOrderWindow />;
     case 'newSale': return <SaleWindow />;
     case 'calendar': return <CalendarWindow />;

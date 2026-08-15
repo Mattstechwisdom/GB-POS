@@ -16,6 +16,10 @@ const statusFunction = read('supabase/functions/qr-status/index.ts');
 const consultationPage = read('public/consultation.html');
 
 expect(panel.includes("supabase.functions.invoke('client-updates'"), 'Update Client must invoke the Supabase client-updates function.');
+expect(panel.includes("from('client_update_history')"), 'Update Client history must load the invoice archive from Supabase.');
+expect(panel.includes('role="dialog"'), 'Update Client history must open in an accessible daughter window.');
+expect(panel.includes('Client Update History'), 'Update Client and QR panels must expose the history window.');
+expect(panel.includes('event.target === event.currentTarget'), 'The mobile history backdrop must close the daughter window.');
 expect(!panel.includes('gb-pos-production.up.railway.app'), 'Update Client still contains a Railway fallback.');
 expect(desktop.includes('https://mattstechwisdom.github.io/GB-POS'), 'Desktop QR links must use the free GitHub Pages app.');
 expect(mobile.includes('https://mattstechwisdom.github.io/GB-POS'), 'Mobile QR links must use the free GitHub Pages app.');

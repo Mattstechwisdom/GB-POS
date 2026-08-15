@@ -763,6 +763,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: #f5d0fe;
 }
 
+.gb-client-update-history-toggle:hover {
+  border-color: var(--neon-purple);
+  background: #3f3f46;
+  color: #fff;
+}
+
 .gb-client-update-card,
 .gb-client-update-section {
   border: 1px solid #3f3f46;
@@ -1189,12 +1195,27 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   .gb-notification-consent-actions { grid-template-columns: 1fr; }
 }
 
+.gb-client-update-history-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100010;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+
 .gb-client-update-history {
-  margin-bottom: 0.85rem;
-  padding: 0.8rem;
+  width: min(52rem, 100%);
+  max-height: min(46rem, calc(100dvh - 3rem));
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid #52525b;
   border-radius: 8px;
-  background: #111114;
+  background: #18181b;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
 }
 
 .gb-client-update-history-heading,
@@ -1206,35 +1227,108 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .gb-client-update-history-heading {
-  margin-bottom: 0.65rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid #3f3f46;
+  background: #111114;
 }
 
 .gb-client-update-history-heading h3 {
-  margin: 0;
+  margin: 0.12rem 0 0;
   color: #f4f4f5;
-  font-size: 0.85rem;
+  font-size: 1.2rem;
   font-weight: 900;
+  letter-spacing: 0;
+}
+
+.gb-client-update-history-heading p {
+  margin: 0.25rem 0 0;
+  color: #a1a1aa;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.gb-client-update-history-close {
+  flex: 0 0 2.25rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #52525b;
+  border-radius: 50%;
+  background: #27272a;
+  color: #f4f4f5;
+  font-weight: 900;
+}
+
+.gb-client-update-history-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid #3f3f46;
+  background: #3f3f46;
+}
+
+.gb-client-update-history-summary > div {
+  min-width: 0;
+  padding: 0.7rem;
+  background: #202024;
+  text-align: center;
+}
+
+.gb-client-update-history-summary strong,
+.gb-client-update-history-summary span {
+  display: block;
+}
+
+.gb-client-update-history-summary strong {
+  color: #fff;
+  font-size: 1.15rem;
+}
+
+.gb-client-update-history-summary span {
+  margin-top: 0.12rem;
+  color: #a1a1aa;
+  font-size: 0.67rem;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
-.gb-client-update-history-heading button {
+.gb-client-update-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid #3f3f46;
+  color: #a1a1aa;
+  font-size: 0.72rem;
+}
+
+.gb-client-update-history-toolbar button {
   min-height: 2rem;
-  padding: 0.35rem 0.65rem;
+  padding: 0.35rem 0.7rem;
   border: 1px solid #52525b;
   border-radius: 6px;
   background: #27272a;
-  color: #d4d4d8;
+  color: #f4f4f5;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
+}
+
+.gb-client-update-history-toolbar button:disabled { opacity: 0.55; }
+
+.gb-client-update-history-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.45rem 0.8rem 0.85rem;
 }
 
 .gb-client-update-history-item {
-  margin-top: 0.55rem;
-  padding: 0.7rem;
+  margin-top: 0.45rem;
+  padding: 0.75rem 0.85rem;
   border: 1px solid #3f3f46;
   border-left: 4px solid var(--neon-purple);
   border-radius: 8px;
-  background: #18181b;
+  background: #202024;
   color: #d4d4d8;
   font-size: 0.8rem;
 }
@@ -1253,7 +1347,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 .gb-client-update-history-item-top .delivery-sent { color: var(--neon-green); }
 .gb-client-update-history-item-top .delivery-failed { color: #f87171; }
-.gb-client-update-history-item-top .delivery-not_requested { color: #fbbf24; }
+.gb-client-update-history-item-top .delivery-not_requested,
+.gb-client-update-history-item-top .delivery-pending,
+.gb-client-update-history-item-top .delivery-sending { color: #fbbf24; }
 
 .gb-client-update-history-item time,
 .gb-client-update-history-recipient {
@@ -1261,6 +1357,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   margin-top: 0.3rem;
   color: #a1a1aa;
   font-size: 0.72rem;
+}
+
+.gb-client-update-history-date {
+  margin-top: 0.35rem;
+  color: #fde68a;
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .gb-client-update-history-item p {
@@ -1279,10 +1382,53 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .gb-client-update-history-empty {
-  padding: 0.8rem;
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  padding: 1.25rem;
   color: #a1a1aa;
   text-align: center;
   font-size: 0.82rem;
+}
+
+@media (max-width: 600px) {
+  .gb-client-update-history-layer {
+    align-items: end;
+    padding: max(0.5rem, env(safe-area-inset-top)) 0 0;
+  }
+
+  .gb-client-update-history {
+    width: 100%;
+    max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top)));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .gb-client-update-history-heading { padding: 0.85rem 0.9rem; }
+  .gb-client-update-history-heading h3 { font-size: 1.05rem; }
+  .gb-client-update-history-summary > div { padding: 0.55rem 0.3rem; }
+  .gb-client-update-history-summary strong { font-size: 1rem; }
+  .gb-client-update-history-list { padding-inline: 0.55rem; }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .gb-client-update-history-layer {
+    align-items: center;
+    padding: 0.4rem max(0.6rem, env(safe-area-inset-right)) 0.4rem max(0.6rem, env(safe-area-inset-left));
+  }
+
+  .gb-client-update-history {
+    width: min(48rem, 100%);
+    max-height: calc(100dvh - 0.8rem);
+    border: 1px solid #52525b;
+    border-radius: 8px;
+  }
+
+  .gb-client-update-history-heading { padding-block: 0.55rem; }
+  .gb-client-update-history-summary > div { padding-block: 0.35rem; }
+  .gb-client-update-history-toolbar { padding-block: 0.3rem; }
 }
 
 .gb-wo-update-client-button {

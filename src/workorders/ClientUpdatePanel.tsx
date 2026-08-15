@@ -161,6 +161,13 @@ function recordTitle(type: UpdateType, record: any) {
   return [record?.productDescription, record?.model].filter(Boolean).join(' - ') || record?.productCategory || 'Device';
 }
 
+function deliveryLabel(entry: UpdateHistoryRow): string {
+  if (entry.delivery_status === 'sent') return 'Email sent';
+  if (entry.delivery_status === 'failed') return 'Email failed';
+  if (entry.delivery_status === 'pending' || entry.delivery_status === 'sending') return 'Email queued';
+  return entry.recipient_email ? 'Saved only' : 'Text prepared';
+}
+
 function repairStatusLabel(key: string): string {
   const map: Record<string, string> = {
     diagnosis: 'Diagnosis In Process',
@@ -384,12 +391,26 @@ const ClientUpdatePanel: React.FC<Props> = ({
     setHistoryLoading(true);
     setHistoryError('');
     try {
+      let scopedShopId = historyShopId || String(record?.shopId || record?.shop_id || '');
+      if (!scopedShopId) {
+        const session = await supabase.auth.getSession();
+        const userId = session.data.session?.user?.id || '';
+        if (userId) {
+          const profile = await supabase
+            .from('staff_profiles')
+            .select('shop_id')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (!profile.error) scopedShopId = String(profile.data?.shop_id || '');
+        }
+      }
       let query = supabase
         .from('client_update_history')
         .select('id,status_key,status_label,message,estimated_date,recipient_email,delivery_status,delivery_error,created_at')
         .eq('record_type', type)
         .eq('legacy_record_id', legacyRecordId);
-      if (historyShopId) query = query.eq('shop_id', historyShopId);
+      if (scopedShopId) query = query.eq('shop_id', scopedShopId);
       const response = await query.order('created_at', { ascending: false }).limit(100);
       if (response.error) throw new Error(response.error.message);
       setHistoryRows((response.data || []) as UpdateHistoryRow[]);
@@ -398,13 +419,27 @@ const ClientUpdatePanel: React.FC<Props> = ({
     } finally {
       setHistoryLoading(false);
     }
-  }, [historyShopId, record?.id, recordId, type]);
+  }, [historyShopId, record?.id, record?.shopId, record?.shop_id, recordId, type]);
+
+  useEffect(() => {
+    if (!historyOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHistoryOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [historyOpen]);
 
   const name = clientName(record, customer);
   const phoneRaw = customer?.phone || record?.customerPhone || '';
   const phoneAltRaw = customer?.phoneAlt || record?.customerPhoneAlt || '';
   const email = customer?.email || record?.customerEmail || '';
   const orderLabel = type === 'sale' ? `INV-${record?.id || recordId || ''}` : type === 'consult' ? `CONS-${record?.id || recordId || ''}` : `WO-${record?.id || recordId || ''}`;
+  const historySummary = useMemo(() => ({
+    sent: historyRows.filter((entry) => entry.delivery_status === 'sent').length,
+    queued: historyRows.filter((entry) => entry.delivery_status === 'pending' || entry.delivery_status === 'sending').length,
+    failed: historyRows.filter((entry) => entry.delivery_status === 'failed').length,
+  }), [historyRows]);
 
   const openTextMessage = useCallback((phone: string, message: string) => {
     const digits = String(phone || '').replace(/[^\d+]/g, '');
@@ -563,9 +598,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
                 type="button"
                 className={historyOpen ? 'gb-client-update-history-toggle active' : 'gb-client-update-history-toggle'}
                 onClick={() => {
-                  const next = !historyOpen;
-                  setHistoryOpen(next);
-                  if (next) void loadHistory();
+                  setHistoryOpen(true);
+                  void loadHistory();
                 }}
               >
                 History
@@ -634,35 +668,6 @@ const ClientUpdatePanel: React.FC<Props> = ({
               </section>
             ) : null}
 
-            {historyOpen ? (
-              <section className="gb-client-update-history" aria-label="Client update history">
-                <div className="gb-client-update-history-heading">
-                  <h3>Update History</h3>
-                  <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>Refresh</button>
-                </div>
-                {historyLoading ? <div className="gb-client-update-history-empty">Loading history...</div> : null}
-                {!historyLoading && historyError ? <div className="gb-client-update-error">{historyError}</div> : null}
-                {!historyLoading && !historyError && historyRows.length === 0 ? (
-                  <div className="gb-client-update-history-empty">No updates have been sent for this ticket.</div>
-                ) : null}
-                {!historyLoading && !historyError ? historyRows.map((entry) => (
-                  <article className="gb-client-update-history-item" key={entry.id}>
-                    <div className="gb-client-update-history-item-top">
-                      <strong>{entry.status_label}</strong>
-                      <span className={`delivery-${entry.delivery_status}`}>
-                        {entry.delivery_status === 'sent' ? 'Email sent' : entry.delivery_status === 'failed' ? 'Email failed' : entry.delivery_status === 'pending' || entry.delivery_status === 'sending' ? 'Email queued' : entry.recipient_email ? 'Saved only' : 'Text prepared'}
-                      </span>
-                    </div>
-                    <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
-                    {entry.recipient_email ? <div className="gb-client-update-history-recipient">To: {entry.recipient_email}</div> : null}
-                    {entry.estimated_date ? <div>Estimated date: {entry.estimated_date}</div> : null}
-                    {entry.message ? <p>{entry.message}</p> : null}
-                    {entry.delivery_error ? <div className="gb-client-update-history-error">{entry.delivery_error}</div> : null}
-                  </article>
-                )) : null}
-              </section>
-            ) : null}
-
             <section className="gb-client-update-section">
               <h3>Quick Actions</h3>
               {quickOptions.map(renderOption)}
@@ -674,6 +679,58 @@ const ClientUpdatePanel: React.FC<Props> = ({
             </section>
           </>
         )}
+
+        {historyOpen ? (
+          <div className="gb-client-update-history-layer" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setHistoryOpen(false);
+          }}>
+            <section className="gb-client-update-history" role="dialog" aria-modal="true" aria-labelledby="gb-client-update-history-title">
+              <header className="gb-client-update-history-heading">
+                <div>
+                  <div className="gb-client-update-kicker">{orderLabel}</div>
+                  <h3 id="gb-client-update-history-title">Client Update History</h3>
+                  <p>{name} | {recordTitle(type, record)}</p>
+                </div>
+                <button type="button" className="gb-client-update-history-close" onClick={() => setHistoryOpen(false)} aria-label="Close update history">x</button>
+              </header>
+
+              <div className="gb-client-update-history-summary" aria-label="Update delivery summary">
+                <div><strong>{historyRows.length}</strong><span>Total</span></div>
+                <div><strong>{historySummary.sent}</strong><span>Sent</span></div>
+                <div><strong>{historySummary.queued}</strong><span>Queued</span></div>
+                <div><strong>{historySummary.failed}</strong><span>Failed</span></div>
+              </div>
+
+              <div className="gb-client-update-history-toolbar">
+                <span>Newest updates first</span>
+                <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
+                  {historyLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+
+              <div className="gb-client-update-history-list">
+                {historyLoading && historyRows.length === 0 ? <div className="gb-client-update-history-empty">Loading history...</div> : null}
+                {!historyLoading && historyError ? <div className="gb-client-update-error">{historyError}</div> : null}
+                {!historyLoading && !historyError && historyRows.length === 0 ? (
+                  <div className="gb-client-update-history-empty">No updates have been sent for this invoice yet.</div>
+                ) : null}
+                {!historyError ? historyRows.map((entry) => (
+                  <article className="gb-client-update-history-item" key={entry.id}>
+                    <div className="gb-client-update-history-item-top">
+                      <strong>{entry.status_label}</strong>
+                      <span className={`delivery-${entry.delivery_status}`}>{deliveryLabel(entry)}</span>
+                    </div>
+                    <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
+                    {entry.recipient_email ? <div className="gb-client-update-history-recipient">To: {entry.recipient_email}</div> : null}
+                    {entry.estimated_date ? <div className="gb-client-update-history-date">Estimated date: {entry.estimated_date}</div> : null}
+                    {entry.message ? <p>{entry.message}</p> : null}
+                    {entry.delivery_error ? <div className="gb-client-update-history-error">{entry.delivery_error}</div> : null}
+                  </article>
+                )) : null}
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );
