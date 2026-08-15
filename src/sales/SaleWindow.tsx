@@ -7,6 +7,7 @@ import PaymentPanel from '@/workorders/PaymentPanel';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
+import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 
 type SalePayload = {
   customerId?: number;
@@ -168,6 +169,20 @@ function readPayload(): SalePayload | null {
   }
 }
 
+async function findConsultationEventId(saleIdInput: any): Promise<number> {
+  const saleId = Number(saleIdInput) || 0;
+  if (!saleId) return 0;
+  try {
+    const events = await (window as any).api?.dbGet?.('calendarEvents');
+    const match = Array.isArray(events)
+      ? events.find((event: any) => Number(event?.saleId || 0) === saleId && String(event?.category || '').toLowerCase() === 'consultation')
+      : null;
+    return Number(match?.id || 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 function parseCheckoutPaymentDate(value: any): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   const date = new Date(value);
@@ -247,6 +262,7 @@ const SaleWindow: React.FC = () => {
   });
   const [errors, setErrors] = useState<string[]>([]);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [clientUpdateTarget, setClientUpdateTarget] = useState<{ recordType: 'sale' | 'consult'; recordId: number } | null>(null);
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
@@ -835,6 +851,22 @@ const SaleWindow: React.FC = () => {
   ]);
 
   const intakeCustomerSummary = useMemo(() => ({ name: sale.customerName, phone: sale.customerPhone }), [sale.customerName, sale.customerPhone]);
+  const isConsultation = !!(sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation';
+
+  const openClientUpdate = useCallback(async () => {
+    const saleId = Number((sale as any).id || 0) || 0;
+    if (!saleId) return;
+    if (!isConsultation) {
+      setClientUpdateTarget({ recordType: 'sale', recordId: saleId });
+      return;
+    }
+    const eventId = await findConsultationEventId(saleId);
+    if (!eventId) {
+      alert('This consultation is still syncing to the calendar. Save it, then try Update Client again.');
+      return;
+    }
+    setClientUpdateTarget({ recordType: 'consult', recordId: eventId });
+  }, [isConsultation, (sale as any).id]);
 
   const handleSidebarChange = useCallback((patch: Partial<WorkOrderFull>) => {
     const { items: _ignore, ...rest } = (patch as any) || {};
@@ -1010,9 +1042,11 @@ const SaleWindow: React.FC = () => {
             const driverFee = Number((sale as any).driverFee ?? (driverItem as any)?.price ?? 0) || 0;
             const firstHourTotal = round2(firstHourRate + driverFee);
             const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            const eventId = await findConsultationEventId((sale as any).id);
 
             const payload = {
               id: (sale as any).id,
+              eventId,
               customerId: sale.customerId,
               customerName: sale.customerName,
               customerPhone: sale.customerPhone,
@@ -1266,9 +1300,11 @@ const SaleWindow: React.FC = () => {
               const driverFee = Number((recordToPersist as any).driverFee ?? (driverItem as any)?.price ?? (sale as any).driverFee ?? 0) || 0;
               const firstHourTotal = round2(firstHourRate + driverFee);
               const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+              const eventId = await findConsultationEventId(currentId || (sale as any).id);
 
               const payload = {
                 id: currentId || (sale as any).id,
+                eventId,
                 customerId: recordToPersist.customerId,
                 customerName: recordToPersist.customerName,
                 customerPhone: recordToPersist.customerPhone,
@@ -1427,6 +1463,14 @@ const SaleWindow: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
+      {clientUpdateTarget ? (
+        <ClientUpdatePanel
+          embedded
+          recordType={clientUpdateTarget.recordType}
+          recordId={clientUpdateTarget.recordId}
+          onClose={() => setClientUpdateTarget(null)}
+        />
+      ) : null}
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
@@ -1782,7 +1826,13 @@ const SaleWindow: React.FC = () => {
         </div>
         </div>
         <div className="flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={sharedWorkOrder} customerSummary={intakeCustomerSummary} onChange={handleIntakeChange} />
+          <IntakePanel
+            workOrder={sharedWorkOrder}
+            customerSummary={intakeCustomerSummary}
+            onChange={handleIntakeChange}
+            onUpdateClient={() => { void openClientUpdate(); }}
+            updateClientDisabled={!Number((sale as any).id || 0)}
+          />
           <PaymentPanel salesMode workOrder={sharedWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
         </div>
       </div>

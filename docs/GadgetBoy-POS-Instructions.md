@@ -134,7 +134,10 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ## 7. Client Updates and QR Codes
 
 - Work-order QR codes open the client update page for that ticket.
-- The Update Client button inside the POS opens the same workflow without scanning.
+- Sales Forms and Customer Receipts contain a sale-specific QR code that opens the update workflow for that sale.
+- Consultation Sheets contain a consultation-specific QR code tied to the consultation calendar entry and reminder workflow.
+- In work-order, sale, and consultation windows, Update Client is directly beneath client information and opens the matching record type without scanning.
+- Save and sync a new sale or consultation before printing or opening Update Client so its Supabase-backed QR identity exists.
 - Each update must save to the ticket history before or while the customer message is sent.
 - Desktop sends customer updates by email.
 - Android can send email or open the phone messaging app with a prepared message and recipient. The technician still presses Send in the messaging app.

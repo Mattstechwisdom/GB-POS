@@ -3,6 +3,7 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { consultationLocationDisplay } from '../lib/consultationLocation';
+import QRCode from 'qrcode';
 
 function getPayload() {
   try {
@@ -37,8 +38,11 @@ const ConsultSheetWindow: React.FC = () => {
   const flags = useMemo(() => getFlags(), []);
 
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [qrSrc, setQrSrc] = useState<string>('');
+  const [qrResolved, setQrResolved] = useState<boolean>(() => !Number((data as any).eventId || 0));
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
+  const qrImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -51,7 +55,33 @@ const ConsultSheetWindow: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const eventId = Number((data as any).eventId || 0) || 0;
+    if (!eventId) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const result = await (window as any).api?.qrGetStatusUrl?.('consult', eventId);
+        const url = String(result?.url || '').trim();
+        if (!result?.ok || !url) return;
+        const value = await QRCode.toDataURL(url, {
+          width: 176,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        if (alive && value.startsWith('data:')) setQrSrc(value);
+      } catch {
+        // The sheet remains printable if the consultation has not synced yet.
+      } finally {
+        if (alive) setQrResolved(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [data]);
+
+  useEffect(() => {
     if (!flags.autoPrint || flags.silent) return;
+    if (!qrResolved) return;
     if (didAutoPrintRef.current) return;
 
     const fallback = window.setTimeout(() => {
@@ -75,18 +105,20 @@ const ConsultSheetWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrResolved]);
 
   // When silently printing, the main-process print pipeline waits for this signal
   useEffect(() => {
     if (!flags.autoPrint || !flags.silent) return;
+    if (!qrResolved) return;
 
     let cancelled = false;
 
     const waitForImage = async () => {
-      const img = logoImgRef.current;
-      if (!img || img.complete) return;
-      await new Promise<void>((resolve) => {
+      const images = [logoImgRef.current, qrImgRef.current].filter(Boolean) as HTMLImageElement[];
+      await Promise.all(images.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
         let settled = false;
         const finish = () => {
           if (settled) return;
@@ -98,7 +130,8 @@ const ConsultSheetWindow: React.FC = () => {
         try { img.addEventListener('load', finish, { once: true }); } catch {}
         try { img.addEventListener('error', finish, { once: true }); } catch {}
         window.setTimeout(finish, 800);
-      });
+        });
+      }));
     };
 
     const signalReady = async () => {
@@ -123,7 +156,7 @@ const ConsultSheetWindow: React.FC = () => {
 
     void signalReady();
     return () => { cancelled = true; };
-  }, [flags.autoPrint, flags.silent, logoSrc]);
+  }, [flags.autoPrint, flags.silent, logoSrc, qrResolved]);
 
   const customerName = String((data as any).customerName || '').trim();
   const phoneRaw = String((data as any).customerPhone || '').trim();
@@ -176,6 +209,12 @@ const ConsultSheetWindow: React.FC = () => {
               <div style={{ fontSize: 12, color: '#52525b', fontWeight: 700 }}>Consultation Sheet</div>
             </div>
           </div>
+          {qrSrc ? (
+            <div style={{ display: 'grid', justifyItems: 'center', gap: 2, marginLeft: 'auto', marginRight: 16 }}>
+              <img ref={qrImgRef} src={qrSrc} alt="Consultation update QR" style={{ width: 88, height: 88, display: 'block' }} />
+              <div style={{ fontSize: 9, color: '#52525b', fontWeight: 700, letterSpacing: 0.4 }}>CONSULTATION UPDATE</div>
+            </div>
+          ) : null}
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: '#111' }}>2822 Devine Street, Columbia, SC 29205</div>
             <div style={{ fontSize: 11, color: '#111' }}>803-708-0101</div>

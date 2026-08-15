@@ -14,6 +14,12 @@ const mobileApp = read('src/mobile/MobileApp.tsx');
 const updateFunction = read('supabase/functions/client-updates/index.ts');
 const statusFunction = read('supabase/functions/qr-status/index.ts');
 const consultationPage = read('public/consultation.html');
+const saleWindow = read('src/sales/SaleWindow.tsx');
+const salePrint = read('src/sales/salePrint.ts');
+const saleReceipt = read('src/workorders/CustomerReceiptWindow.tsx');
+const consultSheet = read('src/sales/ConsultSheetWindow.tsx');
+const consultBooking = read('src/components/ConsultationBookingWindow.tsx');
+const intakePanel = read('src/workorders/IntakePanel.tsx');
 
 expect(panel.includes("supabase.functions.invoke('client-updates'"), 'Update Client must invoke the Supabase client-updates function.');
 expect(panel.includes("from('client_update_history')"), 'Update Client history must load the invoice archive from Supabase.');
@@ -32,5 +38,15 @@ expect(updateFunction.includes('send-client-update'), 'The client-updates functi
 expect(updateFunction.includes('client_update_history'), 'The client-updates function must archive every update.');
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');
 expect(consultationPage.includes('/functions/v1/qr-status'), 'The consultation page must load through Supabase.');
+expect(salePrint.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales forms must use the Supabase-backed sale QR route.');
+expect(saleReceipt.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales receipts must use the Supabase-backed sale QR route.');
+expect(saleReceipt.includes('alt="Sale update QR"'), 'Printed sales receipts must render the sale QR image.');
+expect(consultSheet.includes("qrGetStatusUrl?.('consult', eventId)"), 'Printed consultation sheets must use the consultation calendar-event QR route.');
+expect(consultSheet.includes('alt="Consultation update QR"'), 'Printed consultation sheets must render the consultation QR image.');
+expect(saleWindow.includes("recordType: 'sale'"), 'Sales must open their own Update Client workflow.');
+expect(saleWindow.includes("recordType: 'consult'"), 'Consultations edited from a sale window must open their own Update Client workflow.');
+expect(saleWindow.includes('findConsultationEventId'), 'Consultation updates and printouts must resolve the linked calendar event.');
+expect(consultBooking.includes('recordId={done.eventId}'), 'New consultation updates must use the consultation event ID.');
+expect(intakePanel.indexOf('Update Client') < intakePanel.indexOf('View customer'), 'Update Client must sit directly beneath client information.');
 
 console.log('Supabase client update and QR routing checks passed.');

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.12 (2026-08-15)
+- Sales QR Restoration: prints a Supabase-backed sale update QR on both the Sales Form and Customer Receipt instead of using the retired shop-LAN route.
+- Consultation QR Restoration: prints the consultation calendar-reminder QR on Consultation Sheets and waits for the QR image before silent printing begins.
+- Record-Specific Client Updates: places Update Client directly beneath client information in sales and consultation windows, with sales routed to sale updates and consultations routed to their linked calendar event.
+- Consultation ID Safety: fixes newly booked consultations so Update Client uses the consultation event ID rather than the related sale ID.
+- Release Safety: expands the Supabase QR regression checks to cover both print formats and both record-specific update workflows.
+
 ## v0.6.11 (2026-08-15)
 - Client Update History: gives Update Client and scanned QR workflows a prominent History button backed by the existing Supabase invoice archive.
 - Delivery Audit: shows the exact invoice, client, update type, timestamp, recipient, customer message, estimated date, and delivery result with sent, queued, and failed totals.

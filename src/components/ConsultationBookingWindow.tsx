@@ -727,7 +727,7 @@ export default function ConsultationBookingWindow() {
   if (done) {
     return (
       <div className="min-h-screen bg-zinc-900 text-gray-100 flex items-center justify-center p-6">
-        {clientUpdateOpen ? <ClientUpdatePanel embedded recordType="consult" recordId={done.saleId} onClose={() => setClientUpdateOpen(false)} /> : null}
+        {clientUpdateOpen ? <ClientUpdatePanel embedded recordType="consult" recordId={done.eventId} onClose={() => setClientUpdateOpen(false)} /> : null}
         <div className="text-center max-w-md">
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Consultation Booked</h1>
@@ -735,6 +735,7 @@ export default function ConsultationBookingWindow() {
           <button
             type="button"
             onClick={() => setClientUpdateOpen(true)}
+            disabled={!done.eventId}
             className="mb-3 mt-2 w-full rounded border border-[#BC13FE]/70 bg-[#BC13FE]/20 px-6 py-2 font-semibold text-fuchsia-100 hover:brightness-110"
           >
             Update Client

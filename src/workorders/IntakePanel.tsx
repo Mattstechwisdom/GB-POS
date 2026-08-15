@@ -4,9 +4,15 @@ import { INTAKE_SOURCES, INTAKE_SOURCE_PLACEHOLDER } from '../lib/intakeSources'
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
 import { formatPhone } from '../lib/format';
 
-interface Props { workOrder: WorkOrderFull; onChange: (p: Partial<WorkOrderFull>) => void; customerSummary?: { name?: string; phone?: string } }
+interface Props {
+  workOrder: WorkOrderFull;
+  onChange: (p: Partial<WorkOrderFull>) => void;
+  customerSummary?: { name?: string; phone?: string };
+  onUpdateClient?: () => void;
+  updateClientDisabled?: boolean;
+}
 
-const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary }) => {
+const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary, onUpdateClient, updateClientDisabled = false }) => {
   const [fullCustomer, setFullCustomer] = useState<Customer | null>(null);
   const [customMode, setCustomMode] = useState<boolean>(false);
 
@@ -50,6 +56,16 @@ const IntakePanel: React.FC<Props> = ({ workOrder, onChange, customerSummary }) 
         {displayEmail && <div className="text-xs text-zinc-300 truncate" title={displayEmail}>{displayEmail}</div>}
         <div className="text-xs text-zinc-400" title={displayPhone}>{displayPhone}</div>
       </div>
+      {onUpdateClient ? (
+        <button
+          type="button"
+          className="w-full px-3 py-2 bg-[#BC13FE]/20 border border-[#BC13FE]/70 rounded text-fuchsia-100 font-semibold mb-2 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={onUpdateClient}
+          disabled={updateClientDisabled}
+        >
+          Update Client
+        </button>
+      ) : null}
       <button
         className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded text-zinc-200 mb-3"
         onClick={() => {
@@ -104,5 +120,7 @@ export default React.memo(IntakePanel, (prev, next) => {
     && String(a.checkInAt || '') === String(b.checkInAt || '')
     && String(a.intakeSource || '') === String(b.intakeSource || '')
     && String(prev.customerSummary?.name || '') === String(next.customerSummary?.name || '')
-    && String(prev.customerSummary?.phone || '') === String(next.customerSummary?.phone || '');
+    && String(prev.customerSummary?.phone || '') === String(next.customerSummary?.phone || '')
+    && prev.onUpdateClient === next.onUpdateClient
+    && prev.updateClientDisabled === next.updateClientDisabled;
 });
