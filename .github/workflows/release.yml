@@ -80,6 +80,7 @@ jobs:
           npm run test:customer-contact
           npm run test:consultation-location
           npm run test:consultation-pricing
+          npm run test:consultation-partners
           npm run test:distributor-url
           npm run test:inventory-consumption
           npm run test:inventory-reorder

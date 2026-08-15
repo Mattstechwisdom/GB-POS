@@ -10,6 +10,18 @@ import { ALL_TECHNICIANS, calendarEventGroupKey, taskAssignmentLabel, taskIsComp
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 
+function openConsultationAddressInMaps(address: string) {
+  const destination = String(address || '').trim();
+  if (!destination || /^at shop location$/i.test(destination)) return;
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+  try {
+    const opened = (window as any).api?.openUrl?.(url);
+    if (!opened) window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
 type CalendarEvent = {
   id?: number;
   date: string;       // YYYY-MM-DD
@@ -1686,7 +1698,7 @@ const CalendarWindow: React.FC = () => {
               {viewing.customerName ? <div><span>Client</span><strong>{viewing.customerName}</strong></div> : null}
               {viewing.customerPhone ? <div><span>Phone</span><strong>{formatPhone(viewing.customerPhone)}</strong></div> : null}
               {viewing.customerEmail ? <div><span>Email</span><strong>{viewing.customerEmail}</strong></div> : null}
-              {viewing.category === 'consultation' && viewing.consultationAddress ? <div className="detail-wide"><span>Address</span><strong>{viewing.consultationAddress}</strong></div> : null}
+              {viewing.category === 'consultation' && viewing.consultationAddress ? <div className="detail-wide"><span>Address</span><strong>{viewing.consultationAddress}</strong>{!/^at shop location$/i.test(viewing.consultationAddress) ? <button type="button" className="gb-mobile-map-button mt-2 rounded border border-blue-500 bg-blue-600 px-3 py-2 text-xs font-semibold" onClick={() => openConsultationAddressInMaps(viewing.consultationAddress || '')}>Open Maps</button> : null}</div> : null}
               {viewing.location ? <div><span>Platform / location</span><strong>{viewing.location}</strong></div> : null}
               {viewing.partName ? <div><span>Part / product</span><strong>{viewing.partName}</strong></div> : null}
               {viewing.workOrderId ? <div><span>Work order</span><strong>#{viewing.workOrderId}</strong></div> : null}

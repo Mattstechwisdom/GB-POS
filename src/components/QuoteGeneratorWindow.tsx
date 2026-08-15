@@ -373,9 +373,10 @@ type QuoteClientPanelProps = {
   onAddClient: () => void;
   onSelect: (c: { id?: number; firstName?: string; lastName?: string; phone?: string; email?: string }) => void;
   onClear: () => void;
+  clientCreator?: React.ReactNode;
 };
 
-const QuoteClientPanel: React.FC<QuoteClientPanelProps> = ({ client, searchOpen, onToggleSearch, onAddClient, onSelect, onClear }) => {
+const QuoteClientPanel: React.FC<QuoteClientPanelProps> = ({ client, searchOpen, onToggleSearch, onAddClient, onSelect, onClear, clientCreator }) => {
   const hasClient = !!(client.customerId || client.customerName || client.customerPhone || client.customerEmail);
   const phone = formatPhone(client.customerPhone || '') || client.customerPhone || '';
 
@@ -389,6 +390,7 @@ const QuoteClientPanel: React.FC<QuoteClientPanelProps> = ({ client, searchOpen,
           Add Client
         </button>
       </div>
+      {clientCreator ? <div className="gb-quote-client-create">{clientCreator}</div> : null}
       <div className="gb-quote-client-summary">
         {hasClient ? (
           <>
@@ -543,6 +545,9 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   const isModalShell = useMemo(() => {
     try { return !!document.querySelector('[data-modal-shell="1"]'); } catch { return false; }
+  }, []);
+  const isMobileShell = useMemo(() => {
+    try { return window.location.pathname.toLowerCase().endsWith('/mobile.html') || !!document.querySelector('.gbpos-mobile'); } catch { return false; }
   }, []);
 
   // Use the full device type catalog from lib so all dropdowns are available
@@ -747,10 +752,36 @@ function QuoteGeneratorWindow(): JSX.Element {
           customerEmail: source.customerEmail,
         }}
         searchOpen={clientSearchOpen[target]}
-        onToggleSearch={() => setClientSearchOpen((current) => ({ ...current, [target]: !current[target] }))}
-        onAddClient={() => setAddingClientFor(target)}
+        onToggleSearch={() => {
+          setAddingClientFor(null);
+          setClientSearchOpen((current) => ({ ...current, [target]: !current[target] }));
+        }}
+        onAddClient={() => {
+          setClientSearchOpen((current) => ({ ...current, [target]: false }));
+          setAddingClientFor((current) => current === target ? null : target);
+        }}
         onSelect={(c) => applyQuoteClient(target, c)}
         onClear={() => clearQuoteClient(target)}
+        clientCreator={isMobileShell && addingClientFor === target ? (
+          <CustomerOverviewWindow
+            customer={null}
+            closeAfterSave
+            childDialog
+            compactCreate
+            embeddedCreate
+            onClose={() => setAddingClientFor(null)}
+            onSaved={(c) => {
+              applyQuoteClient(target, {
+                id: c.id,
+                firstName: c.firstName,
+                lastName: c.lastName,
+                phone: c.phone || '',
+                email: c.email || '',
+              });
+              setAddingClientFor(null);
+            }}
+          />
+          ) : null}
       />
     );
   }
@@ -7384,7 +7415,7 @@ function QuoteGeneratorWindow(): JSX.Element {
             </div>
           )}
 
-          {addingClientFor && (
+          {!isMobileShell && addingClientFor ? (
             <CustomerOverviewWindow
               customer={null}
               closeAfterSave
@@ -7397,9 +7428,11 @@ function QuoteGeneratorWindow(): JSX.Element {
                   phone: c.phone || '',
                   email: c.email || '',
                 });
+                setAddingClientFor(null);
               }}
             />
-          )}
+          ) : null}
+
         </div>
 
         {/* Sidebar: Saved Quotes */}

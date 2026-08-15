@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.10 (2026-08-15)
+- Consultation Partners: adds a third location choice beside In-Store and At-Home / On-Site with a synced directory of grouped businesses, saved addresses, optional unit numbers, and custom hourly pricing.
+- Partner Management: supports Add Partner, remembered group suggestions, grouped partner selection, and desktop right-click or Android press-and-hold actions for editing and deleting saved partners.
+- Partner Pricing: automatically calculates the consultation total from the selected partner's hourly rate and saved duration while preserving deliberate custom charges and hour-based technician commission.
+- Mobile Directions: adds Open Maps for partner and other off-site consultation addresses from mobile consultation and calendar details.
+- Mobile Quote Clients: keeps Add Client fields directly beneath Search Client and Add Client instead of placing the embedded form at the bottom of Quote Generator.
+
 ## v0.6.9 (2026-08-15)
 - Purchasing Budget: adds a purple daily Budget action beside Add Part / Product, tracks completed cart checkout spend, and previews the remaining amount as line items or distributor carts are selected.
 - Reporting Safety: keeps the daily budget strictly visual and separate from EOD/monthly costs, revenue, profit, taxes, and commission; over-budget checkout remains an explicit warning rather than fabricated financial data.

@@ -342,6 +342,16 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 7. Confirm it appears on Calendar and under the client.
 8. At checkout, record the consultation sale/payment when applicable.
 
+### Partner Consultations
+
+1. In Location, choose Partners.
+2. Choose a saved business from the grouped partner list, or choose Add Partner.
+3. For a new partner, enter an optional Group, Business Name, Custom Hourly Pricing, street address, city, ZIP, and an optional unit or suite number, then save.
+4. The partner's saved hourly rate becomes the automatic consultation charge multiplied by Estimated Hours. Amount Charged can still be deliberately overridden; Use automatic restores the partner calculation.
+5. Right-click a partner on Windows or press and hold on Android to edit or delete it. Deleting a directory entry does not alter historical consultations.
+6. Partner groups, businesses, rates, and addresses are stored in authenticated shop settings and sync to signed-in Windows and Android installations.
+7. On Android, choose Open Maps from the selected partner address or the consultation's Calendar details to begin navigation in the device's maps application.
+
 - Consultation commission is technician-specific.
 - Current reporting policy values logged consultation time at $25 per hour for technician commission.
 - An approved customer hourly rate may be edited on the consultation line item. This does not change technician commission: one saved consultation hour still earns the assigned technician $25 under the current policy.

@@ -157,6 +157,61 @@ async function inspectWindow(win, type, orientation) {
     assert.equal(stillOpen, false, `Calendar Settings did not close after Save in ${orientation.name}.`);
   }
 
+  if (type === 'quoteGenerator') {
+    const quoteClient = await win.webContents.executeJavaScript(`(async () => {
+      const started = Date.now();
+      while (!document.querySelector('.gb-quote-client-actions') && Date.now() - started < 2500) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      const actions = document.querySelector('.gb-quote-client-actions');
+      const add = Array.from(actions?.querySelectorAll('button') || []).find((entry) => entry.textContent.trim() === 'Add Client');
+      add?.click();
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      const creator = document.querySelector('.gb-quote-client-create');
+      const panel = document.querySelector('.gb-quote-client-panel');
+      const creatorRect = creator?.getBoundingClientRect();
+      const actionsRect = actions?.getBoundingClientRect();
+      const panelRect = panel?.getBoundingClientRect();
+      return {
+        addPresent: Boolean(add),
+        creatorVisible: Boolean(creatorRect && creatorRect.height > 40),
+        directlyBelow: Boolean(creatorRect && actionsRect && creatorRect.top >= actionsRect.bottom - 2),
+        fitsWidth: Boolean(creatorRect && panelRect && creatorRect.left >= panelRect.left - 2 && creatorRect.right <= panelRect.right + 2),
+      };
+    })()`);
+    assert.equal(quoteClient.addPresent, true, `Quote Add Client button was missing in ${orientation.name}.`);
+    assert.equal(quoteClient.creatorVisible, true, `Quote Add Client fields did not open in ${orientation.name}.`);
+    assert.equal(quoteClient.directlyBelow, true, `Quote Add Client fields were not beneath the client buttons in ${orientation.name}.`);
+    assert.equal(quoteClient.fitsWidth, true, `Quote Add Client fields overflowed their panel in ${orientation.name}.`);
+  }
+
+  if (type === 'consultation') {
+    const partnerEditor = await win.webContents.executeJavaScript(`(async () => {
+      const partnerRadio = Array.from(document.querySelectorAll('input[type="radio"]')).find((entry) => entry.parentElement?.textContent.includes('Partners'));
+      partnerRadio?.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const add = Array.from(document.querySelectorAll('button')).find((entry) => entry.textContent.trim() === 'Add Partner');
+      add?.click();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const editor = document.querySelector('.gb-partner-editor');
+      const rect = editor?.getBoundingClientRect();
+      return {
+        radioPresent: Boolean(partnerRadio),
+        addPresent: Boolean(add),
+        editorVisible: Boolean(rect && rect.width > 280 && rect.height > 260),
+        fits: Boolean(rect && rect.left >= -2 && rect.right <= window.innerWidth + 2 && rect.top >= -2 && rect.bottom <= window.innerHeight + 2),
+        fields: editor?.querySelectorAll('input').length || 0,
+        closePresent: Boolean(editor?.querySelector('button[aria-label="Close partner editor"]')),
+      };
+    })()`);
+    assert.equal(partnerEditor.radioPresent, true, `Consultation Partners option was missing in ${orientation.name}.`);
+    assert.equal(partnerEditor.addPresent, true, `Consultation Add Partner action was missing in ${orientation.name}.`);
+    assert.equal(partnerEditor.editorVisible, true, `Partner editor did not open in ${orientation.name}.`);
+    assert.equal(partnerEditor.fits, true, `Partner editor escaped the viewport in ${orientation.name}.`);
+    assert.ok(partnerEditor.fields >= 6, `Partner editor fields were incomplete in ${orientation.name}.`);
+    assert.equal(partnerEditor.closePresent, true, `Partner editor close control was missing in ${orientation.name}.`);
+  }
+
   win.webContents.removeListener('console-message', consoleHandler);
 }
 

@@ -9,6 +9,14 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { SHOP_CONSULTATION_LOCATION } from '../lib/consultationLocation';
 import { calculateConsultationPricing, CONSULTATION_BASE_RATE, CONSULTATION_EXTRA_RATE } from '../lib/consultationPricing';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import {
+  calculatePartnerConsultationCharge,
+  consultationPartnerAddress,
+  consultationPartnerGroups,
+  normalizeConsultationPartner,
+  sortConsultationPartners,
+  type ConsultationPartner,
+} from '../lib/consultationPartners';
 
 const CONSULTATION_DISTANCE_FEE = 20;
 const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
@@ -118,6 +126,70 @@ function addHour(time: string): string {
   return `${String(nh).padStart(2, '0')}:${String(m ?? 0).padStart(2, '0')}`;
 }
 
+function PartnerEditor({
+  partner,
+  partners,
+  onClose,
+  onSave,
+}: {
+  partner?: ConsultationPartner | null;
+  partners: ConsultationPartner[];
+  onClose: () => void;
+  onSave: (partner: ConsultationPartner) => void;
+}) {
+  const [draft, setDraft] = useState<ConsultationPartner>(() => normalizeConsultationPartner(partner || {}));
+  const groups = consultationPartnerGroups(partners);
+  const valid = !!draft.businessName.trim() && draft.hourlyRate >= 0 && !!draft.streetAddress.trim() && !!draft.city.trim() && draft.zip.length === 5;
+
+  return (
+    <div className="gb-partner-editor-backdrop fixed inset-0 z-[100] bg-black/75 flex items-center justify-center p-3" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="gb-partner-editor w-full max-w-[560px] max-h-[92vh] overflow-y-auto bg-zinc-900 border border-zinc-600 rounded-lg shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-700 bg-zinc-900 px-4 py-3">
+          <div>
+            <h2 className="font-bold text-lg">{partner ? 'Edit Partner' : 'Add Partner'}</h2>
+            <p className="text-xs text-zinc-400">Save the location and consultation rate for future bookings.</p>
+          </div>
+          <button type="button" className="gb-icon-button" aria-label="Close partner editor" onClick={onClose}>X</button>
+        </header>
+        <div className="grid grid-cols-2 gap-3 p-4">
+          <label className="col-span-2 text-xs text-zinc-400">Group
+            <input list="consultation-partner-groups" className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-100" value={draft.group} onChange={event => setDraft({ ...draft, group: event.target.value })} placeholder="Optional group" />
+            <datalist id="consultation-partner-groups">{groups.map(group => <option key={group} value={group} />)}</datalist>
+          </label>
+          <label className="col-span-2 text-xs text-zinc-400">Business Name
+            <input autoFocus className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-100" value={draft.businessName} onChange={event => setDraft({ ...draft, businessName: event.target.value })} />
+          </label>
+          <label className="col-span-2 text-xs text-zinc-400">Custom Hourly Pricing
+            <div className="mt-1 flex items-center gap-2"><span className="text-zinc-300">$</span><input type="number" min="0" step="0.01" className="w-full bg-yellow-100 border border-zinc-600 rounded px-3 py-2 text-sm text-black" value={draft.hourlyRate} onChange={event => setDraft({ ...draft, hourlyRate: Math.max(0, Number(event.target.value) || 0) })} /></div>
+          </label>
+          <label className="col-span-2 text-xs text-zinc-400">Street Address
+            <input className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-100" value={draft.streetAddress} onChange={event => setDraft({ ...draft, streetAddress: event.target.value })} placeholder="123 Main St" />
+          </label>
+          <label className="col-span-2 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">
+            <input type="checkbox" checked={draft.hasUnitNumber} onChange={event => setDraft({ ...draft, hasUnitNumber: event.target.checked, unitNumber: event.target.checked ? draft.unitNumber : '' })} />
+            Unit Number
+          </label>
+          {draft.hasUnitNumber ? <label className="col-span-2 text-xs text-zinc-400">Unit / Suite
+            <input className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-100" value={draft.unitNumber} onChange={event => setDraft({ ...draft, unitNumber: event.target.value })} />
+          </label> : null}
+          <label className="text-xs text-zinc-400">City
+            <input list="sc-cities-partner" className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-100" value={draft.city} onChange={event => setDraft({ ...draft, city: event.target.value })} />
+            <datalist id="sc-cities-partner">{SC_CITIES.map(cityName => <option key={cityName} value={cityName} />)}</datalist>
+          </label>
+          <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+            <label className="text-xs text-zinc-400">State<input readOnly className="mt-1 w-full bg-zinc-800/70 border border-zinc-700 rounded px-2 py-2 text-sm text-zinc-400" value={draft.state || 'SC'} /></label>
+            <label className="text-xs text-zinc-400">ZIP<input inputMode="numeric" className="mt-1 w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-2 text-sm text-zinc-100" value={draft.zip} onChange={event => setDraft({ ...draft, zip: event.target.value.replace(/\D/g, '').slice(0, 5) })} /></label>
+          </div>
+        </div>
+        <footer className="flex justify-end gap-2 border-t border-zinc-700 px-4 py-3">
+          <button type="button" className="px-4 py-2 bg-zinc-800 border border-zinc-600 rounded" onClick={onClose}>Cancel</button>
+          <button type="button" disabled={!valid} className="px-5 py-2 bg-blue-600 disabled:opacity-40 rounded font-semibold" onClick={() => onSave(normalizeConsultationPartner(draft))}>Save Partner</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 export default function ConsultationBookingWindow() {
   const api = (window as any).api;
   const customerPayload = useMemo(() => {
@@ -154,13 +226,20 @@ export default function ConsultationBookingWindow() {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [technician, setTechnician] = useState('');
-  const [locationType, setLocationType] = useState<'instore' | 'athome'>('instore');
+  const [locationType, setLocationType] = useState<'instore' | 'athome' | 'partner'>('instore');
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
   const [zip, setZip] = useState('');
   const [hours, setHours] = useState(1);
   const [customLaborCharge, setCustomLaborCharge] = useState<number | null>(null);
   const [driverFee, setDriverFee] = useState(0);
+  const [partners, setPartners] = useState<ConsultationPartner[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+  const [partnerEditor, setPartnerEditor] = useState<ConsultationPartner | null | undefined>(undefined);
+  const [partnerMenuOpen, setPartnerMenuOpen] = useState(false);
+  const [partnerActions, setPartnerActions] = useState<ConsultationPartner | null>(null);
+  const [settingsRecordId, setSettingsRecordId] = useState<any>(null);
+  const partnerHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Shop location (used for distance-based driver fee)
   const [shopAddress, setShopAddress] = useState<string>('');
@@ -191,6 +270,7 @@ export default function ConsultationBookingWindow() {
     () => formatScAddress(streetAddress, city, zip),
     [city, formatScAddress, streetAddress, zip]
   );
+  const selectedPartner = useMemo(() => partners.find(partner => partner.id === selectedPartnerId) || null, [partners, selectedPartnerId]);
 
   const upsertAddressHistory = useCallback(async (addr: string) => {
     try {
@@ -281,6 +361,10 @@ export default function ConsultationBookingWindow() {
           setShopLat(typeof slat === 'number' ? slat : (slat == null ? null : Number(slat)));
           setShopLng(typeof slng === 'number' ? slng : (slng == null ? null : Number(slng)));
         }
+        const partnerRecord = (existing || []).find((row: any) => Array.isArray(row?.consultationPartners)) || rec || (existing || [])[0];
+        if (partnerRecord?.id != null) setSettingsRecordId(partnerRecord.id);
+        const savedPartners = Array.isArray(partnerRecord?.consultationPartners) ? partnerRecord.consultationPartners : [];
+        setPartners(sortConsultationPartners(savedPartners.map((row: any) => normalizeConsultationPartner(row))));
       } catch {
         // ignore
       }
@@ -364,7 +448,11 @@ export default function ConsultationBookingWindow() {
 
   const techLabel = (t: Technician) => technicianDisplayName(t);
 
-  const { billedHours, extraHours, automaticLaborCharge: laborCost, laborCharge: chargedLabor } = calculateConsultationPricing(hours, customLaborCharge);
+  const standardPricing = calculateConsultationPricing(hours, customLaborCharge);
+  const partnerPricing = calculatePartnerConsultationCharge(hours, selectedPartner?.hourlyRate || 0, customLaborCharge);
+  const billedHours = standardPricing.billedHours;
+  const extraHours = standardPricing.extraHours;
+  const chargedLabor = locationType === 'partner' ? partnerPricing.charge : standardPricing.laborCharge;
   const totalCost = chargedLabor + driverFee;
 
   const computeDistanceFee = useCallback(async (clientAddress: string) => {
@@ -420,9 +508,10 @@ export default function ConsultationBookingWindow() {
     }
   }, [computeDistanceFee, shopAddress, shopLat, shopLng]);
 
-  const handleLocationChange = (type: 'instore' | 'athome') => {
+  const handleLocationChange = (type: 'instore' | 'athome' | 'partner') => {
     setLocationType(type);
-    if (type === 'instore') {
+    setCustomLaborCharge(null);
+    if (type !== 'athome') {
       setDriverFee(0);
       setDistanceMiles(null);
       setDistanceFeeApplied(false);
@@ -436,7 +525,52 @@ export default function ConsultationBookingWindow() {
     }
   };
 
-  const canBook = !saving && !!date && !!selectedCustomer;
+  const applyPartner = (partner: ConsultationPartner) => {
+    setSelectedPartnerId(partner.id);
+    setStreetAddress([partner.streetAddress, partner.hasUnitNumber && partner.unitNumber ? `Unit ${partner.unitNumber}` : ''].filter(Boolean).join(', '));
+    setCity(partner.city);
+    setZip(partner.zip);
+    setCustomLaborCharge(null);
+    setPartnerMenuOpen(false);
+    setPartnerActions(null);
+  };
+
+  const persistPartners = useCallback(async (nextPartners: ConsultationPartner[]) => {
+    const normalized = sortConsultationPartners(nextPartners.map(partner => normalizeConsultationPartner(partner)));
+    const now = new Date().toISOString();
+    if (settingsRecordId != null) {
+      await api.dbUpdate('settings', settingsRecordId, { consultationPartners: normalized, updatedAt: now });
+    } else {
+      const created = await api.dbAdd('settings', { id: 1, consultationPartners: normalized, createdAt: now, updatedAt: now });
+      setSettingsRecordId(created?.id ?? 1);
+    }
+    setPartners(normalized);
+  }, [api, settingsRecordId]);
+
+  const savePartner = async (partner: ConsultationPartner) => {
+    const next = partners.some(row => row.id === partner.id)
+      ? partners.map(row => row.id === partner.id ? partner : row)
+      : [...partners, partner];
+    await persistPartners(next);
+    applyPartner(partner);
+    setPartnerEditor(undefined);
+  };
+
+  const deletePartner = async (partner: ConsultationPartner) => {
+    if (!window.confirm(`Delete ${partner.businessName} from consultation partners? Existing consultations will keep their saved address and pricing.`)) return;
+    await persistPartners(partners.filter(row => row.id !== partner.id));
+    if (selectedPartnerId === partner.id) setSelectedPartnerId('');
+    setPartnerActions(null);
+  };
+
+  const openPartnerMaps = () => {
+    const address = selectedPartner ? consultationPartnerAddress(selectedPartner) : fullAddress;
+    if (!address) return;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+    try { void api?.openUrl?.(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); }
+  };
+
+  const canBook = !saving && !!date && !!selectedCustomer && (locationType !== 'partner' || !!selectedPartner);
 
   async function handleBook() {
     if (!canBook) return;
@@ -453,6 +587,7 @@ export default function ConsultationBookingWindow() {
         if (!cityOk) throw new Error('Please choose a city from the SC list for at-home consultations.');
         if (zipDigits.length !== 5) throw new Error('Please enter a 5-digit ZIP code for at-home consultations.');
       }
+      if (locationType === 'partner' && !selectedPartner) throw new Error('Select a saved partner before booking.');
 
       let effectiveDriverFee = 0;
       if (locationType === 'athome') {
@@ -466,7 +601,9 @@ export default function ConsultationBookingWindow() {
         setDriverFee(res.fee);
       }
 
-      const effectiveLaborCharge = calculateConsultationPricing(hours, customLaborCharge).laborCharge;
+      const effectiveLaborCharge = locationType === 'partner'
+        ? calculatePartnerConsultationCharge(hours, selectedPartner?.hourlyRate || 0, customLaborCharge).charge
+        : calculateConsultationPricing(hours, customLaborCharge).laborCharge;
       const effectiveTotalCost = effectiveLaborCharge + effectiveDriverFee;
 
       if (locationType === 'athome') {
@@ -482,7 +619,7 @@ export default function ConsultationBookingWindow() {
 
       // 2. Create consultation sale record
       const purpose = title.trim() || 'Consultation';
-      const customChargeItem: any = customLaborCharge != null ? {
+      const customChargeItem: any = customLaborCharge != null || locationType === 'partner' ? {
         id: crypto.randomUUID(),
         description: purpose,
         qty: billedHours,
@@ -490,8 +627,12 @@ export default function ConsultationBookingWindow() {
         consultationHours: billedHours,
         category: 'Consultation',
         inStock: true,
+        partnerId: selectedPartner?.id,
+        partnerGroup: selectedPartner?.group,
+        partnerBusinessName: selectedPartner?.businessName,
+        partnerHourlyRate: selectedPartner?.hourlyRate,
       } : null;
-      const baseItem: any = customLaborCharge == null ? {
+      const baseItem: any = customLaborCharge == null && locationType !== 'partner' ? {
         id: crypto.randomUUID(),
         description: purpose,
         qty: 1,
@@ -500,7 +641,7 @@ export default function ConsultationBookingWindow() {
         category: 'Consultation',
         inStock: true,
       } : null;
-      const extraItem: any = customLaborCharge == null && extraHours > 0 ? {
+      const extraItem: any = customLaborCharge == null && locationType !== 'partner' && extraHours > 0 ? {
         id: crypto.randomUUID(),
         description: `${purpose} (Additional Hours)`,
         qty: extraHours,
@@ -528,15 +669,15 @@ export default function ConsultationBookingWindow() {
         customerEmail: customer?.email || '',
         category: 'Consultation',
         items: saleItems,
-        itemDescription: title.trim() || 'Consultation',
+        itemDescription: title.trim() || (selectedPartner ? `Consultation - ${selectedPartner.businessName}` : 'Consultation'),
         quantity: billedHours,
-        price: CONSULTATION_BASE_RATE,
+        price: locationType === 'partner' ? (effectiveLaborCharge / billedHours) : CONSULTATION_BASE_RATE,
         status: 'open',
         assignedTo: technician || undefined,
         notes: notes.trim() || undefined,
         consultationHours: billedHours,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
+        consultationAddress: locationType === 'instore' ? SHOP_CONSULTATION_LOCATION : fullAddress.trim(),
         appointmentDate: date,
         appointmentTime: time || undefined,
         appointmentEndTime: endTime || undefined,
@@ -553,16 +694,14 @@ export default function ConsultationBookingWindow() {
       const createdSale = await api.dbAdd('sales', saleRecord);
 
       // 3. Create calendar event
-      const location = locationType === 'athome'
-        ? (fullAddress.trim() || 'At Home')
-        : SHOP_CONSULTATION_LOCATION;
+      const location = locationType === 'instore' ? SHOP_CONSULTATION_LOCATION : (fullAddress.trim() || (locationType === 'partner' ? selectedPartner?.businessName : 'At Home'));
 
       const createdEvent = await api.dbAdd('calendarEvents', {
         category: 'consultation',
         date,
         time: time || undefined,
         endTime: endTime || undefined,
-        title: title.trim() || 'Consultation',
+        title: title.trim() || (selectedPartner ? `Consultation - ${selectedPartner.businessName}` : 'Consultation'),
         customerName,
         customerPhone,
         customerEmail: customer?.email || '',
@@ -571,7 +710,7 @@ export default function ConsultationBookingWindow() {
         notes: notes.trim() || undefined,
         location,
         consultationType: locationType,
-        consultationAddress: locationType === 'athome' ? fullAddress.trim() : SHOP_CONSULTATION_LOCATION,
+        consultationAddress: locationType === 'instore' ? SHOP_CONSULTATION_LOCATION : fullAddress.trim(),
         saleId: createdSale?.id,
         source: 'consultation',
       });
@@ -643,6 +782,14 @@ export default function ConsultationBookingWindow() {
   // ── Main form ───────────────────────────────────────────────────
   return (
     <>
+    {partnerEditor !== undefined ? (
+      <PartnerEditor
+        partner={partnerEditor}
+        partners={partners}
+        onClose={() => setPartnerEditor(undefined)}
+        onSave={partner => { void savePartner(partner).catch(errorValue => setError(errorValue?.message || 'Could not save partner.')); }}
+      />
+    ) : null}
     <div className="h-screen bg-zinc-900 text-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-700 shrink-0">
@@ -812,7 +959,7 @@ export default function ConsultationBookingWindow() {
         {/* ── Location ──────────────────────────────────────────── */}
         <section className="bg-zinc-800 border border-zinc-700 rounded p-4">
           <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wide mb-3">Location</h2>
-          <div className="flex gap-6 mb-3">
+          <div className="gb-consultation-location-modes grid grid-cols-3 gap-2 mb-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -833,7 +980,64 @@ export default function ConsultationBookingWindow() {
               />
               <span className="text-sm font-medium">At-Home / On-Site</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="locationType"
+                checked={locationType === 'partner'}
+                onChange={() => handleLocationChange('partner')}
+                className="accent-purple-500 w-4 h-4"
+              />
+              <span className="text-sm font-medium">Partners</span>
+            </label>
           </div>
+          {locationType === 'partner' ? (
+            <div className="gb-consultation-partner-picker relative mb-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <button type="button" className="min-h-[2.7rem] rounded border border-zinc-600 bg-zinc-900 px-3 text-left text-sm" onClick={() => setPartnerMenuOpen(open => !open)}>
+                  {selectedPartner ? <><strong className="block text-zinc-100">{selectedPartner.businessName}</strong><span className="text-xs text-zinc-400">{selectedPartner.group ? `${selectedPartner.group} | ` : ''}$${selectedPartner.hourlyRate.toFixed(2)}/hr</span></> : <span className="text-zinc-400">Select a partner...</span>}
+                </button>
+                <button type="button" className="rounded border border-blue-500 bg-blue-600 px-3 text-sm font-semibold text-white" onClick={() => setPartnerEditor(null)}>Add Partner</button>
+              </div>
+              {partnerMenuOpen ? (
+                <div className="absolute left-0 right-0 z-40 mt-1 max-h-64 overflow-auto rounded border border-zinc-600 bg-zinc-900 p-1 shadow-2xl">
+                  {!partners.length ? <div className="px-3 py-3 text-sm text-zinc-500">No partners saved yet.</div> : null}
+                  {Array.from(new Set(partners.map(partner => partner.group || ''))).map(group => (
+                    <div key={group || '__ungrouped'}>
+                      {group ? <div className="sticky top-0 bg-zinc-800 px-3 py-1 text-[11px] font-bold uppercase text-purple-300">{group}</div> : null}
+                      {partners.filter(partner => (partner.group || '') === group).map(partner => (
+                        <div key={partner.id} className="border-b border-zinc-800 last:border-0">
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover:bg-zinc-800"
+                            onClick={() => applyPartner(partner)}
+                            onContextMenu={event => { event.preventDefault(); setPartnerActions(partner); }}
+                            onPointerDown={event => {
+                              if (event.pointerType !== 'touch') return;
+                              if (partnerHoldTimer.current) clearTimeout(partnerHoldTimer.current);
+                              partnerHoldTimer.current = setTimeout(() => setPartnerActions(partner), 550);
+                            }}
+                            onPointerUp={() => { if (partnerHoldTimer.current) clearTimeout(partnerHoldTimer.current); }}
+                            onPointerCancel={() => { if (partnerHoldTimer.current) clearTimeout(partnerHoldTimer.current); }}
+                          >
+                            <strong className="block text-sm">{partner.businessName}</strong>
+                            <span className="block truncate text-xs text-zinc-400">${partner.hourlyRate.toFixed(2)}/hr | {consultationPartnerAddress(partner)}</span>
+                          </button>
+                          {partnerActions?.id === partner.id ? (
+                            <div className="grid grid-cols-2 gap-1 bg-zinc-950 p-1.5">
+                              <button type="button" className="rounded bg-zinc-700 px-2 py-1.5 text-xs font-semibold" onClick={() => { setPartnerEditor(partner); setPartnerActions(null); setPartnerMenuOpen(false); }}>Edit</button>
+                              <button type="button" className="rounded bg-red-700 px-2 py-1.5 text-xs font-semibold" onClick={() => { void deletePartner(partner); }}>Delete</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <div className="px-3 py-1 text-[10px] text-zinc-500">Right-click or press and hold a partner to edit or delete.</div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {locationType === 'athome' && (
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Client Address</label>
@@ -905,6 +1109,17 @@ export default function ConsultationBookingWindow() {
               </div>
             </div>
           )}
+          {locationType === 'partner' && selectedPartner ? (
+            <div className="gb-consultation-partner-address rounded border border-zinc-700 bg-zinc-900 p-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs uppercase text-zinc-500">Partner Address</div>
+                  <strong className="mt-1 block break-words text-sm text-zinc-100">{consultationPartnerAddress(selectedPartner)}</strong>
+                </div>
+                <button type="button" className="gb-mobile-map-button rounded border border-blue-500 bg-blue-600 px-3 py-2 text-xs font-semibold" onClick={openPartnerMaps}>Open Maps</button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {/* ── Pricing ───────────────────────────────────────────── */}
@@ -933,7 +1148,9 @@ export default function ConsultationBookingWindow() {
                 onChange={e => setCustomLaborCharge(Math.max(0, Number(e.target.value) || 0))}
               />
               <div className="mt-1 text-[11px] text-zinc-500">
-                Auto: ${CONSULTATION_BASE_RATE} first hour + ${CONSULTATION_EXTRA_RATE}/hr after
+                {locationType === 'partner' && selectedPartner
+                  ? `Partner rate: $${selectedPartner.hourlyRate.toFixed(2)}/hr`
+                  : `Auto: $${CONSULTATION_BASE_RATE} first hour + $${CONSULTATION_EXTRA_RATE}/hr after`}
                 {customLaborCharge != null ? (
                   <button type="button" className="ml-2 text-blue-400 hover:text-blue-300" onClick={() => setCustomLaborCharge(null)}>Use automatic</button>
                 ) : null}
