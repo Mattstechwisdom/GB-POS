@@ -21,6 +21,11 @@ type CalendarEvent = {
   taskCompletedAt?: string;
   taskCompletedBy?: string;
   shiftEnd?: string;
+  notes?: string;
+  workOrderId?: number | string;
+  saleId?: number | string;
+  orderUrl?: string;
+  trackingUrl?: string;
 };
 
 type CalendarNote = {
@@ -152,6 +157,23 @@ export default function DailyLookWindow() {
     if (event.id != null) dispatchOpenModal('calendar', { calendarEventId: event.id });
   };
 
+  const openDailyItem = async (event: CalendarEvent) => {
+    const api: any = window.api;
+    if (event.workOrderId != null) {
+      await api?.openNewWorkOrder?.({ workOrderId: Number(event.workOrderId) });
+      return;
+    }
+    if (event.saleId != null) {
+      await api?.openNewSale?.({ id: Number(event.saleId) });
+      return;
+    }
+    if (event.category === 'parts') {
+      dispatchOpenModal('eod', { showCart: true });
+      return;
+    }
+    openCalendarEntry(event);
+  };
+
   return (
     <main className="gb-daily-look min-h-[100dvh] overflow-x-hidden bg-zinc-900 p-3 text-gray-100 sm:p-5">
       <header className="mx-auto flex w-full max-w-6xl flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-end sm:justify-between">
@@ -170,7 +192,7 @@ export default function DailyLookWindow() {
       <div className="mx-auto mt-4 grid w-full max-w-6xl grid-cols-1 gap-3 lg:grid-cols-2">
         <section className="min-w-0 border border-violet-400/30 bg-violet-400/5 p-3 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-violet-100">Tasks</h2><span className="text-xs text-violet-200/70">{tasks.filter(task => !taskIsCompleted(task)).length} open</span></div>
-          {tasks.length ? <div className="grid gap-2 md:grid-cols-2">{tasks.map((task, index) => <label key={task.id ?? index} className="flex min-w-0 items-start gap-3 border-l-2 border-violet-400 bg-zinc-900 px-3 py-2"><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><span className={`min-w-0 text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}><strong className="block break-words">{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">{task.date < date ? `Carried from ${task.date}` : taskAssignmentLabel(task.technician)}</small></span></label>)}</div> : <p className="text-sm text-zinc-500">No tasks for this day.</p>}
+          {tasks.length ? <div className="grid gap-2 md:grid-cols-2">{tasks.map((task, index) => <div key={task.id ?? index} className="flex min-w-0 items-start gap-3 border-l-2 border-violet-400 bg-zinc-900 px-3 py-2"><input type="checkbox" aria-label={`Mark ${task.title || 'task'} complete`} className="mt-0.5 h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><button type="button" className={`min-w-0 flex-1 text-left text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`} onClick={() => openCalendarEntry(task)}><strong className="block break-words">{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">{task.date < date ? `Carried from ${task.date}` : taskAssignmentLabel(task.technician)}{task.notes ? ' - View notes' : ''}</small></button></div>)}</div> : <p className="text-sm text-zinc-500">No tasks for this day.</p>}
         </section>
         <section className="min-w-0 border border-amber-400/30 bg-amber-400/5 p-3 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-amber-100">Important Notes</h2><span className="text-xs text-amber-200/70">{dayNotes.length}</span></div>
@@ -180,7 +202,7 @@ export default function DailyLookWindow() {
           <section key={name} className="min-w-0 border border-zinc-800 bg-zinc-950/40 p-3">
             <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">{name}</h2><span className="text-xs text-zinc-500">{items.length}</span></div>
             {items.length ? <div className="space-y-2">{items.map((item, index) => (
-              <button key={item.id ?? `${name}-${index}`} type="button" onClick={() => openCalendarEntry(item)} disabled={item.id == null} className="w-full min-w-0 border-l-2 border-zinc-600 bg-zinc-900 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-800 disabled:cursor-default">
+              <button key={item.id ?? `${name}-${index}`} type="button" onClick={() => { void openDailyItem(item); }} disabled={item.id == null && item.category !== 'parts'} className="w-full min-w-0 border-l-2 border-zinc-600 bg-zinc-900 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-800 disabled:cursor-default">
                 <strong className="block break-words font-medium">{summaryFor(item)}</strong>
                 <span className="mt-1 block break-words text-xs text-zinc-400">{item.technician || item.location || (item.id != null ? 'Open in Calendar' : '')}</span>
               </button>

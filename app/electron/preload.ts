@@ -47,6 +47,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('gidget:model-progress', handler);
     return () => ipcRenderer.removeListener('gidget:model-progress', handler);
   },
+  onGidgetLocalToken: (cb: (payload: { requestId: string; text: string }) => void) => {
+    const handler = (_event: any, payload: { requestId: string; text: string }) => cb(payload);
+    ipcRenderer.on('gidget:localToken', handler);
+    return () => ipcRenderer.removeListener('gidget:localToken', handler);
+  },
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('os:openUrl', url),
   // Storage / diagnostics
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
@@ -188,6 +193,16 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('products:changed', handler);
     return () => ipcRenderer.removeListener('products:changed', handler);
+  },
+  onPurchaseOrdersChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('purchaseOrders:changed', handler);
+    return () => ipcRenderer.removeListener('purchaseOrders:changed', handler);
+  },
+  onSettingsChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('settings:changed', handler);
+    return () => ipcRenderer.removeListener('settings:changed', handler);
   },
   onSalesChanged: (cb: () => void) => {
     const handler = () => cb();

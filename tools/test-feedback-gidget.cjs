@@ -17,6 +17,7 @@ for (const method of ['gidgetLocalStatus', 'gidgetLocalSetup', 'gidgetLocalGener
   expect(preload.includes(`${method}:`), `Electron preload is missing ${method}.`);
 }
 expect(preload.includes("ipcRenderer.on('gidget:model-progress'"), 'Electron model progress must reach the UI.');
+expect(preload.includes("ipcRenderer.on('gidget:localToken'"), 'Electron generated tokens must stream to the UI.');
 
 const main = read('app/electron/electron-main.ts');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
@@ -34,8 +35,9 @@ expect(chat.includes("setRequestStage('Preparing shop context')"), 'Gidget must 
 expect(chat.includes("setRequestStage('Generating answer')"), 'Gidget must expose its local generation stage.');
 expect(chat.includes('optionalWithin(ensureConversation(content), 6000, null)'), 'Gidget history persistence must not block a response forever.');
 expect(localRuntime.includes('/no_think'), 'Desktop Gidget must request a direct answer instead of spending its response budget on hidden reasoning.');
-expect(localRuntime.includes('maxTokens: 320'), 'Desktop Gidget must use a CPU-appropriate response budget.');
-expect(localRuntime.includes(".slice(-4)"), 'Desktop Gidget must keep prompts within its local context window.');
+expect(localRuntime.includes('maxTokens: 144'), 'Desktop Gidget must use a CPU-appropriate response budget.');
+expect(localRuntime.includes(".slice(-3)"), 'Desktop Gidget must keep prompts within its local context window.');
+expect(localRuntime.includes('onTextChunk:'), 'Desktop Gidget must stream partial answers instead of appearing frozen.');
 
 const engine = read('src/lib/gidgetLocalEngine.ts');
 expect(engine.includes('Array.isArray(result?.models)'), 'Android model discovery must unwrap native plugin results.');
@@ -53,5 +55,7 @@ expect(chat.includes('onContextMenu='), 'Desktop chat history must expose right-
 expect(chat.includes('startHistoryHold'), 'Mobile chat history must expose touch-and-hold actions.');
 expect(chat.includes('const deleteConversation = useCallback') && chat.includes(".eq('id', conversation.id)"), 'Chat history must support deleting a selected conversation.');
 expect(chat.includes('await withTimeout(generateWithGidget'), 'The Gidget UI must recover if the native model never returns.');
+expect(chat.includes("setRequestStage('Writing answer')"), 'Gidget must show when the local model begins writing.');
+expect(chat.includes('Response stopped early. Ask Gidget to continue if needed.'), 'Gidget must preserve partial output when generation times out.');
 
 console.log('Feedback retention and Gidget integration checks passed.');

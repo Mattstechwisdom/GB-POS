@@ -42,6 +42,7 @@ declare global {
     gidgetLocalCancel?: () => Promise<any>;
     gidgetLocalRemove?: () => Promise<any>;
     onGidgetModelProgress?: (cb: (progress: any) => void) => () => void;
+    onGidgetLocalToken?: (cb: (payload: { requestId: string; text: string }) => void) => () => void;
     storageGetInfo: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string | null; recommended?: string; userData?: string; error?: string }>;
     storageEnsure: () => Promise<{ ok: boolean; configured?: boolean; dataRoot?: string; isFirstRun?: boolean; migration?: any; error?: string }>;
     runDiagnostics: () => Promise<{ ok: boolean; dataRoot?: string; results?: any[]; error?: string }>;
@@ -151,6 +152,8 @@ declare global {
   onTimeEntriesChanged: (cb: () => void) => () => void;
   onProductCategoriesChanged: (cb: () => void) => () => void;
   onProductsChanged: (cb: () => void) => () => void;
+  onPurchaseOrdersChanged: (cb: () => void) => () => void;
+  onSettingsChanged: (cb: () => void) => () => void;
   // window controls
   getFullScreen: () => Promise<boolean>;
   setFullScreen: (flag: boolean) => Promise<any>;

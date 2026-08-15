@@ -375,7 +375,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 2. On desktop, use the large left editor to write the note and the right-hand list to switch between multiple notes saved for that day. On mobile, the list stacks above the editor.
 3. Important notes sync through Supabase and appear on every signed-in Windows or Android installation.
 4. Open Daily Look to see the selected day's important notes beside schedules, consultations, orders, deliveries, events, and content work.
-5. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
+5. Choose a task's text to open its details and notes; use its checkbox only to change completion. Choose consultations, events, orders, or deliveries to open the linked calendar entry, invoice, or purchasing cart.
+6. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
 
 ## 17. Technicians and Time
 
@@ -466,6 +467,14 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 10. Leave Tax Exempt unchecked unless the shop's account with that distributor is actually exempt. The POS adds South Carolina's 8% supplier sales tax when it is unchecked.
 11. Enter Additional Costs only for shipping or other checkout fees shown at that distributor's final checkout. Supplier tax is calculated separately; do not enter it again.
 12. Verify that Cost incl. tax, Charged incl. tax, supplier tax, client tax, and the distributor checkout total match the saved transaction and supplier checkout before payment.
+
+### Set a Daily Purchasing Budget
+
+1. Open End of Day Report, choose Cart, then choose the purple Budget button beside Add Part / Product.
+2. Enter the amount the shop can spend during the current accounting day and save it. The value syncs to other signed-in POS devices.
+3. Checked-out supplier purchases reduce the available amount. Selecting lines or distributor carts previews the amount that would remain after checkout; deselecting them restores the preview.
+4. An over-budget selection shows a warning but does not block checkout. Verify the shop's available funds before continuing.
+5. The budget is a visual purchasing guardrail only. It is never included in EOD or monthly reporting, revenue, cost, profit, tax, or commission calculations.
 
 ### Refresh Saved Supplier Prices
 
@@ -564,6 +573,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Gidget can help search POS information, organize diagnostics, and use locally supplied repair knowledge.
 - Voice mode depends on microphone permission and supported device speech services.
 - Chat history keeps a limited list of recent conversations.
+- Desktop answers stream into the chat as the local model generates them, keeping the window responsive during longer diagnostics.
 - Gidget must not expose customer data outside authorized shop use.
 - Treat repair suggestions as assistance. Verify measurements, model-specific procedures, safety requirements, and source quality before acting.
 - Do not give Gidget passwords, API keys, payment-card data, or unnecessary private client information.

@@ -95,6 +95,7 @@ jobs:
           npm run test:auto-update-relaunch
           npm run test:eod-ticket-close
           npm run test:cart-client-updates
+          npm run test:purchase-budget
           npm run test:feedback-gidget
 
       - name: Build electron main

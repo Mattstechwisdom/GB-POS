@@ -1475,7 +1475,7 @@ const CalendarWindow: React.FC = () => {
                   <header>
                     <button type="button" onClick={() => { setCurrent(day); setCalendarView('day'); }}>
                       <strong>{day.toLocaleDateString(undefined, { weekday: 'short' })}</strong>
-                      <span>{day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                      <span>{day.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</span>
                       {isToday ? <em>Today</em> : null}
                     </button>
                     <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>

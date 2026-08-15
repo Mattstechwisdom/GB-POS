@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.9 (2026-08-15)
+- Purchasing Budget: adds a purple daily Budget action beside Add Part / Product, tracks completed cart checkout spend, and previews the remaining amount as line items or distributor carts are selected.
+- Reporting Safety: keeps the daily budget strictly visual and separate from EOD/monthly costs, revenue, profit, taxes, and commission; over-budget checkout remains an explicit warning rather than fabricated financial data.
+- Cross-Device Cart State: synchronizes purchase ledger and shop-setting changes on Windows and Android through the authenticated Supabase tables so daily budget usage stays current across devices.
+- Daily Look: makes task content open its notes without toggling completion and routes consultations, events, orders, and deliveries to their linked invoice, calendar entry, or purchasing cart.
+- Mobile Calendar: gives the day/date lane more room in portrait and landscape and stacks the numeric date beneath the abbreviated weekday.
+- Gidget: streams local desktop answers as they generate, tightens model context and response limits, and preserves a partial answer if the model reaches its response deadline.
+
 ## v0.6.8 (2026-08-14)
 - Checkout Window: removes the overlapping in-app close button from the desktop checkout route and relies on the native Windows title bar while preserving Android's mobile close control.
 - Release Safety: adds a regression check that keeps checkout excluded from the global desktop daughter-window close overlay.

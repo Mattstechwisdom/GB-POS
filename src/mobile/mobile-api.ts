@@ -57,6 +57,7 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   timeEntries: 'timeEntries:changed',
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
+  settings: 'settings:changed',
 };
 
 const API_TO_MODAL: Record<string, string> = {
@@ -1937,6 +1938,7 @@ function makeApi() {
     onProductCategoriesChanged: 'productCategories:changed',
     onProductsChanged: 'products:changed',
     onPurchaseOrdersChanged: 'purchaseOrders:changed',
+    onSettingsChanged: 'settings:changed',
     onSalesChanged: 'sales:changed',
     onQuotesChanged: 'quotes:changed',
     onPartSourcesChanged: 'partSources:changed',

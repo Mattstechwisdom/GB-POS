@@ -134,7 +134,7 @@ async function buildReadOnlyPosContext(query: string) {
   let contextCharacters = 0;
   for (const record of candidates) {
     const size = JSON.stringify(record).length;
-    if (selected.length >= 40 || contextCharacters + size > 5000) break;
+    if (selected.length >= 20 || contextCharacters + size > 3000) break;
     selected.push(record);
     contextCharacters += size;
   }
@@ -353,9 +353,14 @@ export default function GidgetChat({ open, onClose }: Props) {
     setVoiceStatus(source === 'voice' ? 'Thinking' : voiceStatus);
     const controller = new AbortController();
     abortRef.current = controller;
+    const assistantMessageId = messageId();
+    const requestId = messageId();
+    let streamedText = '';
+    let streamShown = false;
+    let activeConversationId: string | null = null;
     try {
       if (!modelState.ready) throw new Error('Finish Gidget\'s one-time local model setup before chatting.');
-      const activeConversationId = await optionalWithin(ensureConversation(content), 6000, null);
+      activeConversationId = await optionalWithin(ensureConversation(content), 6000, null);
       if (activeConversationId) void optionalWithin(persistMessage(activeConversationId, userMessage), 6000, undefined);
       const { data } = await withTimeout(supabase.auth.getSession(), 6000, () => undefined, 'Gidget could not verify the shop session. Check the connection and try again.');
       const token = data.session?.access_token;
@@ -366,12 +371,12 @@ export default function GidgetChat({ open, onClose }: Props) {
         .eq('shop_id', shopContext?.shopId || '')
         .eq('user_id', shopContext?.userId || '')
         .order('updated_at', { ascending: false })
-        .limit(8)), 6000, { data: [], error: null });
+        .limit(4)), 6000, { data: [], error: null });
       const memories = memoryResponse.data;
       const remember = content.match(/^\s*(?:please\s+)?remember(?:\s+that)?\s+(.{2,1000})\s*$/is)?.[1]?.trim();
       let memoryResult: any = {
-        memories: (memories || []).slice(0, 8).map((memory: any) => ({
-          content: String(memory?.content || '').slice(0, 500),
+        memories: (memories || []).slice(0, 4).map((memory: any) => ({
+          content: String(memory?.content || '').slice(0, 300),
           updated_at: memory?.updated_at,
         })),
       };
@@ -387,23 +392,47 @@ export default function GidgetChat({ open, onClose }: Props) {
       const context: any = { records, memory_result: memoryResult };
       setRequestStage('Generating answer');
       const body = await withTimeout(generateWithGidget({
+          requestId,
           ...context,
-          messages: nextMessages.slice(-14).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
+          messages: nextMessages.slice(-8).map(({ role, content: bodyContent }) => ({ role, content: bodyContent })),
+        }, (chunk) => {
+          streamedText += chunk;
+          setRequestStage('Writing answer');
+          if (!streamShown) {
+            streamShown = true;
+            setMessages((current) => [...current, { id: assistantMessageId, role: 'assistant', content: streamedText, citations: [], source }]);
+            return;
+          }
+          setMessages((current) => current.map((message) => message.id === assistantMessageId ? { ...message, content: streamedText } : message));
         }),
         135000,
         () => { void cancelGidgetWork().catch(() => undefined); },
       );
       if (!body?.ok || !body?.answer) throw new Error(body?.error || 'The local model did not return a usable answer.');
       const assistantMessage: ChatMessage = {
-        id: messageId(), role: 'assistant', content: String(body.answer || 'I could not produce an answer.'),
+        id: assistantMessageId, role: 'assistant', content: String(body.answer || streamedText || 'I could not produce an answer.'),
         citations: [], source,
       };
-      setMessages((current) => [...current, assistantMessage]);
+      setMessages((current) => streamShown
+        ? current.map((message) => message.id === assistantMessageId ? assistantMessage : message)
+        : [...current, assistantMessage]);
       if (activeConversationId) void optionalWithin(persistMessage(activeConversationId, assistantMessage), 6000, undefined);
       if (source === 'voice') speak(assistantMessage.content);
       void optionalWithin(refreshHistory(), 6000, undefined);
     } catch (error: any) {
       if (error?.name === 'AbortError' || controller.signal.aborted) return;
+      if (streamedText.trim()) {
+        const partialMessage: ChatMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: `${streamedText.trim()}\n\nResponse stopped early. Ask Gidget to continue if needed.`,
+          citations: [],
+          source,
+        };
+        setMessages((current) => current.map((message) => message.id === assistantMessageId ? partialMessage : message));
+        if (activeConversationId) void optionalWithin(persistMessage(activeConversationId, partialMessage), 6000, undefined);
+        return;
+      }
       if (/local model|node-llama|llama/i.test(String(error?.message || ''))) {
         void gidgetLocalStatus().then((status) => setModelState(status)).catch(() => undefined);
       }

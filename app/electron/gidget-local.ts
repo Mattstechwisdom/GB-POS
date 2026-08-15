@@ -229,8 +229,8 @@ async function getModel(app: any, sender?: any) {
 }
 
 function buildPrompt(messages: any[], records: any, memoryResult: any, webSources: any[]) {
-  const history = (Array.isArray(messages) ? messages : []).slice(-4)
-    .map((message) => `${message.role === 'assistant' ? 'Gidget' : 'Technician'}: ${String(message.content || '').slice(0, 600)}`)
+  const history = (Array.isArray(messages) ? messages : []).slice(-3)
+    .map((message) => `${message.role === 'assistant' ? 'Gidget' : 'Technician'}: ${String(message.content || '').slice(0, 400)}`)
     .join('\n');
   const recordContext = records ? `\nAuthenticated read-only POS result:\n${JSON.stringify(records)}\n` : '';
   const memoryContext = memoryResult ? `\nMemory request result:\n${JSON.stringify(memoryResult)}\n` : '';
@@ -261,7 +261,7 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
   ipcMain.handle('gidget:localGenerate', async (event: any, payload: any) => {
     try {
       const model = await getModel(app, event.sender);
-      const context = await model.createContext({ contextSize: 3072 });
+      const context = await model.createContext({ contextSize: 2048 });
       const sequence = context.getSequence();
       const session = new llamaRuntime.module.LlamaChatSession({
         contextSequence: sequence,
@@ -271,9 +271,13 @@ export function registerGidgetLocalIpc({ ipcMain, app }: { ipcMain: any; app: an
       const timeout = setTimeout(() => activeAbort?.abort(), 120000);
       try {
       const answer = await session.prompt(buildPrompt(payload?.messages, payload?.records, payload?.memory_result, payload?.web_sources), {
-        maxTokens: 320,
+        maxTokens: 144,
         temperature: 0.35,
         signal: activeAbort.signal,
+        onTextChunk: (text: string) => {
+          if (!text || event.sender.isDestroyed?.()) return;
+          event.sender.send('gidget:localToken', { requestId: String(payload?.requestId || ''), text });
+        },
       });
       return { ok: true, answer: String(answer || '').trim(), model: MODEL.name };
       } finally {

@@ -3824,12 +3824,14 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
   products: 'products:changed',
+  purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
   calendarEvents: 'calendarEvents:changed',
   calendarNotes: 'calendarNotes:changed',
   timeEntries: 'timeEntries:changed',
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
+  settings: 'settings:changed',
 };
 
 let changedEmitTimer: NodeJS.Timeout | null = null;
@@ -4145,6 +4147,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
   vendors: 'vendors',
   invoices: 'invoices',
   payments: 'payments',
+  purchaseOrders: 'purchase_orders',
   timeEntries: 'time_entries',
   quotes: 'quotes',
   settings: 'shop_settings',
@@ -4988,7 +4991,7 @@ function toCloudRow(key: string, item: any): any | null {
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
   }
-  if (key === 'invoices' || key === 'payments' || key === 'repairItems') {
+  if (key === 'invoices' || key === 'payments' || key === 'repairItems' || key === 'purchaseOrders') {
     const legacy_id = toCloudIntId(item.id);
     if (legacy_id === null) return null;
     return {

@@ -9,6 +9,8 @@ import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissio
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
 import { supabase } from '../lib/supabase';
+import { checkedOutPurchaseSpend, purchaseBudgetDayKey, purchaseBudgetSnapshot, selectedPurchaseCost } from '../lib/purchaseBudget';
+import { consumeWindowPayload } from '../lib/windowPayload';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -798,6 +800,7 @@ const EODWindow: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
+  const [shopSettingsRecord, setShopSettingsRecord] = useState<any>({});
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
   const [cartRefreshBusy, setCartRefreshBusy] = useState(false);
   const [cartPriceReview, setCartPriceReview] = useState<Array<{ key: string; title: string; previousUnitCost: number; nextUnitCost: number }> | null>(null);
@@ -813,8 +816,12 @@ const EODWindow: React.FC = () => {
   const [purchaseUpdateMessage, setPurchaseUpdateMessage] = useState('');
   const [additionalCostsByDistributor, setAdditionalCostsByDistributor] = useState<Record<string, string>>({});
   const [taxExemptByDistributor, setTaxExemptByDistributor] = useState<Record<string, boolean>>({});
-  const [showCart, setShowCart] = useState(false);
+  const [showCart, setShowCart] = useState(() => consumeWindowPayload('eod')?.showCart === true);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
+  const [showBudget, setShowBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState('');
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [budgetMessage, setBudgetMessage] = useState('');
   const [showCheckoutVerification, setShowCheckoutVerification] = useState(false);
   const [verifiedDistributors, setVerifiedDistributors] = useState<Set<string>>(() => new Set());
   const [purchaseDraft, setPurchaseDraft] = useState<any>({ itemType: 'Part', orderUrl: '', title: '', distributor: '', quantity: 1, unitCost: '' });
@@ -988,6 +995,7 @@ const EODWindow: React.FC = () => {
           setDraftSettings(prev => ({ ...prev, ...storedSettings }));
         }
         const shopSettings = Array.isArray(shopSettingsRows) ? shopSettingsRows[0] : shopSettingsRows;
+        setShopSettingsRecord(shopSettings && typeof shopSettings === 'object' ? shopSettings : {});
         setCommissionSettings(normalizeCommissionSettings(shopSettings?.commissionSettings));
 
         const batchRecord = Array.isArray(batch) ? batch[0] : batch;
@@ -1006,12 +1014,14 @@ const EODWindow: React.FC = () => {
     const offProducts = api.onProductsChanged?.(() => load());
     const offWorkOrders = api.onWorkOrdersChanged?.(() => load());
     const offSales = api.onSalesChanged?.(() => load());
+    const offSettings = api.onSettingsChanged?.(() => load());
     return () => {
       disposed = true;
       try { offPurchases?.(); } catch {}
       try { offProducts?.(); } catch {}
       try { offWorkOrders?.(); } catch {}
       try { offSales?.(); } catch {}
+      try { offSettings?.(); } catch {}
     };
   }, []);
 
@@ -1567,6 +1577,63 @@ const EODWindow: React.FC = () => {
     });
     return taxByRow;
   }, [distributorIsTaxExempt, purchaseGroups]);
+
+  const budgetDayKey = useMemo(() => purchaseBudgetDayKey(end), [end]);
+  const purchaseBudgets = useMemo<Record<string, number>>(() => {
+    const value = shopSettingsRecord?.dailyPurchaseBudgets;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }, [shopSettingsRecord]);
+  const budgetConfigured = Object.prototype.hasOwnProperty.call(purchaseBudgets, budgetDayKey);
+  const dailyBudget = budgetConfigured ? Math.max(0, Number(purchaseBudgets[budgetDayKey]) || 0) : 0;
+  const dailyBudgetSpent = useMemo(() => checkedOutPurchaseSpend(purchaseOrders, start, end), [end, purchaseOrders, start]);
+  const budgetTaxExemptByDistributor = useMemo(() => Object.fromEntries(purchaseGroups.map(group => [group.distributor, distributorIsTaxExempt(group.distributor, group.rows)])), [distributorIsTaxExempt, purchaseGroups]);
+  const selectedPurchaseBudgetCost = useCallback((rows: OrderCartRow[]) => selectedPurchaseCost({
+    selectedRows: rows,
+    allRows: partsPurchaseQueue,
+    taxExemptByDistributor: budgetTaxExemptByDistributor,
+    additionalCostsByDistributor,
+    salesTaxRate: SC_SALES_TAX_RATE,
+  }), [additionalCostsByDistributor, budgetTaxExemptByDistributor, partsPurchaseQueue]);
+  const selectedBudgetCost = useMemo(() => selectedPurchaseBudgetCost(selectedCartRows), [selectedCartRows, selectedPurchaseBudgetCost]);
+  const budgetSnapshot = useMemo(() => purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, selectedBudgetCost), [dailyBudget, dailyBudgetSpent, selectedBudgetCost]);
+
+  const openBudgetEditor = useCallback(() => {
+    setBudgetDraft(budgetConfigured ? dailyBudget.toFixed(2) : '');
+    setBudgetMessage('');
+    setShowBudget(true);
+  }, [budgetConfigured, dailyBudget]);
+
+  const saveDailyBudget = useCallback(async (nextValue?: string) => {
+    const trimmed = (nextValue ?? budgetDraft).trim();
+    const parsed = Number(trimmed);
+    if (trimmed && (!Number.isFinite(parsed) || parsed < 0)) {
+      setBudgetMessage('Enter a valid budget of zero or more.');
+      return;
+    }
+    setBudgetSaving(true);
+    setBudgetMessage('');
+    try {
+      const api = (window as any).api || {};
+      const rows = await api.dbGet?.('settings').catch(() => []);
+      const current = (Array.isArray(rows) ? rows[0] : rows) || shopSettingsRecord || {};
+      const nextBudgets = { ...(current.dailyPurchaseBudgets && typeof current.dailyPurchaseBudgets === 'object' ? current.dailyPurchaseBudgets : {}) };
+      if (trimmed) nextBudgets[budgetDayKey] = round2(parsed);
+      else delete nextBudgets[budgetDayKey];
+      const updatedAt = new Date().toISOString();
+      const payload = { ...current, dailyPurchaseBudgets: nextBudgets, updatedAt };
+      const saved = current.id != null
+        ? await api.dbUpdate?.('settings', current.id, payload)
+        : await api.dbAdd?.('settings', payload);
+      if (!saved) throw new Error('The budget could not be saved.');
+      setShopSettingsRecord(saved);
+      setBudgetMessage(trimmed ? 'Daily cart budget saved and synced.' : 'Daily cart budget cleared.');
+      window.setTimeout(() => setShowBudget(false), 450);
+    } catch (error: any) {
+      setBudgetMessage(error?.message || 'The daily budget could not be saved.');
+    } finally {
+      setBudgetSaving(false);
+    }
+  }, [budgetDayKey, budgetDraft, shopSettingsRecord]);
 
   const updateDistributorTaxExempt = useCallback(async (distributor: string, checked: boolean) => {
     setTaxExemptByDistributor(current => ({ ...current, [distributor]: checked }));
@@ -3229,8 +3296,17 @@ const EODWindow: React.FC = () => {
                       <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
                       <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Line-item cost excludes supplier tax, shipping, and checkout fees; those are calculated here.</p>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={cartRefreshBusy || !partsPurchaseQueue.some(row => row.orderUrl)} className="rounded border border-[#BC13FE]/70 bg-[#BC13FE]/15 px-3 py-2 text-xs font-semibold text-fuchsia-100 disabled:opacity-40" onClick={() => { void refreshCartPrices(); }}>{cartRefreshBusy ? 'Refreshing...' : 'Refresh Cart'}</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
+                    <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={cartRefreshBusy || !partsPurchaseQueue.some(row => row.orderUrl)} className="rounded border border-[#BC13FE]/70 bg-[#BC13FE]/15 px-3 py-2 text-xs font-semibold text-fuchsia-100 disabled:opacity-40" onClick={() => { void refreshCartPrices(); }}>{cartRefreshBusy ? 'Refreshing...' : 'Refresh Cart'}</button><button type="button" className="rounded bg-violet-600 px-3 py-2 text-xs font-semibold text-white" onClick={openBudgetEditor}>Budget</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
                   </header>
+
+                  <div className="grid gap-2 border-b border-violet-500/30 bg-violet-950/20 p-3 sm:grid-cols-4 lg:p-4">
+                    <div><div className="text-[11px] uppercase text-violet-300">Daily budget</div><div className="text-xl font-semibold text-white">{budgetConfigured ? formatCurrency(dailyBudget) : 'Not set'}</div></div>
+                    <div><div className="text-[11px] uppercase text-zinc-500">Checked out</div><div className="text-xl font-semibold">{formatCurrency(dailyBudgetSpent)}</div></div>
+                    <div><div className="text-[11px] uppercase text-zinc-500">Selected</div><div className="text-xl font-semibold">{formatCurrency(selectedBudgetCost)}</div></div>
+                    <div><div className="text-[11px] uppercase text-zinc-500">After selection</div><div className={`text-xl font-semibold ${budgetConfigured && budgetSnapshot.overBy > 0 ? 'text-red-300' : 'text-[#39FF14]'}`}>{budgetConfigured ? formatCurrency(budgetSnapshot.afterSelection) : '--'}</div></div>
+                    <div className="sm:col-span-4 text-xs text-zinc-400">Cart guardrail only. Reporting is unchanged.{budgetConfigured ? ` ${formatCurrency(budgetSnapshot.available)} remains before the current selection.` : ' Set a daily purchasing budget to preview available spending.'}</div>
+                    {budgetConfigured && budgetSnapshot.overBy > 0 ? <div className="sm:col-span-4 rounded border border-red-500/60 bg-red-950/40 px-3 py-2 text-sm text-red-200">This selection is {formatCurrency(budgetSnapshot.overBy)} over today&apos;s available purchasing budget. Checkout remains available after review.</div> : null}
+                  </div>
 
                   <div className="gb-eod-cart-summary grid grid-cols-2 gap-2 border-b border-zinc-800 p-3 sm:grid-cols-5 lg:p-4">
                     <div className="rounded border border-zinc-800 bg-zinc-900 p-2"><div className="text-[11px] text-zinc-500">To purchase</div><div className="text-xl font-semibold">{partsPurchaseTotals.count}</div></div>
@@ -3320,14 +3396,16 @@ const EODWindow: React.FC = () => {
 
             {checkoutCandidateRows ? (() => {
               const receiptRows = checkoutCandidateRows;
-              const receiptCostTotal = round2(receiptRows.reduce((sum, row) => sum + row.totalCost + (purchaseRowSupplierTax.get(row.key) || 0), 0));
+              const receiptCostTotal = selectedPurchaseBudgetCost(receiptRows);
               const receiptChargeTotal = round2(receiptRows.reduce((sum, row) => sum + row.totalCharge, 0));
               const receiptHasMissingCost = receiptRows.some(row => !row.hasCost);
+              const receiptBudget = purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, receiptCostTotal);
               return (
               <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => setCheckoutCandidateRows(null)}>
                 <section className="w-full max-w-lg rounded-lg border border-[#39FF14]/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm selected checkout">
                   <header><h3 className="text-xl font-semibold text-[#39FF14]">Confirm Checkout</h3><p className="mt-2 text-sm text-zinc-300">Review each item's cost before checking out {receiptRows.length} selected item{receiptRows.length === 1 ? '' : 's'}.</p></header>
                   {receiptHasMissingCost ? <div className="mt-4 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-sm text-amber-100"><strong className="block text-amber-300">Missing cost</strong>Some selected items are missing a cost and will not be included in the total below.</div> : null}
+                  {budgetConfigured && receiptBudget.overBy > 0 ? <div className="mt-4 rounded border border-red-500/60 bg-red-950/40 p-3 text-sm text-red-200"><strong className="block text-red-300">Over daily budget</strong>This checkout is {formatCurrency(receiptBudget.overBy)} over the remaining purchasing budget. This is a warning only and does not alter reporting.</div> : null}
                   <div className="mt-4 max-h-64 space-y-2 overflow-auto rounded border border-zinc-800 bg-zinc-900 p-2 text-xs">
                     {receiptRows.map(row => (
                       <div key={row.key} className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-2 last:border-0 last:pb-0">
@@ -3348,6 +3426,20 @@ const EODWindow: React.FC = () => {
               </div>
               );
             })() : null}
+
+            {showBudget ? (
+              <div className="fixed inset-0 z-[100350] flex items-center justify-center bg-black/85 p-3" onClick={() => setShowBudget(false)}>
+                <section className="w-full max-w-md rounded-lg border border-violet-500/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Daily purchasing budget">
+                  <header><h3 className="text-xl font-semibold text-violet-300">Daily Purchasing Budget</h3><p className="mt-1 text-sm text-zinc-400">A visual cart limit for {budgetDayKey}. It never changes reporting totals.</p></header>
+                  <label className="mt-4 block text-sm text-zinc-300">Budget
+                    <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-3"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-3 text-lg outline-none" value={budgetDraft} onChange={event => setBudgetDraft(event.target.value)} placeholder="0.00" /></div>
+                  </label>
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><div><span className="block text-xs text-zinc-500">Already checked out</span>{formatCurrency(dailyBudgetSpent)}</div><div><span className="block text-xs text-zinc-500">Current available</span>{budgetConfigured ? formatCurrency(budgetSnapshot.available) : '--'}</div></div>
+                  {budgetMessage ? <p className="mt-3 text-sm text-violet-200">{budgetMessage}</p> : null}
+                  <footer className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowBudget(false)}>Cancel</button><button type="button" disabled={budgetSaving || !budgetConfigured} className="rounded border border-red-500/60 px-4 py-2 text-sm text-red-200 disabled:opacity-40" onClick={() => { setBudgetDraft(''); void saveDailyBudget(''); }}>Clear</button><button type="button" disabled={budgetSaving} className="rounded bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" onClick={() => { void saveDailyBudget(); }}>{budgetSaving ? 'Saving...' : 'Save Budget'}</button></footer>
+                </section>
+              </div>
+            ) : null}
 
             {showAddPurchase ? (
               <div className="fixed inset-0 z-[100200] flex items-center justify-center overflow-y-auto bg-black/85 p-3" onClick={() => setShowAddPurchase(false)}>
@@ -3379,7 +3471,7 @@ const EODWindow: React.FC = () => {
                       return <label key={group.distributor} className="flex items-center justify-between gap-3 rounded border border-zinc-700 bg-zinc-900 p-3"><span className="flex min-w-0 items-center gap-3"><input type="checkbox" checked={verifiedDistributors.has(group.distributor)} onChange={event => setVerifiedDistributors(current => { const next = new Set(current); event.target.checked ? next.add(group.distributor) : next.delete(group.distributor); return next; })} /><span className="min-w-0"><strong className="block truncate">{group.distributor}</strong><span className="text-xs text-zinc-500">{group.rows.length} item{group.rows.length === 1 ? '' : 's'} · {amounts?.taxExempt ? 'Tax exempt' : `${SC_SALES_TAX_RATE}% tax`}</span></span></span><strong>{formatCurrency(amounts?.checkoutTotal || 0)}</strong></label>;
                     })}
                   </div>
-                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).reduce((sum, group) => sum + (purchaseGroupAmounts.get(group.distributor)?.checkoutTotal || 0), 0))}</strong></div>
+                  {(() => { const rows = purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).flatMap(group => group.rows); const total = selectedPurchaseBudgetCost(rows); const projected = purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, total); return <><div className="mt-4 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><span className="text-zinc-500">Selected checkout total</span><strong className="float-right">{formatCurrency(total)}</strong></div>{budgetConfigured ? <div className={`mt-2 rounded border p-3 text-sm ${projected.overBy > 0 ? 'border-red-500/60 bg-red-950/40 text-red-200' : 'border-violet-500/40 bg-violet-950/20 text-violet-100'}`}>Budget after checkout: <strong className="float-right">{formatCurrency(projected.afterSelection)}</strong>{projected.overBy > 0 ? <span className="mt-1 block text-xs">Warning: {formatCurrency(projected.overBy)} over budget. Reporting is unchanged.</span> : null}</div> : null}</>; })()}
                   <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowCheckoutVerification(false)}>Back</button><button type="button" disabled={!verifiedDistributors.size || purchaseUpdateBusy} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40" onClick={() => { const rows = purchaseGroups.filter(group => verifiedDistributors.has(group.distributor)).flatMap(group => group.rows); setShowCheckoutVerification(false); void markSelectedPurchasesOrdered(rows); }}>Checkout Verified Carts</button></footer>
                 </section>
               </div>
