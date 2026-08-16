@@ -278,7 +278,7 @@ const QuickSaleWindow: React.FC = () => {
 
   return (
     <div className="gb-quick-checkout flex h-screen min-h-0 flex-col overflow-hidden bg-zinc-900 text-zinc-100 font-sans">
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div className="gb-quick-checkout-header p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>
           <div className="text-xs text-zinc-400">Create a sale or repair checkout without customer info</div>
@@ -286,7 +286,7 @@ const QuickSaleWindow: React.FC = () => {
       </div>
 
       <div className="gb-quick-checkout-layout grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 overflow-hidden p-4">
-        <div className="flex items-center gap-1 self-start rounded border border-zinc-700 bg-zinc-950/40 p-1">
+        <div className="gb-quick-checkout-mode flex items-center gap-1 self-start rounded border border-zinc-700 bg-zinc-950/40 p-1">
           {(['sale', 'repair'] as const).map((type) => (
             <button
               key={type}
@@ -310,7 +310,7 @@ const QuickSaleWindow: React.FC = () => {
             editRequestId={editRequestId}
             showRequiredIndicator={repairLines.length === 0}
             catalogPanel={(
-              <div className="mb-3 flex min-h-0 flex-col rounded border border-zinc-700 bg-zinc-950/40 p-2">
+              <div className="gb-quick-repair-catalog mb-3 flex min-h-0 flex-col rounded border border-zinc-700 bg-zinc-950/40 p-2">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h2 className="text-sm font-semibold text-zinc-100">Repair catalog</h2>
@@ -323,7 +323,7 @@ const QuickSaleWindow: React.FC = () => {
                     className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none sm:w-56"
                   />
                 </div>
-                <div className="max-h-52 overflow-y-auto rounded border border-zinc-800">
+                <div className="gb-quick-repair-results max-h-52 overflow-y-auto rounded border border-zinc-800">
                   {visibleRepairItems.length === 0 ? (
                     <p className="p-3 text-sm text-zinc-400">No matching repairs in the catalog.</p>
                   ) : visibleRepairItems.map((repair) => (

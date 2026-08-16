@@ -391,6 +391,9 @@ function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zInde
     if (entry.type === 'workOrderRepairPicker') {
       window.dispatchEvent(new CustomEvent('gbpos:mobile-repair-picker-cancelled'));
     }
+    if (entry.type === 'checkout') {
+      window.dispatchEvent(new CustomEvent('gbpos:mobile-checkout-cancelled'));
+    }
     onClose();
   }, [entry.type, onClose]);
 
@@ -943,6 +946,7 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
     } as Record<string, string>;
     const originals = new Map<string, any>();
     Object.entries(methods).forEach(([method, type]) => {
+      if (method === 'openCheckout') return;
       if (typeof api?.[method] !== 'function') return;
       originals.set(method, api[method]);
       api[method] = async (payload?: any) => {
@@ -952,7 +956,40 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
     });
     const originalProductPicker = api?.pickSaleProduct;
     const originalRepairPicker = api?.pickRepairItem;
+    const originalCheckout = api?.openCheckout;
+    const originalCheckoutSave = api?._emitCheckoutSave;
+    const originalCheckoutCancel = api?._emitCheckoutCancel;
     if (api) {
+      const closeCheckoutModal = () => {
+        setModalStack((stack) => {
+          const index = stack.map((entry) => entry.type).lastIndexOf('checkout');
+          if (index < 0) return stack;
+          return stack.filter((_, entryIndex) => entryIndex !== index);
+        });
+        setRefreshKey((value) => value + 1);
+      };
+      api.openCheckout = (payload?: any) => new Promise((resolve) => {
+        let settled = false;
+        const finish = (value: any) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('gbpos:mobile-checkout-saved', onSaved as EventListener);
+          window.removeEventListener('gbpos:mobile-checkout-cancelled', onCancelled);
+          closeCheckoutModal();
+          resolve(value);
+        };
+        const onSaved = (event: Event) => finish((event as CustomEvent).detail || null);
+        const onCancelled = () => finish(null);
+        window.addEventListener('gbpos:mobile-checkout-saved', onSaved as EventListener, { once: true });
+        window.addEventListener('gbpos:mobile-checkout-cancelled', onCancelled, { once: true });
+        openModal('checkout', payload || {});
+      });
+      api._emitCheckoutSave = (result: any) => {
+        window.dispatchEvent(new CustomEvent('gbpos:mobile-checkout-saved', { detail: result }));
+      };
+      api._emitCheckoutCancel = () => {
+        window.dispatchEvent(new CustomEvent('gbpos:mobile-checkout-cancelled'));
+      };
       api.pickSaleProduct = () => new Promise((resolve) => {
         let settled = false;
         const finish = (value: any) => {
@@ -991,6 +1028,9 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
       });
       if (api && originalProductPicker) api.pickSaleProduct = originalProductPicker;
       if (api && originalRepairPicker) api.pickRepairItem = originalRepairPicker;
+      if (api && originalCheckout) api.openCheckout = originalCheckout;
+      if (api && originalCheckoutSave) api._emitCheckoutSave = originalCheckoutSave;
+      if (api && originalCheckoutCancel) api._emitCheckoutCancel = originalCheckoutCancel;
     };
   }, [openModal]);
 

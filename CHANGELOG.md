@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.14 (2026-08-16)
+- Mobile Checkout Accuracy: passes the live work-order balance into the Android checkout window and waits for a real saved or cancelled payment result instead of immediately treating the modal as successful.
+- Parts and Labor Payments: calculates remaining parts and labor from recorded payment allocations, preserves legacy diagnostic payments as labor-first, and restores Parts, Labor, and Both choices on mobile.
+- Mobile Work Order Flow: places client information and Update Client at the top, moves Status & Dates above technician assignment, and keeps its menu inside the visible daughter-window area.
+- Expandable Work Order Sections: makes Parts Tracking and Internal Notes compact expandable sections on mobile while preserving the established desktop layout.
+- Quick Checkout Mobile Layout: gives Quick Checkout, repair selection, product selection, temporary line editing, totals, and payment controls dedicated portrait and landscape sizing with independently scrollable lists.
+- Release Safety: adds source assertions and live Electron checks that complete a mobile payment and verify the exact parts/labor allocation returned to the work order.
+
 ## v0.6.13 (2026-08-16)
 - Mobile Checkout Restoration: restores the shared Payment panel, tax controls, totals, remaining balance, and Checkout action in work-order and sale windows without duplicating financial calculations.
 - Record-Specific Updates: adds Update Client directly beneath work-order client information and preserves the existing sale and consultation routing on Windows and Android.

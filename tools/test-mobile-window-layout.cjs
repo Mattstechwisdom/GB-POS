@@ -63,7 +63,10 @@ async function inspectWindow(win, type, orientation) {
   };
   win.webContents.on('console-message', consoleHandler);
   await win.setContentSize(orientation.width, orientation.height);
-  await win.loadURL(`${BASE_URL}/mobile.html?mobileWindowPreview=${encodeURIComponent(type)}`);
+  const checkoutPayload = type === 'checkout'
+    ? `&checkout=${encodeURIComponent(JSON.stringify({ amountDue: 164.15, partsDue: 109.15, laborDue: 55, title: 'Work Order Checkout' }))}`
+    : '';
+  await win.loadURL(`${BASE_URL}/mobile.html?mobileWindowPreview=${encodeURIComponent(type)}${checkoutPayload}`);
   await new Promise((resolve) => setTimeout(resolve, 425));
 
   const layout = await win.webContents.executeJavaScript(`(() => {
@@ -101,6 +104,59 @@ async function inspectWindow(win, type, orientation) {
   assert.equal(layout.shellFits, true, `${type} (${orientation.name}) escaped the mobile viewport.`);
   assert.equal(layout.closeVisible, true, `${type} (${orientation.name}) hid its close control.`);
   assert.equal(runtimeErrors.length, 0, `${type} (${orientation.name}) logged errors: ${runtimeErrors.join(' | ')}`);
+
+  if (type === 'checkout') {
+    const checkout = await win.webContents.executeJavaScript(`(() => {
+      const windowRoot = document.querySelector('.gb-checkout-window');
+      const text = windowRoot?.textContent || '';
+      const choices = Array.from(windowRoot?.querySelectorAll('input[type="checkbox"]') || []);
+      return {
+        text: text.replace(/\s+/g, ' ').trim().slice(0, 600),
+        correctDue: text.includes('$164.15'),
+        correctParts: text.includes('Parts:') && text.includes('$109.15'),
+        correctLabor: text.includes('Labor:') && text.includes('$55.00'),
+        splitChoices: choices.length >= 3,
+      };
+    })()`);
+    assert.equal(checkout.correctDue, true, `Checkout total was not passed into the ${orientation.name} window: ${checkout.text}`);
+    assert.equal(checkout.correctParts, true, `Checkout parts balance was missing in ${orientation.name}.`);
+    assert.equal(checkout.correctLabor, true, `Checkout labor balance was missing in ${orientation.name}.`);
+    assert.equal(checkout.splitChoices, true, `Checkout parts/labor choices were missing in ${orientation.name}.`);
+
+    await win.webContents.executeJavaScript(`(() => {
+      document.querySelector('.mobile-modal-bar button[aria-label="Close window"]')?.click();
+      return true;
+    })()`);
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    const bridgeStarted = await win.webContents.executeJavaScript(`(() => {
+      window.__mobileCheckoutResult = undefined;
+      window.api.openCheckout({ amountDue: 100, partsDue: 60, laborDue: 40, title: 'Bridge Test' })
+        .then((result) => { window.__mobileCheckoutResult = result; });
+      return typeof window.api.openCheckout === 'function';
+    })()`);
+    assert.equal(bridgeStarted, true, `Mobile checkout bridge was unavailable in ${orientation.name}.`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const cardSelected = await win.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('.gb-checkout-window');
+      const card = Array.from(root?.querySelectorAll('button') || []).find((button) => button.textContent.trim() === 'Card');
+      card?.click();
+      return Boolean(card);
+    })()`);
+    assert.equal(cardSelected, true, `Could not select Card in the bridged checkout in ${orientation.name}.`);
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    const completed = await win.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('.gb-checkout-window');
+      const save = Array.from(root?.querySelectorAll('button') || []).find((button) => button.textContent.trim() === 'Save');
+      save?.click();
+      return Boolean(save && !save.disabled);
+    })()`);
+    assert.equal(completed, true, `Could not complete the bridged checkout in ${orientation.name}.`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const result = await win.webContents.executeJavaScript(`window.__mobileCheckoutResult || null`);
+    assert.equal(Number(result?.amountPaid || 0), 100, `Bridged checkout returned the wrong total in ${orientation.name}.`);
+    assert.equal(Number(result?.appliedParts || 0), 60, `Bridged checkout returned the wrong parts amount in ${orientation.name}.`);
+    assert.equal(Number(result?.appliedLabor || 0), 40, `Bridged checkout returned the wrong labor amount in ${orientation.name}.`);
+  }
 
   if (type === 'clientUpdate') {
     const history = await win.webContents.executeJavaScript(`(async () => {

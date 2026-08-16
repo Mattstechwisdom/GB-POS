@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import MoneyInput from '../components/MoneyInput';
+import { peekWindowPayload } from '../lib/windowPayload';
 
 export type PaymentType = "Cash" | "Cash + Card" | "Card" | "Apple Pay" | "Google Pay" | "Other";
 
@@ -28,6 +29,10 @@ function round2(n: number) {
 }
 
 function parsePayload(): { amountDue: number; partsDue?: number; laborDue?: number; title?: string } | null {
+  // React development mode can initialize this window twice. Peek keeps the
+  // current modal payload available for both passes; each open overwrites it.
+  const stored = peekWindowPayload('checkout');
+  if (stored && typeof stored === 'object') return stored;
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('checkout');
@@ -39,7 +44,7 @@ function parsePayload(): { amountDue: number; partsDue?: number; laborDue?: numb
 const paymentTypes: PaymentType[] = ["Cash", "Cash + Card", "Card", "Apple Pay", "Google Pay", "Other"];
 
 const CheckoutWindow: React.FC = () => {
-  const payload = parsePayload();
+  const payload = useMemo(() => parsePayload(), []);
   const originalAmountDue = payload?.amountDue ?? 0;
   const partsDue = Number(payload?.partsDue || 0) || 0;
   const laborDue = Number(payload?.laborDue || 0) || 0;
@@ -293,8 +298,8 @@ const CheckoutWindow: React.FC = () => {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none" onKeyDownCapture={onRootKeyDownCapture}>
-      <div className="h-full p-2 flex flex-col gap-2 text-[13px] leading-tight">
+    <div className="gb-checkout-window h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none" onKeyDownCapture={onRootKeyDownCapture}>
+      <div className="gb-checkout-body h-full p-2 flex flex-col gap-2 text-[13px] leading-tight">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">{payload?.title ? String(payload.title) : 'Checkout'}</h2>
           <div className="text-[11px] text-zinc-400">

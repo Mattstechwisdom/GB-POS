@@ -1706,6 +1706,16 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   display: none;
 }
 
+.gb-wo-mobile-intake,
+.gb-wo-notes-mobile-toggle,
+.gb-wo-expand-toggle {
+  display: none;
+}
+
+.gb-wo-desktop-intake {
+  display: block;
+}
+
 .gbpos-mobile .gb-repair-toolbar {
   display: grid;
   gap: 0.65rem;

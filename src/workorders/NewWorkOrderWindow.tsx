@@ -108,6 +108,41 @@ function buildNormalizedCheckoutPayments(record: any) {
   }, ...existing];
 }
 
+function remainingWorkOrderPaymentBuckets(record: any) {
+  const grossParts = round2(Math.max(0, Number(record?.partCosts || 0)) * (1 + Math.max(0, Number(record?.taxRate || 0)) / 100));
+  const grossLabor = round2(Math.max(0, Number(record?.laborCost || 0) - Number(record?.discount || 0)));
+  const payments = buildNormalizedCheckoutPayments(record);
+  let paidParts = round2(payments.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedParts || 0)), 0));
+  let paidLabor = round2(payments.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedLabor || 0)), 0));
+  const explicitPaid = round2(paidParts + paidLabor);
+  const recordedPaid = round2(Math.max(
+    Number(record?.amountPaid || 0),
+    payments.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.applied ?? payment?.amount ?? 0)), 0),
+  ));
+
+  // Legacy payments predate explicit buckets. Most were diagnostic fees, so
+  // allocate those to labor first. Every new checkout stores exact buckets.
+  let unallocated = round2(Math.max(0, recordedPaid - explicitPaid));
+  const legacyLabor = round2(Math.min(unallocated, Math.max(0, grossLabor - paidLabor)));
+  paidLabor = round2(paidLabor + legacyLabor);
+  unallocated = round2(Math.max(0, unallocated - legacyLabor));
+  paidParts = round2(paidParts + Math.min(unallocated, Math.max(0, grossParts - paidParts)));
+
+  const totalRemaining = round2(Math.max(0, Number(record?.totals?.remaining || 0)));
+  let partsDue = round2(Math.max(0, grossParts - paidParts));
+  let laborDue = round2(Math.max(0, grossLabor - paidLabor));
+  const bucketTotal = round2(partsDue + laborDue);
+  if (bucketTotal > totalRemaining) {
+    const overflow = round2(bucketTotal - totalRemaining);
+    const laborReduction = Math.min(laborDue, overflow);
+    laborDue = round2(laborDue - laborReduction);
+    partsDue = round2(Math.max(0, partsDue - (overflow - laborReduction)));
+  } else if (bucketTotal < totalRemaining) {
+    laborDue = round2(laborDue + (totalRemaining - bucketTotal));
+  }
+  return { partsDue, laborDue };
+}
+
 const ADDON_SALE_MAX_ITEMS = 20;
 
 const AssignedTechnicianField: React.FC<{
@@ -295,6 +330,8 @@ const NewWorkOrderWindow: React.FC = () => {
   const [initialCustomerId, setInitialCustomerId] = useState<number>(payload?.customerId || 0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
+  const [partsTrackingExpanded, setPartsTrackingExpanded] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const now = new Date().toISOString();
   type WOState = Omit<WorkOrderFull, 'items'> & {
     items: WorkOrderItemRow[];
@@ -1275,16 +1312,9 @@ const NewWorkOrderWindow: React.FC = () => {
         // Always show the parts/labor split.
         // If a retail add-on sale is linked, treat its remaining balance as Parts for checkout allocation.
         {
-          const partCosts = Number(wo.partCosts || 0) || 0;
-          const laborCost = Number(wo.laborCost || 0) || 0;
-          const discount = Number(wo.discount || 0) || 0;
-          const taxRate = Number(wo.taxRate || 0) || 0;
-          const laborAfterDiscount = Math.max(0, laborCost - discount);
-          const partsWithTax = round2(partCosts + (partCosts * taxRate / 100));
-
-          // Work Order buckets should never exceed the Work Order's own remaining balance.
-          const woPartsDue = Math.min(partsWithTax, woRemaining);
-          const woLaborDue = Math.min(laborAfterDiscount, woRemaining);
+          const remainingBuckets = remainingWorkOrderPaymentBuckets(wo);
+          const woPartsDue = remainingBuckets.partsDue;
+          const woLaborDue = remainingBuckets.laborDue;
 
           checkoutPayload.partsDue = round2(woPartsDue + Math.max(0, addonRemaining));
           checkoutPayload.laborDue = round2(woLaborDue);
@@ -1643,19 +1673,28 @@ const NewWorkOrderWindow: React.FC = () => {
       <div className="gb-wo-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
         <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} hideStatus hideDates hideAssigned validationFlags={sidebarValidationFlags} onRequestForceSave={handleSidebarForceSave} />
         <div className="gb-wo-main-scroll flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
+          <div className="gb-wo-mobile-intake">
+            <IntakePanel
+              workOrder={workOrderFull}
+              customerSummary={customerSummary}
+              onChange={handleIntakeChange}
+              onUpdateClient={() => setClientUpdateOpen(true)}
+              updateClientDisabled={!Number((wo as any).id || 0)}
+            />
+          </div>
           <div className="gb-wo-top-card bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="gb-wo-top-row">
-              <AssignedTechnicianField
-                value={workOrderFull.assignedTo}
-                invalid={!!sidebarValidationFlags?.assignedTo}
-                onChange={assignedTo => handleSidebarChange({ assignedTo })}
-              />
               <WorkOrderDetailsMenu
                 open={detailsMenuOpen}
                 workOrder={workOrderFull}
                 onToggle={() => setDetailsMenuOpen(open => !open)}
                 onClose={() => setDetailsMenuOpen(false)}
                 onChange={handleSidebarChange}
+              />
+              <AssignedTechnicianField
+                value={workOrderFull.assignedTo}
+                invalid={!!sidebarValidationFlags?.assignedTo}
+                onChange={assignedTo => handleSidebarChange({ assignedTo })}
               />
             </div>
             <div className="flex items-center justify-between mt-3">
@@ -1771,12 +1810,12 @@ const NewWorkOrderWindow: React.FC = () => {
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
           {/* Parts dates + order URL (under line items) */}
-          <div className="gb-wo-parts-card bg-zinc-900 border border-zinc-700 rounded p-2">
+          <div className={`gb-wo-parts-card gb-wo-expandable ${partsTrackingExpanded ? 'is-expanded' : 'is-collapsed'} bg-zinc-900 border border-zinc-700 rounded p-2`}>
             <div className="gb-wo-parts-header flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4>
-              <div className="text-[11px] text-zinc-500">Not shown on printouts</div>
+              <div><h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4><div className="text-[11px] text-zinc-500">Not shown on printouts</div></div>
+              <button type="button" className="gb-wo-expand-toggle" aria-expanded={partsTrackingExpanded} onClick={() => setPartsTrackingExpanded(value => !value)}>{partsTrackingExpanded ? 'Collapse' : 'Expand'}</button>
             </div>
-            <div className="gb-wo-parts-grid grid grid-cols-4 gap-2">
+            <div className="gb-wo-expandable-body gb-wo-parts-grid grid grid-cols-4 gap-2">
               <div className="gb-wo-parts-date-field">
                 <label className="block text-xs text-zinc-400">Order date</label>
                 <input
@@ -1815,28 +1854,35 @@ const NewWorkOrderWindow: React.FC = () => {
               </div>
             </div>
           </div>
-          <NotesPanel
-            notes={wo.internalNotes || ''}
-            log={wo.internalNotesLog || []}
-            onChange={n => setWo(w => ({ ...w, internalNotes: n }))}
-            onAdd={(text) => {
-              const stamp = new Date().toISOString().slice(0,16).replace('T',' ');
-              setWo(w => ({
-                ...w,
-                internalNotes: (w.internalNotes ? w.internalNotes + '\n' : '') + `${stamp} — ${text}`,
-                internalNotesLog: [...(w.internalNotesLog || []), { id: (w.internalNotesLog?.length || 0) + 1, text: `${stamp} — ${text}`, createdAt: stamp }]
-              }));
-            }}
-          />
+          <div className={`gb-wo-notes-expandable gb-wo-expandable ${notesExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+            <button type="button" className="gb-wo-notes-mobile-toggle" aria-expanded={notesExpanded} onClick={() => setNotesExpanded(value => !value)}><span>Internal notes</span><strong>{notesExpanded ? 'Collapse' : 'Expand'}</strong></button>
+            <div className="gb-wo-expandable-body">
+              <NotesPanel
+                notes={wo.internalNotes || ''}
+                log={wo.internalNotesLog || []}
+                onChange={n => setWo(w => ({ ...w, internalNotes: n }))}
+                onAdd={(text) => {
+                  const stamp = new Date().toISOString().slice(0,16).replace('T',' ');
+                  setWo(w => ({
+                    ...w,
+                    internalNotes: (w.internalNotes ? w.internalNotes + '\n' : '') + `${stamp} — ${text}`,
+                    internalNotesLog: [...(w.internalNotesLog || []), { id: (w.internalNotesLog?.length || 0) + 1, text: `${stamp} — ${text}`, createdAt: stamp }]
+                  }));
+                }}
+              />
+            </div>
+          </div>
         </div>
         <div className="gb-wo-payment-scroll flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel
-            workOrder={workOrderFull}
-            customerSummary={customerSummary}
-            onChange={handleIntakeChange}
-            onUpdateClient={() => setClientUpdateOpen(true)}
-            updateClientDisabled={!Number((wo as any).id || 0)}
-          />
+          <div className="gb-wo-desktop-intake">
+            <IntakePanel
+              workOrder={workOrderFull}
+              customerSummary={customerSummary}
+              onChange={handleIntakeChange}
+              onUpdateClient={() => setClientUpdateOpen(true)}
+              updateClientDisabled={!Number((wo as any).id || 0)}
+            />
+          </div>
           <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-zinc-200">Retail add-on</h4>

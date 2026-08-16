@@ -130,6 +130,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Repair Journal keeps saved notes tied to the specific work order.
 - Record the date, technician, test performed, result, and next action.
 - Journal entries are part of the work-order data and should be included in full backups and cloud sync.
+- On Android, client information and Update Client appear first. Status & Dates sits above Assigned To, while Parts Tracking and Internal Notes expand only when needed.
 
 ## 7. Client Updates and QR Codes
 
@@ -294,6 +295,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 4. Choose Add Selected to add all checked products at once. The checkout line-item list is the only scrolling list on desktop; the temporary editor remains beside it.
 5. Select any checkout line to review or temporarily edit it. Save closes the editor and applies the change only to this checkout.
 6. Verify subtotal, tax, and total, then choose Checkout. Tracked inventory is reduced by the recorded quantity only after the completed transaction is saved.
+7. On Android, the catalog list and selected-line editor scroll independently so the totals and Checkout action remain reachable in portrait and landscape.
 
 ### Quick Checkout Repair Selection
 
@@ -326,6 +328,8 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ## 13. Checkout and Payments
 
 - Checkout uses the same payment window for work orders, sales, and Quick Sale where supported.
+- Work-order checkout shows the current remaining total and separate Parts, Labor, and Both choices on Windows and Android.
+- Confirm the chosen payment bucket before saving a deposit. The saved payment returns to the work order with explicit parts and labor allocations.
 - Record only money actually received.
 - For split/deposit workflows, verify the remaining balance after each payment.
 - Diagnostic fees and part deposits must remain attached to the correct work order.
