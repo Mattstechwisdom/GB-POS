@@ -93,6 +93,7 @@ jobs:
           npm run test:technician-sync
           npm run test:windows-update-install
           npm run test:release-0593-features
+          npm run test:release-0613-features
           npm run test:auto-update-relaunch
           npm run test:eod-ticket-close
           npm run test:cart-client-updates

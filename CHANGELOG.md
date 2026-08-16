@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.13 (2026-08-16)
+- Mobile Checkout Restoration: restores the shared Payment panel, tax controls, totals, remaining balance, and Checkout action in work-order and sale windows without duplicating financial calculations.
+- Record-Specific Updates: adds Update Client directly beneath work-order client information and preserves the existing sale and consultation routing on Windows and Android.
+- Client Window Cleanup: removes duplicate outer close controls from Search Client and Add Client, keeps Save and X together for new clients, and lets shaded daughter-window backdrops return to the previous screen.
+- Customer Identity Reliability: persists the resolved customer name and phone with new work orders and refreshes invoices and customer records together so the main screen immediately shows current names instead of stale Customer-number placeholders.
+- Quick Checkout Catalog: supports selecting multiple products in one catalog visit, keeps catalog data unchanged, and adds all selected temporary lines to the checkout together.
+- Quick Checkout Layout: keeps product/repair lists independently scrollable, holds temporary edit fields in the right pane on desktop, and prevents totals or Save actions from being covered in mobile portrait and landscape layouts.
+- Feedback Keyboard Action: makes the Delete key invoke the same confirmed delete workflow as the visible Delete button while protecting active text fields.
+- Release Safety: adds focused source assertions plus Electron portrait/landscape checks for every changed daughter window.
+
 ## v0.6.12 (2026-08-15)
 - Sales QR Restoration: prints a Supabase-backed sale update QR on both the Sales Form and Customer Receipt instead of using the retired shop-LAN route.
 - Consultation QR Restoration: prints the consultation calendar-reminder QR on Consultation Sheets and waits for the QR image before silent printing begins.

@@ -383,6 +383,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
 }
 
 function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
+  const contentOwnsClose = entry.type === 'customerSearch' || entry.type === 'customerOverview' || entry.type === 'addClient';
   const requestClose = useCallback(() => {
     if (entry.type === 'productPicker') {
       window.dispatchEvent(new CustomEvent('gbpos:mobile-product-picker-cancelled'));
@@ -406,9 +407,11 @@ function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zInde
   return (
     <section className="mobile-modal-shell" style={{ zIndex }} data-modal-shell="1">
       <header className="mobile-modal-bar">
-        <button type="button" className="mobile-icon-button" onClick={requestClose} aria-label="Close window">
-          <span aria-hidden="true">x</span>
-        </button>
+        {contentOwnsClose ? <span className="mobile-bar-spacer" /> : (
+          <button type="button" className="mobile-icon-button" onClick={requestClose} aria-label="Close window">
+            <span aria-hidden="true">x</span>
+          </button>
+        )}
         <div>
           <div className="mobile-modal-eyebrow">GadgetBoy POS</div>
           <h2>{title}</h2>

@@ -31,7 +31,7 @@ type Product = {
 type ProductsWindowProps = {
   onClose?: () => void;
   pickerMode?: boolean;
-  onPick?: (product: Record<string, any>) => void;
+  onPick?: (product: Record<string, any> | Record<string, any>[]) => void;
 };
 
 const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = false, onPick }) => {
@@ -67,6 +67,8 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'product' | 'part' | ''>('');
   const [pickerQuantity, setPickerQuantity] = useState(1);
+  const [pickerSelections, setPickerSelections] = useState<Set<number>>(() => new Set());
+  const [pickerQuantities, setPickerQuantities] = useState<Record<number, number>>({});
   const [pickerInStock, setPickerInStock] = useState(true);
   const ITEM_TYPE_OPTIONS: Array<NonNullable<Product['itemType']>> = ['Product', 'Part'];
   const PART_CATEGORY_PRESETS = ['Screen', 'Battery', 'Charging Port', 'Camera', 'Speaker', 'Microphone', 'Buttons', 'Housing', 'Motherboard', 'Power Supply', 'Cable', 'Adhesive', 'Other'];
@@ -155,9 +157,20 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
   const emitPickedProduct = () => {
     if (!selectedId) return;
-    const product = { ...editing, id: selectedId, quantity: pickerQuantity, inStock: pickerInStock };
-    const payload = buildSaleProductPickerPayload(product as Record<string, any>);
-    if (!payload) return;
+    const ids = pickerSelections.size > 0 ? Array.from(pickerSelections) : [selectedId];
+    const payloads = ids.map((id) => {
+      const stored = list.find(product => Number(product.id) === id);
+      if (!stored) return null;
+      const product = {
+        ...(id === selectedId ? { ...stored, ...editing } : stored),
+        id,
+        quantity: id === selectedId ? pickerQuantity : (pickerQuantities[id] || 1),
+        inStock: id === selectedId ? pickerInStock : (stored.trackStock ? Number(stored.stockCount) > 0 : true),
+      };
+      return buildSaleProductPickerPayload(product as Record<string, any>);
+    }).filter(Boolean) as Record<string, any>[];
+    if (!payloads.length) return;
+    const payload = payloads.length === 1 ? payloads[0] : payloads;
     if (onPick) {
       onPick(payload);
       return;
@@ -172,6 +185,30 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
       try { window.opener?.postMessage({ type: 'sale-product-selected', product: payload }, '*'); } catch {}
     } catch {}
     window.close();
+  };
+
+  const focusPickerProduct = (product: Product) => {
+    const id = Number(product.id);
+    if (!Number.isFinite(id)) return;
+    setSelectedId(id);
+    setPickerSelections(current => {
+      if (current.has(id)) return current;
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const togglePickerProduct = (product: Product) => {
+    const id = Number(product.id);
+    if (!Number.isFinite(id)) return;
+    setSelectedId(id);
+    setPickerSelections(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const autofillFromOrderUrl = async (url: string) => {
@@ -222,7 +259,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
     if (!selectedId) { setEditing(blank); prevSelectedIdRef.current = undefined; lastScrapedUrlRef.current = ''; return; }
     const found = list.find(p => p.id === selectedId);
     setEditing(found ? { ...blank, ...found } : blank);
-    setPickerQuantity(1);
+    setPickerQuantity(pickerQuantities[selectedId] || 1);
     const stockCount = Number(found?.stockCount);
     setPickerInStock(!found?.trackStock || (Number.isFinite(stockCount) && stockCount > 0));
     // Only reset the manual-edit flag when the user picks a *different* item,
@@ -235,7 +272,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
       setPriceManuallyEdited(hasStoredPrice);
       prevSelectedIdRef.current = selectedId;
     }
-  }, [selectedId, list]);
+  }, [selectedId, list, pickerQuantities]);
 
   // Auto-calc price from internalCost if not manually edited
   useEffect(() => {
@@ -336,14 +373,15 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
         <div className="gb-sale-catalog-layout grid min-h-0 flex-1 grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)] gap-3 pt-3">
           <section className="gb-sale-catalog-results flex min-h-0 flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
-            <div className="grid grid-cols-[minmax(0,1fr)_110px_82px] border-b border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold uppercase text-zinc-400"><span>Product</span><span>Condition / Stock</span><span className="text-right">Price</span></div>
+            <div className="gb-sale-catalog-heading grid grid-cols-[24px_minmax(0,1fr)_110px_82px] gap-2 border-b border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold uppercase text-zinc-400"><span aria-hidden="true">✓</span><span>Product</span><span>Condition / Stock</span><span className="text-right">Price</span></div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {filtered.length ? filtered.map((product) => (
-                <button type="button" key={product.id} onClick={() => setSelectedId(product.id)} className={`grid w-full grid-cols-[minmax(0,1fr)_110px_82px] items-center gap-2 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 shadow-[inset_3px_0_0_#BC13FE]' : 'bg-zinc-950 hover:bg-zinc-900'}`}>
+                <div role="button" tabIndex={0} key={product.id} onClick={() => focusPickerProduct(product)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); focusPickerProduct(product); } }} className={`gb-sale-catalog-row grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)_110px_82px] items-center gap-2 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 shadow-[inset_3px_0_0_#BC13FE]' : 'bg-zinc-950 hover:bg-zinc-900'}`}>
+                  <input type="checkbox" aria-label={`Select ${product.itemDescription}`} checked={product.id != null && pickerSelections.has(Number(product.id))} onClick={event => event.stopPropagation()} onChange={() => togglePickerProduct(product)} className="h-4 w-4 accent-[#39FF14]" />
                   <span className="min-w-0"><strong className="block truncate text-sm">{product.itemDescription}</strong><small className="block truncate text-zinc-500">{product.category || 'Other'}{product.distributor ? ` · ${product.distributor}` : ''}</small></span>
                   <span className="min-w-0 text-xs text-zinc-300"><span className="block truncate">{product.condition || 'New'}</span><span className={product.trackStock && Number(product.stockCount || 0) <= 0 ? 'text-red-300' : 'text-zinc-500'}>{product.trackStock ? `${product.stockCount ?? 0} in stock` : 'Not tracked'}</span></span>
                   <strong className="text-right text-sm tabular-nums">${Number(product.price || 0).toFixed(2)}</strong>
-                </button>
+                </div>
               )) : <div className="p-4 text-sm text-zinc-400">No products match these filters.</div>}
             </div>
           </section>
@@ -354,7 +392,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
                 <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-2"><h3 className="font-semibold">Sale Item Details</h3><span className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-0.5 text-xs text-[#e9b7ff]">Sale only</span></div>
                 <label className="block text-xs text-zinc-400">Item description<input value={editing.itemDescription || ''} onChange={e => setEditing(ed => ({ ...ed, itemDescription: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-[#39FF14]" /></label>
                 <div className="grid grid-cols-3 gap-2">
-                  <label className="text-xs text-zinc-400">Quantity<input type="number" min="1" step="1" value={pickerQuantity} onChange={e => setPickerQuantity(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
+                  <label className="text-xs text-zinc-400">Quantity<input type="number" min="1" step="1" value={pickerQuantity} onChange={e => { const quantity = Math.max(1, Math.round(Number(e.target.value) || 1)); setPickerQuantity(quantity); if (selectedId) setPickerQuantities(current => ({ ...current, [selectedId]: quantity })); }} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
                   <label className="text-xs text-zinc-400">Sale price<MoneyInput value={editing.price} onValueChange={value => setEditing(ed => ({ ...ed, price: value == null ? undefined : Number(value) }))} allowEmpty className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
                   <label className="text-xs text-zinc-400">Internal cost<MoneyInput value={editing.internalCost} onValueChange={value => setEditing(ed => ({ ...ed, internalCost: value == null ? undefined : Number(value) }))} allowEmpty className="mt-1 w-full rounded border border-yellow-500 bg-yellow-100 px-2 py-2 text-sm text-black" /></label>
                 </div>
@@ -368,7 +406,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
                 </div>
                 <label className="block text-xs text-zinc-400">Product URL<input type="url" value={editing.reorderUrlTemplate || ''} onChange={e => setEditing(ed => ({ ...ed, reorderUrlTemplate: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white" /></label>
                 <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"><input type="checkbox" checked={pickerInStock} onChange={e => setPickerInStock(e.target.checked)} className="h-4 w-4 accent-[#39FF14]" />Available for this sale</label>
-                <div className="flex justify-end gap-2 border-t border-zinc-700 pt-3"><button type="button" className="rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm" onClick={() => setSelectedId(undefined)}>Cancel selection</button><button type="button" className="rounded bg-[#39FF14] px-5 py-2 font-semibold text-black disabled:opacity-40" onClick={emitPickedProduct} disabled={!editing.itemDescription?.trim()}>Add to Sale</button></div>
+                <div className="flex justify-end gap-2 border-t border-zinc-700 pt-3"><button type="button" className="rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm" onClick={() => { setSelectedId(undefined); setPickerSelections(new Set()); }}>Clear selection</button><button type="button" className="rounded bg-[#39FF14] px-5 py-2 font-semibold text-black disabled:opacity-40" onClick={emitPickedProduct} disabled={!editing.itemDescription?.trim()}>{`Add ${Math.max(1, pickerSelections.size)} to Sale`}</button></div>
               </div>
             )}
           </section>

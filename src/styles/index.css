@@ -2057,6 +2057,37 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   .gb-calendar-icon-row > button { grid-column: 2 / -1; }
 }
 
+/* Quick Checkout keeps the temporary editor fixed while only its catalog/list panes scroll. */
+.gb-quick-checkout-layout > .gb-sale-items {
+  min-height: 0;
+  overflow: hidden;
+}
+.gb-quick-checkout .gb-sale-items-table-wrap,
+.gb-quick-checkout .gb-sale-catalog-results > :last-child {
+  overscroll-behavior: contain;
+}
+.gb-quick-checkout .gb-sale-item-editor.is-split {
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+.gb-quick-checkout .gb-sale-item-editor.is-split .mt-2 {
+  margin-top: 0.35rem !important;
+}
+.gb-quick-checkout .gb-sale-item-editor.is-split input,
+.gb-quick-checkout .gb-sale-item-editor.is-split select,
+.gb-quick-checkout .gb-sale-item-editor.is-split textarea {
+  min-height: 1.8rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  font-size: 0.78rem;
+}
+.gb-quick-checkout .gb-sale-item-editor.is-split textarea {
+  min-height: 2.6rem;
+}
+.gb-sale-catalog-editor {
+  overflow: hidden;
+}
+
 .gb-technicians-window .gb-tech-mobile-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));

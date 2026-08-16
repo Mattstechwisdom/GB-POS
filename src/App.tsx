@@ -97,6 +97,7 @@ interface ModalEntry { id: string; type: string; }
 
 // ── Overlay close button + content shell ─────────────────────────────────
 function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
+  const contentOwnsClose = entry.type === 'customerSearch' || entry.type === 'customerOverview' || entry.type === 'addClient';
   // Close on Escape – only the top-most modal should fire.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -127,7 +128,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
             Inventory
           </button>
         )}
-        {entry.type !== 'checkout' && (
+        {entry.type !== 'checkout' && !contentOwnsClose && (
           <button
             onClick={onClose}
             title="Close window (Esc)"
@@ -926,12 +927,26 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
   const load = React.useCallback(async () => {
     try {
       setLoading(true);
-      const [wos, sales] = await Promise.all([
+      const [wos, sales, customers] = await Promise.all([
         (window as any).api.getWorkOrders({ limit: MAX_ITEMS, sortBy: 'activityAt', sortDir: 'desc' }),
         (window as any).api.dbGet('sales', { limit: MAX_ITEMS, sortBy: 'checkInAt', sortDir: 'desc' }).catch(() => []),
+        ((window as any).api.getCustomers?.() ?? (window as any).api.dbGet('customers')).catch(() => []),
       ]);
       setWo(Array.isArray(wos) ? wos : []);
       setSa(Array.isArray(sales) ? sales : []);
+      const nextCustomers: Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }> = {};
+      (Array.isArray(customers) ? customers : []).forEach((customer: any) => {
+        const id = Number(customer?.id);
+        if (!Number.isFinite(id)) return;
+        const composed = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim();
+        nextCustomers[id] = {
+          name: composed || customer.name || customer.email || `Customer #${id}`,
+          phone: customer.phone || '',
+          phoneAlt: customer.phoneAlt || '',
+          email: customer.email || '',
+        };
+      });
+      setCustomerIndex(nextCustomers);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }, []);
 
@@ -944,7 +959,18 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
     }
     const offWO = api.onWorkOrdersChanged?.(() => load());
     const offSA = api.onSalesChanged?.(() => load());
-    return () => { try { offWO && offWO(); } catch {} try { offSA && offSA(); } catch {} };
+    const offCU = api.onCustomersChanged?.(() => load());
+    const onMessage = (event: MessageEvent) => {
+      const type = String((event.data as any)?.type || '');
+      if (type === 'workorders:changed' || type === 'sales:changed' || type === 'customers:changed') void load();
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      try { offWO && offWO(); } catch {}
+      try { offSA && offSA(); } catch {}
+      try { offCU && offCU(); } catch {}
+      window.removeEventListener('message', onMessage);
+    };
   }, [load]);
 
   React.useEffect(() => {

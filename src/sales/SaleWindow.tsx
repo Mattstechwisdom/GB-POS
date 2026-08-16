@@ -1462,7 +1462,7 @@ const SaleWindow: React.FC = () => {
   }, []);
 
   return (
-    <div className="h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
+    <div className="gb-sale-window h-screen overflow-hidden p-3 bg-zinc-900 text-gray-100">
       {clientUpdateTarget ? (
         <ClientUpdatePanel
           embedded
@@ -1479,7 +1479,7 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
+      <div className="gb-sale-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
     <WorkOrderSidebar
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
@@ -1489,7 +1489,7 @@ const SaleWindow: React.FC = () => {
       validationFlags={sidebarValidationFlags}
       renderActions={renderSidebarActions}
     />
-  <div className="flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
+  <div className="gb-sale-main flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <h1 className="text-xl font-semibold mb-2">New Sale</h1>
 
           {/* ── Consultation Details Panel ──────────────────────── */}
@@ -1825,7 +1825,7 @@ const SaleWindow: React.FC = () => {
           </div>
         </div>
         </div>
-        <div className="flex flex-col gap-3 min-h-0 overflow-auto">
+        <div className="gb-sale-payment flex flex-col gap-3 min-h-0 overflow-auto">
           <IntakePanel
             workOrder={sharedWorkOrder}
             customerSummary={intakeCustomerSummary}

@@ -1494,20 +1494,37 @@
   flex: 0 0 min(34dvh, 18rem);
 }
 
-.gbpos-mobile .gb-sale-catalog-results > div:first-child,
-.gbpos-mobile .gb-sale-catalog-results button {
-  grid-template-columns: minmax(0, 1fr) 5.5rem 4.5rem;
+.gbpos-mobile .gb-sale-catalog-heading,
+.gbpos-mobile .gb-sale-catalog-row {
+  grid-template-columns: 1.25rem minmax(0, 1fr) 4.5rem 4rem !important;
   padding-inline: 0.55rem;
 }
 
-.gbpos-mobile .gb-sale-catalog-results button {
+.gbpos-mobile .gb-sale-catalog-row {
   padding-block: 0.55rem;
 }
 
 .gbpos-mobile .gb-sale-catalog-editor {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0.7rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-editor .space-y-3 {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-editor .space-y-3 > * {
+  margin-top: 0 !important;
+}
+
+.gbpos-mobile .gb-sale-catalog-editor input,
+.gbpos-mobile .gb-sale-catalog-editor select,
+.gbpos-mobile .gb-sale-catalog-editor button {
+  min-height: 2.2rem !important;
+  padding-top: 0.3rem !important;
+  padding-bottom: 0.3rem !important;
 }
 
 .gbpos-mobile .gb-sale-catalog-editor .grid.grid-cols-3 {
@@ -2427,7 +2444,7 @@
 
 .gbpos-mobile .gb-sale-payment .gb-wo-intake-panel,
 .gbpos-mobile .gb-sale-payment .gb-wo-payment-panel {
-  display: none !important;
+  display: block !important;
 }
 
 .gbpos-mobile .gb-sale-action-bar {
@@ -2593,7 +2610,7 @@
 
 .gbpos-mobile .gb-wo-intake-panel,
 .gbpos-mobile .gb-wo-payment-panel {
-  display: none !important;
+  display: block !important;
 }
 
 .gbpos-mobile .gb-wo-mobile-checkout-button {
@@ -4194,6 +4211,23 @@
   }
 
   .gbpos-mobile .gb-customer-overview-header .gb-customer-header-save {
+    display: none !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-new-customer:not(.is-embedded-create) .gb-customer-overview-header > .flex {
+    grid-template-columns: minmax(0, 1fr) 2.8rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-new-customer:not(.is-embedded-create) .gb-customer-overview-header .gb-customer-header-save {
+    display: block !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-new-customer:not(.is-embedded-create) .gb-customer-overview-header > .flex > button:last-child {
+    width: 2.8rem !important;
+    min-width: 2.8rem !important;
+  }
+
+  .gbpos-mobile .gb-customer-overview-overlay.is-new-customer:not(.is-embedded-create) .gb-customer-mobile-save {
     display: none !important;
   }
 

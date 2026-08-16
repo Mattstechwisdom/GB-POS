@@ -277,23 +277,21 @@ const CustomerOverviewWindow: React.FC<Props> = ({ customer, onClose, onSaved, c
 
   return (
     <>
-    <div className={`gb-customer-overview-overlay ${embeddedCreate ? 'is-embedded-create' : 'fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6'} ${isModalShell && !embeddedCreate ? '' : 'is-child-dialog'}`}>
-      <div className={`gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded overflow-auto p-4 ${embeddedCreate ? 'w-full max-w-none' : 'w-[1300px] max-w-[95vw] max-h-[95vh]'}`}>
+    <div className={`gb-customer-overview-overlay ${!(local as any)?.id ? 'is-new-customer' : ''} ${embeddedCreate ? 'is-embedded-create' : 'fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-6'} ${isModalShell && !embeddedCreate ? '' : 'is-child-dialog'}`} onMouseDown={event => { if (!embeddedCreate && event.target === event.currentTarget) void handleClose(); }}>
+      <div className={`gb-customer-overview-panel bg-zinc-900 border border-zinc-700 rounded overflow-auto p-4 ${embeddedCreate ? 'w-full max-w-none' : 'w-[1300px] max-w-[95vw] max-h-[95vh]'}`} onMouseDown={event => event.stopPropagation()}>
         {/* Top toolbar with actions */}
         <div className="gb-customer-overview-header flex items-center justify-between mb-3">
           <div className="text-lg font-semibold text-zinc-200">{embeddedCreate ? 'Add New Client' : 'Customer Overview'}</div>
           <div className="flex items-center gap-2">
             <Button className="gb-customer-header-save" neon onClick={handleSave}>Save</Button>
-            {!isModalShell && (
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={handleClose}
-                className="h-9 w-9 mr-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
-              >
-                ✕
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={handleClose}
+              className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+            >
+              ✕
+            </button>
           </div>
         </div>
         <div className="gb-customer-overview-layout flex gap-4">

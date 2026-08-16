@@ -23,6 +23,7 @@ import PaymentPanel from './PaymentPanel';
 import NotesPanel from './NotesPanel';
 import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPanel';
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
+import ClientUpdatePanel from './ClientUpdatePanel';
 import { computeTotals, round2 } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus } from '../lib/types';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
@@ -293,6 +294,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const [customerSummary, setCustomerSummary] = useState<{ name: string; phone: string }>({ name: payload?.customerName || '', phone: payload?.customerPhone || '' });
   const [initialCustomerId, setInitialCustomerId] = useState<number>(payload?.customerId || 0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
   const now = new Date().toISOString();
   type WOState = Omit<WorkOrderFull, 'items'> & {
     items: WorkOrderItemRow[];
@@ -302,6 +304,8 @@ const NewWorkOrderWindow: React.FC = () => {
   const [wo, setWo] = useState<WOState>({
     id: 0,
     customerId: initialCustomerId,
+    customerName: payload?.customerName || '',
+    customerPhone: payload?.customerPhone || '',
   status: 'open',
   assignedTo: null,
     addonSaleId: null,
@@ -967,6 +971,29 @@ const NewWorkOrderWindow: React.FC = () => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
 
+  useEffect(() => {
+    const customerId = Number(wo.customerId || 0);
+    if (!customerId) return;
+    let active = true;
+    (async () => {
+      try {
+        const list = await (window as any).api?.findCustomers?.({ id: customerId });
+        const customer = Array.isArray(list) ? list[0] : null;
+        if (!active || !customer) return;
+        const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ').trim()
+          || String(customer.name || customer.email || '').trim();
+        const phone = String(customer.phone || '').trim();
+        setCustomerSummary({ name, phone });
+        setWo(current => {
+          if (Number(current.customerId || 0) !== customerId) return current;
+          if (String((current as any).customerName || '') === name && String((current as any).customerPhone || '') === phone) return current;
+          return { ...current, customerName: name, customerPhone: phone };
+        });
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [wo.customerId]);
+
   const handlePaymentChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
   }, []);
@@ -993,18 +1020,20 @@ const NewWorkOrderWindow: React.FC = () => {
       const picked = await api.pickSaleProduct();
       if (!picked) return; // cancelled
 
-      const row: SaleItemRow = {
+      const rows: SaleItemRow[] = (Array.isArray(picked) ? picked : [picked]).map((product: any) => ({
         id: crypto.randomUUID(),
-        description: String(picked.itemDescription || picked.title || picked.name || 'Item'),
-        qty: Number(picked.quantity ?? 1) || 1,
-        price: Number(picked.price ?? 0) || 0,
-        consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
-        internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
-        condition: picked.condition || 'New',
-        inStock: picked.inStock == null ? true : !!picked.inStock,
-        productUrl: picked.productUrl || picked.url || picked.link || '',
-        category: picked.category,
-      };
+        description: String(product.itemDescription || product.title || product.name || 'Item'),
+        qty: Number(product.quantity ?? 1) || 1,
+        price: Number(product.price ?? 0) || 0,
+        consultationHours: typeof product.consultationHours === 'number' ? product.consultationHours : undefined,
+        internalCost: typeof product.internalCost === 'number' ? product.internalCost : undefined,
+        condition: product.condition || 'New',
+        inStock: product.inStock == null ? true : !!product.inStock,
+        productUrl: product.productUrl || product.url || product.link || '',
+        category: product.category,
+        distributor: product.distributor || '',
+        inventoryProductId: typeof product.inventoryProductId === 'number' ? product.inventoryProductId : undefined,
+      }));
 
       // Resolve customer info for the Sale record.
       let customerName = customerSummary.name || String((wo as any).customerName || '').trim();
@@ -1032,7 +1061,7 @@ const NewWorkOrderWindow: React.FC = () => {
       }
 
       const existingItems: SaleItemRow[] = Array.isArray(existingSale?.items) ? (existingSale.items as SaleItemRow[]) : [];
-      const nextItems = [...existingItems, row].slice(0, ADDON_SALE_MAX_ITEMS);
+      const nextItems = [...existingItems, ...rows].slice(0, ADDON_SALE_MAX_ITEMS);
 
       const nowIso = new Date().toISOString();
       const existingTaxRate = Number(existingSale?.taxRate || 0) || 0;
@@ -1595,6 +1624,14 @@ const NewWorkOrderWindow: React.FC = () => {
 
   return (
     <div className="gb-wo-window h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
+      {clientUpdateOpen && Number((wo as any).id || 0) > 0 ? (
+        <ClientUpdatePanel
+          embedded
+          recordType="repair"
+          recordId={Number((wo as any).id)}
+          onClose={() => setClientUpdateOpen(false)}
+        />
+      ) : null}
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-amber-400 text-zinc-900 px-4 py-3 rounded shadow-lg border border-amber-300">
@@ -1793,7 +1830,13 @@ const NewWorkOrderWindow: React.FC = () => {
           />
         </div>
         <div className="gb-wo-payment-scroll flex flex-col gap-3 min-h-0 overflow-auto">
-          <IntakePanel workOrder={workOrderFull} customerSummary={customerSummary} onChange={handleIntakeChange} />
+          <IntakePanel
+            workOrder={workOrderFull}
+            customerSummary={customerSummary}
+            onChange={handleIntakeChange}
+            onUpdateClient={() => setClientUpdateOpen(true)}
+            updateClientDisabled={!Number((wo as any).id || 0)}
+          />
           <div className="bg-zinc-900 border border-zinc-700 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-zinc-200">Retail add-on</h4>

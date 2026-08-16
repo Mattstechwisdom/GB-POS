@@ -135,20 +135,18 @@ const CustomerSearchWindow: React.FC<Props> = ({ onClose }) => {
   }, [ctxCustomer]);
 
   return (
-    <div className="gb-customer-search-window fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8">
-      <div className="gb-customer-search-panel flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]">
+    <div className="gb-customer-search-window fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/60 p-2 sm:p-4 lg:p-8" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="gb-customer-search-panel flex max-h-[96vh] w-full min-w-0 max-w-5xl flex-col rounded border border-zinc-700 bg-zinc-900 shadow-xl sm:max-h-[92vh]" onMouseDown={event => event.stopPropagation()}>
         <div className="gb-customer-search-header p-4 border-b border-zinc-700 flex items-center justify-between gap-3">
           <h2 className="font-bold text-lg">Customer Search</h2>
-          {!isModalShell && (
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={onClose}
-              className="h-9 w-9 mr-4 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
-            >
-              ✕
-            </button>
-          )}
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="h-9 w-9 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded text-zinc-200 hover:border-[#39FF14] hover:text-[#39FF14]"
+          >
+            ✕
+          </button>
         </div>
         <div className="gb-customer-search-body min-w-0 space-y-4 overflow-auto p-2 sm:p-4">
           <CustomerSearchForm onSearch={handleSearch} />

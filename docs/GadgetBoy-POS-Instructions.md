@@ -137,6 +137,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Sales Forms and Customer Receipts contain a sale-specific QR code that opens the update workflow for that sale.
 - Consultation Sheets contain a consultation-specific QR code tied to the consultation calendar entry and reminder workflow.
 - In work-order, sale, and consultation windows, Update Client is directly beneath client information and opens the matching record type without scanning.
+- A new work order must be saved before Update Client becomes available because the update history requires a real invoice number.
 - Save and sync a new sale or consultation before printing or opening Update Client so its Supabase-backed QR identity exists.
 - Each update must save to the ticket history before or while the customer message is sent.
 - Desktop sends customer updates by email.
@@ -284,6 +285,22 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Never infer tax exemption or commission percentage; use the verified agreement and entered values.
 
 ## 12. Sales and Quick Sale
+
+### Quick Checkout Product Selection
+
+1. Open Quick Checkout and select Sale.
+2. Choose Pick product to open the permanent product catalog. Search and filter the list as needed.
+3. Check every product needed for this checkout. Selecting a row opens temporary sale-only fields on the right; quantity, price, cost, condition, vendor, and URL changes here do not overwrite the permanent inventory listing.
+4. Choose Add Selected to add all checked products at once. The checkout line-item list is the only scrolling list on desktop; the temporary editor remains beside it.
+5. Select any checkout line to review or temporarily edit it. Save closes the editor and applies the change only to this checkout.
+6. Verify subtotal, tax, and total, then choose Checkout. Tracked inventory is reduced by the recorded quantity only after the completed transaction is saved.
+
+### Quick Checkout Repair Selection
+
+1. Select Repair in Quick Checkout.
+2. Search the repair catalog and add each required repair line.
+3. Select a line to edit its temporary description, part charge, labor/price, supplier cost, ordering details, or quantity without changing Devices / Repairs.
+4. Verify the line-item list and totals before Checkout.
 
 ### New Sale
 

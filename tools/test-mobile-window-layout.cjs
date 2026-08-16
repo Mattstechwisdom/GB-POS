@@ -69,7 +69,8 @@ async function inspectWindow(win, type, orientation) {
   const layout = await win.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.mobile-modal-shell');
     const content = document.querySelector('.mobile-modal-content');
-    const close = shell?.querySelector('.mobile-modal-bar button[aria-label="Close window"]');
+    const close = shell?.querySelector('.mobile-modal-bar button[aria-label="Close window"]')
+      || content?.querySelector('button[aria-label="Close"]');
     const shellRect = shell?.getBoundingClientRect();
     const closeRect = close?.getBoundingClientRect();
     const contentRect = content?.getBoundingClientRect();

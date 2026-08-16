@@ -135,6 +135,19 @@ export default function FeedbackWindow() {
     }
   };
 
+  useEffect(() => {
+    if (!editorOpen || !selected) return;
+    const onDeleteKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      void deleteSelected();
+    };
+    window.addEventListener('keydown', onDeleteKey);
+    return () => window.removeEventListener('keydown', onDeleteKey);
+  }, [editorOpen, selected]);
+
   const counts = useMemo(() => ({ open: entries.filter(entry => !entry.completed).length, completed: entries.filter(entry => entry.completed).length }), [entries]);
 
   return (
@@ -158,7 +171,7 @@ export default function FeedbackWindow() {
         ))}
       </div>
       {editorOpen ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={selected ? 'Edit feedback' : 'New feedback'}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={selected ? 'Edit feedback' : 'New feedback'} onMouseDown={event => { if (event.target === event.currentTarget) setEditorOpen(false); }}>
           <div className="w-full max-w-xl rounded border border-zinc-600 bg-zinc-900 p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg font-bold">{selected ? 'Feedback Details' : 'New Feedback'}</h2><button type="button" onClick={() => setEditorOpen(false)} className="rounded border border-zinc-700 px-2 py-1 text-sm text-zinc-300 hover:border-red-500 hover:text-white">Close</button></div>
             <label className="mb-3 block text-sm font-semibold text-zinc-300">Subject<input value={draft.subject} onChange={event => setDraft(current => ({ ...current, subject: event.target.value }))} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-[#39FF14]" /></label>

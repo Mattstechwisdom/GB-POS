@@ -214,30 +214,33 @@ const SaleItemsTable: React.FC<Props> = ({
       try {
         const picked = await api.pickSaleProduct();
         if (!picked) return; // cancelled
-        const row: SaleItemRow = {
+        const picks = (Array.isArray(picked) ? picked : [picked]).slice(0, Math.max(0, MAX_ITEMS - items.length));
+        const rows: SaleItemRow[] = picks.map((product: any) => ({
           id: crypto.randomUUID(),
-          inventoryProductId: typeof picked.inventoryProductId === 'number' ? picked.inventoryProductId : undefined,
-          description: picked.itemDescription || picked.title || picked.name || 'Item',
-          qty: Number(picked.quantity ?? 1) || 1,
-          price: Number(picked.price ?? 0) || 0,
-          consultationHours: typeof picked.consultationHours === 'number' ? picked.consultationHours : undefined,
-          internalCost: typeof picked.internalCost === 'number' ? picked.internalCost : undefined,
-          condition: picked.condition || 'New',
-          inStock: !!picked.inStock,
-          productUrl: picked.productUrl || picked.url || picked.link || '',
-          category: picked.category,
-          distributor: picked.distributor || '',
-          vendorRelationship: picked.vendorRelationship,
-          vendorSharePct: typeof picked.vendorSharePct === 'number' ? picked.vendorSharePct : undefined,
-          vendorTaxExempt: !!picked.vendorTaxExempt,
-          trackStock: !!picked.trackStock,
-          stockCountAtSelection: typeof picked.stockCount === 'number' ? picked.stockCount : undefined,
-          requiresOrder: !picked.inStock,
-          orderStatus: picked.inStock ? 'in_stock' : 'needed',
-        };
-        onChange([...items, row].slice(0, MAX_ITEMS));
-        setSelected(row.id);
-        setEditing(layout === 'split' ? row : null);
+          inventoryProductId: typeof product.inventoryProductId === 'number' ? product.inventoryProductId : undefined,
+          description: product.itemDescription || product.title || product.name || 'Item',
+          qty: Number(product.quantity ?? 1) || 1,
+          price: Number(product.price ?? 0) || 0,
+          consultationHours: typeof product.consultationHours === 'number' ? product.consultationHours : undefined,
+          internalCost: typeof product.internalCost === 'number' ? product.internalCost : undefined,
+          condition: product.condition || 'New',
+          inStock: !!product.inStock,
+          productUrl: product.productUrl || product.url || product.link || '',
+          category: product.category,
+          distributor: product.distributor || '',
+          vendorRelationship: product.vendorRelationship,
+          vendorSharePct: typeof product.vendorSharePct === 'number' ? product.vendorSharePct : undefined,
+          vendorTaxExempt: !!product.vendorTaxExempt,
+          trackStock: !!product.trackStock,
+          stockCountAtSelection: typeof product.stockCount === 'number' ? product.stockCount : undefined,
+          requiresOrder: !product.inStock,
+          orderStatus: product.inStock ? 'in_stock' : 'needed',
+        }));
+        if (!rows.length) return;
+        onChange([...items, ...rows].slice(0, MAX_ITEMS));
+        const lastRow = rows[rows.length - 1];
+        setSelected(lastRow.id);
+        setEditing(layout === 'split' ? lastRow : null);
         return;
       } catch (e) {
         console.error('[SaleItemsTable] pickSaleProduct failed', e);
@@ -407,7 +410,7 @@ const SaleItemsTable: React.FC<Props> = ({
       </div>
 
       {editing && (
-        <div className={`gb-sale-item-editor bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-fit max-h-full self-start overflow-hidden' : 'mt-2'}`}>
+        <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-fit max-h-full self-start overflow-hidden' : 'mt-2'}`}>
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
