@@ -3,7 +3,6 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
-import QRCode from 'qrcode';
 function getPayload() {
   try {
     const stored = consumeWindowPayload('customerReceipt');
@@ -72,11 +71,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
-  const [qrSrc, setQrSrc] = useState<string>('');
-  const [qrResolved, setQrResolved] = useState<boolean>(false);
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
-  const qrImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -87,36 +83,6 @@ const CustomerReceiptWindow: React.FC = () => {
     })();
     return () => { alive = false; };
   }, []);
-
-  useEffect(() => {
-    const recordId = Number((data as any).id || 0) || 0;
-    if (!isSaleReceipt || !recordId) {
-      setQrSrc('');
-      setQrResolved(true);
-      return;
-    }
-    let alive = true;
-    setQrResolved(false);
-    void (async () => {
-      try {
-        const result = await (window as any).api?.qrGetStatusUrl?.('sale', recordId);
-        const url = String(result?.url || '').trim();
-        if (!result?.ok || !url) return;
-        const value = await QRCode.toDataURL(url, {
-          width: 176,
-          margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (alive && value.startsWith('data:')) setQrSrc(value);
-      } catch {
-        // Keep the receipt printable when the record is not synced yet.
-      } finally {
-        if (alive) setQrResolved(true);
-      }
-    })();
-    return () => { alive = false; };
-  }, [isSaleReceipt, (data as any).id]);
 
   // Enrich from DB when only workOrderId is provided (e.g. from context menu)
   useEffect(() => {
@@ -190,7 +156,6 @@ const CustomerReceiptWindow: React.FC = () => {
 
   useEffect(() => {
     if (!flags.autoPrint || flags.silent) return;
-    if (!qrResolved) return;
 
     if (didAutoPrintRef.current) return;
 
@@ -219,17 +184,16 @@ const CustomerReceiptWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrResolved]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
 
   useEffect(() => {
     if (!flags.autoPrint || !flags.silent) return;
-    if (!qrResolved) return;
 
     let cancelled = false;
     let fallbackTimer: number | undefined;
 
     const waitForImage = async () => {
-      const images = [logoImgRef.current, qrImgRef.current].filter(Boolean) as HTMLImageElement[];
+      const images = [logoImgRef.current].filter(Boolean) as HTMLImageElement[];
       await Promise.all(images.map((img) => {
         if (img.complete) return Promise.resolve();
         return new Promise<void>((resolve) => {
@@ -276,7 +240,7 @@ const CustomerReceiptWindow: React.FC = () => {
       cancelled = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [flags.autoPrint, flags.silent, logoSrc, qrResolved]);
+  }, [flags.autoPrint, flags.silent, logoSrc]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
@@ -537,12 +501,6 @@ const CustomerReceiptWindow: React.FC = () => {
               <div className="slogan">The Solution Lives Here!</div>
             </div>
           </div>
-          {isSaleReceipt && qrSrc ? (
-            <div className="brand-center">
-              <img ref={qrImgRef} src={qrSrc} alt="Sale update QR" style={{ width: 88, height: 88, display: 'block' }} />
-              <div style={{ fontSize: '6.5pt', color: '#555', fontWeight: 700, letterSpacing: '0.4px' }}>SALE UPDATE</div>
-            </div>
-          ) : null}
           <div className="brand-right">
             <div style={{ textAlign: 'right', fontSize: '10pt', lineHeight: '1.2' }}>
               <div><strong>Invoice:</strong> {invoiceNo}</div>

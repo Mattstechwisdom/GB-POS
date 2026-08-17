@@ -39,8 +39,8 @@ expect(updateFunction.includes('client_update_history'), 'The client-updates fun
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');
 expect(consultationPage.includes('/functions/v1/qr-status'), 'The consultation page must load through Supabase.');
 expect(salePrint.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales forms must use the Supabase-backed sale QR route.');
-expect(saleReceipt.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales receipts must use the Supabase-backed sale QR route.');
-expect(saleReceipt.includes('alt="Sale update QR"'), 'Printed sales receipts must render the sale QR image.');
+expect(!saleReceipt.includes('qrGetStatusUrl'), 'Customer receipts must not generate status QR codes.');
+expect(!saleReceipt.includes('Sale update QR'), 'Customer receipts must not render sale update QR codes.');
 expect(consultSheet.includes("qrGetStatusUrl?.('consult', eventId)"), 'Printed consultation sheets must use the consultation calendar-event QR route.');
 expect(consultSheet.includes('alt="Consultation update QR"'), 'Printed consultation sheets must render the consultation QR image.');
 expect(saleWindow.includes("recordType: 'sale'"), 'Sales must open their own Update Client workflow.');

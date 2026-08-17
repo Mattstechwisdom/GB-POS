@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.16 (2026-08-17)
+- Customer Receipts: removes QR codes from work-order and sales customer receipts while preserving QR-based updates on the dedicated operational forms.
+- Receipt Printing: removes the obsolete QR-generation wait so automatic and silent customer receipt printing can proceed as soon as the receipt logo is ready.
+- Release Safety: prevents customer receipt QR rendering from returning while retaining Supabase QR coverage for sales forms and consultation sheets.
+
 ## v0.6.15 (2026-08-17)
 - Inventory Save Reliability: restores every part-specific field after Windows reads a saved listing back from Supabase, including item type, compatible devices, part type, distributor details, markup, reorder data, and stock history.
 - Explicit Inventory Actions: replaces the duplicate Add and Clear controls with separate Update Product / Part and Add New Product / Part actions so edited fields can update the selected listing or create a distinct listing.
