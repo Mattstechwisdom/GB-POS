@@ -84,6 +84,7 @@ jobs:
           npm run test:distributor-url
           npm run test:inventory-consumption
           npm run test:inventory-reorder
+          npm run test:inventory-part-persistence
           npm run test:calendar-journal-sync
           npm run test:calendar-tasks
           npm run test:daily-look-shifts

@@ -106,6 +106,8 @@ export default function InventoryWindow() {
   const [lowOnly, setLowOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deviceFilter, setDeviceFilter] = useState('');
+  const [compatibleDeviceSearch, setCompatibleDeviceSearch] = useState('');
+  const [compatibleDeviceMenuOpen, setCompatibleDeviceMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
@@ -231,6 +233,11 @@ export default function InventoryWindow() {
     return Array.from(new Set(models)).sort((a, b) => a.localeCompare(b));
   }, [deviceCategories, editing.associatedDevices, editing.category, items, repairCategories]);
 
+  const filteredDeviceModels = useMemo(() => {
+    const query = compatibleDeviceSearch.trim().toLowerCase();
+    return deviceModels.filter((model) => !query || model.toLowerCase().includes(query));
+  }, [compatibleDeviceSearch, deviceModels]);
+
   const productTypeOptions = useMemo(() => Array.from(new Set([
     ...DEVICE_CATEGORY_OPTIONS,
     ...items
@@ -263,6 +270,8 @@ export default function InventoryWindow() {
     setCartQuantity(quantity);
     setCartTotalCost(Number.isFinite(unitCost) ? unitCost * quantity : undefined);
     setCartMessage('');
+    setCompatibleDeviceSearch('');
+    setCompatibleDeviceMenuOpen(false);
   };
 
   const startNew = () => {
@@ -272,15 +281,8 @@ export default function InventoryWindow() {
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
-  };
-
-  const clearFields = () => {
-    setSelectedId(undefined);
-    setEditing(blankItem(mode));
-    setEditingOrderUrl(false);
-    lastScrapedUrlRef.current = '';
-    setShowCartAdder(false);
-    setCartMessage('');
+    setCompatibleDeviceSearch('');
+    setCompatibleDeviceMenuOpen(false);
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -302,7 +304,11 @@ export default function InventoryWindow() {
     if (saved) setVendors((current) => [...current, saved]);
   };
 
-  const save = async () => {
+  const save = async (action: 'update' | 'create') => {
+    if (action === 'update' && !selectedId) {
+      alert(`Select a ${mode === 'parts' ? 'part' : 'product'} to update.`);
+      return;
+    }
     const description = String(editing.itemDescription || '').trim();
     if (!description) {
       alert(mode === 'parts' ? 'Part name is required.' : 'Product name is required.');
@@ -321,6 +327,7 @@ export default function InventoryWindow() {
       ].map((value) => String(value || '').trim()).filter(Boolean)));
       const payload: InventoryItem = {
         ...editing,
+        id: action === 'update' ? selectedId : undefined,
         itemDescription: description,
         itemType: mode === 'parts' ? 'Part' : 'Product',
         category: String(editing.category || '').trim(),
@@ -349,12 +356,14 @@ export default function InventoryWindow() {
       await ensureVendor(payload.distributor || '');
 
       let saved: InventoryItem | undefined;
-      if (payload.id) {
+      if (action === 'update') {
         saved = await api?.update?.('products', payload);
       } else {
-        saved = await api?.dbAdd?.('products', { ...payload, createdAt: now });
+        const { id: _existingId, ...newListing } = payload;
+        saved = await api?.dbAdd?.('products', { ...newListing, createdAt: now });
       }
-      const merged = { ...payload, ...(saved || {}) };
+      if (!saved?.id) throw new Error('Inventory save did not return a saved listing.');
+      const merged = { ...payload, ...saved };
       setItems((current) => {
         const id = merged.id;
         if (!id) return current;
@@ -625,10 +634,6 @@ export default function InventoryWindow() {
                     Parts ({counts.parts})
                   </button>
                 </div>
-                <div className="gb-inventory-action-row grid w-full grid-cols-2 gap-2 sm:w-[260px]">
-                  <button type="button" onClick={startNew} className="rounded bg-[#39FF14] px-3 py-2 text-sm font-semibold text-black">{mode === 'parts' ? 'Add Part' : 'Add Product'}</button>
-                  <button type="button" onClick={clearFields} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm hover:border-[#39FF14]">Clear</button>
-                </div>
               </div>
             </div>
 
@@ -652,7 +657,7 @@ export default function InventoryWindow() {
                     placeholder="Paste the distributor product URL"
                   />
                 )}
-                {selectedId ? (
+                {selectedId && String(editing.distributor || '').trim() && Number(editing.internalCost) > 0 && String(editing.condition || '').toLowerCase() !== 'used' ? (
                   <div className="mt-3 rounded border border-zinc-700 bg-zinc-900/80 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -688,7 +693,7 @@ export default function InventoryWindow() {
               </div>
 
               <label className="block md:col-span-2 md:mx-auto md:w-[72%]">
-                <span className="mb-1 block text-center text-xs text-zinc-400">Vendor / Distributor</span>
+                <span className="mb-1 block text-center text-xs text-zinc-400">Vendor / Distributor{mode === 'parts' && String(editing.condition || '').toLowerCase() === 'used' ? ' (Optional for Used Parts)' : ''}</span>
                 <input
                   list={`inventory-vendors-${mode}`}
                   value={editing.distributor || ''}
@@ -699,7 +704,7 @@ export default function InventoryWindow() {
                 <datalist id={`inventory-vendors-${mode}`}>
                   {visibleVendors.map((vendor) => <option key={`${vendor.id}-${vendor.name}`} value={vendor.name} />)}
                 </datalist>
-                <span className="mt-1 block text-center text-[11px] text-zinc-500">New names are saved to the {mode === 'parts' ? 'Parts' : 'Products'} vendor list when this listing is saved.</span>
+                <span className="mt-1 block text-center text-[11px] text-zinc-500">{mode === 'parts' && String(editing.condition || '').toLowerCase() === 'used' ? 'Used parts pulled from another device do not require a distributor.' : `New names are saved to the ${mode === 'parts' ? 'Parts' : 'Products'} vendor list when this listing is saved.`}</span>
               </label>
 
               <label className="block md:col-span-2">
@@ -728,24 +733,61 @@ export default function InventoryWindow() {
               </datalist>
 
               {mode === 'parts' ? (
-                <label className="block">
+                <div className="block">
                   <span className="mb-1 block text-xs text-zinc-400">Compatible Devices</span>
-                  <select
-                    multiple
-                    value={Array.isArray(editing.associatedDevices) ? editing.associatedDevices : []}
-                    onChange={(event) => {
-                      const associatedDevices = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
-                      setEditing((current) => ({ ...current, associatedDevices, deviceModel: associatedDevices[0] || '' }));
-                    }}
-                    disabled={!editing.category || deviceModels.length === 0}
-                    className="min-h-32 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]"
-                  >
-                    {deviceModels.map((model) => <option key={model} value={model}>{model}</option>)}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="search"
+                      value={compatibleDeviceSearch}
+                      onChange={(event) => { setCompatibleDeviceSearch(event.target.value); setCompatibleDeviceMenuOpen(true); }}
+                      onFocus={() => setCompatibleDeviceMenuOpen(true)}
+                      onBlur={() => window.setTimeout(() => setCompatibleDeviceMenuOpen(false), 120)}
+                      disabled={!editing.category || deviceModels.length === 0}
+                      className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]"
+                      placeholder="Search and select compatible devices"
+                      role="combobox"
+                      aria-expanded={compatibleDeviceMenuOpen}
+                      aria-label="Search compatible devices"
+                    />
+                    {compatibleDeviceMenuOpen && editing.category && deviceModels.length > 0 ? (
+                      <div className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-600 bg-zinc-950 p-1 shadow-xl">
+                        {filteredDeviceModels.length ? filteredDeviceModels.map((model) => {
+                          const selected = (editing.associatedDevices || []).includes(model);
+                          return (
+                            <button
+                              type="button"
+                              key={model}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => setEditing((current) => {
+                                const existing = Array.isArray(current.associatedDevices) ? current.associatedDevices : [];
+                                const associatedDevices = existing.includes(model) ? existing.filter((value) => value !== model) : [...existing, model];
+                                return { ...current, associatedDevices, deviceModel: associatedDevices[0] || '' };
+                              })}
+                              className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${selected ? 'bg-[#BC13FE]/20 text-white' : 'text-zinc-300 hover:bg-zinc-800'}`}
+                            >
+                              <span className="truncate">{model}</span><span aria-hidden="true">{selected ? '✓' : ''}</span>
+                            </button>
+                          );
+                        }) : <div className="px-3 py-2 text-sm text-zinc-500">No matching devices.</div>}
+                      </div>
+                    ) : null}
+                  </div>
+                  {(editing.associatedDevices || []).length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(editing.associatedDevices || []).map((model) => (
+                        <button type="button" key={model} onClick={() => setEditing((current) => {
+                          const associatedDevices = (current.associatedDevices || []).filter((value) => value !== model);
+                          return { ...current, associatedDevices, deviceModel: associatedDevices[0] || '' };
+                        })} className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-1 text-xs text-zinc-100" title={`Remove ${model}`}>
+                          {model} ×
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   <span className="mt-1 block text-[11px] text-zinc-500">
                     {!editing.category ? 'Select a device category first.' : deviceModels.length === 0 ? 'No devices are saved for this category yet.' : 'Select one or more devices, then save the part.'}
                   </span>
-                </label>
+                </div>
               ) : null}
 
               {mode === 'parts' ? (
@@ -788,7 +830,7 @@ export default function InventoryWindow() {
               ) : null}
 
               <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">Cost</span>
+                  <span className="mb-1 block text-xs text-zinc-400">Cost{mode === 'parts' && String(editing.condition || '').toLowerCase() === 'used' ? ' (Optional for Used Parts)' : ''}</span>
                 <MoneyInput
                   value={typeof editing.internalCost === 'number' ? editing.internalCost : undefined}
                   onValueChange={(value) => setEditing((current) => {
@@ -799,6 +841,7 @@ export default function InventoryWindow() {
                   allowEmpty
                   className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                 />
+                {mode === 'parts' && String(editing.condition || '').toLowerCase() === 'used' ? <span className="mt-1 block text-[11px] text-zinc-500">Leave blank for a reclaimed part. Costless items are excluded from supplier checkout.</span> : null}
               </label>
 
               <label className="block">
@@ -900,8 +943,11 @@ export default function InventoryWindow() {
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button type="button" onClick={remove} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
-              <button type="button" onClick={save} disabled={saving} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Listing'}
+              <button type="button" onClick={() => save('update')} disabled={!selectedId || saving} className="rounded border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+                {saving ? 'Saving...' : `Update ${mode === 'parts' ? 'Part' : 'Product'}`}
+              </button>
+              <button type="button" onClick={() => save('create')} disabled={saving} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">
+                {saving ? 'Saving...' : `Add New ${mode === 'parts' ? 'Part' : 'Product'}`}
               </button>
             </div>
           </section>

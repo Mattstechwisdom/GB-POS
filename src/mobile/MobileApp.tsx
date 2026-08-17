@@ -408,7 +408,7 @@ function MobileModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zInde
   const title = titleForModal(entry.type);
 
   return (
-    <section className="mobile-modal-shell" style={{ zIndex }} data-modal-shell="1">
+    <section className="mobile-modal-shell" style={{ zIndex }} data-modal-shell="1" data-modal-type={entry.type}>
       <header className="mobile-modal-bar">
         {contentOwnsClose ? <span className="mobile-bar-spacer" /> : (
           <button type="button" className="mobile-icon-button" onClick={requestClose} aria-label="Close window">

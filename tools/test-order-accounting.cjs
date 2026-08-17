@@ -155,7 +155,7 @@ const purchaseOrders = [{
 }];
 
 const rows = collectOrderCartRows(workOrders, sales, purchaseOrders);
-assert.equal(rows.length, 5, 'Outstanding source lines and pending purchase records should enter the cart.');
+assert.equal(rows.length, 4, 'Only outstanding source lines with a real supplier cost and pending purchase records should enter the cart.');
 assert.equal(rows.some(row => row.itemId === 'removed-part' || row.itemId === 'removed-product'), false, 'Deleted cart tasks must remain suppressed without deleting their source items.');
 
 const workOrder = rows.find(row => row.key === 'workOrder:101:part-1');
@@ -187,10 +187,8 @@ assert.equal(removedWorkOrder.items[0].trackingNumber, '');
 assert.match(removedWorkOrder.items[0].purchaseQueueRemovalNotice, /Payment was recorded/);
 assert.equal(collectOrderCartRows([{ ...workOrders[0], items: removedWorkOrder.items }], [], []).some(row => row.key === workOrder.key), false, 'A removed task must stay out of the EOD cart while its work-order item remains saved.');
 
-const missingCost = rows.find(row => row.key === 'workOrder:102:part-2');
-assert.equal(missingCost.hasCost, false);
-assert.equal(missingCost.knownProfit, null);
-assert.equal(missingCost.paymentStatus, 'unpaid');
+assert.equal(rows.some(row => row.key === 'workOrder:102:part-2'), false, 'Items without supplier cost must stay out of the purchasing cart.');
+assert.equal(collectOrderCartRows([{ id: 104, items: [{ repair: 'Reclaimed HDMI Port', internalCost: 0, requiresOrder: true }] }], [], []).length, 0, 'Zero-cost reclaimed parts must stay out of the purchasing cart after cloud round trips.');
 
 const paidSale = rows.find(row => row.key === 'sale:201:product-1');
 assert.equal(paidSale.totalCost, 100, 'Full unit cost must be multiplied by quantity.');
@@ -216,7 +214,7 @@ const amazon = groups.find(group => group.distributor === 'Amazon');
 assert.equal(amazon.checkoutUrl, 'https://www.amazon.com/gp/cart/view.html');
 
 const other = groups.find(group => group.distributor === 'Other Source');
-assert.equal(other.paymentWarnings, 2);
-assert.equal(other.missingCost, 1);
+assert.equal(other.paymentWarnings, 1);
+assert.equal(other.missingCost, 0);
 
 console.log('Order accounting and EOD cart checks passed.');

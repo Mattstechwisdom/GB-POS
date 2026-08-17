@@ -74,7 +74,7 @@ export function itemFullCost(item: any): number | null {
   const raw = item?.internalCost ?? item?.cost;
   if (raw === null || raw === undefined || raw === '') return null;
   const unit = Number(raw);
-  if (!Number.isFinite(unit) || unit < 0) return null;
+  if (!Number.isFinite(unit) || unit <= 0) return null;
   return roundMoney(unit * itemQuantity(item));
 }
 
@@ -149,6 +149,7 @@ function salePayment(record: any): { status: OrderCartPaymentStatus; detail: str
 
 function needsWorkOrderPurchase(item: any, record: any) {
   if (item?.purchaseQueueRemovedAt) return false;
+  if (itemFullCost(item) === null) return false;
   const hasPhysicalPart = item?.requiresOrder === true
     || item?.inventoryProductId != null
     || item?.trackStock === true
@@ -163,6 +164,7 @@ function needsWorkOrderPurchase(item: any, record: any) {
 
 function needsSalePurchase(item: any) {
   if (item?.purchaseQueueRemovedAt) return false;
+  if (itemFullCost(item) === null) return false;
   const category = String(item?.category || '').toLowerCase();
   if (category.startsWith('consult')) return false;
   const status = String(item?.orderStatus || 'needed').toLowerCase();

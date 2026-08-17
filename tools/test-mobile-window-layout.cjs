@@ -105,6 +105,29 @@ async function inspectWindow(win, type, orientation) {
   assert.equal(layout.closeVisible, true, `${type} (${orientation.name}) hid its close control.`);
   assert.equal(runtimeErrors.length, 0, `${type} (${orientation.name}) logged errors: ${runtimeErrors.join(' | ')}`);
 
+  if (type === 'quickSale') {
+    const quickCheckout = await win.webContents.executeJavaScript(`(() => {
+      const content = document.querySelector('.mobile-modal-content');
+      const root = document.querySelector('.gb-quick-checkout');
+      const footer = document.querySelector('.gb-quick-checkout-totals');
+      const checkout = Array.from(footer?.querySelectorAll('button') || []).find((button) => button.textContent.includes('Checkout'));
+      const contentRect = content?.getBoundingClientRect();
+      const rootRect = root?.getBoundingClientRect();
+      const footerRect = footer?.getBoundingClientRect();
+      const checkoutRect = checkout?.getBoundingClientRect();
+      return {
+        contentOverflowY: content ? getComputedStyle(content).overflowY : '',
+        rootFits: Boolean(contentRect && rootRect && rootRect.top >= contentRect.top - 2 && rootRect.bottom <= contentRect.bottom + 2),
+        footerFits: Boolean(contentRect && footerRect && footerRect.top >= contentRect.top - 2 && footerRect.bottom <= contentRect.bottom + 2),
+        checkoutVisible: Boolean(checkoutRect && checkoutRect.width >= 80 && checkoutRect.height >= 32 && checkoutRect.bottom <= window.innerHeight + 2),
+      };
+    })()`);
+    assert.equal(quickCheckout.contentOverflowY, 'hidden', `Quick Checkout outer window remained scrollable in ${orientation.name}.`);
+    assert.equal(quickCheckout.rootFits, true, `Quick Checkout escaped its mobile content area in ${orientation.name}.`);
+    assert.equal(quickCheckout.footerFits, true, `Quick Checkout totals/footer was clipped in ${orientation.name}.`);
+    assert.equal(quickCheckout.checkoutVisible, true, `Quick Checkout button was not visible in ${orientation.name}.`);
+  }
+
   if (type === 'checkout') {
     const checkout = await win.webContents.executeJavaScript(`(() => {
       const windowRoot = document.querySelector('.gb-checkout-window');

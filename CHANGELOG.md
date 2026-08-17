@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.15 (2026-08-17)
+- Inventory Save Reliability: restores every part-specific field after Windows reads a saved listing back from Supabase, including item type, compatible devices, part type, distributor details, markup, reorder data, and stock history.
+- Explicit Inventory Actions: replaces the duplicate Add and Clear controls with separate Update Product / Part and Add New Product / Part actions so edited fields can update the selected listing or create a distinct listing.
+- Compatible Device Search: replaces the fixed multi-select box with a searchable multi-device picker and removable selected-device tags on desktop and mobile.
+- Reclaimed Parts: allows Used parts to be saved without distributor or supplier cost and keeps all zero-cost or costless items out of the EOD purchasing cart and supplier checkout totals.
+- Quick Checkout Layout: locks the outer Android Quick Checkout window while keeping its item area scrollable so totals and Checkout remain visible in portrait and landscape.
+- Release Safety: adds Supabase field-parity, inventory persistence, costless purchasing, and live mobile layout regression checks.
+
 ## v0.6.14 (2026-08-16)
 - Mobile Checkout Accuracy: passes the live work-order balance into the Android checkout window and waits for a real saved or cancelled payment result instead of immediately treating the modal as successful.
 - Parts and Labor Payments: calculates remaining parts and labor from recorded payment allocations, preserves legacy diagnostic payments as labor-first, and restores Parts, Labor, and Both choices on mobile.
