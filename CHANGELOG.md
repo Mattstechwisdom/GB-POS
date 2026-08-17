@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.18 (2026-08-17)
+- Payment-Ledger Reporting: records each work-order and sale checkout on the date payment was actually taken, including multiple partial payments against a remaining balance.
+- Exact Financial Allocation: separates collected labor, parts/products, and client tax while recognizing the matching internal cost and calculating gross profit without treating tax as profit.
+- Monthly Accuracy: bases monthly repair totals, product sales, consultation commission, internal cost, and profit on payments collected during that month instead of ticket creation dates or unpaid invoice totals.
+- Live Reporting Refresh: reloads Reporting immediately after work-order or sale checkout events, including Supabase-synced changes from another device.
+- Local Date Boundaries: fixes Eastern-time date filters so evening checkouts remain in the selected business day.
+- Legacy and Reclaimed Data: retains older paid tickets through dated fallback payment entries and treats explicit zero-cost reclaimed parts as known cost rather than missing accounting data.
+- Release Safety: adds deterministic regression coverage for split payments, remaining balances, tax, proportional product cost, profit, legacy payments, and live report refresh wiring.
+
 ## v0.6.17 (2026-08-17)
 - Calendar Purchasing Budget: moves date-specific budget creation and editing from EOD into Calendar while preserving the synced daily budget data already used by Cart.
 - Desktop Calendar: places Budget immediately left of Add on every calendar date so the spending limit is set in the context of the intended day.

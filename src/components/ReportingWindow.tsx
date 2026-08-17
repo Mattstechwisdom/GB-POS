@@ -1,9 +1,9 @@
 // SYNC_TEST_MARKER: reporting-window
 import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '@/lib/admin';
-import { computeTotals } from '../lib/calc';
 import { dispatchOpenModal } from '@/lib/modalBus';
 import { itemFullCost } from '@/lib/orderAccounting';
+import { buildReportingLedger, collectReportingPayments } from '@/lib/reportingAccounting';
 import {
   DEFAULT_COMMISSION_SETTINGS,
   allocateCommissionPool,
@@ -167,9 +167,20 @@ function todayInputValue() {
 }
 
 function endOfInputDate(value: string) {
-  const d = new Date(value);
+  const d = new Date(`${value}T00:00:00`);
   if (!Number.isNaN(d.getTime())) d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function startOfInputDate(value: string) {
+  const d = new Date(`${value}T00:00:00`);
+  if (!Number.isNaN(d.getTime())) d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function reportingRecordKey(record: any) {
+  const kind = record?.kind === 'sale' ? 'sale' : 'repair';
+  return `${kind}:${String(record?.id ?? record?.ticketNumber ?? record?.invoiceNumber ?? 'unknown')}`;
 }
 
 function saleReportDate(sale: any) {
@@ -306,7 +317,14 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
   let vendorPayoutTotal = 0;
   let vendorProfitTotal = 0;
 
-  const monthSales = (sales || []).filter((sale) => dateInRange(saleReportDate(sale), start, end));
+  const monthSaleLedger = buildReportingLedger(sales || [])
+    .filter(entry => entry.kind === 'sale' && entry.date >= start && entry.date <= end);
+  const ledgerBySale = new Map<string, typeof monthSaleLedger>();
+  for (const entry of monthSaleLedger) {
+    if (!ledgerBySale.has(entry.recordKey)) ledgerBySale.set(entry.recordKey, []);
+    ledgerBySale.get(entry.recordKey)!.push(entry);
+  }
+  const monthSales = (sales || []).filter((sale) => ledgerBySale.has(reportingRecordKey(sale)));
   const purchaseRows = (purchases || [])
     .filter((purchase) => purchase?.status === 'checked_out' && dateInRange(purchaseReportDate(purchase), start, end))
     .map((purchase) => ({
@@ -334,16 +352,23 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
     const items = saleItemsForReport(sale);
     const gross = items.reduce((sum: number, item: any) => sum + lineSoldTotal(item, sale), 0);
     const discount = Math.max(0, Number(sale?.discount || 0) || 0);
+    const invoiceNet = Math.max(0, gross - discount);
+    const saleEntries = ledgerBySale.get(reportingRecordKey(sale)) || [];
+    const collectedNet = roundMoney(saleEntries.reduce((sum, entry) => sum + entry.collected - entry.taxCollected, 0));
+    const collectionRatio = invoiceNet > 0 ? Math.min(1, collectedNet / invoiceNet) : 0;
+    const latestPaymentDate = saleEntries.reduce<Date | null>((latest, entry) => (
+      !latest || entry.date > latest ? entry.date : latest
+    ), null);
 
     for (const item of items) {
       const soldGross = lineSoldTotal(item, sale);
       const allocatedDiscount = gross > 0 ? roundMoney(discount * (soldGross / gross)) : 0;
-      const soldNet = roundMoney(Math.max(0, soldGross - allocatedDiscount));
+      const soldNet = roundMoney(Math.max(0, soldGross - allocatedDiscount) * collectionRatio);
       const title = lineTitle(item, sale);
-      const date = dateOnly(saleReportDate(sale));
+      const date = dateOnly(latestPaymentDate);
 
       if (isConsultationLine(item, sale)) {
-        const hours = roundMoney(consultationHours(item, sale));
+        const hours = roundMoney(consultationHours(item, sale) * collectionRatio);
         const assignedKey = saleAssignedTechKey(sale);
         const assignedTech = activeTechs.find((tech: any) => technicianMatchKeys(tech).includes(assignedKey));
         const techLabel = assignedTech ? technicianDisplay(assignedTech) : (sale?.assignedTo || 'Unassigned');
@@ -369,7 +394,8 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         continue;
       }
 
-      const cost = lineInternalCost(item);
+      const fullCost = lineInternalCost(item);
+      const cost = fullCost === null ? null : roundMoney(fullCost * collectionRatio);
       const distributor = String(item?.distributor || '').trim();
       const vendor = distributor ? (vendors || []).find((row: any) =>
         (row?.inventoryMode || 'Product') === 'Product'
@@ -516,29 +542,35 @@ const ReportingWindow: React.FC = () => {
     console.log('[ReportingWindow] BUILD_MARKER: reporting-v2');
   }, []);
 
-  useEffect(() => { (async () => {
+  useEffect(() => {
+    let disposed = false;
+    const loadRecords = async (includeSettings = false) => {
     try {
       const wos = await (window as any).api.getWorkOrders();
       const [sales, vendorRows, purchaseRows, eodRows] = await Promise.all([
         (window as any).api.dbGet('sales').catch(() => []),
         (window as any).api.dbGet('vendors').catch(() => []),
         (window as any).api.dbGet('purchaseOrders').catch(() => []),
-        (window as any).api.dbGet('settings').catch(() => []),
+        includeSettings ? (window as any).api.dbGet('settings').catch(() => []) : Promise.resolve([]),
       ]);
+      if (disposed) return;
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
-      const settingsRecord = Array.isArray(eodRows) ? eodRows[0] : null;
-      const loadedCommission = normalizeCommissionSettings(settingsRecord?.commissionSettings);
-      const loadedReporting = normalizeReportingSettings(settingsRecord?.reportingSettings);
-      setCommissionSettings(loadedCommission);
-      setCommissionDraft(loadedCommission);
-      setReportingSettings(loadedReporting);
-      setReportingDraft(loadedReporting);
-      setIncludeRepairs(loadedReporting.includeRepairs);
-      setIncludeSales(loadedReporting.includeSales);
-      setOnlyPaid(loadedReporting.onlyPaid);
-      setExcludeTax(loadedReporting.excludeTax);
-      setCommissionSettingsRecordId(settingsRecord?.id ?? null);
+      let loadedReporting = reportingSettings;
+      if (includeSettings) {
+        const settingsRecord = Array.isArray(eodRows) ? eodRows[0] : null;
+        const loadedCommission = normalizeCommissionSettings(settingsRecord?.commissionSettings);
+        loadedReporting = normalizeReportingSettings(settingsRecord?.reportingSettings);
+        setCommissionSettings(loadedCommission);
+        setCommissionDraft(loadedCommission);
+        setReportingSettings(loadedReporting);
+        setReportingDraft(loadedReporting);
+        setIncludeRepairs(loadedReporting.includeRepairs);
+        setIncludeSales(loadedReporting.includeSales);
+        setOnlyPaid(loadedReporting.onlyPaid);
+        setExcludeTax(loadedReporting.excludeTax);
+        setCommissionSettingsRecordId(settingsRecord?.id ?? null);
+      }
       // Tag repairs and normalize sales
       const mappedWOs = (Array.isArray(wos) ? wos : []).map((w: any) => ({ ...w, kind: 'repair' as const }));
       const mappedSales = (Array.isArray(sales) ? sales : []).map((s: any) => {
@@ -563,28 +595,37 @@ const ReportingWindow: React.FC = () => {
       });
       const combined = [...(mappedWOs || []), ...mappedSales];
       setData(combined);
-      applySummaryRange(loadedReporting.defaultSummaryRange, [...combined, ...(Array.isArray(purchaseRows) ? purchaseRows : [])]);
+      if (includeSettings) applySummaryRange(loadedReporting.defaultSummaryRange, [...combined, ...(Array.isArray(purchaseRows) ? purchaseRows : [])]);
     } catch (e) { console.error(e); }
-  })();
+    };
+    void loadRecords(true);
     const off = (window as any).api?.onPurchaseOrdersChanged?.(() => {
       (window as any).api.dbGet('purchaseOrders').then((rows: any[]) => setPurchaseOrders(Array.isArray(rows) ? rows : [])).catch(() => {});
     });
-    return () => { try { off && off(); } catch {} };
+    const offWorkOrders = (window as any).api?.onWorkOrdersChanged?.(() => { void loadRecords(false); });
+    const offSales = (window as any).api?.onSalesChanged?.(() => { void loadRecords(false); });
+    return () => {
+      disposed = true;
+      try { off && off(); } catch {}
+      try { offWorkOrders && offWorkOrders(); } catch {}
+      try { offSales && offSales(); } catch {}
+    };
   }, []);
+
+  const paymentLedger = useMemo(() => buildReportingLedger(data), [data]);
 
   const filtered = useMemo(() => {
     if (!data?.length) return [] as any[];
-    const fromDate = from ? reportDate(from) : null;
+    const fromDate = from ? startOfInputDate(from) : null;
     const toDate = to ? endOfInputDate(to) : null;
+    const paidRecordKeys = new Set(paymentLedger
+      .filter(entry => (!fromDate || entry.date >= fromDate) && (!toDate || entry.date <= toDate))
+      .map(entry => entry.recordKey));
     return data.filter(w => {
       if (w.kind === 'repair' && !includeRepairs) return false;
       if (w.kind === 'sale' && !includeSales) return false;
-      // If "paid only" mode, skip work orders with no payment recorded
-      if (onlyPaid && w.kind === 'repair') {
-        const amtPaid = Number((w as any).amountPaid || 0);
-        if (amtPaid <= 0) return false;
-      }
-      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
+      if (onlyPaid && !paidRecordKeys.has(reportingRecordKey(w))) return false;
+      const d = reportDate(w.checkInAt || w.createdAt || w.repairCompletionDate || w.checkoutDate);
       if (!d) return false;
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
@@ -595,10 +636,10 @@ const ReportingWindow: React.FC = () => {
       }
       return true;
     });
-  }, [data, from, to, tech, includeRepairs, includeSales, onlyPaid]);
+  }, [data, from, to, tech, includeRepairs, includeSales, onlyPaid, paymentLedger]);
 
   const filteredPurchases = useMemo(() => {
-    const fromDate = from ? reportDate(from) : null;
+    const fromDate = from ? startOfInputDate(from) : null;
     const toDate = to ? endOfInputDate(to) : null;
     return purchaseOrders.filter((purchase) => {
       if (purchase?.status !== 'checked_out') return false;
@@ -609,6 +650,17 @@ const ReportingWindow: React.FC = () => {
       return true;
     });
   }, [from, purchaseOrders, to]);
+
+  const filteredLedger = useMemo(() => {
+    const allowed = new Set(filtered.map(reportingRecordKey));
+    const fromDate = from ? startOfInputDate(from) : null;
+    const toDate = to ? endOfInputDate(to) : null;
+    return paymentLedger.filter(entry => (
+      allowed.has(entry.recordKey)
+      && (!fromDate || entry.date >= fromDate)
+      && (!toDate || entry.date <= toDate)
+    ));
+  }, [filtered, from, paymentLedger, to]);
 
   // Registered technicians list
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -668,29 +720,17 @@ const ReportingWindow: React.FC = () => {
     const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const counts: Record<string, { orders: number; revenue: number }> = {};
     for (const n of names) counts[n] = { orders: 0, revenue: 0 };
-    for (const w of filtered) {
-      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
-      if (!d) continue;
-      const name = names[d.getDay()];
-      const totals = computeTotals({
-        laborCost: Number(w.laborCost || 0),
-        partCosts: Number(w.partCosts || 0),
-        discount: Number(w.discount || 0),
-        taxRate: Number(w.taxRate || 0),
-        amountPaid: Number(w.amountPaid || 0),
-      });
-      const labor = Number(w.laborCost || 0);
-      const parts = Number(w.partCosts || 0);
-      const discount = Number(w.discount || 0);
-      const subtotal = Math.max(0, labor + parts - discount);
-      const tax = totals.tax || 0;
-      const revenue = excludeTax ? subtotal : (subtotal + tax);
-      counts[name].orders += 1;
-      counts[name].revenue += revenue;
+    const ordersByDay = new Map<string, Set<string>>();
+    for (const entry of filteredLedger) {
+      const name = names[entry.date.getDay()];
+      if (!ordersByDay.has(name)) ordersByDay.set(name, new Set());
+      ordersByDay.get(name)!.add(entry.recordKey);
+      counts[name].revenue += excludeTax ? entry.collected - entry.taxCollected : entry.collected;
     }
+    for (const [name, keys] of ordersByDay) counts[name].orders = keys.size;
     const order = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return order.map(day => ({ day, ...counts[day] }));
-  }, [filtered, excludeTax]);
+  }, [filteredLedger, excludeTax]);
 
   function sumInternalCost(w: any): number {
     // If items array has entries, sum from items only (avoid double-counting with w.internalCost)
@@ -725,36 +765,26 @@ const ReportingWindow: React.FC = () => {
 
   const grouped = useMemo(() => {
     const map = new Map<string, { orders: number; labor: number; parts: number; subtotal: number; tax: number; total: number; cost: number; profit: number; missingCost: number; supplierSpend: number }>();
-    for (const w of filtered) {
-      const totals = computeTotals({
-        laborCost: Number(w.laborCost || 0),
-        partCosts: Number(w.partCosts || 0),
-        discount: Number(w.discount || 0),
-        taxRate: Number(w.taxRate || 0),
-        amountPaid: Number(w.amountPaid || 0),
-      });
-      const d = reportDate(w.checkInAt || w.repairCompletionDate || w.checkoutDate || w.createdAt);
-      const periodStart = startOfPeriod(d, period);
+    const orderKeysByBucket = new Map<string, Set<string>>();
+    const missingKeysByBucket = new Map<string, Set<string>>();
+    for (const entry of filteredLedger) {
+      const periodStart = startOfPeriod(entry.date, period);
       const bucket = periodStart.toISOString().slice(0,10);
       const prev = map.get(bucket) || { orders: 0, labor: 0, parts: 0, subtotal: 0, tax: 0, total: 0, cost: 0, profit: 0, missingCost: 0, supplierSpend: 0 };
-  const labor = Number(w.laborCost || 0);
-  const parts = Number(w.partCosts || 0);
-      const discount = Number(w.discount || 0);
-      const subtotal = Math.max(0, labor + parts - discount);
-  // Cost baseline is what WE pay: internal costs only
-  const cost = sumInternalCost(w);
-      const tax = totals.tax || 0;
-      const revenue = excludeTax ? subtotal : (subtotal + tax);
-      const profit = revenue - cost;
-      prev.orders += 1;
-      prev.labor += labor;
-      prev.parts += parts;
-      prev.subtotal += subtotal;
-      prev.tax += tax;
-      prev.total += revenue;
-      prev.cost += cost;
-      prev.profit += profit;
-      prev.missingCost += missingInternalCostCount(w);
+      if (!orderKeysByBucket.has(bucket)) orderKeysByBucket.set(bucket, new Set());
+      orderKeysByBucket.get(bucket)!.add(entry.recordKey);
+      if (entry.missingInternalCost > 0) {
+        if (!missingKeysByBucket.has(bucket)) missingKeysByBucket.set(bucket, new Set());
+        missingKeysByBucket.get(bucket)!.add(entry.recordKey);
+      }
+      const netCollected = entry.collected - entry.taxCollected;
+      prev.labor = roundMoney(prev.labor + entry.laborCharged);
+      prev.parts = roundMoney(prev.parts + entry.partsCharged);
+      prev.subtotal = roundMoney(prev.subtotal + netCollected);
+      prev.tax = roundMoney(prev.tax + entry.taxCollected);
+      prev.total = roundMoney(prev.total + (excludeTax ? netCollected : entry.collected));
+      prev.cost = roundMoney(prev.cost + entry.internalCost);
+      prev.profit = roundMoney(prev.profit + entry.profitExcludingTax);
       map.set(bucket, prev);
     }
     for (const purchase of filteredPurchases) {
@@ -764,8 +794,12 @@ const ReportingWindow: React.FC = () => {
       prev.supplierSpend += verifiedPurchaseTotal(purchase);
       map.set(bucket, prev);
     }
+    for (const [bucket, value] of map) {
+      value.orders = orderKeysByBucket.get(bucket)?.size || 0;
+      value.missingCost = missingKeysByBucket.get(bucket)?.size || 0;
+    }
     return Array.from(map.entries()).sort((a,b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, ...v }));
-  }, [filtered, filteredPurchases, period, excludeTax]);
+  }, [filteredLedger, filteredPurchases, period, excludeTax]);
 
   const csvRows = useMemo(() => grouped.map(r => ({
     period_start: r.date,
@@ -837,14 +871,14 @@ const ReportingWindow: React.FC = () => {
 
   const monthRepairFinancials = useMemo(() => {
     const { start, end } = monthRange(monthEndMonth);
-    return data
-      .filter((row: any) => row.kind === 'repair' && dateInRange(row.checkInAt || row.checkoutDate || row.createdAt, start, end))
-      .reduce((totals, row: any) => ({
-        partsCost: roundMoney(totals.partsCost + sumInternalCost(row)),
-        partsCharged: roundMoney(totals.partsCharged + (Number(row.partCosts) || 0)),
-        laborCharged: roundMoney(totals.laborCharged + (Number(row.laborCost) || 0)),
+    return paymentLedger
+      .filter(entry => entry.kind === 'repair' && entry.date >= start && entry.date <= end)
+      .reduce((totals, entry) => ({
+        partsCost: roundMoney(totals.partsCost + entry.internalCost),
+        partsCharged: roundMoney(totals.partsCharged + entry.partsCharged),
+        laborCharged: roundMoney(totals.laborCharged + entry.laborCharged),
       }), { partsCost: 0, partsCharged: 0, laborCharged: 0 });
-  }, [data, monthEndMonth]);
+  }, [paymentLedger, monthEndMonth]);
 
   function downloadEndOfMonthReport() {
     const report = endOfMonthReport;
@@ -910,8 +944,13 @@ const ReportingWindow: React.FC = () => {
       return amount;
     };
 
+    const fromDate = from ? startOfInputDate(from) : null;
+    const toDate = to ? endOfInputDate(to) : null;
     for (const w of filtered) {
-      const payments = Array.isArray((w as any).payments) ? (w as any).payments : [];
+      const payments = collectReportingPayments(w).filter((payment: any) => {
+        const date = reportDate(payment?.at ?? payment?.date ?? payment?.createdAt ?? payment?.timestamp);
+        return !!date && (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+      });
       if (payments.length) {
         for (const p of payments) {
           const pt = String((p && (p.paymentType ?? p.type)) || '').toLowerCase();
@@ -931,17 +970,11 @@ const ReportingWindow: React.FC = () => {
         continue;
       }
 
-      const pt = String((w as any).paymentType || '').toLowerCase();
-      const amt = Number((w as any).amountPaid || 0);
-      if (!Number.isFinite(amt) || amt <= 0) continue;
-      if (pt.includes('cash')) cashTender += amt;
-      else if (pt.includes('card') || pt.includes('credit') || pt.includes('debit')) card += amt;
-      else other += amt;
     }
 
     const cashNet = cashTender - cashChange;
     return { cashTender, cashChange, cashNet, card, other, nonCash: card + other };
-  }, [filtered]);
+  }, [filtered, from, to]);
 
   async function downloadSummary() {
     const payload = {
@@ -1466,8 +1499,8 @@ const ReportingWindow: React.FC = () => {
           <div className="text-sm text-zinc-400">Revenue & Orders</div>
           <div className="mt-2 space-y-1">
             <div>Orders: <span className="font-semibold">{summary.orders}</span></div>
-            <div>Labor charged: <span className="font-semibold">${summary.labor.toFixed(2)}</span></div>
-            <div>Parts charged: <span className="font-semibold">${summary.parts.toFixed(2)}</span></div>
+            <div>Labor charged &amp; collected: <span className="font-semibold">${summary.labor.toFixed(2)}</span></div>
+            <div>Parts / products charged &amp; collected: <span className="font-semibold">${summary.parts.toFixed(2)}</span></div>
             <div>Revenue {excludeTax ? '(excl tax)' : '(incl tax)'}: <span className="font-semibold">${summary.revenue.toFixed(2)}</span></div>
           </div>
         </div>
@@ -1480,25 +1513,31 @@ const ReportingWindow: React.FC = () => {
             <div>Margin: <span className={`font-semibold ${summary.missingCost ? 'text-amber-300' : ''}`}>{summary.missingCost ? 'Needs internal cost' : `${(summary.margin * 100).toFixed(1)}%`}</span></div>
             <div>Avg ticket: <span className="font-semibold">${summary.avgTicket.toFixed(2)}</span></div>
           </div>
-          <div className="text-[11px] text-zinc-500 mt-2">Internal cost drives item profit. Verified supplier spend records when cash actually left the shop and is not deducted from profit again.</div>
+          <div className="text-[11px] text-zinc-500 mt-2">Charges, cost, and profit follow the payment date. Partial checkouts recognize only the paid portion. Verified supplier spend records when cash left the shop and is not deducted twice.</div>
           {summary.missingCost ? <div className="mt-2 text-xs text-amber-300">{summary.missingCost} charged physical line{summary.missingCost === 1 ? '' : 's'} need internal cost before profit is final.</div> : null}
         </div>
         {/* Repairs vs Sales split */}
         {reportingSettings.showTypeBreakdown && (() => {
-          const repOnly = filtered.filter((x:any) => x.kind !== 'sale');
-          const salOnly = filtered.filter((x:any) => x.kind === 'sale');
-          const accum = (arr: any[]) => arr.reduce((acc, w) => {
-            const t = computeTotals({ laborCost: Number(w.laborCost||0), partCosts: Number(w.partCosts||0), discount: Number(w.discount||0), taxRate: Number(w.taxRate||0), amountPaid: Number(w.amountPaid||0) });
-            const labor = Number(w.laborCost||0);
-            const parts = Number(w.partCosts||0);
-            const subtotal = Math.max(0, labor + parts - Number(w.discount||0));
-            const tax = t.tax || 0;
-            const revenue = excludeTax ? subtotal : (subtotal + tax);
-            const cost = sumInternalCost(w);
-            acc.orders += 1; acc.labor += labor; acc.parts += parts; acc.subtotal += subtotal; acc.tax += tax; acc.revenue += revenue; acc.cost += cost; acc.profit += (revenue - cost); acc.missingCost += missingInternalCostCount(w);
+          const accum = (kind: 'repair' | 'sale') => {
+            const orderKeys = new Set<string>();
+            const missingKeys = new Set<string>();
+            return filteredLedger.filter(entry => entry.kind === kind).reduce((acc, entry) => {
+            orderKeys.add(entry.recordKey);
+            if (entry.missingInternalCost > 0) missingKeys.add(entry.recordKey);
+            const net = entry.collected - entry.taxCollected;
+            acc.orders = orderKeys.size;
+            acc.labor += entry.laborCharged;
+            acc.parts += entry.partsCharged;
+            acc.subtotal += net;
+            acc.tax += entry.taxCollected;
+            acc.revenue += excludeTax ? net : entry.collected;
+            acc.cost += entry.internalCost;
+            acc.profit += entry.profitExcludingTax;
+            acc.missingCost = missingKeys.size;
             return acc;
           }, { orders:0, labor:0, parts:0, subtotal:0, tax:0, revenue:0, cost:0, profit:0, missingCost:0 });
-          const repS = accum(repOnly); const salS = accum(salOnly);
+          };
+          const repS = accum('repair'); const salS = accum('sale');
           return (
             <div className="bg-zinc-950 border border-zinc-800 rounded p-3 col-span-2">
               <div className="text-sm text-zinc-400 mb-2">Split by Type</div>
