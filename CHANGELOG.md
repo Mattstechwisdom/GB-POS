@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.17 (2026-08-17)
+- Calendar Purchasing Budget: moves date-specific budget creation and editing from EOD into Calendar while preserving the synced daily budget data already used by Cart.
+- Desktop Calendar: places Budget immediately left of Add on every calendar date so the spending limit is set in the context of the intended day.
+- Mobile Calendar: adds a purple budget control beside each weekly day Add icon and keeps Budget beside Add in Daily view across portrait and landscape.
+- Cart Budget Display: keeps daily budget, checked-out spend, selected cost, remaining funds, and over-budget warnings visible in Cart without allowing edits there.
+- Release Safety: adds source assertions and live Electron interaction checks for the Calendar budget editor in Android portrait and landscape layouts.
+
 ## v0.6.16 (2026-08-17)
 - Customer Receipts: removes QR codes from work-order and sales customer receipts while preserving QR-based updates on the dedicated operational forms.
 - Receipt Printing: removes the obsolete QR-generation wait so automatic and silent customer receipt printing can proceed as soon as the receipt logo is ready.

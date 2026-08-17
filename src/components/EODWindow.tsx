@@ -818,10 +818,6 @@ const EODWindow: React.FC = () => {
   const [taxExemptByDistributor, setTaxExemptByDistributor] = useState<Record<string, boolean>>({});
   const [showCart, setShowCart] = useState(() => consumeWindowPayload('eod')?.showCart === true);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
-  const [showBudget, setShowBudget] = useState(false);
-  const [budgetDraft, setBudgetDraft] = useState('');
-  const [budgetSaving, setBudgetSaving] = useState(false);
-  const [budgetMessage, setBudgetMessage] = useState('');
   const [showCheckoutVerification, setShowCheckoutVerification] = useState(false);
   const [verifiedDistributors, setVerifiedDistributors] = useState<Set<string>>(() => new Set());
   const [purchaseDraft, setPurchaseDraft] = useState<any>({ itemType: 'Part', orderUrl: '', title: '', distributor: '', quantity: 1, unitCost: '' });
@@ -1596,44 +1592,6 @@ const EODWindow: React.FC = () => {
   }), [additionalCostsByDistributor, budgetTaxExemptByDistributor, partsPurchaseQueue]);
   const selectedBudgetCost = useMemo(() => selectedPurchaseBudgetCost(selectedCartRows), [selectedCartRows, selectedPurchaseBudgetCost]);
   const budgetSnapshot = useMemo(() => purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, selectedBudgetCost), [dailyBudget, dailyBudgetSpent, selectedBudgetCost]);
-
-  const openBudgetEditor = useCallback(() => {
-    setBudgetDraft(budgetConfigured ? dailyBudget.toFixed(2) : '');
-    setBudgetMessage('');
-    setShowBudget(true);
-  }, [budgetConfigured, dailyBudget]);
-
-  const saveDailyBudget = useCallback(async (nextValue?: string) => {
-    const trimmed = (nextValue ?? budgetDraft).trim();
-    const parsed = Number(trimmed);
-    if (trimmed && (!Number.isFinite(parsed) || parsed < 0)) {
-      setBudgetMessage('Enter a valid budget of zero or more.');
-      return;
-    }
-    setBudgetSaving(true);
-    setBudgetMessage('');
-    try {
-      const api = (window as any).api || {};
-      const rows = await api.dbGet?.('settings').catch(() => []);
-      const current = (Array.isArray(rows) ? rows[0] : rows) || shopSettingsRecord || {};
-      const nextBudgets = { ...(current.dailyPurchaseBudgets && typeof current.dailyPurchaseBudgets === 'object' ? current.dailyPurchaseBudgets : {}) };
-      if (trimmed) nextBudgets[budgetDayKey] = round2(parsed);
-      else delete nextBudgets[budgetDayKey];
-      const updatedAt = new Date().toISOString();
-      const payload = { ...current, dailyPurchaseBudgets: nextBudgets, updatedAt };
-      const saved = current.id != null
-        ? await api.dbUpdate?.('settings', current.id, payload)
-        : await api.dbAdd?.('settings', payload);
-      if (!saved) throw new Error('The budget could not be saved.');
-      setShopSettingsRecord(saved);
-      setBudgetMessage(trimmed ? 'Daily cart budget saved and synced.' : 'Daily cart budget cleared.');
-      window.setTimeout(() => setShowBudget(false), 450);
-    } catch (error: any) {
-      setBudgetMessage(error?.message || 'The daily budget could not be saved.');
-    } finally {
-      setBudgetSaving(false);
-    }
-  }, [budgetDayKey, budgetDraft, shopSettingsRecord]);
 
   const updateDistributorTaxExempt = useCallback(async (distributor: string, checked: boolean) => {
     setTaxExemptByDistributor(current => ({ ...current, [distributor]: checked }));
@@ -3296,7 +3254,7 @@ const EODWindow: React.FC = () => {
                       <h2 className="text-2xl font-semibold text-[#d45cff]">Purchasing Cart</h2>
                       <p className="mt-1 text-xs text-zinc-400">Grouped by distributor. Line-item cost excludes supplier tax, shipping, and checkout fees; those are calculated here.</p>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={cartRefreshBusy || !partsPurchaseQueue.some(row => row.orderUrl)} className="rounded border border-[#BC13FE]/70 bg-[#BC13FE]/15 px-3 py-2 text-xs font-semibold text-fuchsia-100 disabled:opacity-40" onClick={() => { void refreshCartPrices(); }}>{cartRefreshBusy ? 'Refreshing...' : 'Refresh Cart'}</button><button type="button" className="rounded bg-violet-600 px-3 py-2 text-xs font-semibold text-white" onClick={openBudgetEditor}>Budget</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
+                    <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={cartRefreshBusy || !partsPurchaseQueue.some(row => row.orderUrl)} className="rounded border border-[#BC13FE]/70 bg-[#BC13FE]/15 px-3 py-2 text-xs font-semibold text-fuchsia-100 disabled:opacity-40" onClick={() => { void refreshCartPrices(); }}>{cartRefreshBusy ? 'Refreshing...' : 'Refresh Cart'}</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-xs font-semibold text-black" onClick={() => setShowAddPurchase(true)}>Add Part / Product</button><button type="button" className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" onClick={() => setShowCart(false)} aria-label="Close cart">x</button></div>
                   </header>
 
                   <div className="grid gap-2 border-b border-violet-500/30 bg-violet-950/20 p-3 sm:grid-cols-4 lg:p-4">
@@ -3427,19 +3385,6 @@ const EODWindow: React.FC = () => {
               );
             })() : null}
 
-            {showBudget ? (
-              <div className="fixed inset-0 z-[100350] flex items-center justify-center bg-black/85 p-3" onClick={() => setShowBudget(false)}>
-                <section className="w-full max-w-md rounded-lg border border-violet-500/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Daily purchasing budget">
-                  <header><h3 className="text-xl font-semibold text-violet-300">Daily Purchasing Budget</h3><p className="mt-1 text-sm text-zinc-400">A visual cart limit for {budgetDayKey}. It never changes reporting totals.</p></header>
-                  <label className="mt-4 block text-sm text-zinc-300">Budget
-                    <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-3"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-3 text-lg outline-none" value={budgetDraft} onChange={event => setBudgetDraft(event.target.value)} placeholder="0.00" /></div>
-                  </label>
-                  <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-zinc-800 bg-zinc-900 p-3 text-sm"><div><span className="block text-xs text-zinc-500">Already checked out</span>{formatCurrency(dailyBudgetSpent)}</div><div><span className="block text-xs text-zinc-500">Current available</span>{budgetConfigured ? formatCurrency(budgetSnapshot.available) : '--'}</div></div>
-                  {budgetMessage ? <p className="mt-3 text-sm text-violet-200">{budgetMessage}</p> : null}
-                  <footer className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setShowBudget(false)}>Cancel</button><button type="button" disabled={budgetSaving || !budgetConfigured} className="rounded border border-red-500/60 px-4 py-2 text-sm text-red-200 disabled:opacity-40" onClick={() => { setBudgetDraft(''); void saveDailyBudget(''); }}>Clear</button><button type="button" disabled={budgetSaving} className="rounded bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" onClick={() => { void saveDailyBudget(); }}>{budgetSaving ? 'Saving...' : 'Save Budget'}</button></footer>
-                </section>
-              </div>
-            ) : null}
 
             {showAddPurchase ? (
               <div className="fixed inset-0 z-[100200] flex items-center justify-center overflow-y-auto bg-black/85 p-3" onClick={() => setShowAddPurchase(false)}>

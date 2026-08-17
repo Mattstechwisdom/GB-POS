@@ -264,6 +264,29 @@ async function inspectWindow(win, type, orientation) {
     await new Promise((resolve) => setTimeout(resolve, 50));
     const stillOpen = await win.webContents.executeJavaScript(`Boolean(document.querySelector('.gb-calendar-settings-dialog'))`);
     assert.equal(stillOpen, false, `Calendar Settings did not close after Save in ${orientation.name}.`);
+    const budget = await win.webContents.executeJavaScript(`(async () => {
+      const button = document.querySelector('.gb-calendar-week-actions button:first-child')
+        || document.querySelector('.gb-calendar-budget-button');
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      const dialog = document.querySelector('[role="dialog"][aria-label="Daily purchasing budget"]');
+      const rect = dialog?.getBoundingClientRect();
+      const input = dialog?.querySelector('input[type="number"]');
+      const cancel = Array.from(dialog?.querySelectorAll('button') || []).find((entry) => entry.textContent.trim() === 'Cancel');
+      cancel?.click();
+      return {
+        buttonPresent: Boolean(button),
+        visible: Boolean(dialog && rect && rect.width > 260 && rect.height > 180),
+        fits: Boolean(rect && rect.left >= -2 && rect.right <= window.innerWidth + 2 && rect.top >= -2 && rect.bottom <= window.innerHeight + 2),
+        inputUsable: Boolean(input && input.getBoundingClientRect().height >= 40),
+        cancelPresent: Boolean(cancel),
+      };
+    })()`);
+    assert.equal(budget.buttonPresent, true, `Calendar Budget button was missing beside Add in ${orientation.name}.`);
+    assert.equal(budget.visible, true, `Calendar Budget editor did not open in ${orientation.name}.`);
+    assert.equal(budget.fits, true, `Calendar Budget editor escaped the viewport in ${orientation.name}.`);
+    assert.equal(budget.inputUsable, true, `Calendar Budget input was not touch-usable in ${orientation.name}.`);
+    assert.equal(budget.cancelPresent, true, `Calendar Budget editor was missing Cancel in ${orientation.name}.`);
   }
 
   if (type === 'quoteGenerator') {

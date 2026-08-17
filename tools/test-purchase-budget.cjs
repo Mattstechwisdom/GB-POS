@@ -56,10 +56,14 @@ assert.deepEqual(purchaseBudgetSnapshot(100, 20, 30), {
 assert.equal(purchaseBudgetSnapshot(40, 20, 30).overBy, 10);
 
 const eod = fs.readFileSync(path.join(root, 'src', 'components', 'EODWindow.tsx'), 'utf8');
+const calendar = fs.readFileSync(path.join(root, 'src', 'components', 'CalendarWindow.tsx'), 'utf8');
 const dailyLook = fs.readFileSync(path.join(root, 'src', 'components', 'DailyLookWindow.tsx'), 'utf8');
-assert.match(eod, />Budget<\/button>/, 'The purchasing cart must expose the purple Budget action.');
+assert.doesNotMatch(eod, /onClick=\{openBudgetEditor\}/, 'The purchasing cart must not edit the daily budget.');
+assert.match(calendar, /Daily Purchasing Budget/, 'Calendar must own the daily purchasing budget editor.');
+assert.match(calendar, /gb-calendar-week-actions/, 'Mobile weekly calendar rows must place Budget beside Add.');
+assert.match(calendar, /onOpenBudget=\{openBudgetEditor\}/, 'Desktop calendar days must expose the date-specific budget action.');
 assert.match(eod, /Cart guardrail only\. Reporting is unchanged\./, 'The UI must state that budget is separate from reporting.');
-assert.match(eod, /dailyPurchaseBudgets/, 'Daily budgets must persist through shop settings.');
+assert.match(calendar, /dailyPurchaseBudgets/, 'Calendar budgets must persist through synced shop settings.');
 assert.doesNotMatch(eod, /partsCost\s*[+:=][^\n]*dailyBudget/, 'The budget must never be added to reported parts cost.');
 assert.match(dailyLook, /aria-label={`Mark \$\{task\.title \|\| 'task'\} complete`}/, 'Task completion must remain a dedicated checkbox action.');
 assert.match(dailyLook, /onClick=\{\(\) => openCalendarEntry\(task\)\}/, 'Clicking task content must open its details and notes.');

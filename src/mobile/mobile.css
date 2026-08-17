@@ -3492,9 +3492,29 @@
 
   .gbpos-mobile .gb-calendar-week section > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2.25rem;
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
     align-items: stretch;
     border-right: 1px solid #27272a;
+  }
+
+  .gbpos-mobile .gb-calendar-week-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    border-left: 1px solid #27272a;
+  }
+
+  .gbpos-mobile .gb-calendar-week-actions > button {
+    min-width: 0;
+    color: #39ff14;
+    font-size: 1.05rem;
+    font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-week-actions > button:first-child {
+    border-right: 1px solid #27272a;
+    background: rgba(124, 58, 237, 0.24);
+    color: #c4b5fd;
   }
 
   .gbpos-mobile .gb-calendar-week header button:first-child {
@@ -3532,12 +3552,6 @@
     font-weight: 900;
     line-height: 1;
     text-transform: uppercase;
-  }
-
-  .gbpos-mobile .gb-calendar-week header button:last-child {
-    border-left: 1px solid #27272a;
-    color: #39ff14;
-    font-size: 1.1rem;
   }
 
   .gbpos-mobile .gb-calendar-agenda-list {
@@ -3710,11 +3724,17 @@
   }
 
   .gbpos-mobile .gb-calendar-day-actions button {
-    grid-column: 1 / -1;
+    grid-column: auto;
     border-color: #39ff14;
     background: #39ff14;
     color: #09090b;
     font-weight: 900;
+  }
+
+  .gbpos-mobile .gb-calendar-day-actions .gb-calendar-budget-button {
+    border-color: #8b5cf6;
+    background: #7c3aed;
+    color: #fff;
   }
 
   .gbpos-mobile .gb-calendar-day-sections section {
@@ -4098,7 +4118,7 @@
 
   .gbpos-mobile .gb-calendar-week > section > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2.25rem;
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
     min-width: 0;
     border-right: 1px solid #27272a;
   }
@@ -4118,10 +4138,8 @@
     white-space: nowrap;
   }
 
-  .gbpos-mobile .gb-calendar-week > section > header > button:last-child {
-    min-width: 2.25rem;
-    border-left: 1px solid #27272a;
-    color: #39ff14;
+  .gbpos-mobile .gb-calendar-week > section > header > .gb-calendar-week-actions {
+    min-width: 4.5rem;
   }
 
   .gbpos-mobile .gb-calendar-week .gb-calendar-agenda-list {

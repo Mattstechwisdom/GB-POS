@@ -300,8 +300,8 @@ function activeShiftEvents(day: Date, events: CalendarEvent[]) {
   });
 }
 
-const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; tasksVisible: boolean; colors: CalendarColors; icons: Record<CalendarIconKey, CalendarIconChoice>; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onContextGroup: (event: React.MouseEvent, events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenTasks: (day: Date, tasks: CalendarEvent[]) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
-  = ({ day, events, notes, notesVisible, tasksVisible, colors, icons, technicianColors, onPick, onOpenGroup, onContextGroup, onOpenNotes, onOpenTasks, onOpenShifts, isToday }) => {
+const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]; notesVisible: boolean; tasksVisible: boolean; colors: CalendarColors; icons: Record<CalendarIconKey, CalendarIconChoice>; technicianColors: Record<string, string>; onPick: (day: Date) => void; onOpenBudget: (day: Date) => void; onOpenGroup: (events: CalendarEvent[]) => void; onContextGroup: (event: React.MouseEvent, events: CalendarEvent[]) => void; onOpenNotes: (day: Date) => void; onOpenTasks: (day: Date, tasks: CalendarEvent[]) => void; onOpenShifts: (day: Date) => void; isToday?: boolean }>
+  = ({ day, events, notes, notesVisible, tasksVisible, colors, icons, technicianColors, onPick, onOpenBudget, onOpenGroup, onContextGroup, onOpenNotes, onOpenTasks, onOpenShifts, isToday }) => {
   const dayNum = day.getDate();
   function blipFor(ev: CalendarEvent) {
     // Letter & color by type
@@ -362,9 +362,10 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
           <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
           {activeShifts.length ? <button type="button" className="shrink-0 inline-flex items-center gap-1 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-1.5 py-0.5 text-[11px] font-bold text-[#d9ffd2] hover:bg-[#39FF14]/20" title={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#39FF14] text-[8px] text-zinc-950">S</span>{activeShifts.length}</button> : null}
         </div>
-        <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>
-          + Add
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" className="text-xs px-2 py-0.5 bg-violet-700 border border-violet-500 rounded text-white hover:bg-violet-600 transition-colors" onClick={() => onOpenBudget(day)}>Budget</button>
+          <button className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700 transition-colors" onClick={() => onPick(day)}>+ Add</button>
+        </div>
       </div>
       
       <div className="flex-1 min-h-0" />
@@ -453,6 +454,11 @@ const CalendarWindow: React.FC = () => {
   const [savedCalendarIcons, setSavedCalendarIcons] = useState<Record<CalendarIconKey, CalendarIconChoice>>(DEFAULT_CALENDAR_ICONS);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
   const [calendarSettingsSaving, setCalendarSettingsSaving] = useState(false);
+  const [shopSettingsRecord, setShopSettingsRecord] = useState<any>({});
+  const [budgetDate, setBudgetDate] = useState<string | null>(null);
+  const [budgetDraft, setBudgetDraft] = useState('');
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [budgetMessage, setBudgetMessage] = useState('');
   // For adding multiple estimated delivery dates in one go (parts only)
   const [deliveryDates, setDeliveryDates] = useState<string[]>([]);
   const [deliveryDateInput, setDeliveryDateInput] = useState<string>('');
@@ -480,6 +486,7 @@ const CalendarWindow: React.FC = () => {
           (window as any).api.dbGet('calendarPreferences').catch(() => []),
         ]);
         const shopSettings = Array.isArray(settingsRows) ? settingsRows[0] : null;
+        if (active) setShopSettingsRecord(shopSettings || {});
         const legacy = Array.isArray(legacyRows) ? legacyRows[0] : null;
         const stored = (shopSettings?.calendarPreferences || legacy) as CalendarPreferences | null;
         if (!active || !stored) return;
@@ -519,6 +526,48 @@ const CalendarWindow: React.FC = () => {
       setCalendarSettingsOpen(false);
     } finally {
       setCalendarSettingsSaving(false);
+    }
+  };
+
+  const openBudgetEditor = (day: Date) => {
+    const dayKey = fmtDate(day);
+    const budgets = shopSettingsRecord?.dailyPurchaseBudgets;
+    const value = budgets && typeof budgets === 'object' && !Array.isArray(budgets) ? budgets[dayKey] : undefined;
+    setBudgetDate(dayKey);
+    setBudgetDraft(value == null ? '' : Number(value).toFixed(2));
+    setBudgetMessage('');
+  };
+
+  const saveDailyBudget = async (nextValue?: string) => {
+    if (!budgetDate) return;
+    const trimmed = (nextValue ?? budgetDraft).trim();
+    const parsed = Number(trimmed);
+    if (trimmed && (!Number.isFinite(parsed) || parsed < 0)) {
+      setBudgetMessage('Enter a valid budget of zero or more.');
+      return;
+    }
+    setBudgetSaving(true);
+    setBudgetMessage('');
+    try {
+      const api = (window as any).api || {};
+      const rows = await api.dbGet?.('settings').catch(() => []);
+      const current = (Array.isArray(rows) ? rows[0] : rows) || shopSettingsRecord || {};
+      const nextBudgets = { ...(current.dailyPurchaseBudgets && typeof current.dailyPurchaseBudgets === 'object' ? current.dailyPurchaseBudgets : {}) };
+      if (trimmed) nextBudgets[budgetDate] = Math.round(parsed * 100) / 100;
+      else delete nextBudgets[budgetDate];
+      const now = new Date().toISOString();
+      const payload = { ...current, dailyPurchaseBudgets: nextBudgets, updatedAt: now };
+      const saved = current.id != null
+        ? await api.dbUpdate?.('settings', current.id, payload)
+        : await api.dbAdd?.('settings', { ...payload, id: 1, createdAt: now });
+      if (!saved) throw new Error('The budget could not be saved.');
+      setShopSettingsRecord(saved);
+      setBudgetMessage(trimmed ? 'Daily cart budget saved and synced.' : 'Daily cart budget cleared.');
+      window.setTimeout(() => setBudgetDate(null), 450);
+    } catch (error: any) {
+      setBudgetMessage(error?.message || 'The daily budget could not be saved.');
+    } finally {
+      setBudgetSaving(false);
     }
   };
 
@@ -1437,6 +1486,7 @@ const CalendarWindow: React.FC = () => {
                     icons={calendarIcons}
                     technicianColors={technicianColors}
                     onPick={onPick}
+                    onOpenBudget={openBudgetEditor}
                     onOpenGroup={setViewingGroup}
                     onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
                     onOpenNotes={openNotes}
@@ -1490,7 +1540,10 @@ const CalendarWindow: React.FC = () => {
                       <span>{day.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</span>
                       {isToday ? <em>Today</em> : null}
                     </button>
-                    <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
+                    <div className="gb-calendar-week-actions">
+                      <button type="button" aria-label={`Set purchasing budget for ${key}`} title="Set purchasing budget" onClick={() => openBudgetEditor(day)}>$</button>
+                      <button type="button" aria-label={`Add calendar entry for ${key}`} onClick={() => onPick(day)}>+</button>
+                    </div>
                   </header>
                   <div className="gb-calendar-agenda-list">
                     {activeShifts.length ? <button type="button" className="gb-calendar-week-shifts" aria-label={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'} for ${key}`} onClick={() => setShiftDay(key)}><span style={{ backgroundColor: calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
@@ -1542,6 +1595,7 @@ const CalendarWindow: React.FC = () => {
               <option value="">All technicians</option>
               {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
             </select>
+            <button type="button" className="gb-calendar-budget-button" onClick={() => openBudgetEditor(current)}>Budget</button>
             <button type="button" onClick={() => onPick(current)}>+ Add</button>
           </div>
           <div className="gb-calendar-day-sections">
@@ -2309,6 +2363,19 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {budgetDate && createPortal((
+        <div className="fixed inset-0 z-[100550] flex items-center justify-center bg-black/80 p-3" onClick={() => setBudgetDate(null)} data-modal-shell="1">
+          <section className="w-full max-w-md rounded-lg border border-violet-500/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Daily purchasing budget">
+            <header><h3 className="text-xl font-semibold text-violet-300">Daily Purchasing Budget</h3><p className="mt-1 text-sm text-zinc-400">Set the Cart spending limit for {new Date(`${budgetDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}. It does not change reporting.</p></header>
+            <label className="mt-4 block text-sm text-zinc-300">Budget
+              <div className="mt-1 flex items-center rounded border border-zinc-700 bg-zinc-900 px-3"><span className="text-zinc-500">$</span><input type="number" min="0" step="0.01" inputMode="decimal" className="min-w-0 flex-1 bg-transparent px-2 py-3 text-lg outline-none" value={budgetDraft} onChange={(event) => setBudgetDraft(event.target.value)} placeholder="0.00" autoFocus /></div>
+            </label>
+            {budgetMessage ? <p className="mt-3 text-sm text-violet-200">{budgetMessage}</p> : null}
+            <footer className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setBudgetDate(null)}>Cancel</button><button type="button" disabled={budgetSaving || !budgetDraft.trim()} className="rounded border border-red-500/60 px-4 py-2 text-sm text-red-200 disabled:opacity-40" onClick={() => { setBudgetDraft(''); void saveDailyBudget(''); }}>Clear</button><button type="button" disabled={budgetSaving} className="rounded bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" onClick={() => { void saveDailyBudget(); }}>{budgetSaving ? 'Saving...' : 'Save Budget'}</button></footer>
+          </section>
+        </div>
+      ), document.body)}
       <ContextMenu
         id="calendar-entry-context-menu"
         open={calendarContext.state.open}
