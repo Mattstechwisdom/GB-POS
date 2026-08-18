@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.19 (2026-08-18)
+- Exact Daily Collection: attributes every real Checkout to the time payment was taken, even when the work order or sale was created on an earlier day.
+- Historical Corrections: keeps manually restored paid amounts on their historical ticket date so they remain in month, year, and lifetime reporting without fabricating current-day revenue.
+- EOD Reconciliation: scans every ticket's payment history instead of filtering whole tickets by one representative date, fixing the audited daily total from `$81.48` to `$131.48`.
+- Payment-Based Breakdown: derives EOD labor charged, parts/products charged, tax, and matching internal cost from the paid portion of each invoice rather than recounting the full ticket.
+- Tender Accuracy: uses each payment's applied amount as collected revenue while retaining cash tender and change details.
+- Release Safety: adds regression coverage for an old ticket checked out today, historical paid corrections, and the complete audited `$131.48` checkout set.
+
 ## v0.6.18 (2026-08-17)
 - Payment-Ledger Reporting: records each work-order and sale checkout on the date payment was actually taken, including multiple partial payments against a remaining balance.
 - Exact Financial Allocation: separates collected labor, parts/products, and client tax while recognizing the matching internal cost and calculating gross profit without treating tax as profit.

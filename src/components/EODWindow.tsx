@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
-import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows, itemFullCost, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
+import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
+import { buildReportingLedger } from '../lib/reportingAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
@@ -405,28 +406,6 @@ function readNumber(record: any, key: string): number | undefined {
   if (raw === null || raw === undefined || raw === '') return undefined;
   const value = Number(raw);
   return Number.isFinite(value) ? value : undefined;
-}
-
-function itemQty(item: any): number {
-  const qty = Number(item?.qty ?? item?.quantity ?? 1);
-  return Number.isFinite(qty) && qty > 0 ? qty : 1;
-}
-
-function itemSoldTotal(item: any): number {
-  const price = Number(item?.price ?? item?.partCost ?? item?.partCosts ?? 0);
-  return Number.isFinite(price) ? round2(price * itemQty(item)) : 0;
-}
-
-function itemInternalCostTotal(item: any): number {
-  return itemFullCost(item) ?? 0;
-}
-
-function recordInternalCostTotal(record: any): number {
-  const items = Array.isArray(record?.items) ? record.items : [];
-  if (items.length) {
-    return round2(items.reduce((sum: number, item: any) => sum + itemInternalCostTotal(item), 0));
-  }
-  return round2(readNumber(record, 'internalCost') ?? readNumber(record, 'cost') ?? 0);
 }
 
 function resolveTotals(record: any) {
@@ -1066,7 +1045,8 @@ const EODWindow: React.FC = () => {
       const normalized = normalizeRow(kind, record);
       if (!normalized) return;
       const ts = normalized.date.getTime();
-      if (ts < min || ts > max) return;
+      const hasPaymentInRange = collectedAmountInRange(normalized, min, max, normalized.date) > 0.009;
+      if ((ts < min || ts > max) && !hasPaymentInRange) return;
       rows.push(normalized);
     };
 
@@ -1075,6 +1055,15 @@ const EODWindow: React.FC = () => {
 
     rows.sort((a, b) => a.date.getTime() - b.date.getTime());
     return rows;
+  }, [workOrders, sales, rangeKey]);
+
+  const accountingLedger = useMemo(() => {
+    const min = start.getTime();
+    const max = end.getTime();
+    return buildReportingLedger([
+      ...(workOrders || []).map(record => ({ ...record, kind: 'repair' as const })),
+      ...(sales || []).map(record => ({ ...record, kind: 'sale' as const })),
+    ]).filter(entry => entry.date.getTime() >= min && entry.date.getTime() <= max);
   }, [workOrders, sales, rangeKey]);
 
   const trendRows = useMemo(() => {
@@ -1371,6 +1360,7 @@ const EODWindow: React.FC = () => {
     const max = end.getTime();
     let cashTender = 0;
     let cashChange = 0;
+    let cashNet = 0;
     let card = 0;
     let other = 0;
     let paymentsCount = 0;
@@ -1378,34 +1368,37 @@ const EODWindow: React.FC = () => {
     const addPayment = (p: any) => {
       const d = paymentEventDate(p);
       if (!isDateWithin(d, min, max)) return;
-      const amt = Number(p?.amount || p?.tender || p?.paid || 0);
-      if (!Number.isFinite(amt)) return;
-      const change = Number(p?.change || p?.changeDue || 0);
+      const applied = paymentAppliedAmount(p);
+      if (!(applied > 0)) return;
+      const tender = Number(p?.amount ?? p?.tender ?? p?.paid ?? 0);
+      const change = Math.max(0, Number(p?.change ?? p?.changeDue ?? 0) || 0);
       const type = (p?.paymentType || p?.method || '').toString().toLowerCase();
       if (type.includes('cash')) {
-        cashTender += amt;
-        cashChange += Math.max(0, change);
+        cashTender += Number.isFinite(tender) && tender > 0 ? tender : applied + change;
+        cashChange += change;
+        cashNet += applied;
       } else if (type.includes('card') || type.includes('credit') || type.includes('debit')) {
-        card += amt;
-      } else if (amt) {
-        other += amt;
+        card += applied;
+      } else {
+        other += applied;
       }
       paymentsCount += 1;
     };
 
-    unified.forEach(row => {
+    const rawRecords = [...(workOrders || []), ...(sales || [])];
+    rawRecords.forEach(row => {
       const payments = collectPayments(row);
       payments.forEach(addPayment);
       if (!payments.length) {
-        const collected = collectedAmountInRange(row, min, max, row.date);
-        const anchor = paymentFallbackDate(row) || row.date;
+        const fallback = getTimelineDate(row);
+        const collected = collectedAmountInRange(row, min, max, fallback);
+        const anchor = paymentFallbackDate(row) || fallback;
         if (collected > 0) addPayment({ amount: collected, paymentType: String((row as any)?.paymentType || 'unknown'), change: 0, at: anchor });
       }
     });
 
-    const cashNet = cashTender - cashChange;
     return { cashTender, cashChange, cashNet, card, other, paymentsCount };
-  }, [unified, start, end]);
+  }, [workOrders, sales, start, end]);
 
   const dailyBatchSummary = useMemo(() => {
     const min = start.getTime();
@@ -1413,20 +1406,13 @@ const EODWindow: React.FC = () => {
     const cardTotal = round2(paymentSummary.card + paymentSummary.other);
     const cashTotal = round2(paymentSummary.cashNet);
     const totalTaken = round2(cardTotal + cashTotal);
-    const workRowsInRange = (workOrders || []).filter((workOrder) => isDateWithin(getTimelineDate(workOrder), min, max));
-    const saleRowsInRange = (sales || []).filter((sale) => isDateWithin(getSaleReportDate(sale), min, max));
-    const partsSold = round2(workRowsInRange.reduce((sum, workOrder) => {
-      const parts = readNumber(workOrder, 'partCosts') ?? readNumber(workOrder, 'partsTotal') ?? readNumber(workOrder, 'parts') ?? 0;
-      return sum + parts;
-    }, 0));
-    const partsCost = round2(workRowsInRange.reduce((sum, workOrder) => sum + recordInternalCostTotal(workOrder), 0));
-    const laborSold = round2(workRowsInRange.reduce((sum, workOrder) => sum + (readNumber(workOrder, 'laborCost') ?? 0), 0));
-    const productsSold = round2(saleRowsInRange.reduce((sum, sale) => {
-      const items = Array.isArray(sale?.items) ? sale.items : [];
-      if (items.length) return sum + items.reduce((lineSum: number, item: any) => lineSum + itemSoldTotal(item), 0);
-      return sum + (readNumber(sale, 'partCosts') ?? readNumber(sale, 'total') ?? 0);
-    }, 0));
-    const productsCost = round2(saleRowsInRange.reduce((sum, sale) => sum + recordInternalCostTotal(sale), 0));
+    const repairLedger = accountingLedger.filter(entry => entry.kind === 'repair');
+    const saleLedger = accountingLedger.filter(entry => entry.kind === 'sale');
+    const partsSold = round2(repairLedger.reduce((sum, entry) => sum + entry.partsCharged, 0));
+    const partsCost = round2(repairLedger.reduce((sum, entry) => sum + entry.internalCost, 0));
+    const laborSold = round2(repairLedger.reduce((sum, entry) => sum + entry.laborCharged, 0));
+    const productsSold = round2(saleLedger.reduce((sum, entry) => sum + entry.partsCharged, 0));
+    const productsCost = round2(saleLedger.reduce((sum, entry) => sum + entry.internalCost, 0));
     const verifiedPurchasesInRange = (purchaseOrders || []).filter((purchase) => purchase?.status === 'checked_out' && isDateWithin(purchase?.checkedOutAt || purchase?.updatedAt, min, max));
     const supplierSpendParts = round2(verifiedPurchasesInRange
       .filter((purchase) => String(purchase?.itemType || 'Part').toLowerCase() === 'part')
@@ -1472,7 +1458,7 @@ const EODWindow: React.FC = () => {
       checkInCount,
       closedTicketCount,
     };
-  }, [end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, purchaseOrders, sales, start, workOrders]);
+  }, [accountingLedger, end, paymentSummary.card, paymentSummary.cashNet, paymentSummary.other, purchaseOrders, start, workOrders]);
 
   const partsPurchaseQueue = useMemo(
     () => {

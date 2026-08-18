@@ -14,11 +14,14 @@ const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
 const { buildReportingLedger, collectReportingPayments } = moduleShim.exports;
 const reportingSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ReportingWindow.tsx'), 'utf8');
+const eodSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'EODWindow.tsx'), 'utf8');
 const electronSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
 const mobileSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mobile', 'mobile-api.ts'), 'utf8');
 assert.match(reportingSource, /onWorkOrdersChanged\?\.\(\(\) => \{ void loadRecords\(false\); \}\)/, 'Reporting must refresh after a work-order checkout.');
 assert.match(reportingSource, /onSalesChanged\?\.\(\(\) => \{ void loadRecords\(false\); \}\)/, 'Reporting must refresh after a sale checkout.');
 assert.match(reportingSource, /new Date\(`\$\{value\}T00:00:00`\)/, 'Date filters must use local-day boundaries.');
+assert.match(eodSource, /const accountingLedger = useMemo/, 'EOD must derive financial totals from the payment ledger.');
+assert.match(eodSource, /const rawRecords = \[\.\.\.\(workOrders \|\| \[\]\), \.\.\.\(sales \|\| \[\]\)\]/, 'EOD payment totals must scan all tickets, including tickets created before the selected day.');
 for (const [label, source] of [['Windows', electronSource], ['Android', mobileSource]]) {
   assert.match(source, /payments:\s*cloudArray\(row\.payments\)/, `${label} must restore the Supabase payment ledger.`);
   assert.match(source, /payments:\s*toCloudArray\(item\.payments\)/, `${label} must save the payment ledger to Supabase.`);
@@ -86,5 +89,41 @@ const zeroCostUsedPart = buildReportingLedger([{
 }])[0];
 assert.equal(zeroCostUsedPart.internalCost, 0);
 assert.equal(zeroCostUsedPart.missingInternalCost, 0, 'An explicit zero-cost reclaimed part is known cost, not missing data.');
+
+const observedOldTicket = {
+  id: 1014,
+  kind: 'repair',
+  checkInAt: '2026-07-30T21:31:58.645Z',
+  laborCost: 100,
+  partCosts: 75,
+  taxRate: 8,
+  amountPaid: 181,
+  items: [{ repair: 'Repair Part', parts: 75, internalCost: 45 }],
+  payments: [
+    { applied: 131, amount: 131, inferred: true, at: '2026-07-30T21:31:58.645Z' },
+    { applied: 50, amount: 50, appliedLabor: 0, appliedParts: 50, paymentType: 'Card', at: '2026-08-18T14:31:52.532Z' },
+  ],
+};
+const observedLedger = buildReportingLedger([observedOldTicket]);
+assert.equal(observedLedger.filter(entry => entry.date.toISOString().startsWith('2026-07-30')).reduce((sum, entry) => sum + entry.collected, 0), 131, 'A historical manual payment must stay on its historical date.');
+assert.equal(observedLedger.filter(entry => entry.date.toISOString().startsWith('2026-08-18')).reduce((sum, entry) => sum + entry.collected, 0), 50, 'A checkout today must count today even when its ticket was created earlier.');
+
+const observedDayLedger = buildReportingLedger([
+  observedOldTicket,
+  { id: 1154, kind: 'repair', laborCost: 50, amountPaid: 50, payments: [{ applied: 50, amount: 50, at: '2026-08-18T15:00:00.000Z' }] },
+  { id: 1153, kind: 'repair', laborCost: 25, amountPaid: 25, payments: [{ applied: 25, amount: 25, at: '2026-08-18T15:15:00.000Z' }] },
+  { id: 1155, kind: 'sale', amountPaid: 6.48, items: [{ description: 'Product', qty: 1, price: 6.48, internalCost: 3 }], payments: [{ applied: 6.48, amount: 6.48, at: '2026-08-18T15:30:00.000Z' }] },
+]);
+assert.equal(observedDayLedger.filter(entry => entry.date.toISOString().startsWith('2026-08-18')).reduce((sum, entry) => sum + entry.collected, 0), 131.48, 'The audited August 18 checkouts must reconcile to $131.48, not $81.48.');
+
+const manualHistoricalCorrection = buildReportingLedger([{
+  id: 1015,
+  kind: 'repair',
+  checkInAt: '2026-07-30T16:00:00.000Z',
+  laborCost: 131,
+  amountPaid: 131,
+}]);
+assert.equal(manualHistoricalCorrection.length, 1);
+assert.equal(manualHistoricalCorrection[0].date.toISOString(), '2026-07-30T16:00:00.000Z', 'A manually restored paid amount must not fabricate revenue on the current day.');
 
 console.log('Reporting payment ledger checks passed.');
