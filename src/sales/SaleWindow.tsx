@@ -577,6 +577,15 @@ const SaleWindow: React.FC = () => {
     setValidationActive(true);
     const detailText = missingRequired.map(key => SALE_REQUIRED_LABELS[key]).join(', ');
 
+    if ((action === 'save' || action === 'checkout') && missingRequired.includes('assignedTo')) {
+      setArmedValidationActions(prev => ({ ...prev, [action]: false }));
+      triggerWarningBanner(
+        `Assign a technician before ${actionDescription}`,
+        'A sale cannot be saved or checked out until a technician is assigned.'
+      );
+      return false;
+    }
+
     if (!armedValidationActions[action]) {
       setArmedValidationActions(prev => ({ ...prev, [action]: true }));
       triggerWarningBanner(
@@ -627,6 +636,7 @@ const SaleWindow: React.FC = () => {
   }
 
   const canSave = useMemo(() => {
+    if (!String(sale.assignedTo ?? '').trim()) return false;
     // Existing sale can always be saved to persist metadata like technician/dates
     if ((sale as any).id) return true;
     const rows = sale.items || [];
@@ -645,7 +655,7 @@ const SaleWindow: React.FC = () => {
       if (!(Number(r.price) >= 0)) return false;
     }
     return true;
-  }, [sale.items, (sale as any).itemDescription, (sale as any).quantity, (sale as any).price, (sale as any).id]);
+  }, [sale.items, sale.assignedTo, (sale as any).itemDescription, (sale as any).quantity, (sale as any).price, (sale as any).id]);
 
   function buildSaleRecordBase(): SaleRecord {
     const now = new Date().toISOString();

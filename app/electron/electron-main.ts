@@ -5246,14 +5246,15 @@ function scheduleCloudSyncQueueDrain(delayMs = 1500) {
 }
 
 async function syncCloudWriteOrQueue(op: 'upsert' | 'delete', key: string, itemOrId: any) {
-  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return;
+  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return { synced: false, queued: false };
   const legacyId = op === 'delete' ? itemOrId : legacyIdForCloudItem(key, itemOrId);
-  if (legacyId === null || typeof legacyId === 'undefined') return;
+  if (legacyId === null || typeof legacyId === 'undefined') return { synced: false, queued: false };
   try {
     if (!shouldUseCloudDb(key)) throw new Error('Cloud session is not ready.');
     if (op === 'delete') await cloudDbDelete(key, legacyId);
     else await cloudDbUpsert(key, itemOrId);
     scheduleCloudSyncQueueDrain(100);
+    return { synced: true, queued: false };
   } catch (e: any) {
     queueCloudSyncOperation({
       id: cloudSyncOperationId(),
@@ -5265,6 +5266,7 @@ async function syncCloudWriteOrQueue(op: 'upsert' | 'delete', key: string, itemO
       attempts: 0,
       lastError: e?.message || String(e),
     });
+    return { synced: false, queued: true };
   }
 }
 
@@ -5462,7 +5464,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   const ok = writeDb(nextDb);
   if (ok) {
     scheduleCollectionChanged(key);
-    void syncCloudWriteOrQueue('upsert', key, nextItem);
+    await syncCloudWriteOrQueue('upsert', key, nextItem);
     return nextItem;
   }
   return null;
@@ -5472,7 +5474,10 @@ ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
   if (shouldUseCloudDb(key)) {
     try {
       const cloudRows = await cloudDbGet(key);
-      if (Array.isArray(cloudRows)) return cloudRows.filter((it: any) => matchesDbQuery(it, q));
+      if (Array.isArray(cloudRows)) {
+        mergeCloudRowsIntoLocalCache(key, cloudRows);
+        return cloudRows.filter((it: any) => matchesDbQuery(it, q));
+      }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-find fallback:', key, e?.message || e); } catch {}
     }
@@ -5758,7 +5763,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
-    void syncCloudWriteOrQueue('upsert', key, updatedItem);
+    await syncCloudWriteOrQueue('upsert', key, updatedItem);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }

@@ -2745,24 +2745,31 @@
 }
 
 .gbpos-mobile .gb-wo-top-row {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
   gap: 0.55rem;
 }
 
-.gbpos-mobile .gb-wo-top-row > .gb-wo-details-menu {
+.gbpos-mobile .gb-wo-sidebar-header {
+  display: none;
+}
+
+.gbpos-mobile .gb-wo-mobile-details-menu {
+  display: block;
+  grid-column: 1;
   grid-row: 1;
-  justify-self: end;
+}
+
+.gbpos-mobile .gb-wo-mobile-details-menu .gb-wo-details-menu {
+  width: auto;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .gbpos-mobile .gb-wo-top-row > .gb-wo-assigned-field {
-  grid-row: 2;
-}
-
-.gbpos-mobile .gb-wo-details-menu {
+  grid-column: 2;
+  grid-row: 1;
   width: 100%;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .gbpos-mobile .gb-wo-menu-button {

@@ -540,7 +540,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
             </button>
             <button
               className="px-3 py-1 bg-brand text-black rounded"
-              onClick={() => {
+              onClick={async () => {
                 if (editing.requiresOrder && (editing.internalCost === undefined || !Number.isFinite(Number(editing.internalCost)) || Number(editing.internalCost) < 0)) {
                   setEditingError('Enter the supplier item cost before shipping and tax.');
                   return;
@@ -553,9 +553,13 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                 const saved = { ...editing, distributor, orderStatus: editing.requiresOrder ? (editing.orderStatus || 'needed') : 'in_stock' as const };
                 const nextItems = items.map(i => (i.id === editing.id ? saved : i));
                 setEditingError('');
-                onChange(nextItems);
-                void onCommit?.(nextItems);
-                setEditing(null);
+                try {
+                  await onCommit?.(nextItems);
+                  onChange(nextItems);
+                  setEditing(null);
+                } catch (error: any) {
+                  setEditingError(error?.message || 'The line item could not be saved.');
+                }
               }}
             >
               Save

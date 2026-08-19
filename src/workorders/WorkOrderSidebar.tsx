@@ -17,9 +17,10 @@ interface Props {
   /** Called when the receipt button needs a saved work-order ID but the record is still unsaved.
    *  Should persist the work order immediately and return its new numeric ID (0 if it fails). */
   onRequestForceSave?: () => Promise<number>;
+  headerControl?: React.ReactNode;
 }
 
-const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, hideAssigned = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags, onRequestForceSave }) => {
+const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = false, hideAssigned = false, saleDates = false, hideDates = false, hideOrderDeliveryDates = false, renderActions, validationFlags, onRequestForceSave, headerControl }) => {
   const [techs, setTechs] = useState<any[]>([]);
   useEffect(() => {
     let mounted = true;
@@ -45,6 +46,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
 
   return (
     <div className="gb-wo-side-actions bg-gradient-to-b from-slate-800 to-slate-900 p-3 rounded border border-zinc-700 h-full flex flex-col">
+      {headerControl ? <div className="gb-wo-sidebar-header">{headerControl}</div> : null}
       {(!hideStatus || !hideAssigned || !hideDates) && <h4 className="text-sm font-semibold text-zinc-200 mb-3">Status & Dates</h4>}
       {!hideStatus && (
         <>
@@ -291,6 +293,7 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && prev.hideOrderDeliveryDates === next.hideOrderDeliveryDates
     && prev.renderActions === next.renderActions
     && prev.onRequestForceSave === next.onRequestForceSave
+    && prev.headerControl === next.headerControl
     && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
     && String(a.status || '') === String(b.status || '')
     && String(a.assignedTo || '') === String(b.assignedTo || '')

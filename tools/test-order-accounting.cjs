@@ -178,6 +178,29 @@ assert.equal(taxedWorkOrder.totalCharge, 129.6, 'Cart Charged must include the s
 assert.equal(taxedWorkOrder.knownProfit, 20, 'Client tax collected must not be treated as shop margin.');
 assert.equal(taxedWorkOrder.paymentStatus, 'paid');
 
+const quantityWorkOrder = collectOrderCartRows([{
+  id: 105,
+  customerName: 'Quantity Test',
+  taxRate: 0,
+  amountPaid: 110,
+  payments: [{ applied: 110, appliedParts: 110 }],
+  items: [{
+    id: 'quantity-part',
+    repair: 'HDMI Port',
+    quantity: 2,
+    parts: 55,
+    labor: 100,
+    internalCost: 45,
+    distributor: 'Parts Vendor',
+    orderSourceUrl: 'https://parts.example/hdmi-port',
+    requiresOrder: true,
+    orderStatus: 'needed',
+  }],
+}], [], [])[0];
+assert.equal(quantityWorkOrder.totalCost, 90, 'Work-order supplier unit cost must be multiplied by quantity.');
+assert.equal(quantityWorkOrder.baseTotalCharge, 110, 'Work-order client part charge must be multiplied by quantity.');
+assert.equal(quantityWorkOrder.knownProfit, 20, 'Cart margin must compare the same quantity basis for cost and charge.');
+
 const removedWorkOrder = applyPurchaseQueueRemovalToItems(workOrders[0].items, workOrder, '2026-08-05T15:00:00.000Z');
 assert.equal(removedWorkOrder.matched, true);
 assert.equal(removedWorkOrder.items.length, workOrders[0].items.length, 'Removing a cart task must retain every work-order line.');

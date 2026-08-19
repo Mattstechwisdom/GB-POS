@@ -1,22 +1,10 @@
 
-// New type for items in the work order table, per user spec
-export type WorkOrderItemRow = {
-  id: string;
-  device: string;
-  repairCategory?: string;
-  repair: string;
-  parts: number;
-  labor: number;
-  status?: string;
-  note?: string;
-};
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
 import WorkOrderForm from './WorkOrderForm';
-import ItemsTable from './ItemsTable';
+import ItemsTable, { type WorkOrderItemRow } from './ItemsTable';
 import CustomBuildItemsTable from './CustomBuildItemsTable';
 import IntakePanel from './IntakePanel';
 import PaymentPanel from './PaymentPanel';
@@ -44,6 +32,21 @@ const REQUIRED_LABELS: Record<RequiredKey, string> = {
   model: 'Device model',
   serial: 'Device serial',
 };
+
+function workOrderItemQuantity(item: Partial<WorkOrderItemRow>) {
+  const quantity = Number(item.quantity ?? 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function calculateWorkOrderItemAmounts(items: WorkOrderItemRow[], discount: number, taxRate: number, amountPaid: number) {
+  const partCosts = round2(items.reduce((sum, item) => sum + (Number(item.parts) || 0) * workOrderItemQuantity(item), 0));
+  const laborCost = round2(items.reduce((sum, item) => sum + (Number(item.labor) || 0), 0));
+  return {
+    partCosts,
+    laborCost,
+    totals: computeTotals({ laborCost, partCosts, discount, taxRate, amountPaid }),
+  };
+}
 
 function parsePayload() {
   try {
@@ -534,6 +537,7 @@ const NewWorkOrderWindow: React.FC = () => {
         if (!existing) { setLoaded(true); return; }
         // Map existing.items (WorkOrderItem[]) to WorkOrderItemRow[] if present
         const mappedItems: WorkOrderItemRow[] = (existing.items || []).map((it: any) => ({
+          ...it,
           id: it.id?.toString() || Math.random().toString(36).slice(2),
           device: (it.device || existing.productDescription || existing.productCategory || ''),
           repairCategory: it.repairCategory || '',
@@ -542,6 +546,11 @@ const NewWorkOrderWindow: React.FC = () => {
           labor: typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0)),
           status: it.status || 'pending',
           note: it.note || it.model || it.modelNumber || '',
+          orderSourceUrl: it.orderSourceUrl || it.productUrl || '',
+          internalCost: it.internalCost === null || typeof it.internalCost === 'undefined' || it.internalCost === ''
+            ? undefined
+            : Number(it.internalCost),
+          quantity: workOrderItemQuantity(it),
         }));
         setWo(w => ({
           ...w,
@@ -576,15 +585,12 @@ const NewWorkOrderWindow: React.FC = () => {
 
   // Recompute partCosts, laborCost, and totals whenever items or payment fields change
   useEffect(() => {
-    const partCosts = wo.items.reduce((sum, r) => sum + (r.parts || 0), 0);
-    const laborCost = wo.items.reduce((sum, r) => sum + (r.labor || 0), 0);
-    const totals = computeTotals({
-      laborCost,
-      partCosts,
-      discount: wo.discount || 0,
-      taxRate: wo.taxRate || 0,
-      amountPaid: wo.amountPaid || 0,
-    });
+    const { partCosts, laborCost, totals } = calculateWorkOrderItemAmounts(
+      wo.items,
+      wo.discount || 0,
+      wo.taxRate || 0,
+      wo.amountPaid || 0,
+    );
     setWo(w => {
       const existing = w.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
       const totalsUnchanged =
@@ -664,6 +670,7 @@ const NewWorkOrderWindow: React.FC = () => {
 
   // Autosave work order after a short idle period (keeps UI responsive during typing)
   useAutosave(wo, async (val) => {
+    if (!String(val.assignedTo ?? '').trim()) return;
     try {
       const api = (window as any).api || {};
       let saved: any = null;
@@ -708,7 +715,8 @@ const NewWorkOrderWindow: React.FC = () => {
     equals: Object.is,
     skipInitialSave: isEditingExisting,
     // Ensure autosave does not fire for brand-new empty forms
-    shouldSave: (v) => !!(isEditingExisting || (v.id && v.id !== 0) || v.productCategory || v.productDescription || v.customerId || (v.items && v.items.length)),
+    shouldSave: (v) => !!String(v.assignedTo ?? '').trim()
+      && !!(isEditingExisting || (v.id && v.id !== 0) || v.productCategory || v.productDescription || v.customerId || (v.items && v.items.length)),
   });
 
   function ensureRequired(action: ValidationActionKey, actionDescription: string): boolean {
@@ -720,6 +728,15 @@ const NewWorkOrderWindow: React.FC = () => {
 
     setValidationActive(true);
     const detailText = missingRequired.map(key => REQUIRED_LABELS[key]).join(', ');
+
+    if ((action === 'save' || action === 'checkout') && missingRequired.includes('assignedTo')) {
+      setArmedValidationActions(prev => ({ ...prev, [action]: false }));
+      triggerWarningBanner(
+        `Assign a technician before ${actionDescription}`,
+        'A work order cannot be saved or checked out until a technician is assigned.'
+      );
+      return false;
+    }
 
     if (!armedValidationActions[action]) {
       setArmedValidationActions(prev => ({ ...prev, [action]: true }));
@@ -897,10 +914,11 @@ const NewWorkOrderWindow: React.FC = () => {
 
   const workOrderFull = useMemo<WorkOrderFull>(() => {
     const items = wo.items.map(row => ({
+      ...row,
       id: row.id,
       status: row.status as any || 'pending',
       description: row.repair,
-      qty: 1,
+      qty: workOrderItemQuantity(row),
       unitPrice: (row.parts || 0) + (row.labor || 0),
       parts: row.parts,
       labor: row.labor,
@@ -980,6 +998,11 @@ const NewWorkOrderWindow: React.FC = () => {
   // embed a real QR-code status URL.
   const handleSidebarForceSave = useCallback(async (): Promise<number> => {
     const current = workOrderFullRef.current as any;
+    if (!String(current?.assignedTo ?? '').trim()) {
+      setValidationActive(true);
+      triggerWarningBanner('Assign a technician before saving', 'A work order cannot be saved until a technician is assigned.');
+      return 0;
+    }
     const existingId = Number(current?.id || 0) || 0;
     if (existingId > 0) return existingId; // already saved — nothing to do
     const api: any = (window as any).api;
@@ -1002,6 +1025,35 @@ const NewWorkOrderWindow: React.FC = () => {
 
   const handleItemsChange = useCallback((items: WorkOrderItemRow[]) => {
     setWo(w => ({ ...w, items }));
+  }, []);
+
+  const handleItemsCommit = useCallback(async (items: WorkOrderItemRow[]) => {
+    const current = workOrderFullRef.current as any;
+    const id = Number(current?.id || 0) || 0;
+    if (!String(current?.assignedTo ?? '').trim()) {
+      setValidationActive(true);
+      triggerWarningBanner('Assign a technician before saving this item', 'The work order cannot be persisted until a technician is assigned.');
+      throw new Error('Assigned technician is required.');
+    }
+    if (!id) {
+      triggerWarningBanner('Save the work order first', 'Save the work order to create its invoice number, then save the line-item changes again.');
+      throw new Error('Work order must be saved before committing line-item changes.');
+    }
+    const amounts = calculateWorkOrderItemAmounts(
+      items,
+      Number(current.discount || 0),
+      Number(current.taxRate || 0),
+      Number(current.amountPaid || 0),
+    );
+    const payload = { ...current, ...amounts, id, items, updatedAt: new Date().toISOString() };
+    const api: any = (window as any).api || {};
+    const saved = typeof api.dbUpdate === 'function'
+      ? await api.dbUpdate('workOrders', id, payload)
+      : await api.update?.('workOrders', payload);
+    if (!saved) throw new Error('The work-order line item was not saved.');
+    setWo(previous => ({ ...previous, ...amounts, items, updatedAt: saved.updatedAt || payload.updatedAt }));
+    setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+    try { window.opener?.postMessage({ type: 'workorders:changed', id }, '*'); } catch {}
   }, []);
 
   const handleIntakeChange = useCallback((patch: Partial<WorkOrderFull>) => {
@@ -1671,7 +1723,26 @@ const NewWorkOrderWindow: React.FC = () => {
         </div>
       )}
       <div className="gb-wo-layout grid h-full" style={{ gridTemplateColumns: '220px 1fr 320px', columnGap: 12, rowGap: 8 }}>
-        <WorkOrderSidebar workOrder={workOrderFull} onChange={handleSidebarChange} hideStatus hideDates hideAssigned validationFlags={sidebarValidationFlags} onRequestForceSave={handleSidebarForceSave} />
+        <WorkOrderSidebar
+          workOrder={workOrderFull}
+          onChange={handleSidebarChange}
+          hideStatus
+          hideDates
+          hideAssigned
+          validationFlags={sidebarValidationFlags}
+          onRequestForceSave={handleSidebarForceSave}
+          headerControl={(
+            <div className="gb-wo-sidebar-menu">
+              <WorkOrderDetailsMenu
+                open={detailsMenuOpen}
+                workOrder={workOrderFull}
+                onToggle={() => setDetailsMenuOpen(open => !open)}
+                onClose={() => setDetailsMenuOpen(false)}
+                onChange={handleSidebarChange}
+              />
+            </div>
+          )}
+        />
         <div className="gb-wo-main-scroll flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <div className="gb-wo-mobile-intake">
             <IntakePanel
@@ -1684,13 +1755,15 @@ const NewWorkOrderWindow: React.FC = () => {
           </div>
           <div className="gb-wo-top-card bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="gb-wo-top-row">
-              <WorkOrderDetailsMenu
-                open={detailsMenuOpen}
-                workOrder={workOrderFull}
-                onToggle={() => setDetailsMenuOpen(open => !open)}
-                onClose={() => setDetailsMenuOpen(false)}
-                onChange={handleSidebarChange}
-              />
+              <div className="gb-wo-mobile-details-menu">
+                <WorkOrderDetailsMenu
+                  open={detailsMenuOpen}
+                  workOrder={workOrderFull}
+                  onToggle={() => setDetailsMenuOpen(open => !open)}
+                  onClose={() => setDetailsMenuOpen(false)}
+                  onChange={handleSidebarChange}
+                />
+              </div>
               <AssignedTechnicianField
                 value={workOrderFull.assignedTo}
                 invalid={!!sidebarValidationFlags?.assignedTo}
@@ -1798,6 +1871,7 @@ const NewWorkOrderWindow: React.FC = () => {
             <ItemsTable
               items={wo.items}
               onChange={handleItemsChange}
+              onCommit={handleItemsCommit}
               onAddProduct={handleAddProduct}
               addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
               readonlyItems={readonlyAddonRows as any}

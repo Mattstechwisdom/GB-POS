@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.20 (2026-08-19)
+- Durable Part Editing: saves work-order line-item URL, supplier cost, marked-up client charge, repair title, quantity, distributor, markup, and order status immediately when the line-item Save button is pressed.
+- Supabase Field Parity: preserves the complete line-item JSON when a work order is reopened on Windows or Android instead of discarding purchasing fields during form reconstruction.
+- Cross-Device Commit: waits for a successful Supabase write or a durable offline-sync queue entry before a desktop work-order or sale write reports success.
+- Cloud Record Updates: caches records opened through Supabase search before editing so desktop updates cannot fail because the ticket was absent from the local cache.
+- Exact Cart Math: calculates supplier cost and the client parts charge on the same quantity basis while retaining labor as the repair charge, keeping Cart cost, charged total, and margin aligned with Checkout.
+- Required Assignment: prevents work orders and sales from being saved, force-saved, autosaved, or checked out until a technician is assigned.
+- Work Order Header: moves Status and Dates to the top-left sidebar control and gives Assigned To the wider top-row position on desktop and mobile.
+- Release Safety: adds production-data auditing and regression coverage for Supabase payload retention, immediate commits, cross-device updates, technician validation, and multi-quantity cart totals.
+
 ## v0.6.19 (2026-08-18)
 - Exact Daily Collection: attributes every real Checkout to the time payment was taken, even when the work order or sale was created on an earlier day.
 - Historical Corrections: keeps manually restored paid amounts on their historical ticket date so they remain in month, year, and lifetime reporting without fabricating current-day revenue.

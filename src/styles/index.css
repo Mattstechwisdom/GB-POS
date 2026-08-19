@@ -1609,9 +1609,29 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 .gb-wo-top-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(18rem, 32rem);
+  justify-content: start;
   gap: 0.75rem;
   align-items: end;
+}
+
+.gb-wo-sidebar-header {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.gb-wo-sidebar-header .gb-wo-details-popover {
+  right: auto;
+  left: 0;
+}
+
+.gb-wo-mobile-details-menu {
+  display: none;
+}
+
+.gb-wo-top-row > .gb-wo-assigned-field {
+  width: 100%;
 }
 
 .gb-wo-details-menu {
