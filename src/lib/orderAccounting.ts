@@ -59,6 +59,23 @@ export function calculateSalesTax(amount: unknown, taxExempt = false, taxRate = 
   return taxExempt ? 0 : roundMoney(taxableAmount * rate / 100);
 }
 
+export function allocateCheckoutAdditionalCosts(rows: OrderCartRow[], additionalCost: unknown) {
+  const allocation = new Map<string, number>();
+  const amount = Math.max(0, Number(additionalCost) || 0);
+  if (!rows.length || amount <= 0) return allocation;
+
+  const weightTotal = rows.reduce((sum, row) => sum + (row.hasCost && row.totalCost > 0 ? row.totalCost : 1), 0);
+  let allocated = 0;
+  rows.forEach((row, index) => {
+    const rowAmount = index === rows.length - 1
+      ? roundMoney(amount - allocated)
+      : roundMoney(amount * ((row.hasCost && row.totalCost > 0 ? row.totalCost : 1) / weightTotal));
+    allocation.set(row.key, rowAmount);
+    allocated = roundMoney(allocated + rowAmount);
+  });
+  return allocation;
+}
+
 function clientChargeWithTax(baseCharge: number, record: any) {
   const clientTaxRate = Math.max(0, Number(record?.taxRate) || 0);
   const clientTax = calculateSalesTax(baseCharge, false, clientTaxRate);
@@ -310,6 +327,15 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
     });
   }
   return rows.sort((a, b) => a.distributor.localeCompare(b.distributor) || a.sourceType.localeCompare(b.sourceType) || a.sourceId - b.sourceId);
+}
+
+export function filterLedgerBackedOrderCartRows(rows: OrderCartRow[], purchaseOrders: any[]) {
+  const ledgerSourceKeys = new Set(
+    (Array.isArray(purchaseOrders) ? purchaseOrders : [])
+      .map(record => String(record?.sourceKey || ''))
+      .filter(Boolean),
+  );
+  return rows.filter(row => row.purchaseOrderId || !ledgerSourceKeys.has(row.key));
 }
 
 const KNOWN_CART_PATHS: Array<[RegExp, string]> = [

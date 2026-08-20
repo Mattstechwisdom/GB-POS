@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.22 (2026-08-20)
+- Selective Cart Checkout: allows any chosen parts or products within a distributor cart to be purchased without requiring the entire distributor group.
+- Exact Shared Costs: allocates entered shipping and checkout fees only across the selected line items while retaining the full entered amount to the cent.
+- Immediate Cart Reconciliation: removes each successfully purchased line from the cart while leaving unselected or failed lines available for a later checkout.
+- Reporting Ledger Sync: saves one durable `checked_out` Supabase purchase record per selected line so EOD, monthly reporting, supplier cost, and purchasing budget totals update from the same source of truth.
+- Retry Safety: keeps failed selections and their quantities intact, clears consumed distributor costs only after every selected line for that distributor succeeds, and reports item-level failures.
+- Release Safety: adds regression coverage for partial distributor selection, exact additional-cost allocation, cart removal, and reporting-cost retention.
+
 ## v0.6.21 (2026-08-20)
 - Batch Calendar Tasks: stage multiple tasks for one technician or All Technicians, review existing and pending work for the selected day, then save the complete batch to the synced calendar at once.
 - Focused Task Entry: resets the subject and details after each staged task while retaining the selected date, technician, and schedule for efficient repeated entry.

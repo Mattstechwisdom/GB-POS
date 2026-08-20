@@ -12,7 +12,7 @@ const build = esbuild.buildSync({
 });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows } = moduleShim.exports;
+const { allocateCheckoutAdditionalCosts, applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, filterLedgerBackedOrderCartRows, groupOrderCartRows } = moduleShim.exports;
 
 const readSource = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 const eodSource = readSource('src/components/EODWindow.tsx');
@@ -40,11 +40,22 @@ assert.match(workOrderItemsSource, /onCommit\?\.\(nextItems\)/, 'Work-order item
 assert.match(saleItemsSource, /onCommit\?\.\(nextItems\)/, 'Sale item edits must commit immediately so EOD reads the saved cost.');
 assert.match(eodSource, /Items arrive on different dates/, 'The EOD cart must support split delivery dates.');
 assert.match(eodSource, /estimatedDelivery: deliveryForRow\(cartRow\)/, 'Checked-out cart lines must retain their selected estimated delivery date.');
+assert.doesNotMatch(eodSource, /select every item in this distributor before applying shared shipping/, 'A distributor checkout must allow individually selected cart lines.');
+assert.match(eodSource, /selected item.*purchased, removed from the cart, and synced to reporting/, 'Selective checkout must confirm cart removal and reporting sync.');
 assert.doesNotMatch(workOrderSource, /<label[^>]*>Internal cost/, 'Parts Tracking must not own repair pricing fields.');
 assert.doesNotMatch(workOrderSource, /<label[^>]*>Order URL<\/label>/, 'Parts Tracking must not duplicate the line-item order URL.');
 
 assert.equal(calculateSalesTax(100, false, 8), 8, 'Non-exempt supplier purchases should add 8% South Carolina sales tax.');
 assert.equal(calculateSalesTax(100, true, 8), 0, 'Tax-exempt supplier purchases must not add sales tax.');
+
+const selectiveFeeRows = [
+  { key: 'selected-a', hasCost: true, totalCost: 30 },
+  { key: 'selected-b', hasCost: true, totalCost: 70 },
+];
+const selectiveFeeAllocation = allocateCheckoutAdditionalCosts(selectiveFeeRows, 10);
+assert.equal(selectiveFeeAllocation.get('selected-a'), 3, 'Shared checkout costs must be allocated across the selected subset by supplier cost.');
+assert.equal(selectiveFeeAllocation.get('selected-b'), 7, 'The selected subset must receive the full shared checkout cost without requiring the whole distributor cart.');
+assert.equal(Array.from(selectiveFeeAllocation.values()).reduce((sum, value) => sum + value, 0), 10, 'Selective checkout allocation must preserve the exact entered checkout cost.');
 
 const workOrders = [{
   id: 101,
@@ -157,6 +168,15 @@ const purchaseOrders = [{
 const rows = collectOrderCartRows(workOrders, sales, purchaseOrders);
 assert.equal(rows.length, 4, 'Only outstanding source lines with a real supplier cost and pending purchase records should enter the cart.');
 assert.equal(rows.some(row => row.itemId === 'removed-part' || row.itemId === 'removed-product'), false, 'Deleted cart tasks must remain suppressed without deleting their source items.');
+
+const sourceCartRows = rows.filter(row => !row.purchaseOrderId);
+const twoCheckedOutRows = sourceCartRows.slice(0, 2).map((row, index) => ({ id: 400 + index, status: 'checked_out', sourceKey: row.key, totalCost: row.totalCost }));
+const remainingAfterSelectiveCheckout = filterLedgerBackedOrderCartRows(rows, twoCheckedOutRows);
+assert.equal(remainingAfterSelectiveCheckout.length, rows.length - 2, 'Checking out selected lines must remove exactly those lines from the cart.');
+assert.equal(remainingAfterSelectiveCheckout.some(row => twoCheckedOutRows.some(record => record.sourceKey === row.key)), false, 'Purchased source keys must not reappear in the cart.');
+assert.equal(twoCheckedOutRows.reduce((sum, record) => sum + record.totalCost, 0), sourceCartRows[0].totalCost + sourceCartRows[1].totalCost, 'Each selected checkout ledger record must retain its reporting cost.');
+const pendingSourceLedger = [{ id: 499, status: 'pending', sourceKey: sourceCartRows[2].key }];
+assert.equal(filterLedgerBackedOrderCartRows(rows, pendingSourceLedger).some(row => row.key === sourceCartRows[2].key), false, 'A pending ledger-backed purchase must continue to suppress its duplicate source row.');
 
 const workOrder = rows.find(row => row.key === 'workOrder:101:part-1');
 assert.equal(workOrder.totalCost, 100);

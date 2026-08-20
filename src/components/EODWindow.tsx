@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
-import { applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, groupOrderCartRows, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
+import { allocateCheckoutAdditionalCosts, applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, filterLedgerBackedOrderCartRows, groupOrderCartRows, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
 import { buildReportingLedger } from '../lib/reportingAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
@@ -1475,8 +1475,8 @@ const EODWindow: React.FC = () => {
             : { id: -401 - index, status: 'pending', sourceType: 'inventory', inventoryId, itemType: 'Product', title: 'USB-C 65W Power Adapter', distributor: 'Independent Vendor', orderUrl: 'https://example.com/usb-c-adapter?qty=4', quantity: 4, unitCost: 18.5 }),
         ])
       : collectOrderCartRows(workOrders, sales, purchaseOrders);
-      const ledgerSourceKeys = new Set(purchaseOrders.map(record => String(record?.sourceKey || '')).filter(Boolean));
-      return rows.filter(row => !previewDeletedPurchaseKeys.has(row.key) && (row.purchaseOrderId || !ledgerSourceKeys.has(row.key))).map(row => {
+      const visibleRows = rows.filter(row => !previewDeletedPurchaseKeys.has(row.key));
+      return filterLedgerBackedOrderCartRows(visibleRows, purchaseOrders).map(row => {
         const override = Number(quantityOverrides[row.key]);
         if (!Number.isFinite(override) || override <= 0 || override === row.quantity) return row;
         const quantity = Math.max(1, Math.round(override));
@@ -1801,8 +1801,10 @@ const EODWindow: React.FC = () => {
     }
     const allocationByRow = new Map<string, number>();
     const supplierTaxByRow = new Map<string, number>();
+    const selectedKeys = new Set(selected.map(row => row.key));
+    const distributorsWithAdditionalCosts = new Set<string>();
     for (const group of purchaseGroups) {
-      const selectedRows = group.rows.filter(row => selected.some(selectedRow => selectedRow.key === row.key));
+      const selectedRows = group.rows.filter(row => selectedKeys.has(row.key));
       if (!selectedRows.length) continue;
       const taxExempt = distributorIsTaxExempt(group.distributor, group.rows);
       allocateSupplierTax(selectedRows, taxExempt).forEach((tax, key) => supplierTaxByRow.set(key, tax));
@@ -1813,19 +1815,8 @@ const EODWindow: React.FC = () => {
         return;
       }
       if (extra <= 0) continue;
-      if (selectedRows.length !== group.rows.length) {
-        setPurchaseUpdateMessage(`${group.distributor}: select every item in this distributor before applying shared shipping or checkout costs.`);
-        return;
-      }
-      const weightTotal = selectedRows.reduce((sum, row) => sum + (row.hasCost && row.totalCost > 0 ? row.totalCost : 1), 0);
-      let allocated = 0;
-      selectedRows.forEach((row, index) => {
-        const amount = index === selectedRows.length - 1
-          ? round2(extra - allocated)
-          : round2(extra * ((row.hasCost && row.totalCost > 0 ? row.totalCost : 1) / weightTotal));
-        allocationByRow.set(row.key, amount);
-        allocated = round2(allocated + amount);
-      });
+      distributorsWithAdditionalCosts.add(group.distributor);
+      allocateCheckoutAdditionalCosts(selectedRows, extra).forEach((amount, key) => allocationByRow.set(key, amount));
     }
     setPurchaseUpdateBusy(true);
     setPurchaseUpdateMessage('');
@@ -2030,16 +2021,29 @@ const EODWindow: React.FC = () => {
           failures.push(`Sale #${saleId}: ${error?.message || error}`);
         }
       }
-      setSelectedPurchaseRows(new Set());
-      setQuantityOverrides({});
+      setSelectedPurchaseRows(current => {
+        const next = new Set(current);
+        successfulPurchaseKeys.forEach(key => next.delete(key));
+        return next;
+      });
+      setQuantityOverrides(current => {
+        const next = { ...current };
+        successfulPurchaseKeys.forEach(key => delete next[key]);
+        return next;
+      });
       setAdditionalCostsByDistributor(current => {
         const next = { ...current };
         purchaseGroups.forEach(group => {
-          if (group.rows.every(row => selected.some(selectedRow => selectedRow.key === row.key))) delete next[group.distributor];
+          if (!distributorsWithAdditionalCosts.has(group.distributor)) return;
+          const selectedGroupRows = group.rows.filter(row => selectedKeys.has(row.key));
+          if (selectedGroupRows.length && selectedGroupRows.every(row => successfulPurchaseKeys.has(row.key))) delete next[group.distributor];
         });
         return next;
       });
-      setPurchaseUpdateMessage(`${updatedCount} item${updatedCount === 1 ? '' : 's'} marked ordered and synced.${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${queuedEmailCount ? ` ${queuedEmailCount} client email${queuedEmailCount === 1 ? '' : 's'} queued.` : ''}${skippedEmailCount ? ` ${skippedEmailCount} client update${skippedEmailCount === 1 ? '' : 's'} skipped because no email is on file.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
+      const checkoutSummary = updatedCount
+        ? `${updatedCount} selected item${updatedCount === 1 ? '' : 's'} purchased, removed from the cart, and synced to reporting.`
+        : 'No selected items were purchased.';
+      setPurchaseUpdateMessage(`${checkoutSummary}${emailCount ? ` ${emailCount} client email${emailCount === 1 ? '' : 's'} sent.` : ''}${queuedEmailCount ? ` ${queuedEmailCount} client email${queuedEmailCount === 1 ? '' : 's'} queued.` : ''}${skippedEmailCount ? ` ${skippedEmailCount} client update${skippedEmailCount === 1 ? '' : 's'} skipped because no email is on file.` : ''}${failures.length ? ` ${failures.join(' ')}` : ''}`);
     } finally {
       setPurchaseUpdateBusy(false);
     }
