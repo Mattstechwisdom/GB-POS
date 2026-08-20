@@ -1,4 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
+type FeedbackAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  dataUrl: string;
+  size: number;
+};
 
 type FeedbackEntry = {
   id: number | string;
@@ -8,10 +16,58 @@ type FeedbackEntry = {
   completedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  attachments?: FeedbackAttachment[];
 };
 
-const blankDraft = () => ({ subject: '', body: '' });
+const blankDraft = () => ({ subject: '', body: '', attachments: [] as FeedbackAttachment[] });
 const COMPLETED_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+const MAX_FEEDBACK_IMAGES = 4;
+const MAX_FEEDBACK_IMAGE_BYTES = 900_000;
+
+function fileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('The selected image could not be opened.'));
+    image.src = dataUrl;
+  });
+}
+
+async function prepareFeedbackImage(file: File): Promise<FeedbackAttachment> {
+  if (!file.type.startsWith('image/')) throw new Error(`${file.name} is not an image.`);
+  const source = await fileAsDataUrl(file);
+  const image = await loadImage(source);
+  const scale = Math.min(1, 1440 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('This device could not prepare the screenshot.');
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  let dataUrl = canvas.toDataURL('image/webp', 0.82);
+  let estimatedBytes = Math.ceil((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+  if (estimatedBytes > MAX_FEEDBACK_IMAGE_BYTES) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+    estimatedBytes = Math.ceil((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+  }
+  if (estimatedBytes > MAX_FEEDBACK_IMAGE_BYTES) throw new Error(`${file.name} is still too large after compression. Crop it and try again.`);
+  return {
+    id: crypto.randomUUID(),
+    name: file.name || 'Screenshot',
+    contentType: dataUrl.slice(5, dataUrl.indexOf(';')) || 'image/webp',
+    dataUrl,
+    size: estimatedBytes,
+  };
+}
 
 function completedExpiry(entry: FeedbackEntry) {
   if (!entry.completed) return 0;
@@ -32,6 +88,9 @@ export default function FeedbackWindow() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<FeedbackAttachment | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadEntries = async () => {
     try {
@@ -67,9 +126,32 @@ export default function FeedbackWindow() {
 
   const openEntry = (entry: FeedbackEntry) => {
     setSelected(entry);
-    setDraft({ subject: entry.subject || '', body: entry.body || '' });
+    setDraft({ subject: entry.subject || '', body: entry.body || '', attachments: Array.isArray(entry.attachments) ? entry.attachments : [] });
     setError('');
     setEditorOpen(true);
+  };
+
+  const importScreenshots = async (files: FileList | null) => {
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
+    const remaining = MAX_FEEDBACK_IMAGES - draft.attachments.length;
+    if (remaining <= 0) {
+      setError(`Feedback can include up to ${MAX_FEEDBACK_IMAGES} screenshots.`);
+      return;
+    }
+    setAttachmentBusy(true);
+    setError('');
+    try {
+      const prepared: FeedbackAttachment[] = [];
+      for (const file of selectedFiles.slice(0, remaining)) prepared.push(await prepareFeedbackImage(file));
+      setDraft((current) => ({ ...current, attachments: [...current.attachments, ...prepared] }));
+      if (selectedFiles.length > remaining) setError(`Only the first ${remaining} screenshot${remaining === 1 ? '' : 's'} were added. The limit is ${MAX_FEEDBACK_IMAGES}.`);
+    } catch (importError: any) {
+      setError(importError?.message || 'The screenshot could not be imported.');
+    } finally {
+      setAttachmentBusy(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+    }
   };
 
   const save = async () => {
@@ -84,9 +166,9 @@ export default function FeedbackWindow() {
     const now = new Date().toISOString();
     try {
       if (selected) {
-        await window.api.dbUpdate('feedbackEntries', selected.id, { ...selected, subject, body, updatedAt: now });
+        await window.api.dbUpdate('feedbackEntries', selected.id, { ...selected, subject, body, attachments: draft.attachments, updatedAt: now });
       } else {
-        await window.api.dbAdd('feedbackEntries', { id: crypto.randomUUID(), subject, body, completed: false, createdAt: now, updatedAt: now });
+        await window.api.dbAdd('feedbackEntries', { id: crypto.randomUUID(), subject, body, attachments: draft.attachments, completed: false, createdAt: now, updatedAt: now });
       }
       setEditorOpen(false);
       await loadEntries();
@@ -176,6 +258,14 @@ export default function FeedbackWindow() {
             <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg font-bold">{selected ? 'Feedback Details' : 'New Feedback'}</h2><button type="button" onClick={() => setEditorOpen(false)} className="rounded border border-zinc-700 px-2 py-1 text-sm text-zinc-300 hover:border-red-500 hover:text-white">Close</button></div>
             <label className="mb-3 block text-sm font-semibold text-zinc-300">Subject<input value={draft.subject} onChange={event => setDraft(current => ({ ...current, subject: event.target.value }))} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-[#39FF14]" /></label>
             <label className="block text-sm font-semibold text-zinc-300">Details<textarea value={draft.body} onChange={event => setDraft(current => ({ ...current, body: event.target.value }))} rows={8} className="mt-1 w-full resize-y rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 outline-none focus:border-[#39FF14]" /></label>
+            <section className="mt-3 rounded border border-zinc-700 bg-zinc-950/50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div><h3 className="text-sm font-semibold text-zinc-200">Screenshots</h3><p className="text-xs text-zinc-500">Up to {MAX_FEEDBACK_IMAGES}; images are compressed before syncing.</p></div>
+                <button type="button" disabled={attachmentBusy || draft.attachments.length >= MAX_FEEDBACK_IMAGES} onClick={() => attachmentInputRef.current?.click()} className="rounded border border-violet-400 bg-violet-500/15 px-3 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/25 disabled:opacity-50">{attachmentBusy ? 'Importing...' : 'Import'}</button>
+                <input ref={attachmentInputRef} type="file" accept="image/*" multiple className="hidden" aria-label="Import feedback screenshots" onChange={event => { void importScreenshots(event.target.files); }} />
+              </div>
+              {draft.attachments.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{draft.attachments.map((attachment) => <div key={attachment.id} className="group relative overflow-hidden rounded border border-zinc-700 bg-zinc-900"><button type="button" className="block aspect-video w-full overflow-hidden" onClick={() => setPreviewAttachment(attachment)} aria-label={`Preview ${attachment.name}`}><img src={attachment.dataUrl} alt={attachment.name} className="h-full w-full object-cover" /></button><div className="truncate px-2 py-1.5 text-[11px] text-zinc-400" title={attachment.name}>{attachment.name}</div><button type="button" aria-label={`Remove ${attachment.name}`} className="absolute right-1 top-1 rounded bg-black/80 px-2 py-1 text-xs font-bold text-white hover:bg-red-700" onClick={() => setDraft(current => ({ ...current, attachments: current.attachments.filter(item => item.id !== attachment.id) }))}>X</button></div>)}</div> : <p className="mt-3 text-xs text-zinc-500">No screenshots attached.</p>}
+            </section>
             {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
             {selected?.completed ? <p className="mt-3 text-xs text-zinc-400">Completed feedback is automatically removed three days after completion.</p> : null}
             <div className="mt-5 flex flex-wrap justify-between gap-2">
@@ -188,6 +278,7 @@ export default function FeedbackWindow() {
           </div>
         </div>
       ) : null}
+      {previewAttachment ? <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label="Screenshot preview" onMouseDown={event => { if (event.target === event.currentTarget) setPreviewAttachment(null); }}><div className="relative max-h-[92dvh] max-w-[94vw]"><img src={previewAttachment.dataUrl} alt={previewAttachment.name} className="max-h-[88dvh] max-w-[92vw] rounded border border-zinc-600 object-contain shadow-2xl" /><button type="button" onClick={() => setPreviewAttachment(null)} className="absolute right-2 top-2 rounded bg-black/80 px-3 py-2 text-sm font-bold text-white">Close</button></div></div> : null}
     </div>
   );
 }

@@ -1345,6 +1345,8 @@
 }
 
 .mobile-modal-shell[data-modal-type="quickSale"] .mobile-modal-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -1459,6 +1461,7 @@
 }
 
 .gbpos-mobile .gb-quick-checkout {
+  width: 100%;
   height: 100%;
   max-height: 100%;
   min-height: 0;
@@ -1474,6 +1477,8 @@
 }
 
 .gbpos-mobile .gb-quick-checkout-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   position: relative;
   z-index: 2;
   padding: 0.55rem !important;
@@ -1515,9 +1520,42 @@
 }
 
 .gbpos-mobile .gb-quick-checkout .gb-sale-item-editor.is-split {
-  max-height: 45dvh !important;
+  box-sizing: border-box;
+  height: 100% !important;
+  max-height: 100% !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-items.has-editor .gb-sale-items-list-pane {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-items.has-editor .gb-sale-items-split-layout {
+  display: block !important;
+  height: 100%;
+  min-height: 0;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-items:not(.has-editor) .gb-sale-items-empty-editor {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-mobile-editor-back {
+  display: inline-flex;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-editor-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-inline: -0.5rem;
+  margin-bottom: -0.5rem;
+  padding: 0.65rem 0.5rem 0.5rem;
+  background: #27272a;
+  border-top: 1px solid #3f3f46;
 }
 
 .gbpos-mobile .gb-quick-repair-catalog {
@@ -1542,6 +1580,42 @@
 
 .gbpos-mobile .gb-quick-checkout-totals .text-lg {
   font-size: 1rem !important;
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .gbpos-mobile .gb-quick-checkout-header {
+    min-height: 2.65rem;
+    padding-block: 0.3rem !important;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-header > div > div {
+    display: none;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-layout {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 0.35rem !important;
+    padding: 0.35rem !important;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-mode button {
+    min-height: 1.9rem;
+    padding-block: 0.2rem !important;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-totals {
+    grid-template-columns: auto minmax(18rem, 1fr) auto;
+    gap: 0.4rem;
+    padding: 0.35rem !important;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-totals > .grid-cols-3 > div {
+    padding: 0.3rem !important;
+  }
+
+  .gbpos-mobile .gb-quick-checkout-totals .text-lg {
+    font-size: 0.85rem !important;
+  }
 }
 
 .gbpos-mobile .gb-sale-catalog-toolbar {
@@ -3711,6 +3785,18 @@
 
   .gbpos-mobile .gb-calendar-editor > .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-calendar-task-builder {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .gbpos-mobile .gb-calendar-task-queue {
+    max-height: 15rem;
+  }
+
+  .gbpos-mobile .gb-calendar-task-queue > div:last-child {
+    max-height: 10.5rem !important;
   }
 
   .gbpos-mobile .gb-calendar-day-actions {

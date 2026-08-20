@@ -57,6 +57,22 @@ const QuickSaleWindow: React.FC = () => {
       .catch(() => setRepairItems([]));
   }, [api]);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyHeight = body.style.height;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.height = '100%';
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.height = previousBodyHeight;
+    };
+  }, []);
+
   const visibleRepairItems = useMemo(() => {
     const query = repairSearch.trim().toLowerCase();
     const rows = repairItems.filter((repair) => {
@@ -277,7 +293,7 @@ const QuickSaleWindow: React.FC = () => {
   }
 
   return (
-    <div className="gb-quick-checkout flex h-screen min-h-0 flex-col overflow-hidden bg-zinc-900 text-zinc-100 font-sans">
+    <div className="gb-quick-checkout flex min-h-0 flex-col overflow-hidden bg-zinc-900 text-zinc-100 font-sans">
       <div className="gb-quick-checkout-header p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>

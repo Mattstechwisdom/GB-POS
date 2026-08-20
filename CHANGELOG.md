@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.21 (2026-08-20)
+- Batch Calendar Tasks: stage multiple tasks for one technician or All Technicians, review existing and pending work for the selected day, then save the complete batch to the synced calendar at once.
+- Focused Task Entry: resets the subject and details after each staged task while retaining the selected date, technician, and schedule for efficient repeated entry.
+- Mobile Quick Checkout: gives product and repair editing a dedicated full-width mobile workspace with accessible fields, stable totals, and always-visible Save, Cancel, and Checkout controls in portrait and landscape.
+- Desktop Window Fit: sizes Quick Checkout and its catalog daughter window against the active display so the fixed editor and checkout footer remain inside the usable screen area.
+- Feedback Screenshots: imports up to four compressed screenshots through the native Windows or Android photo picker, previews or removes them before saving, and syncs them with the feedback record through Supabase.
+- Release Safety: expands regression coverage for task batching, screenshot persistence, mobile product and repair editing, active-display sizing, and fixed checkout controls.
+
 ## v0.6.20 (2026-08-19)
 - Durable Part Editing: saves work-order line-item URL, supplier cost, marked-up client charge, repair title, quantity, distributor, markup, and order status immediately when the line-item Save button is pressed.
 - Supabase Field Parity: preserves the complete line-item JSON when a work order is reopened on Windows or Android instead of discarding purchasing fields during form reconstruction.

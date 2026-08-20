@@ -21,6 +21,11 @@ assert.match(calendar, />All Day</, 'Task editor must provide an All Day option.
 assert.match(calendar, />Start time</, 'Timed tasks must provide a start time.');
 assert.match(calendar, />End time</, 'Timed tasks must provide an end time.');
 assert.match(calendar, /Task end time must be later than its start time/, 'Timed tasks must reject an invalid range.');
+assert.match(calendar, /addTaskToQueue/, 'Task editor must stage multiple tasks before the final save.');
+assert.match(calendar, /saveTaskBatch/, 'Task editor must save the staged task list together.');
+assert.match(calendar, /Add to Task List/, 'Task editor must expose an explicit queue action.');
+assert.match(calendar, /visibleTaskAssignments/, 'Task editor must show existing assignments for the selected technician and day.');
+assert.match(calendar, /Save Tasks \(\$\{taskQueue\.length\}\)/, 'Task editor must show how many staged tasks will be saved.');
 for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /endTime:\s*row\.end_time/, 'Task end time must load from the shared calendar record.');
   assert.match(source, /end_time:\s*toCloudString\(item\.endTime\)/, 'Task end time must save to the shared calendar record.');

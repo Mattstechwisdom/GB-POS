@@ -432,6 +432,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       date: row.note_date || '',
       subject: row.subject || '',
       body: row.body || '',
+      attachments: Array.isArray(row.attachments) ? row.attachments : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -780,6 +781,7 @@ function toCloudRow(key: string, item: any): any | null {
       note_date: toCloudDateOnly(item.date),
       subject: toCloudString(item.subject),
       body: toCloudString(item.body),
+      attachments: Array.isArray(item.attachments) ? item.attachments.slice(0, 4) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };

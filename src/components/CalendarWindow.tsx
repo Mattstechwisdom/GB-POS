@@ -6,7 +6,7 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
-import { ALL_TECHNICIANS, calendarEventGroupKey, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '@/lib/calendarTasks';
+import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '@/lib/calendarTasks';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 
@@ -435,6 +435,9 @@ const CalendarWindow: React.FC = () => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const [taskQueue, setTaskQueue] = useState<CalendarEvent[]>([]);
+  const [taskBatchSaving, setTaskBatchSaving] = useState(false);
+  const [taskBatchError, setTaskBatchError] = useState('');
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [contentEditorLocked, setContentEditorLocked] = useState(false);
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
@@ -574,6 +577,25 @@ const CalendarWindow: React.FC = () => {
   useEffect(() => {
     if (!editing) setNotesExpanded(false);
   }, [editing]);
+
+  useEffect(() => {
+    if (!editing || editing.category !== 'task' || editing.id != null) {
+      setTaskQueue([]);
+      setTaskBatchError('');
+    }
+  }, [editing?.category, editing?.id]);
+
+  const visibleTaskAssignments = useMemo(() => {
+    if (!editing || editing.category !== 'task') return [];
+    const date = String(editing.date || '');
+    const technician = String(editing.technician || ALL_TECHNICIANS);
+    return events.filter((event) => {
+      if (event.category !== 'task' || event.date !== date) return false;
+      const assigned = String(event.technician || ALL_TECHNICIANS);
+      if (isSharedTaskAssignment(technician)) return isSharedTaskAssignment(assigned);
+      return isSharedTaskAssignment(assigned) || assigned === technician;
+    });
+  }, [editing, events]);
 
   useEffect(() => {
     if (!targetEventId || targetOpenedRef.current || !events.length) return;
@@ -908,6 +930,8 @@ const CalendarWindow: React.FC = () => {
 
   function onPick(day: Date) {
     setContentEditorLocked(false);
+    setTaskQueue([]);
+    setTaskBatchError('');
     setEditing({ date: fmtDate(day), title: '', time: '', category: 'event' });
     setDeliveryDates([]);
     setDeliveryDateInput('');
@@ -1024,6 +1048,67 @@ const CalendarWindow: React.FC = () => {
     } catch (e) { console.error('save event failed', e); }
   }
 
+  function addTaskToQueue() {
+    if (!editing || editing.category !== 'task' || editing.id != null) return;
+    const title = String(editing.title || '').trim();
+    if (!title) {
+      setTaskBatchError('Enter a subject before adding the task.');
+      return;
+    }
+    const hasStart = Boolean(editing.time);
+    const hasEnd = Boolean(editing.endTime);
+    if (hasStart !== hasEnd) {
+      setTaskBatchError('Timed tasks require both a start and end time.');
+      return;
+    }
+    if (hasStart && hasEnd && toMinutes(editing.endTime || '') <= toMinutes(editing.time || '')) {
+      setTaskBatchError('Task end time must be later than its start time.');
+      return;
+    }
+    setTaskQueue((current) => [...current, {
+      ...editing,
+      id: undefined,
+      title,
+      notes: String(editing.notes || '').trim(),
+      technician: editing.technician || ALL_TECHNICIANS,
+      taskCompleted: false,
+      taskCompletedAt: '',
+      taskCompletedBy: '',
+    }]);
+    setEditing((current) => current ? { ...current, title: '', notes: '' } : current);
+    setTaskBatchError('');
+  }
+
+  async function saveTaskBatch() {
+    if (!editing || editing.category !== 'task' || editing.id != null || taskBatchSaving) return;
+    if (!taskQueue.length) {
+      setTaskBatchError('Add at least one task to the list before saving.');
+      return;
+    }
+    setTaskBatchSaving(true);
+    setTaskBatchError('');
+    const saved: CalendarEvent[] = [];
+    try {
+      for (const task of taskQueue) {
+        const added = await (window as any).api.dbAdd('calendarEvents', task);
+        if (!added) throw new Error('A task was not returned after saving.');
+        saved.push(added);
+      }
+      setEvents((current) => [...current, ...saved]);
+      setTaskQueue([]);
+      setEditing(null);
+      setContentEditorLocked(false);
+    } catch (error: any) {
+      if (saved.length) {
+        setEvents((current) => [...current, ...saved]);
+        setTaskQueue((current) => current.slice(saved.length));
+      }
+      setTaskBatchError(error?.message || 'The task list could not be saved. Unsaved tasks remain in the list.');
+    } finally {
+      setTaskBatchSaving(false);
+    }
+  }
+
   // Silent autosave version (does not close modal or clear arrays)
   async function saveEventSilent(ev: CalendarEvent) {
     try {
@@ -1130,6 +1215,8 @@ const CalendarWindow: React.FC = () => {
       return;
     }
     setContentEditorLocked(false);
+    setTaskQueue([]);
+    setTaskBatchError('');
     setEditing({
       date: fmtDate(day),
       title: '',
@@ -1844,7 +1931,7 @@ const CalendarWindow: React.FC = () => {
 
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 w-[520px]">
+          <div className={`gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 ${editing.category === 'task' && editing.id == null ? 'w-[min(94vw,900px)]' : 'w-[520px]'}`}>
             <h3 className="font-semibold mb-2">
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
             </h3>
@@ -1860,7 +1947,11 @@ const CalendarWindow: React.FC = () => {
                 <button
                   key={opt.key}
                   className={`px-2 py-1 rounded border text-xs ${editing.category === opt.key ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
-                  onClick={() => setEditing({ ...editing, category: opt.key as any })}
+                  onClick={() => {
+                    setTaskQueue([]);
+                    setTaskBatchError('');
+                    setEditing({ ...editing, category: opt.key as any, title: '', notes: '' });
+                  }}
                 >{opt.label}</button>
               ))}
             </div> : !contentEditorLocked ? <div className="mb-3 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><span className={`gb-calendar-event-icon ${calendarEventVisual(editing).color}`}>{calendarEventVisual(editing).short}</span><strong>{calendarEventVisual(editing).label}</strong></div> : null}
@@ -1974,20 +2065,36 @@ const CalendarWindow: React.FC = () => {
                 </>
               )}
               {editing.category === 'task' && (
-                <>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-zinc-400">Assigned technician</label>
-                    <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.technician || ''} onChange={event => setEditing({ ...editing, technician: event.target.value })}>
-                      <option value={ALL_TECHNICIANS}>All Technicians</option>
-                      {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
-                    </select>
+                <div className="gb-calendar-task-builder col-span-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(17rem,0.8fr)]">
+                  <div className="min-w-0 space-y-3">
+                    <div>
+                      <label className="block text-xs text-zinc-400">Assigned technician</label>
+                      <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={editing.technician || ALL_TECHNICIANS} onChange={event => setEditing({ ...editing, technician: event.target.value })}>
+                        <option value={ALL_TECHNICIANS}>All Technicians</option>
+                        {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-400">Subject</label>
+                      <input autoFocus className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={editing.title || ''} onChange={event => setEditing({ ...editing, title: event.target.value })} placeholder="What needs to be completed?" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-400">Task details</label>
+                      <textarea className="w-full mt-1 min-h-[7.5rem] resize-y bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={editing.notes || ''} onChange={event => setEditing({ ...editing, notes: event.target.value })} placeholder="Instructions, checklist details, or context" />
+                    </div>
+                    {editing.id == null ? <button type="button" className="w-full rounded border border-violet-300 bg-violet-500 px-3 py-2 text-sm font-bold text-white hover:brightness-110" onClick={addTaskToQueue}>Add to Task List</button> : null}
+                    {editing.id != null ? <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-violet-400" checked={taskIsCompleted(editing)} onChange={event => setEditing({ ...editing, taskCompleted: event.target.checked, taskCompletedAt: event.target.checked ? new Date().toISOString() : '', taskCompletedBy: event.target.checked ? String(editing.technician || '') : '' })} /><span>Completed</span></label> : null}
                   </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-zinc-400">Task</label>
-                    <input autoFocus className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.title || ''} onChange={event => setEditing({ ...editing, title: event.target.value })} placeholder="What needs to be completed?" />
-                  </div>
-                  {editing.id != null ? <label className="col-span-2 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-violet-400" checked={taskIsCompleted(editing)} onChange={event => setEditing({ ...editing, taskCompleted: event.target.checked, taskCompletedAt: event.target.checked ? new Date().toISOString() : '', taskCompletedBy: event.target.checked ? String(editing.technician || '') : '' })} /><span>Completed</span></label> : null}
-                </>
+                  {editing.id == null ? <div className="gb-calendar-task-queue min-w-0 rounded border border-zinc-700 bg-zinc-950/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-sm">Tasks for {editing.date}</strong><span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs text-violet-200">{visibleTaskAssignments.length + taskQueue.length} total</span></div>
+                    <div className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
+                      {visibleTaskAssignments.map((task, index) => <div key={task.id ?? `saved-${index}`} className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2"><strong className={`block break-words text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}>{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">Saved - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{task.notes}</p> : null}</div>)}
+                      {taskQueue.map((task, index) => <div key={`queued-${index}`} className="rounded border border-violet-400/60 bg-violet-950/30 px-3 py-2"><div className="flex items-start justify-between gap-2"><strong className="min-w-0 break-words text-sm">{task.title}</strong><button type="button" className="shrink-0 text-xs text-red-300 hover:text-red-200" onClick={() => setTaskQueue(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><small className="mt-1 block text-violet-200">Ready to save - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-300">{task.notes}</p> : null}</div>)}
+                      {!visibleTaskAssignments.length && !taskQueue.length ? <p className="py-8 text-center text-sm text-zinc-500">No tasks are assigned here yet.</p> : null}
+                    </div>
+                  </div> : null}
+                  {taskBatchError ? <div className="md:col-span-2 rounded border border-red-600/70 bg-red-950/40 px-3 py-2 text-sm text-red-200">{taskBatchError}</div> : null}
+                </div>
               )}
               {editing.category === 'consultation' && (
                 <>
@@ -2093,7 +2200,7 @@ const CalendarWindow: React.FC = () => {
                 </>
               )}
               {/* Schedule entries are managed in Admin → Technicians and are not editable here */}
-              <div className="col-span-2">
+              {editing.category !== 'task' ? <div className="col-span-2">
                 <div className="flex items-center justify-between gap-3">
                   <label className="block text-xs text-zinc-400">Notes</label>
                   <button
@@ -2109,12 +2216,12 @@ const CalendarWindow: React.FC = () => {
                   value={editing.notes || ''}
                   onChange={e => setEditing({ ...editing, notes: e.target.value })}
                 />
-              </div>
+              </div> : null}
             </div>
             <div className="flex justify-end gap-2 mt-3">
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
-              <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setContentEditorLocked(false); }}>Cancel</button>
-              <button className="px-3 py-1 bg-[#39FF14] text-black rounded" onClick={() => saveEvent(editing)}>Save</button>
+              <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setTaskQueue([]); setTaskBatchError(''); setContentEditorLocked(false); }}>Cancel</button>
+              <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskQueue.length})`) : 'Save'}</button>
             </div>
           </div>
         </div>

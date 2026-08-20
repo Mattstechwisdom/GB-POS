@@ -291,11 +291,11 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 1. Open Quick Checkout and select Sale.
 2. Choose Pick product to open the permanent product catalog. Search and filter the list as needed.
-3. Check every product needed for this checkout. Selecting a row opens temporary sale-only fields on the right; quantity, price, cost, condition, vendor, and URL changes here do not overwrite the permanent inventory listing.
+3. Check every product needed for this checkout. Selecting a row opens temporary sale-only fields on the right on Windows; on Android it opens a dedicated full-width editor so every field and Save remain reachable. Quantity, price, cost, condition, vendor, and URL changes here do not overwrite the permanent inventory listing.
 4. Choose Add Selected to add all checked products at once. The checkout line-item list is the only scrolling list on desktop; the temporary editor remains beside it.
 5. Select any checkout line to review or temporarily edit it. Save closes the editor and applies the change only to this checkout.
 6. Verify subtotal, tax, and total, then choose Checkout. Tracked inventory is reduced by the recorded quantity only after the completed transaction is saved.
-7. On Android, the catalog list and selected-line editor scroll independently so the totals and Checkout action remain reachable in portrait and landscape.
+7. On Android, choose Back to items after reviewing a line, or Save to apply its temporary edits and return automatically. The catalog/list and editor occupy the available work area one at a time so the totals and Checkout action remain reachable in portrait and landscape.
 
 ### Quick Checkout Repair Selection
 
@@ -401,10 +401,12 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ### Tasks and Calendar Icons
 
-1. Add a Task and choose the assigned technician before entering the task text. Choose All Technicians for shared shop duties.
-2. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
-3. Open Calendar Settings to replace each event category's default character with a short letter, symbol, emoji, or small uploaded icon.
-4. Save Calendar Settings to sync the icon choices with the shop settings on other signed-in devices.
+1. Add a Task and choose the assigned technician. Choose All Technicians for shared shop duties.
+2. Enter the Subject and Task details, then choose Add to Task List. The entry fields clear while the technician, date, and time selection remain ready for another task.
+3. Review the saved and pending tasks shown for that technician and day. Remove any pending mistake, then choose Save Tasks to commit the full staged list to Calendar and Supabase.
+4. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
+5. Open Calendar Settings to replace each event category's default character with a short letter, symbol, emoji, or small uploaded icon.
+6. Save Calendar Settings to sync the icon choices with the shop settings on other signed-in devices.
 
 ### Important Notes, Daily Look, and Technician Journal
 
@@ -881,5 +883,7 @@ When reporting a problem, include:
 - Whether Sync Now changes the result.
 - GitHub Pages deployment and Supabase Edge Function status for web/QR failures.
 - A screenshot with private information obscured.
+
+Use Feedback > New Feedback > Import to choose up to four screenshots from Windows files or the Android system photo picker. Review each thumbnail before saving; imported images are compressed and sync with the feedback entry across signed-in devices. Remove or obscure customer information that is not needed to diagnose the issue.
 
 Do not send passwords, PINs, Supabase keys, signing keys, payment-card information, or entire customer backups in a support message.

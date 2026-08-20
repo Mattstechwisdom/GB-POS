@@ -11,6 +11,14 @@ const feedback = read('src/components/FeedbackWindow.tsx');
 expect(feedback.includes('3 * 24 * 60 * 60 * 1000'), 'Completed feedback must retain for three days.');
 expect(feedback.includes("dbDelete('feedbackEntries', entry.id)"), 'Expired feedback must be removed from storage.');
 expect(feedback.includes('deleteSelected'), 'Opened feedback must expose manual deletion.');
+expect(feedback.includes('prepareFeedbackImage'), 'Feedback screenshots must be compressed before syncing.');
+expect(feedback.includes('accept="image/*"'), 'Feedback Import must use the native image picker on desktop and Android.');
+expect(feedback.includes("attachments: draft.attachments"), 'Feedback saves must include imported screenshots.');
+const feedbackMigration = read('supabase/migrations/20260820144152_add_feedback_attachments.sql');
+expect(feedbackMigration.includes('attachments jsonb'), 'Feedback screenshots need a synced JSONB column.');
+const mobileApi = read('src/mobile/mobile-api.ts');
+expect(mobileApi.includes('attachments: Array.isArray(row.attachments)'), 'Android must load synced feedback screenshots.');
+expect(mobileApi.includes('attachments: Array.isArray(item.attachments)'), 'Android must save feedback screenshots to Supabase.');
 
 const preload = read('app/electron/preload.ts');
 for (const method of ['gidgetLocalStatus', 'gidgetLocalSetup', 'gidgetLocalGenerate', 'gidgetLocalCancel', 'gidgetLocalRemove']) {
@@ -21,6 +29,8 @@ expect(preload.includes("ipcRenderer.on('gidget:localToken'"), 'Electron generat
 
 const main = read('app/electron/electron-main.ts');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
+expect(main.includes('attachments: Array.isArray(row.attachments)'), 'Desktop must load synced feedback screenshots.');
+expect(main.includes('attachments: Array.isArray(item.attachments)'), 'Desktop must save feedback screenshots to Supabase.');
 
 const localRuntime = read('app/electron/gidget-local.ts');
 const chat = read('src/components/GidgetChat.tsx');

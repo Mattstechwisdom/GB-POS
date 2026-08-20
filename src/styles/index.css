@@ -2088,9 +2088,36 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* Quick Checkout keeps the temporary editor fixed while only its catalog/list panes scroll. */
+.gb-quick-checkout {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+.gb-quick-checkout-layout {
+  box-sizing: border-box;
+  min-height: 0;
+}
 .gb-quick-checkout-layout > .gb-sale-items {
   min-height: 0;
   overflow: hidden;
+}
+.gb-quick-checkout-totals {
+  display: grid;
+  grid-template-columns: auto minmax(24rem, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+.gb-quick-checkout-totals > * {
+  margin-top: 0 !important;
+}
+.gb-quick-checkout-totals > .grid-cols-3 > div {
+  padding: 0.55rem 0.75rem;
+}
+.gb-quick-checkout-totals > .pt-2 {
+  min-width: 7rem;
+  padding-top: 0;
 }
 .gb-quick-checkout .gb-sale-items-table-wrap,
 .gb-quick-checkout .gb-sale-catalog-results > :last-child {
@@ -2116,6 +2143,32 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 .gb-sale-catalog-editor {
   overflow: hidden;
+}
+.gb-mobile-editor-back {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .gb-quick-checkout-totals {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 901px) {
+  .gb-quick-checkout-header {
+    padding-block: 0.55rem !important;
+  }
+  .gb-quick-checkout-layout {
+    gap: 0.55rem !important;
+    padding: 0.55rem !important;
+  }
+  .gb-quick-checkout-mode button {
+    padding-block: 0.35rem !important;
+  }
+  .gb-quick-checkout .gb-sale-items {
+    padding: 0.55rem !important;
+  }
 }
 
 .gb-technicians-window .gb-tech-mobile-list {

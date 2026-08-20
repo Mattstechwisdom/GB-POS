@@ -310,7 +310,7 @@ const SaleItemsTable: React.FC<Props> = ({
   const splitLayout = layout === 'split';
 
   return (
-    <div className={`gb-sale-items ${splitLayout ? 'flex h-full min-h-0 flex-col' : ''} bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
+    <div className={`gb-sale-items ${splitLayout ? 'flex h-full min-h-0 flex-col' : ''} ${editing ? 'has-editor' : ''} bg-zinc-900 border ${showRequiredIndicator ? 'border-red-500' : 'border-zinc-700'} rounded p-3`}>
       <div className="gb-sale-items-header flex items-center justify-between mb-2">
         <h4 className="text-sm font-semibold text-zinc-200">
           Items
@@ -318,8 +318,8 @@ const SaleItemsTable: React.FC<Props> = ({
         </h4>
         <div className="text-xs text-zinc-400">Add products (max {MAX_ITEMS})</div>
       </div>
-      <div className={splitLayout ? 'grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[minmax(320px,0.9fr)_minmax(430px,1.1fr)]' : ''}>
-      <div className={splitLayout ? 'flex min-h-0 flex-col' : ''}>
+      <div className={splitLayout ? 'gb-sale-items-split-layout grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[minmax(320px,0.9fr)_minmax(430px,1.1fr)]' : ''}>
+      <div className={`${splitLayout ? 'gb-sale-items-list-pane flex min-h-0 flex-col' : ''}`}>
       {catalogPanel}
       {removedPurchaseItems.length ? <div className="mb-2 rounded border border-amber-500/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100"><strong className="text-amber-300">Not ordered:</strong> {removedPurchaseItems.map(item => item.description || 'Product').join(', ')}. Select the item below for payment details or to restore it to the EOD Cart.</div> : null}
       <div className={`gb-sale-items-table-wrap overflow-y-auto border border-zinc-800 rounded ${splitLayout ? 'min-h-[9rem] flex-1' : ''}`} style={{ maxHeight: splitLayout ? undefined : '12rem' }}>
@@ -411,9 +411,10 @@ const SaleItemsTable: React.FC<Props> = ({
 
       {editing && (
         <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-fit max-h-full self-start overflow-hidden' : 'mt-2'}`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
+            <button type="button" className="gb-mobile-editor-back rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-xs text-zinc-200" onClick={() => { setEditingError(''); setEditing(null); }}>Back to items</button>
           </div>
 
           <label className="block text-xs text-zinc-400 mt-2">{isConsultationItem(editing) ? 'Consultation' : 'Item'}</label>
@@ -590,7 +591,7 @@ const SaleItemsTable: React.FC<Props> = ({
             </div>
           ) : null}
           {editingError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">{editingError}</div> : null}
-          <div className="flex gap-2 mt-2 justify-end">
+          <div className="gb-sale-item-editor-actions flex gap-2 mt-2 justify-end">
             <button
               className="px-3 py-1 bg-zinc-800 rounded"
               onClick={() => { setEditingError(''); setEditing(null); }}
@@ -626,7 +627,7 @@ const SaleItemsTable: React.FC<Props> = ({
         </div>
       )}
       {splitLayout && !editing ? (
-        <div className="flex min-h-[16rem] items-center justify-center rounded border border-dashed border-zinc-700 bg-zinc-950/30 p-6 text-center text-sm text-zinc-400">
+        <div className="gb-sale-items-empty-editor flex min-h-[16rem] items-center justify-center rounded border border-dashed border-zinc-700 bg-zinc-950/30 p-6 text-center text-sm text-zinc-400">
           Select a checkout line to review or temporarily edit its details.
         </div>
       ) : null}

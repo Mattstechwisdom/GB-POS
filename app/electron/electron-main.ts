@@ -1696,6 +1696,7 @@ function showWindowFast(win: any, onBeforeShow?: () => void, opts?: { focus?: bo
   const reveal = () => {
     if (shown) return;
     shown = true;
+    fitWindowIntoWorkArea(win);
     try { onBeforeShow?.(); } catch {}
     try { if (!win.isDestroyed()) win.show(); } catch {}
     if (opts?.focus !== false) {
@@ -4536,6 +4537,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       date: row.note_date || '',
       subject: row.subject || '',
       body: row.body || '',
+      attachments: Array.isArray(row.attachments) ? row.attachments : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4839,6 +4841,7 @@ function toCloudRow(key: string, item: any): any | null {
       note_date: toCloudDateOnly(item.date),
       subject: toCloudString(item.subject),
       body: toCloudString(item.body),
+      attachments: Array.isArray(item.attachments) ? item.attachments.slice(0, 4) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -5067,6 +5070,69 @@ async function getDesktopTechnicianCredentials() {
     if (row.legacy_technician_id) credentialsByLegacyId.set(String(row.legacy_technician_id), row);
   }
   return { credentialsByStaffId, credentialsByLegacyId };
+}
+
+function displayAwareWindowSize(
+  parent: any,
+  preferred: { width: number; height: number },
+  minimum: { width: number; height: number },
+  margin = 24,
+) {
+  let display: any = null;
+  try {
+    if (parent && !parent.isDestroyed?.() && electron.screen?.getDisplayMatching) {
+      display = electron.screen.getDisplayMatching(parent.getBounds());
+    }
+  } catch {}
+  try {
+    display ||= electron.screen?.getPrimaryDisplay?.();
+  } catch {}
+
+  const workArea = display?.workArea || display?.workAreaSize || display?.bounds || { width: preferred.width, height: preferred.height };
+  const availableWidth = Math.max(480, Math.floor(Number(workArea.width || preferred.width) - margin * 2));
+  const availableHeight = Math.max(420, Math.floor(Number(workArea.height || preferred.height) - margin * 2));
+  const width = Math.min(preferred.width, availableWidth);
+  const height = Math.min(preferred.height, availableHeight);
+  return {
+    width,
+    height,
+    minWidth: Math.min(minimum.width, width),
+    minHeight: Math.min(minimum.height, height),
+  };
+}
+
+function fitWindowIntoWorkArea(win: any, margin = 12) {
+  try {
+    if (!win || win.isDestroyed?.()) return;
+    const parent = win.getParentWindow?.() || null;
+    const display = parent && electron.screen?.getDisplayMatching
+      ? electron.screen.getDisplayMatching(parent.getBounds())
+      : electron.screen?.getDisplayMatching?.(win.getBounds()) || electron.screen?.getPrimaryDisplay?.();
+    const workArea = display?.workArea || display?.bounds;
+    if (!workArea) return;
+
+    const availableWidth = Math.max(480, Math.floor(Number(workArea.width) - margin * 2));
+    const availableHeight = Math.max(420, Math.floor(Number(workArea.height) - margin * 2));
+    const [minimumWidth, minimumHeight] = win.getMinimumSize?.() || [0, 0];
+    if (minimumWidth > availableWidth || minimumHeight > availableHeight) {
+      win.setMinimumSize?.(Math.min(minimumWidth, availableWidth), Math.min(minimumHeight, availableHeight));
+    }
+
+    const current = win.getBounds();
+    const width = Math.min(current.width, availableWidth);
+    const height = Math.min(current.height, availableHeight);
+    const minX = Number(workArea.x) + margin;
+    const minY = Number(workArea.y) + margin;
+    const maxX = Number(workArea.x) + Number(workArea.width) - margin - width;
+    const maxY = Number(workArea.y) + Number(workArea.height) - margin - height;
+    const x = Math.min(Math.max(current.x, minX), Math.max(minX, maxX));
+    const y = Math.min(Math.max(current.y, minY), Math.max(minY, maxY));
+    if (width !== current.width || height !== current.height || x !== current.x || y !== current.y) {
+      win.setBounds({ x, y, width, height });
+    }
+  } catch {
+    // Best-effort fitting must never prevent a daughter window from opening.
+  }
 }
 
 function isAssignableDesktopTechnicianRow(row: any): boolean {
@@ -8227,9 +8293,13 @@ ipcMain.handle('pick-sale-product', async (event: any) => {
     const parentFromSender = (() => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
     })();
+    const windowSize = displayAwareWindowSize(
+      parentFromSender,
+      { width: 1280, height: 840 },
+      { width: 900, height: 620 },
+    );
     const child = new BrowserWindow({
-      width: 1280,
-      height: 800,
+      ...windowSize,
       resizable: true,
       parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined,
       modal: true,
@@ -8243,7 +8313,7 @@ ipcMain.handle('pick-sale-product', async (event: any) => {
       show: false,
       title: 'Pick Product for Sale',
     });
-    child.once('ready-to-show', () => { centerWindow(child); child.show(); });
+    showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
     const url = isDev
       ? `${DEV_SERVER_URL}/?products=true&picker=sale`
@@ -8353,13 +8423,16 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
   const parentFromSender = (() => {
     try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
   })();
+  const parentWindow = parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined;
+  const windowSize = displayAwareWindowSize(
+    parentWindow,
+    { width: 1180, height: 840 },
+    { width: 880, height: 620 },
+  );
   const child = new BrowserWindow({
-    width: 1180,
-    height: 840,
-    minWidth: 1040,
-    minHeight: 760,
+    ...windowSize,
     resizable: true,
-    parent: parentFromSender || mainWindow || BrowserWindow.getAllWindows()[0] || undefined,
+    parent: parentWindow,
     modal: false,
     ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
     backgroundColor: '#18181b',
