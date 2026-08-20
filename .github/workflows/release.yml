@@ -20,6 +20,7 @@ jobs:
   release:
     runs-on: windows-latest
     env:
+      GH_TOKEN: ${{ github.token }}
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SHOP_LOGIN_USERNAME: ${{ vars.VITE_SHOP_LOGIN_USERNAME || secrets.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz' }}
