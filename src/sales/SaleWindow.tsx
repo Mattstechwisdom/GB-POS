@@ -8,6 +8,7 @@ import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
+import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 
 type SalePayload = {
   customerId?: number;
@@ -1249,6 +1250,22 @@ const SaleWindow: React.FC = () => {
           try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+        }
+        if (currentId && additionalPaid > 0) {
+          try {
+            const inventoryResult = await consumeInStockInventory(
+              (window as any).api,
+              'sale',
+              Number(currentId),
+              Array.isArray(recordToPersist.items) ? recordToPersist.items : [],
+              { allowShortfall: true },
+            );
+            if (inventoryResult.shortfalls.length) {
+              alert('Checkout was saved, but one or more tracked products reached zero inventory. Review Inventory for restocking.');
+            }
+          } catch (inventoryError) {
+            console.error('Sale inventory update failed; reconciliation will retry it.', inventoryError);
+          }
         }
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: recordToPersist.customerId }, '*'); } catch {}
 

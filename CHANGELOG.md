@@ -900,3 +900,10 @@
 - Quick Checkout: keeps sale and repair detail fields, Save, totals, and Checkout visible instead of scrolling the entire window.
 - Android: gives product and repair catalogs a larger, readable portrait layout with focused list and detail states, plus a side-by-side landscape layout.
 - Feedback: fixes Delete so UUID entries are removed from local state and Supabase before the list refreshes, preventing deleted feedback from reappearing.
+
+## v0.6.24 (2026-08-21)
+
+- Inventory: Quick Checkout and regular Sale checkout now subtract the catalog product's sold quantity immediately after payment is recorded.
+- Inventory: desktop and Android reconcile previously paid sales against tracked product quantities after Supabase connects and whenever Inventory opens.
+- Inventory: paid-sale consumption markers sync through Supabase and remain permanent, preventing repeat startup or cross-device sync from deducting the same sale twice.
+- Inventory: historical quantities stop at zero and flag a restock shortfall instead of becoming negative; unpaid and saved-only sales do not affect stock.

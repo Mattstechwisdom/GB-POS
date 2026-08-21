@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
 import SaleItemsTable, { SaleItemRow } from '@/sales/SaleItemsTable';
+import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 
 const TAX_RATE = 8;
 
@@ -225,6 +226,12 @@ const QuickSaleWindow: React.FC = () => {
       };
 
       const created = await api.dbAdd('sales', saleRecord);
+      if (created?.id && amountPaid > 0) {
+        const inventoryResult = await consumeInStockInventory(api, 'sale', Number(created.id), normalizedItems, { allowShortfall: true });
+        if (inventoryResult.shortfalls.length) {
+          alert('Checkout was saved, but one or more tracked products reached zero inventory. Review Inventory for restocking.');
+        }
+      }
 
       if (result.printReceipt) {
         try {

@@ -5,6 +5,7 @@ import type { VendorRecord } from './VendorsWindow';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -124,6 +125,9 @@ export default function InventoryWindow() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      await reconcilePaidSaleInventory(api).catch((error) => {
+        console.error('Paid-sale inventory reconciliation failed', error);
+      });
       const [products, vendorRows, deviceRows, repairRows] = await Promise.all([
         api?.dbGet?.('products').catch(() => []),
         api?.dbGet?.('vendors').catch(() => []),

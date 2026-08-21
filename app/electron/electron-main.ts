@@ -4918,7 +4918,7 @@ function toCloudRow(key: string, item: any): any | null {
       stock_count: toCloudIntId(item.stockCount) || 0,
       low_stock_threshold: toCloudIntId(item.lowStockThreshold) || 0,
       purchase_restock_keys: Array.isArray(item.purchaseRestockKeys) ? item.purchaseRestockKeys.map((value: any) => String(value)).filter(Boolean).slice(-100) : [],
-      inventory_consumption_keys: Array.isArray(item.inventoryConsumptionKeys) ? item.inventoryConsumptionKeys.map((value: any) => String(value)).filter(Boolean).slice(-250) : [],
+      inventory_consumption_keys: Array.isArray(item.inventoryConsumptionKeys) ? item.inventoryConsumptionKeys.map((value: any) => String(value)).filter(Boolean) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
