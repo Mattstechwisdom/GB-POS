@@ -1523,8 +1523,39 @@
   box-sizing: border-box;
   height: 100% !important;
   max-height: 100% !important;
-  overflow-y: auto !important;
-  overscroll-behavior: contain;
+  overflow: hidden !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-editor-fields {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  min-height: 0;
+  gap: 0.25rem 0.4rem !important;
+  overflow: hidden;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-primary-fields,
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-stock-fields,
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-cost-fields {
+  display: flex !important;
+  gap: 0.4rem !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-order-fields {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.25rem 0.4rem !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-editor input,
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-editor select {
+  min-height: 1.85rem !important;
+  font-size: 0.78rem !important;
+}
+
+.gbpos-mobile .gb-quick-checkout .gb-sale-item-editor textarea {
+  min-height: 2.4rem !important;
+  max-height: 2.4rem !important;
 }
 
 .gbpos-mobile .gb-quick-checkout .gb-sale-items.has-editor .gb-sale-items-list-pane {
@@ -1548,9 +1579,7 @@
 }
 
 .gbpos-mobile .gb-quick-checkout .gb-sale-item-editor-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  position: static;
   margin-inline: -0.5rem;
   margin-bottom: -0.5rem;
   padding: 0.65rem 0.5rem 0.5rem;
@@ -1559,7 +1588,9 @@
 }
 
 .gbpos-mobile .gb-quick-repair-catalog {
-  max-height: 14rem;
+  min-height: 12rem;
+  max-height: none;
+  flex: 1 1 62%;
   margin-bottom: 0.45rem !important;
 }
 
@@ -1628,41 +1659,6 @@
   grid-column: 1 / -1;
 }
 
-.gbpos-mobile .gb-sale-catalog-layout {
-  grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: minmax(9rem, 0.8fr) auto;
-  gap: 0.55rem !important;
-  padding-top: 0.55rem !important;
-  overflow: hidden;
-}
-
-.gbpos-mobile .gb-sale-catalog-results {
-  min-height: 0;
-}
-
-.gbpos-mobile .gb-sale-catalog-heading,
-.gbpos-mobile .gb-sale-catalog-row {
-  grid-template-columns: 20px minmax(0, 1fr) 5.5rem 4.6rem !important;
-  gap: 0.35rem !important;
-  padding-inline: 0.5rem !important;
-}
-
-.gbpos-mobile .gb-sale-catalog-editor {
-  max-height: 48dvh;
-  overflow-y: auto !important;
-  padding: 0.6rem !important;
-  overscroll-behavior: contain;
-}
-
-.gbpos-mobile .gb-sale-catalog-editor .space-y-3 {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.gbpos-mobile .gb-sale-catalog-editor .space-y-3 > * {
-  margin-top: 0 !important;
-}
-
 .gbpos-mobile .gb-sale-catalog-toolbar button {
   min-height: 2.75rem;
 }
@@ -1670,13 +1666,15 @@
 .gbpos-mobile .gb-sale-catalog-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: minmax(9rem, 0.8fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.6rem;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .gbpos-mobile .gb-sale-catalog-results {
   min-height: 0;
-  max-height: min(34dvh, 18rem);
+  max-height: none;
 }
 
 .gbpos-mobile .gb-sale-catalog-heading,
@@ -1686,13 +1684,31 @@
 }
 
 .gbpos-mobile .gb-sale-catalog-row {
-  padding-block: 0.55rem;
+  min-height: 3.35rem;
+  padding-block: 0.65rem;
+  font-size: 0.88rem;
 }
 
 .gbpos-mobile .gb-sale-catalog-editor {
-  max-height: 48dvh;
-  overflow-y: auto !important;
+  display: none;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden !important;
   padding: 0.7rem;
+}
+
+.gbpos-mobile .gb-sale-catalog-picker.has-selection .gb-sale-catalog-toolbar,
+.gbpos-mobile .gb-sale-catalog-picker.has-selection .gb-sale-catalog-results {
+  display: none !important;
+}
+
+.gbpos-mobile .gb-sale-catalog-picker.has-selection .gb-sale-catalog-editor {
+  display: block;
+  height: 100%;
+}
+
+.gbpos-mobile .gb-mobile-catalog-back {
+  display: inline-flex;
 }
 
 .gbpos-mobile .gb-sale-catalog-editor .space-y-3 {
@@ -3234,8 +3250,21 @@
     grid-template-rows: minmax(0, 1fr);
   }
 
+  .gbpos-mobile .gb-sale-catalog-picker.has-selection .gb-sale-catalog-toolbar {
+    display: grid !important;
+  }
+
+  .gbpos-mobile .gb-sale-catalog-picker.has-selection .gb-sale-catalog-results {
+    display: flex !important;
+  }
+
   .gbpos-mobile .gb-sale-catalog-editor {
+    display: block;
     max-height: none;
+  }
+
+  .gbpos-mobile .gb-mobile-catalog-back {
+    display: none;
   }
 }
 

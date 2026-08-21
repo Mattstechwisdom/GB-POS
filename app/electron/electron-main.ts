@@ -5240,7 +5240,7 @@ async function cloudDbDelete(key: string, legacyId: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
-  const id = key === 'repairCategories' || key === 'calendarNotes' || key === 'technicians' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
+  const id = key === 'repairCategories' || key === 'calendarNotes' || key === 'feedbackEntries' || key === 'technicians' ? toCloudTextId(legacyId) : toCloudIntId(legacyId);
   if (id === null) throw new Error(`Cloud ${key} delete skipped: missing legacy id.`);
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
@@ -5860,7 +5860,7 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
     scheduleCollectionChanged(key);
-    void syncCloudWriteOrQueue('delete', key, id);
+    await syncCloudWriteOrQueue('delete', key, id);
   }
   return ok;
 });

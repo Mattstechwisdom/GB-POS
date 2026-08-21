@@ -410,16 +410,17 @@ const SaleItemsTable: React.FC<Props> = ({
       </div>
 
       {editing && (
-        <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-fit max-h-full self-start overflow-hidden' : 'mt-2'}`}>
+        <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-full min-h-0 self-stretch overflow-hidden' : 'mt-2'}`}>
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
             <button type="button" className="gb-mobile-editor-back rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-xs text-zinc-200" onClick={() => { setEditingError(''); setEditing(null); }}>Back to items</button>
           </div>
 
+          <div className="gb-sale-item-editor-fields">
           <label className="block text-xs text-zinc-400 mt-2">{isConsultationItem(editing) ? 'Consultation' : 'Item'}</label>
           <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
-          <div className="flex gap-2 mt-2">
+          <div className="gb-sale-item-primary-fields flex gap-2 mt-2">
             <div className="w-1/3">
               <label className="block text-xs text-zinc-400">{isConsultationItem(editing) ? 'Hours' : 'Qty'}</label>
               <input
@@ -450,7 +451,7 @@ const SaleItemsTable: React.FC<Props> = ({
           </div>
 
           {!isConsultationItem(editing) ? <>
-          <div className="flex gap-2 mt-2">
+          <div className="gb-sale-item-stock-fields flex gap-2 mt-2">
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Category</label>
               <select
@@ -488,7 +489,7 @@ const SaleItemsTable: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="flex gap-2 mt-2">
+          <div className="gb-sale-item-cost-fields flex gap-2 mt-2">
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Condition</label>
               <select className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.condition || 'New'} onChange={e => setEditing({ ...editing, condition: e.target.value as any })}>
@@ -513,7 +514,7 @@ const SaleItemsTable: React.FC<Props> = ({
               {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div> : null}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-2">
+          <div className="gb-sale-item-order-fields grid grid-cols-2 gap-2 mt-2">
             <div>
               <label className="block text-xs text-zinc-400">Device Model</label>
               <input className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.deviceModel || ''} onChange={e => setEditing({ ...editing, deviceModel: e.target.value })} />
@@ -591,6 +592,7 @@ const SaleItemsTable: React.FC<Props> = ({
             </div>
           ) : null}
           {editingError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">{editingError}</div> : null}
+          </div>
           <div className="gb-sale-item-editor-actions flex gap-2 mt-2 justify-end">
             <button
               className="px-3 py-1 bg-zinc-800 rounded"

@@ -11,6 +11,8 @@ const feedback = read('src/components/FeedbackWindow.tsx');
 expect(feedback.includes('3 * 24 * 60 * 60 * 1000'), 'Completed feedback must retain for three days.');
 expect(feedback.includes("dbDelete('feedbackEntries', entry.id)"), 'Expired feedback must be removed from storage.');
 expect(feedback.includes('deleteSelected'), 'Opened feedback must expose manual deletion.');
+expect(feedback.includes("if (!deleted) throw new Error"), 'Feedback deletion must reject a failed persistence result instead of silently closing.');
+expect(feedback.includes('setEntries(current => current.filter'), 'Feedback deletion must remove the entry from visible state immediately.');
 expect(feedback.includes('prepareFeedbackImage'), 'Feedback screenshots must be compressed before syncing.');
 expect(feedback.includes('accept="image/*"'), 'Feedback Import must use the native image picker on desktop and Android.');
 expect(feedback.includes("attachments: draft.attachments"), 'Feedback saves must include imported screenshots.');
@@ -28,6 +30,8 @@ expect(preload.includes("ipcRenderer.on('gidget:model-progress'"), 'Electron mod
 expect(preload.includes("ipcRenderer.on('gidget:localToken'"), 'Electron generated tokens must stream to the UI.');
 
 const main = read('app/electron/electron-main.ts');
+expect(main.includes("key === 'feedbackEntries' || key === 'technicians' ? toCloudTextId(legacyId)"), 'Desktop must delete UUID feedback IDs from Supabase as text instead of coercing them to numbers.');
+expect(main.includes("await syncCloudWriteOrQueue('delete', key, id)"), 'Desktop deletion must finish or queue its cloud delete before a feedback refresh can restore the row.');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
 expect(main.includes('attachments: Array.isArray(row.attachments)'), 'Desktop must load synced feedback screenshots.');
 expect(main.includes('attachments: Array.isArray(item.attachments)'), 'Desktop must save feedback screenshots to Supabase.');

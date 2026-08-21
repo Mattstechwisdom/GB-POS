@@ -362,7 +362,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
   if (isPicker) {
     return (
-      <div className="gb-sale-catalog-picker flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100">
+      <div className={`gb-sale-catalog-picker ${selectedId ? 'has-selection' : ''} flex h-full min-h-0 w-full flex-col bg-zinc-900 p-3 text-gray-100`}>
         <div className="gb-sale-catalog-toolbar grid shrink-0 grid-cols-[minmax(220px,1fr)_180px_160px_150px_auto] gap-2 border-b border-zinc-800 pb-3 pr-12">
           <input type="search" placeholder="Search products, vendor, or SKU" value={search} onChange={e => setSearch(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" autoFocus />
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="rounded border border-zinc-600 bg-zinc-800 px-2 py-2 text-sm outline-none focus:border-[#39FF14]"><option value="">All device types</option>{pickerCategoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select>
@@ -374,7 +374,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
         <div className="gb-sale-catalog-layout grid min-h-0 flex-1 grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)] gap-3 pt-3">
           <section className="gb-sale-catalog-results flex min-h-0 flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
             <div className="gb-sale-catalog-heading grid grid-cols-[24px_minmax(0,1fr)_110px_82px] gap-2 border-b border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold uppercase text-zinc-400"><span aria-hidden="true">✓</span><span>Product</span><span>Condition / Stock</span><span className="text-right">Price</span></div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="gb-sale-catalog-scroll min-h-0 flex-1 overflow-y-auto">
               {filtered.length ? filtered.map((product) => (
                 <div role="button" tabIndex={0} key={product.id} onClick={() => focusPickerProduct(product)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); focusPickerProduct(product); } }} className={`gb-sale-catalog-row grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)_110px_82px] items-center gap-2 border-b border-zinc-800 px-3 py-2 text-left last:border-b-0 ${selectedId === product.id ? 'bg-[#BC13FE]/20 shadow-[inset_3px_0_0_#BC13FE]' : 'bg-zinc-950 hover:bg-zinc-900'}`}>
                   <input type="checkbox" aria-label={`Select ${product.itemDescription}`} checked={product.id != null && pickerSelections.has(Number(product.id))} onClick={event => event.stopPropagation()} onChange={() => togglePickerProduct(product)} className="h-4 w-4 accent-[#39FF14]" />
@@ -388,8 +388,8 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
 
           <section className="gb-sale-catalog-editor min-h-0 overflow-hidden rounded border border-zinc-700 bg-zinc-800 p-3">
             {!selectedId ? <div className="grid h-full min-h-40 place-items-center text-sm text-zinc-400">Select a product to edit its sale details.</div> : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-2"><h3 className="font-semibold">Sale Item Details</h3><span className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-0.5 text-xs text-[#e9b7ff]">Sale only</span></div>
+              <div className="gb-sale-catalog-editor-content space-y-3">
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-2"><button type="button" className="gb-mobile-catalog-back rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-xs text-zinc-200" onClick={() => setSelectedId(undefined)}>Back to products</button><h3 className="font-semibold">Sale Item Details</h3><span className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-0.5 text-xs text-[#e9b7ff]">Sale only</span></div>
                 <label className="block text-xs text-zinc-400">Item description<input value={editing.itemDescription || ''} onChange={e => setEditing(ed => ({ ...ed, itemDescription: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-[#39FF14]" /></label>
                 <div className="grid grid-cols-3 gap-2">
                   <label className="text-xs text-zinc-400">Quantity<input type="number" min="1" step="1" value={pickerQuantity} onChange={e => { const quantity = Math.max(1, Math.round(Number(e.target.value) || 1)); setPickerQuantity(quantity); if (selectedId) setPickerQuantities(current => ({ ...current, [selectedId]: quantity })); }} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white" /></label>
@@ -406,7 +406,7 @@ const ProductsWindow: React.FC<ProductsWindowProps> = ({ onClose, pickerMode = f
                 </div>
                 <label className="block text-xs text-zinc-400">Product URL<input type="url" value={editing.reorderUrlTemplate || ''} onChange={e => setEditing(ed => ({ ...ed, reorderUrlTemplate: e.target.value }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white" /></label>
                 <label className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"><input type="checkbox" checked={pickerInStock} onChange={e => setPickerInStock(e.target.checked)} className="h-4 w-4 accent-[#39FF14]" />Available for this sale</label>
-                <div className="flex justify-end gap-2 border-t border-zinc-700 pt-3"><button type="button" className="rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm" onClick={() => { setSelectedId(undefined); setPickerSelections(new Set()); }}>Clear selection</button><button type="button" className="rounded bg-[#39FF14] px-5 py-2 font-semibold text-black disabled:opacity-40" onClick={emitPickedProduct} disabled={!editing.itemDescription?.trim()}>{`Add ${Math.max(1, pickerSelections.size)} to Sale`}</button></div>
+                <div className="gb-sale-catalog-editor-actions flex justify-end gap-2 border-t border-zinc-700 pt-3"><button type="button" className="rounded border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm" onClick={() => { setSelectedId(undefined); setPickerSelections(new Set()); }}>Clear selection</button><button type="button" className="rounded bg-[#39FF14] px-5 py-2 font-semibold text-black disabled:opacity-40" onClick={emitPickedProduct} disabled={!editing.itemDescription?.trim()}>{`Add ${Math.max(1, pickerSelections.size)} to Sale`}</button></div>
               </div>
             )}
           </section>

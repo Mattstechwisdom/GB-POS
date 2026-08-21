@@ -893,3 +893,10 @@
 - Gidget chats: starts a fresh chat whenever the assistant opens and presents the latest 30 conversations in a ChatGPT-style left history drawer.
 - Gidget history: supports desktop right-click and mobile press-and-hold deletion with confirmation while preserving authenticated, shop-scoped Supabase history.
 - Release safety: makes the Gidget deletion regression check independent of Windows line-ending conversion.
+
+## v0.6.23 (2026-08-21)
+
+- Quick Checkout: keeps product and repair search controls fixed while making only their catalog lists scroll on desktop.
+- Quick Checkout: keeps sale and repair detail fields, Save, totals, and Checkout visible instead of scrolling the entire window.
+- Android: gives product and repair catalogs a larger, readable portrait layout with focused list and detail states, plus a side-by-side landscape layout.
+- Feedback: fixes Delete so UUID entries are removed from local state and Supabase before the list refreshes, preventing deleted feedback from reappearing.

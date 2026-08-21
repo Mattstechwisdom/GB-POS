@@ -52,6 +52,7 @@ assert.match(saleItemsTable, /has-editor/, 'Mobile Quick Checkout must switch fr
 assert.match(saleItemsTable, /gb-sale-items-list-pane/, 'Quick Checkout must expose a separately controlled list pane.');
 assert.match(saleItemsTable, /gb-mobile-editor-back/, 'Mobile item editing must provide a direct return to the checkout list.');
 assert.match(saleItemsTable, /gb-sale-item-editor-actions/, 'Mobile item Save and Cancel controls must remain reachable.');
+assert.match(saleItemsTable, /gb-sale-item-editor-fields/, 'Quick Checkout details must use a fixed, compact field pane.');
 assert.match(saleItemsTable, /gb-sale-items-table-wrap overflow-y-auto/, 'Only the catalog and checkout line lists should scroll.');
 assert.match(saleItemsTable, /Catalog records stay unchanged|temporarily edit its details/, 'Quick Checkout edits must be described as ticket-only changes.');
 assert.match(quickSale, /allowAddItems=\{false\}/, 'Quick repair lines must use the editable line-item table without duplicate add controls.');
@@ -60,6 +61,8 @@ assert.match(quickSale, /gb-quick-checkout-layout[\s\S]*grid-rows-\[auto_minmax\
 assert.match(quickSale, /gb-quick-checkout-totals/, 'Quick Checkout totals need an isolated footer surface.');
 assert.match(productsWindow, /gb-sale-catalog-results[\s\S]*min-h-0 flex-1 overflow-y-auto/, 'The product result list must be the desktop picker scroll surface.');
 assert.match(productsWindow, /gb-sale-catalog-editor min-h-0 overflow-hidden/, 'The desktop product detail fields must remain stationary.');
+assert.match(productsWindow, /gb-sale-catalog-picker \$\{selectedId \? 'has-selection'/, 'Mobile product picking must switch between readable list and detail states.');
+assert.match(productsWindow, /gb-mobile-catalog-back/, 'Mobile product details must provide a direct return to the product list.');
 assert.match(electronMain, /displayAwareWindowSize\([\s\S]*?\{ width: 1180, height: 840 \}[\s\S]*?\{ width: 880, height: 620 \}/, 'Quick Checkout must keep its default desktop size while fitting smaller display work areas.');
 assert.match(electronMain, /displayAwareWindowSize\([\s\S]*?\{ width: 1280, height: 840 \}[\s\S]*?\{ width: 900, height: 620 \}/, 'The product picker must fit the active desktop work area.');
 assert.match(electronMain, /function fitWindowIntoWorkArea[\s\S]*?setMinimumSize[\s\S]*?setBounds/, 'Daughter windows must retain their defaults when possible and fit the active work area when space is limited.');

@@ -203,15 +203,18 @@ export default function FeedbackWindow() {
   const deleteSelected = async () => {
     if (!selected) return;
     if (!window.confirm(`Delete feedback "${selected.subject}"? This cannot be undone.`)) return;
+    const deletingId = selected.id;
     setSaving(true);
     setError('');
     try {
-      await window.api.dbDelete('feedbackEntries', selected.id);
+      const deleted = await window.api.dbDelete('feedbackEntries', deletingId);
+      if (!deleted) throw new Error('The feedback entry was not found in storage.');
+      setEntries(current => current.filter(entry => String(entry.id) !== String(deletingId)));
       setEditorOpen(false);
       setSelected(null);
       await loadEntries();
-    } catch {
-      setError('Feedback could not be deleted.');
+    } catch (deleteError: any) {
+      setError(deleteError?.message || 'Feedback could not be deleted.');
     } finally {
       setSaving(false);
     }
@@ -271,7 +274,7 @@ export default function FeedbackWindow() {
             <div className="mt-5 flex flex-wrap justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 {selected ? <button type="button" disabled={saving} onClick={() => void toggleCompleted()} className="rounded border border-amber-400 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-60">{selected.completed ? 'Reopen' : 'Mark Completed'}</button> : null}
-                {selected ? <button type="button" disabled={saving} onClick={() => void deleteSelected()} className="rounded border border-red-500 px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10 disabled:opacity-60">Delete</button> : null}
+                {selected ? <button type="button" aria-label="Delete feedback" disabled={saving} onClick={() => void deleteSelected()} className="rounded border border-red-500 px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10 disabled:opacity-60">Delete</button> : null}
               </div>
               <button type="button" disabled={saving} onClick={() => void save()} className="rounded border border-[#39FF14] bg-[#39FF14] px-4 py-2 text-sm font-bold text-black hover:brightness-110 disabled:opacity-60">{saving ? 'Saving...' : 'Save'}</button>
             </div>

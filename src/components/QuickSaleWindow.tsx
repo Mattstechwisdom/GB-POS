@@ -327,7 +327,7 @@ const QuickSaleWindow: React.FC = () => {
             showRequiredIndicator={repairLines.length === 0}
             catalogPanel={(
               <div className="gb-quick-repair-catalog mb-3 flex min-h-0 flex-col rounded border border-zinc-700 bg-zinc-950/40 p-2">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="gb-quick-repair-toolbar mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h2 className="text-sm font-semibold text-zinc-100">Repair catalog</h2>
                     <p className="text-xs text-zinc-400">Catalog records stay unchanged. Edits apply only to this checkout.</p>
@@ -339,7 +339,7 @@ const QuickSaleWindow: React.FC = () => {
                     className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none sm:w-56"
                   />
                 </div>
-                <div className="gb-quick-repair-results max-h-52 overflow-y-auto rounded border border-zinc-800">
+                <div className="gb-quick-repair-results min-h-0 flex-1 overflow-y-auto rounded border border-zinc-800">
                   {visibleRepairItems.length === 0 ? (
                     <p className="p-3 text-sm text-zinc-400">No matching repairs in the catalog.</p>
                   ) : visibleRepairItems.map((repair) => (
