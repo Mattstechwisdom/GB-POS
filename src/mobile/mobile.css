@@ -3816,6 +3816,38 @@
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
+  .gbpos-mobile .gb-calendar-entry-editor-layout.has-type-rail {
+    display: grid;
+    grid-template-columns: 6.25rem minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .gbpos-mobile .gb-calendar-entry-type-rail {
+    align-self: start;
+    gap: 0.35rem;
+    padding: 0.4rem;
+    position: sticky;
+    top: 0;
+  }
+
+  .gbpos-mobile .gb-calendar-entry-type-rail button {
+    min-height: 2.65rem;
+    padding: 0.45rem;
+    overflow-wrap: anywhere;
+  }
+
+  .gbpos-mobile .gb-calendar-entry-form > .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-edit-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-edit-row > strong {
+    grid-column: 1 / -1;
+  }
+
   .gbpos-mobile .gb-calendar-task-builder {
     grid-template-columns: minmax(0, 1fr) !important;
   }

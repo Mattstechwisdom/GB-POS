@@ -7,6 +7,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const calendar = read('src/components/CalendarWindow.tsx');
 const dailyLook = read('src/components/DailyLookWindow.tsx');
 const taskLogic = read('src/lib/calendarTasks.ts');
+const shiftLogic = read('src/lib/technicianSchedule.ts');
 const desktopCloud = read('app/electron/electron-main.ts');
 const mobileCloud = read('src/mobile/mobile-api.ts');
 const migration = read('supabase/migrations/20260811174737_add_calendar_tasks.sql');
@@ -35,6 +36,19 @@ assert.match(dailyLook, /dbUpdate\('calendarEvents'/, 'Daily Look completion mus
 assert.match(taskLogic, /eventDate < date && taskIsCompleted\(event\)/, 'Only unfinished older tasks may carry forward.');
 assert.match(taskLogic, /ALL_TECHNICIANS/, 'Tasks must support an explicit All Technicians assignment.');
 assert.match(taskLogic, /isSharedTaskAssignment/, 'Shared tasks must remain visible in each technician Daily Look.');
+assert.match(taskLogic, /split\(','\)/, 'Task assignments must support comma-separated technicians.');
+assert.match(taskLogic, /taskAssignmentIncludes/, 'Daily Look must match any technician in a multi-assignment task.');
+assert.match(taskLogic, /toggleTaskAssignment/, 'Task assignment choices must toggle independently.');
+assert.match(calendar, /Assigned technicians/, 'The task editor must expose the multi-technician field.');
+assert.match(calendar, /aria-pressed=\{selected\}/, 'Selected technicians must be visibly highlighted.');
+assert.match(calendar, /gb-calendar-entry-type-rail/, 'The add-entry window must place entry types in a dedicated left rail.');
+assert.match(calendar, /Shift Change/, 'The day shift window must expose date-specific shift changes.');
+assert.match(calendar, /Save Shift Changes/, 'Shift changes must have an explicit synced save action.');
+assert.match(calendar, /shiftOverridden/, 'Calendar shift icons must distinguish date-specific changes.');
+assert.match(shiftLogic, /SHIFT_OVERRIDE_SOURCE = 'shift-override'/, 'Shift overrides need a stable shared-record marker.');
+assert.match(shiftLogic, /effectiveTechnicianShiftForDate/, 'Calendar and Daily Look must resolve date-specific overrides over master schedules.');
+assert.match(dailyLook, /technicianShiftsForDate\(techs, date, technician, events\)/, 'Daily Look must apply synced shift overrides.');
+assert.match(desktopCloud, /source[^\n]*shift-override/, 'Local backups must retain synced shift overrides.');
 for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /taskCompleted:\s*row\.task_completed === true/);
   assert.match(source, /task_completed:\s*toCloudBool\(item\.taskCompleted\)/);

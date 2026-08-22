@@ -17,7 +17,31 @@ export function isSharedTaskAssignment(value: unknown): boolean {
 }
 
 export function taskAssignmentLabel(value: unknown): string {
-  return isSharedTaskAssignment(value) ? 'All Technicians' : String(value || '').trim();
+  return isSharedTaskAssignment(value) ? 'All Technicians' : taskAssignments(value).join(', ');
+}
+
+export function taskAssignments(value: unknown): string[] {
+  if (isSharedTaskAssignment(value)) return [];
+  return Array.from(new Set(String(value || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)));
+}
+
+export function taskAssignmentIncludes(value: unknown, technician: unknown): boolean {
+  const name = String(technician || '').trim().toLowerCase();
+  if (!name || isSharedTaskAssignment(value)) return true;
+  return taskAssignments(value).some((assigned) => assigned.toLowerCase() === name);
+}
+
+export function toggleTaskAssignment(value: unknown, technician: unknown): string {
+  const name = String(technician || '').trim();
+  if (!name || isSharedTaskAssignment(name)) return ALL_TECHNICIANS;
+  const selected = taskAssignments(value);
+  const existingIndex = selected.findIndex((assigned) => assigned.toLowerCase() === name.toLowerCase());
+  if (existingIndex >= 0) selected.splice(existingIndex, 1);
+  else selected.push(name);
+  return selected.length ? selected.join(', ') : ALL_TECHNICIANS;
 }
 
 export function isCalendarTask(event: CalendarTaskRecord | null | undefined): boolean {
@@ -36,8 +60,7 @@ export function tasksForDailyLook<T extends CalendarTaskRecord>(events: T[], dat
       const eventDate = String(event.date || '').slice(0, 10);
       if (!eventDate || eventDate > date) return false;
       if (eventDate < date && taskIsCompleted(event)) return false;
-      const eventAssignment = String(event.technician || '').trim().toLowerCase();
-      if (assigned && !isSharedTaskAssignment(eventAssignment) && eventAssignment !== assigned) return false;
+      if (assigned && !taskAssignmentIncludes(event.technician, assigned)) return false;
       return true;
     })
     .sort((left, right) => {

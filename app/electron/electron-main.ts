@@ -8692,7 +8692,7 @@ async function readCollectionForBackup(key: string, db: any): Promise<any[]> {
 function isLegacyScheduleBackupEvent(e: any) {
   try {
     const t = (e?.type || e?.kind || e?.category || '').toString().toLowerCase();
-    if (t === 'schedule') return true;
+    if (t === 'schedule' && String(e?.source || '').toLowerCase() !== 'shift-override') return true;
     if (e?.legacy === true) return true;
     if (e?.derived === true) return true;
     if (typeof e?.technicianId !== 'undefined' || typeof e?.techId !== 'undefined') return true;

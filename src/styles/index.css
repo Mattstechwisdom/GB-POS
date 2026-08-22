@@ -134,6 +134,75 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   grid-column: 1 / -1;
 }
 
+.gb-calendar-entry-editor-layout.has-type-rail {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.gb-calendar-entry-type-rail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  background: #18181b;
+}
+
+.gb-calendar-entry-type-rail button {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.gb-calendar-entry-type-rail.is-readonly {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.gb-calendar-shift-edit-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.75fr) minmax(7rem, 0.75fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.gb-calendar-shift-edit-row label span {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #a1a1aa;
+  font-size: 0.68rem;
+}
+
+.gb-calendar-shift-edit-row input[type='time'] {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid #52525b;
+  border-radius: 5px;
+  background: #18181b;
+  padding: 0.35rem 0.45rem;
+}
+
+.gb-calendar-shift-edit-row .gb-calendar-shift-off {
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.55rem;
+  border: 1px solid #ef4444;
+  border-radius: 5px;
+  background: rgb(127 29 29 / 0.25);
+}
+
+.gb-calendar-shift-edit-row .gb-calendar-shift-off span {
+  margin: 0;
+  color: #fecaca;
+  font-weight: 800;
+}
+
 .gb-content-week-nav {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;

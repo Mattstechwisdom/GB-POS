@@ -6,7 +6,8 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
-import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '@/lib/calendarTasks';
+import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, toggleTaskAssignment } from '@/lib/calendarTasks';
+import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 
@@ -32,7 +33,7 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override';
   businessKind?: 'federalHoliday' | 'scTaxFreeWeekend' | 'daylightSaving' | 'estimatedTaxDeadline';
   saleId?: number;
   notes?: string;
@@ -53,6 +54,8 @@ type CalendarEvent = {
   taskCompleted?: boolean;
   taskCompletedAt?: string;
   taskCompletedBy?: string;
+  shiftOverridden?: boolean;
+  shiftOverrideId?: number;
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -343,6 +346,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   }
   // Separate schedule and other events
   const scheduleEvents = events.filter(ev => ev.category === 'schedule');
+  const shiftsChanged = scheduleEvents.some(ev => ev.shiftOverridden);
   const tasks = events.filter(ev => ev.category === 'task');
   const openTasks = tasks.filter(task => !taskIsCompleted(task));
   const otherEvents = events.filter(ev => ev.category !== 'schedule' && ev.category !== 'task');
@@ -360,7 +364,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
-          {activeShifts.length ? <button type="button" className="shrink-0 inline-flex items-center gap-1 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-1.5 py-0.5 text-[11px] font-bold text-[#d9ffd2] hover:bg-[#39FF14]/20" title={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#39FF14] text-[8px] text-zinc-950">S</span>{activeShifts.length}</button> : null}
+          {scheduleEvents.length ? <button type="button" className={`shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold ${shiftsChanged ? 'border border-red-400/80 bg-red-500/15 text-red-100' : 'border border-[#39FF14]/70 bg-[#39FF14]/10 text-[#d9ffd2] hover:bg-[#39FF14]/20'}`} title={shiftsChanged ? 'Shift change saved for this day' : `Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[8px] text-zinc-950 ${shiftsChanged ? 'bg-red-500' : 'bg-[#39FF14]'}`}>S</span>{activeShifts.length}</button> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" className="text-xs px-2 py-0.5 bg-violet-700 border border-violet-500 rounded text-white hover:bg-violet-600 transition-colors" onClick={() => onOpenBudget(day)}>Budget</button>
@@ -443,6 +447,10 @@ const CalendarWindow: React.FC = () => {
   const [viewing, setViewing] = useState<CalendarEvent | null>(null);
   const [viewingGroup, setViewingGroup] = useState<CalendarEvent[] | null>(null);
   const [shiftDay, setShiftDay] = useState<string | null>(null);
+  const [shiftChangeEditing, setShiftChangeEditing] = useState(false);
+  const [shiftDrafts, setShiftDrafts] = useState<Record<string, { start: string; end: string; off: boolean }>>({});
+  const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftSaveError, setShiftSaveError] = useState('');
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
@@ -593,7 +601,7 @@ const CalendarWindow: React.FC = () => {
       if (event.category !== 'task' || event.date !== date) return false;
       const assigned = String(event.technician || ALL_TECHNICIANS);
       if (isSharedTaskAssignment(technician)) return isSharedTaskAssignment(assigned);
-      return isSharedTaskAssignment(assigned) || assigned === technician;
+      return taskAssignmentIncludes(assigned, technician);
     });
   }, [editing, events]);
 
@@ -801,6 +809,90 @@ const CalendarWindow: React.FC = () => {
     businessCalendar,
   ), [businessCalendar, current]);
 
+  function openShiftDay(dateKey: string) {
+    const drafts: Record<string, { start: string; end: string; off: boolean }> = {};
+    for (const technician of techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled')) {
+      const key = shiftOverrideLocation(technician);
+      const shift = effectiveTechnicianShiftForDate(technician, dateKey, events);
+      drafts[key] = { start: shift?.start || '', end: shift?.end || '', off: shift?.off === true };
+    }
+    setShiftDrafts(drafts);
+    setShiftSaveError('');
+    setShiftChangeEditing(false);
+    setShiftDay(dateKey);
+  }
+
+  async function saveShiftChanges(dateKey: string) {
+    const api = (window as any).api;
+    if (!api) return;
+    for (const technician of techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled')) {
+      const draft = shiftDrafts[shiftOverrideLocation(technician)] || { start: '', end: '', off: false };
+      if (!draft.off && Boolean(draft.start) !== Boolean(draft.end)) {
+        setShiftSaveError(`Enter both a start and end time for ${technicianDisplayName(technician)}, or mark the technician OFF.`);
+        return;
+      }
+      if (!draft.off && draft.start && draft.end && toMinutes(draft.end) <= toMinutes(draft.start)) {
+        setShiftSaveError(`${technicianDisplayName(technician)}'s end time must be later than the start time.`);
+        return;
+      }
+    }
+
+    setShiftSaving(true);
+    setShiftSaveError('');
+    try {
+      const day = new Date(`${dateKey}T12:00:00`);
+      const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()];
+      let nextEvents = [...events];
+      for (const technician of techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled')) {
+        const identity = shiftOverrideLocation(technician);
+        const name = technicianDisplayName(technician);
+        const draft = shiftDrafts[identity] || { start: '', end: '', off: false };
+        const regular = technician?.schedule?.[dayKey] || {};
+        const matchesRegular = draft.off === (regular?.off === true)
+          && (draft.off || (String(draft.start || '') === String(regular?.start || '')
+            && String(draft.end || '') === String(regular?.end || '')));
+        const existing = nextEvents.find(event => isShiftOverrideEvent(event)
+          && String(event.date || '').slice(0, 10) === dateKey
+          && (event.location === identity || String(event.technician || '').toLowerCase() === name.toLowerCase()));
+
+        if (matchesRegular) {
+          if (existing?.id != null && await api.dbDelete('calendarEvents', existing.id)) {
+            nextEvents = nextEvents.filter(event => event.id !== existing.id);
+          }
+          continue;
+        }
+
+        const payload: CalendarEvent = {
+          ...(existing || {}),
+          date: dateKey,
+          title: `${name} - Shift Change`,
+          category: 'schedule',
+          source: SHIFT_OVERRIDE_SOURCE,
+          technician: name,
+          location: identity,
+          time: draft.off ? '' : draft.start,
+          endTime: draft.off ? '' : draft.end,
+          notes: draft.off ? 'OFF' : '',
+        };
+        if (existing?.id != null) {
+          const updated = await api.dbUpdate('calendarEvents', existing.id, payload);
+          if (!updated) throw new Error(`Could not save ${name}'s shift change.`);
+          nextEvents = nextEvents.map(event => event.id === existing.id ? updated : event);
+        } else {
+          const added = await api.dbAdd('calendarEvents', payload);
+          if (!added) throw new Error(`Could not save ${name}'s shift change.`);
+          nextEvents.push(added);
+        }
+      }
+      setEvents(nextEvents);
+      setShiftChangeEditing(false);
+    } catch (error: any) {
+      setShiftSaveError(error?.message || 'The shift changes could not be saved.');
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     
@@ -831,16 +923,16 @@ const CalendarWindow: React.FC = () => {
       }
     }
     
-    // Derive schedules live from technicians to avoid stale persisted schedule events
+    // Resolve date-specific calendar overrides over the master technician schedule.
     if (filters.schedule && Array.isArray(techs) && techs.length) {
       const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
       calendarDays.forEach(day => {
         const k = fmtDate(day);
         for (const t of techs) {
-          const schedule = t?.schedule || {};
           const dayKey = dayNames[day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
-          const sd = schedule?.[dayKey];
-          if (!sd) continue;
+          const effective = effectiveTechnicianShiftForDate(t, k, events);
+          if (!effective) continue;
+          const sd = { start: effective.start, end: effective.end, off: effective.off };
           // Show line if off or has start/end
           if (sd.off || (sd.start && sd.end)) {
             if (!map[k]) map[k] = [];
@@ -850,7 +942,9 @@ const CalendarWindow: React.FC = () => {
               title: `${techName} - Work Schedule`,
               category: 'schedule',
               technician: techName,
-              schedule: schedule,
+              schedule: { [dayKey]: sd },
+              shiftOverridden: effective.overridden,
+              shiftOverrideId: typeof effective.overrideId === 'number' ? effective.overrideId : undefined,
             };
             map[k].push(ev);
           }
@@ -1578,7 +1672,7 @@ const CalendarWindow: React.FC = () => {
                     onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
                     onOpenNotes={openNotes}
                     onOpenTasks={openTasks}
-                    onOpenShifts={(day) => setShiftDay(fmtDate(day))}
+                    onOpenShifts={(day) => openShiftDay(fmtDate(day))}
                     isToday={key === todayStr}
                   />
                 ) : null}
@@ -1610,6 +1704,8 @@ const CalendarWindow: React.FC = () => {
               const dayEvents = eventsByDay[key] || [];
               const dayNotes = notesByDay[key] || [];
               const activeShifts = activeShiftEvents(day, dayEvents);
+              const scheduleEvents = dayEvents.filter((event) => event.category === 'schedule');
+              const shiftsChanged = scheduleEvents.some((event) => event.shiftOverridden);
               const nonShiftEvents = dayEvents.filter((event) => event.category !== 'schedule');
               const groupedDayEvents = Array.from(nonShiftEvents.reduce((groups, event) => {
                 const groupKey = calendarEventGroupKey(event);
@@ -1633,7 +1729,7 @@ const CalendarWindow: React.FC = () => {
                     </div>
                   </header>
                   <div className="gb-calendar-agenda-list">
-                    {activeShifts.length ? <button type="button" className="gb-calendar-week-shifts" aria-label={`Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'} for ${key}`} onClick={() => setShiftDay(key)}><span style={{ backgroundColor: calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
+                    {scheduleEvents.length ? <button type="button" className={`gb-calendar-week-shifts ${shiftsChanged ? 'is-overridden' : ''}`} aria-label={`Show shifts for ${key}${shiftsChanged ? '; shift change saved' : ''}`} onClick={() => openShiftDay(key)}><span style={{ backgroundColor: shiftsChanged ? '#ef4444' : calendarColors.schedule }}>S</span><strong>{activeShifts.length}</strong></button> : null}
                     {groupedDayEvents.map((group, index) => {
                       const event = group[0];
                       const visual = calendarEventVisual(event, calendarColors);
@@ -1735,14 +1831,30 @@ const CalendarWindow: React.FC = () => {
 
       {shiftDay && (() => {
         const day = new Date(`${shiftDay}T12:00:00`);
-        const shifts = activeShiftEvents(day, eventsByDay[shiftDay] || []);
+        const shifts = (eventsByDay[shiftDay] || []).filter(event => event.category === 'schedule');
         const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day.getDay()] as keyof NonNullable<CalendarEvent['schedule']>;
         return <div className="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-3">
-          <section className="gb-calendar-shifts-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[480px] max-h-[88vh] flex flex-col p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-shifts-title">
-            <div className="flex items-start justify-between gap-3 mb-4"><div><h3 id="calendar-shifts-title" className="text-xl font-semibold">Active Shifts</h3><div className="text-sm text-zinc-400">{day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div><button type="button" className="gb-icon-button" aria-label="Close active shifts" onClick={() => setShiftDay(null)}>X</button></div>
-            <div className="min-h-0 overflow-y-auto space-y-2 pr-1">
-              {shifts.map((event, index) => { const shift = event.schedule?.[dayKey]; return <div key={event.id || `${event.technician}-${index}`} className="flex items-center justify-between gap-3 border border-zinc-700 bg-zinc-800 rounded p-3"><strong>{event.technician || 'Technician'}</strong><span className="text-sm text-zinc-300">{formatTime12FromHHmm(shift?.start || '')} - {formatTime12FromHHmm(shift?.end || '')}</span></div>; })}
+          <section className="gb-calendar-shifts-dialog bg-zinc-900 border border-zinc-700 rounded w-full max-w-[620px] max-h-[88vh] flex flex-col p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-shifts-title">
+            <div className="flex items-start justify-between gap-3 mb-4"><div><h3 id="calendar-shifts-title" className="text-xl font-semibold">Technician Shifts</h3><div className="text-sm text-zinc-400">{day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div><button type="button" className="gb-icon-button" aria-label="Close shifts" onClick={() => setShiftDay(null)}>X</button></div>
+            <div className="mb-3 flex items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-950/50 p-2">
+              <p className="text-xs text-zinc-400">Changes apply only to this date and do not alter saved Technician schedules.</p>
+              <button type="button" className="shrink-0 rounded border border-red-400 bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500" onClick={() => setShiftChangeEditing(value => !value)}>{shiftChangeEditing ? 'Review Shifts' : 'Shift Change'}</button>
             </div>
+            <div className="min-h-0 overflow-y-auto space-y-2 pr-1">
+              {shiftChangeEditing ? techs.filter((technician: any) => technician?.active !== false && technician?.status !== 'disabled').map((technician: any) => {
+                const identity = shiftOverrideLocation(technician);
+                const draft = shiftDrafts[identity] || { start: '', end: '', off: false };
+                return <div key={identity} className="gb-calendar-shift-edit-row rounded border border-zinc-700 bg-zinc-800 p-3">
+                  <strong>{technicianDisplayName(technician)}</strong>
+                  <label><span>Start</span><input type="time" disabled={draft.off} value={draft.start} onChange={event => setShiftDrafts(current => ({ ...current, [identity]: { ...draft, start: event.target.value } }))} /></label>
+                  <label><span>End</span><input type="time" disabled={draft.off} value={draft.end} onChange={event => setShiftDrafts(current => ({ ...current, [identity]: { ...draft, end: event.target.value } }))} /></label>
+                  <label className="gb-calendar-shift-off"><input type="checkbox" checked={draft.off} onChange={event => setShiftDrafts(current => ({ ...current, [identity]: { ...draft, off: event.target.checked } }))} /><span>OFF</span></label>
+                </div>;
+              }) : shifts.map((event, index) => { const shift = event.schedule?.[dayKey]; return <div key={event.id || `${event.technician}-${index}`} className={`flex items-center justify-between gap-3 rounded border p-3 ${event.shiftOverridden ? 'border-red-500 bg-red-950/30' : 'border-zinc-700 bg-zinc-800'}`}><div><strong>{event.technician || 'Technician'}</strong>{event.shiftOverridden ? <span className="ml-2 rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-red-200">Changed</span> : null}</div><span className="text-sm text-zinc-300">{shift?.off ? 'OFF' : `${formatTime12FromHHmm(shift?.start || '')} - ${formatTime12FromHHmm(shift?.end || '')}`}</span></div>; })}
+              {!shiftChangeEditing && !shifts.length ? <p className="py-6 text-center text-sm text-zinc-500">No technicians are scheduled for this date.</p> : null}
+            </div>
+            {shiftSaveError ? <p className="mt-3 rounded border border-red-600 bg-red-950/40 px-3 py-2 text-sm text-red-200">{shiftSaveError}</p> : null}
+            {shiftChangeEditing ? <div className="mt-3 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm" onClick={() => openShiftDay(shiftDay)}>Cancel</button><button type="button" className="rounded bg-[#39FF14] px-3 py-2 text-sm font-bold text-black disabled:opacity-50" disabled={shiftSaving} onClick={() => void saveShiftChanges(shiftDay)}>{shiftSaving ? 'Saving...' : 'Save Shift Changes'}</button></div> : null}
           </section>
         </div>;
       })()}
@@ -1931,12 +2043,13 @@ const CalendarWindow: React.FC = () => {
 
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className={`gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 ${editing.category === 'task' && editing.id == null ? 'w-[min(94vw,900px)]' : 'w-[520px]'}`}>
+          <div className={`gb-calendar-editor bg-zinc-900 border border-zinc-700 rounded p-4 ${editing.category === 'task' && editing.id == null ? 'w-[min(96vw,1080px)]' : 'w-[min(94vw,760px)]'}`}>
             <h3 className="font-semibold mb-2">
               {contentEditorLocked ? 'Add streaming/content entry' : `${editing.id ? 'Edit' : 'Add'} calendar entry`}
             </h3>
+            <div className={`gb-calendar-entry-editor-layout ${!contentEditorLocked ? 'has-type-rail' : ''}`}>
             {/* Category selector */}
-            {!contentEditorLocked && !editing.id ? <div className="flex flex-wrap gap-2 mb-3">
+            {!contentEditorLocked && !editing.id ? <aside className="gb-calendar-entry-type-rail" aria-label="Calendar entry type">
               {([
                 { key: 'parts', label: 'Parts/Products' },
                 { key: 'event', label: 'Events' },
@@ -1946,7 +2059,7 @@ const CalendarWindow: React.FC = () => {
               ] as const).map(opt => (
                 <button
                   key={opt.key}
-                  className={`px-2 py-1 rounded border text-xs ${editing.category === opt.key ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
+                  className={`rounded border text-left text-xs ${editing.category === opt.key ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-700 text-zinc-200'}`}
                   onClick={() => {
                     setTaskQueue([]);
                     setTaskBatchError('');
@@ -1954,7 +2067,8 @@ const CalendarWindow: React.FC = () => {
                   }}
                 >{opt.label}</button>
               ))}
-            </div> : !contentEditorLocked ? <div className="mb-3 flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><span className={`gb-calendar-event-icon ${calendarEventVisual(editing).color}`}>{calendarEventVisual(editing).short}</span><strong>{calendarEventVisual(editing).label}</strong></div> : null}
+            </aside> : !contentEditorLocked ? <aside className="gb-calendar-entry-type-rail is-readonly"><div className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"><span className={`gb-calendar-event-icon ${calendarEventVisual(editing).color}`}>{calendarEventVisual(editing).short}</span><strong>{calendarEventVisual(editing).label}</strong></div></aside> : null}
+            <div className="gb-calendar-entry-form min-w-0">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-zinc-400">Date</label>
@@ -2068,11 +2182,38 @@ const CalendarWindow: React.FC = () => {
                 <div className="gb-calendar-task-builder col-span-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(17rem,0.8fr)]">
                   <div className="min-w-0 space-y-3">
                     <div>
-                      <label className="block text-xs text-zinc-400">Assigned technician</label>
-                      <select className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-2" value={editing.technician || ALL_TECHNICIANS} onChange={event => setEditing({ ...editing, technician: event.target.value })}>
-                        <option value={ALL_TECHNICIANS}>All Technicians</option>
-                        {techs.map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}
-                      </select>
+                      <label className="block text-xs text-zinc-400">Assigned technicians</label>
+                      <details className="relative mt-1">
+                        <summary className="flex min-h-10 w-full cursor-pointer list-none items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm marker:content-none">
+                          <span className="min-w-0 truncate">{taskAssignmentLabel(editing.technician)}</span>
+                          <span className="shrink-0 text-zinc-400">▾</span>
+                        </summary>
+                        <div className="absolute left-0 right-0 z-30 mt-1 max-h-56 overflow-y-auto rounded border border-zinc-600 bg-zinc-900 p-1 shadow-2xl">
+                          <button
+                            type="button"
+                            aria-pressed={isSharedTaskAssignment(editing.technician)}
+                            className={`mb-1 w-full rounded px-3 py-2 text-left text-sm ${isSharedTaskAssignment(editing.technician) ? 'bg-violet-500 font-semibold text-white' : 'text-zinc-200 hover:bg-zinc-800'}`}
+                            onClick={() => setEditing({ ...editing, technician: ALL_TECHNICIANS })}
+                          >
+                            All Technicians
+                          </button>
+                          {techs.map((tech: any) => {
+                            const name = technicianDisplayName(tech);
+                            const selected = taskAssignments(editing.technician).some((assigned) => assigned.toLowerCase() === name.toLowerCase());
+                            return <button
+                              key={tech.id || name}
+                              type="button"
+                              aria-pressed={selected}
+                              className={`mb-1 flex w-full items-center justify-between gap-2 rounded px-3 py-2 text-left text-sm last:mb-0 ${selected ? 'bg-violet-500 font-semibold text-white' : 'text-zinc-200 hover:bg-zinc-800'}`}
+                              onClick={() => setEditing({ ...editing, technician: toggleTaskAssignment(editing.technician, name) })}
+                            >
+                              <span className="truncate">{name}</span>
+                              {selected ? <span aria-hidden="true">✓</span> : null}
+                            </button>;
+                          })}
+                        </div>
+                      </details>
+                      <p className="mt-1 text-[10px] text-zinc-500">Select one or more technicians. Selected names are saved together.</p>
                     </div>
                     <div>
                       <label className="block text-xs text-zinc-400">Subject</label>
@@ -2222,6 +2363,8 @@ const CalendarWindow: React.FC = () => {
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
               <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setTaskQueue([]); setTaskBatchError(''); setContentEditorLocked(false); }}>Cancel</button>
               <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskQueue.length})`) : 'Save'}</button>
+            </div>
+            </div>
             </div>
           </div>
         </div>

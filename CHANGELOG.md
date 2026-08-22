@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.25 (2026-08-22)
+- Calendar Entry Rail: moves Parts/Products, Events, Consultation, Streaming/Content, and Tasks into a compact left-side selector while preserving the existing contextual fields on the right.
+- Per-Day Shift Changes: edits technician start/end times or marks a technician OFF for one selected date without changing the recurring schedule saved in Technicians.
+- Shared Shift Overrides: stores date-specific changes in synced calendar records, applies them in Calendar and Daily Look on every device, and includes them in local backups.
+- Shift Change Visibility: turns the calendar Shift icon red and labels changed rows whenever a date-specific override exists; restoring regular hours removes the override.
+- Multi-Technician Tasks: assigns one task to multiple selected technicians while retaining the All Technicians option and carried-forward Daily Look behavior.
+- Release Safety: expands calendar regression coverage and verifies desktop and Android production bundles plus the portrait mobile entry layout.
+
 ## v0.6.22 (2026-08-20)
 - Selective Cart Checkout: allows any chosen parts or products within a distributor cart to be purchased without requiring the entire distributor group.
 - Exact Shared Costs: allocates entered shipping and checkout fees only across the selected line items while retaining the full entered amount to the cent.

@@ -123,7 +123,7 @@ export default function DailyLookWindow() {
 
   const groups = useMemo(() => {
     const dayEvents = events.filter((event) => event.category !== 'task' && event.category !== 'schedule' && event.date === date && (!technician || event.technician === technician));
-    const shifts: CalendarEvent[] = technicianShiftsForDate(techs, date, technician).map(shift => ({
+    const shifts: CalendarEvent[] = technicianShiftsForDate(techs, date, technician, events).map(shift => ({
       date,
       category: 'schedule',
       technician: shift.name,
