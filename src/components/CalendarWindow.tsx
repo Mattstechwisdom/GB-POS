@@ -33,7 +33,7 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override' | 'schedule-request';
   businessKind?: 'federalHoliday' | 'scTaxFreeWeekend' | 'daylightSaving' | 'estimatedTaxDeadline';
   saleId?: number;
   notes?: string;
@@ -56,6 +56,8 @@ type CalendarEvent = {
   taskCompletedBy?: string;
   shiftOverridden?: boolean;
   shiftOverrideId?: number;
+  requestKind?: 'time-off' | 'shift-change';
+  requestStatus?: 'pending' | 'approved' | 'declined';
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -451,6 +453,10 @@ const CalendarWindow: React.FC = () => {
   const [shiftDrafts, setShiftDrafts] = useState<Record<string, { start: string; end: string; off: boolean }>>({});
   const [shiftSaving, setShiftSaving] = useState(false);
   const [shiftSaveError, setShiftSaveError] = useState('');
+  const [requestType, setRequestType] = useState<'time-off' | 'shift-change' | null>(null);
+  const [requestDraft, setRequestDraft] = useState({ technician: '', date: fmtDate(new Date()), start: '', end: '' });
+  const [requestSaving, setRequestSaving] = useState(false);
+  const [requestError, setRequestError] = useState('');
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
@@ -890,6 +896,91 @@ const CalendarWindow: React.FC = () => {
       setShiftSaveError(error?.message || 'The shift changes could not be saved.');
     } finally {
       setShiftSaving(false);
+    }
+  }
+
+  const openScheduleRequest = (kind: 'time-off' | 'shift-change') => {
+    setRequestType(kind);
+    setRequestDraft({ technician: '', date: fmtDate(current), start: '', end: '' });
+    setRequestError('');
+  };
+
+  const pendingScheduleRequests = useMemo(() => events.filter(event =>
+    event.source === 'schedule-request' && event.requestStatus !== 'approved' && event.requestStatus !== 'declined'
+  ), [events]);
+
+  useEffect(() => {
+    if (requestType !== 'shift-change' || !requestDraft.technician || !requestDraft.date) return;
+    const technician = techs.find((item: any) => technicianDisplayName(item) === requestDraft.technician);
+    if (!technician) return;
+    const regular = effectiveTechnicianShiftForDate(technician, requestDraft.date, events);
+    setRequestDraft(draft => ({
+      ...draft,
+      start: regular?.off ? '' : regular?.start || '',
+      end: regular?.off ? '' : regular?.end || '',
+    }));
+  }, [events, requestDraft.date, requestDraft.technician, requestType, techs]);
+
+  async function submitScheduleRequest() {
+    const technician = requestDraft.technician.trim();
+    if (!requestType || !technician) {
+      setRequestError('Select the technician making this request.');
+      return;
+    }
+    if (!requestDraft.date) {
+      setRequestError('Choose the date for this request.');
+      return;
+    }
+    if (!requestDraft.start || !requestDraft.end) {
+      setRequestError('Enter both the start and end time.');
+      return;
+    }
+    if (toMinutes(requestDraft.end) <= toMinutes(requestDraft.start)) {
+      setRequestError('End time must be later than start time.');
+      return;
+    }
+
+    setRequestSaving(true);
+    setRequestError('');
+    try {
+      const api = (window as any).api;
+      const label = requestType === 'time-off' ? 'Time Off Request' : 'Shift Change Request';
+      const now = new Date().toISOString();
+      const payload: CalendarEvent = {
+        date: requestDraft.date,
+        time: requestDraft.start,
+        endTime: requestDraft.end,
+        title: `${technician} - ${label}`,
+        category: 'schedule',
+        source: 'schedule-request',
+        technician,
+        requestKind: requestType,
+        requestStatus: 'pending',
+        notes: requestType === 'time-off'
+          ? `Requested absence from ${formatTime12FromHHmm(requestDraft.start)} to ${formatTime12FromHHmm(requestDraft.end)}.`
+          : `Requested adjusted shift hours: ${formatTime12FromHHmm(requestDraft.start)} to ${formatTime12FromHHmm(requestDraft.end)}.`,
+      };
+      const added = await api?.dbAdd?.('calendarEvents', payload);
+      if (!added) throw new Error('The request could not be saved.');
+      await api?.dbAdd?.('notifications', {
+        key: `schedule-request:${added.id || `${requestDraft.date}:${technician}:${Date.now()}`}`,
+        kind: 'tech_schedule',
+        title: label,
+        message: `${technician} requested ${formatTime12FromHHmm(requestDraft.start)}–${formatTime12FromHHmm(requestDraft.end)} on ${new Date(`${requestDraft.date}T12:00:00`).toLocaleDateString()}.`,
+        createdAt: now,
+        eventAt: `${requestDraft.date}T${requestDraft.start}:00`,
+        calendarEventId: added.id,
+        date: requestDraft.date,
+        time: requestDraft.start,
+        source: 'calendar',
+        readAt: null,
+      });
+      setEvents(currentEvents => [...currentEvents, added]);
+      setRequestType(null);
+    } catch (error: any) {
+      setRequestError(error?.message || 'The request could not be submitted.');
+    } finally {
+      setRequestSaving(false);
     }
   }
 
@@ -1499,13 +1590,25 @@ const CalendarWindow: React.FC = () => {
         <div className="gb-calendar-title-actions flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
           <button
-            className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
+            type="button"
+            className="gb-calendar-time-off"
+            onClick={() => openScheduleRequest('time-off')}
+          >
+            Request Time Off
+          </button>
+        </div>
+        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
+          <button type="button" className="gb-calendar-shift-request" onClick={() => openScheduleRequest('shift-change')}>
+            <span className="gb-calendar-shift-request-icon" aria-hidden="true">⇄</span>
+            <span>Request Shift Change</span>
+            {pendingScheduleRequests.length ? <strong className="gb-calendar-request-badge" aria-label={`${pendingScheduleRequests.length} pending schedule requests`}>{pendingScheduleRequests.length}</strong> : null}
+          </button>
+          <button
+            className="gb-calendar-content-schedule px-3 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
             onClick={() => setContentScheduleOpen(true)}
           >
             Streaming/Content Schedule
           </button>
-        </div>
-        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
           <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
             {periodLabel}
@@ -1519,6 +1622,23 @@ const CalendarWindow: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {requestType ? <div className="fixed inset-0 z-[100200] flex items-center justify-center bg-black/75 p-3" onClick={() => setRequestType(null)}>
+        <section className="gb-calendar-request-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-request-title" onClick={event => event.stopPropagation()}>
+          <header>
+            <div><span className="gb-calendar-request-dialog-icon" aria-hidden="true">{requestType === 'time-off' ? '◷' : '⇄'}</span><div><h3 id="calendar-request-title">{requestType === 'time-off' ? 'Request Time Off' : 'Request Shift Change'}</h3><p>{requestType === 'time-off' ? 'Submit the hours you need away.' : 'Submit your requested hours for this day.'}</p></div></div>
+            <button type="button" className="gb-icon-button" aria-label="Close request" onClick={() => setRequestType(null)}>X</button>
+          </header>
+          <div className="gb-calendar-request-fields">
+            <label><span>Technician</span><select value={requestDraft.technician} onChange={event => setRequestDraft(draft => ({ ...draft, technician: event.target.value }))}><option value="">Select your name</option>{techs.filter((tech: any) => tech?.active !== false && tech?.status !== 'disabled').map((tech: any) => { const name = technicianDisplayName(tech); return <option key={tech.id || name} value={name}>{name}</option>; })}</select></label>
+            <label><span>Date</span><input type="date" value={requestDraft.date} onChange={event => setRequestDraft(draft => ({ ...draft, date: event.target.value }))} /></label>
+            <label><span>{requestType === 'time-off' ? 'Away from' : 'Requested start'}</span><input type="time" value={requestDraft.start} onChange={event => setRequestDraft(draft => ({ ...draft, start: event.target.value }))} /></label>
+            <label><span>{requestType === 'time-off' ? 'Until' : 'Requested end'}</span><input type="time" value={requestDraft.end} onChange={event => setRequestDraft(draft => ({ ...draft, end: event.target.value }))} /></label>
+          </div>
+          {requestError ? <p className="gb-calendar-request-error" role="alert">{requestError}</p> : null}
+          <footer><button type="button" onClick={() => setRequestType(null)}>Cancel</button><button type="button" className="submit" disabled={requestSaving} onClick={() => void submitScheduleRequest()}>{requestSaving ? 'Submitting…' : 'Submit Request'}</button></footer>
+        </section>
+      </div> : null}
 
       <div className="gb-calendar-view-toggle" role="group" aria-label="Calendar view">
         {(['day', 'week', 'month'] as const).map((view) => (

@@ -44,6 +44,114 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   min-block-size: 0;
 }
 
+.gb-calendar-time-off {
+  min-height: 2.25rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid #4ade80;
+  border-radius: 6px;
+  background: #166534;
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.gb-calendar-content-schedule {
+  min-height: 2.35rem;
+  padding-block: 0.5rem;
+  white-space: nowrap;
+}
+
+.gb-calendar-shift-request {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid #fb7185;
+  border-radius: 6px;
+  background: #881337;
+  color: #fff1f2;
+  font-size: 0.75rem;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgb(251 113 133 / 0.12), 0 0 14px rgb(244 63 94 / 0.18);
+}
+
+.gb-calendar-shift-request-icon,
+.gb-calendar-request-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fb7185;
+  color: #4c0519;
+  font-weight: 950;
+}
+
+.gb-calendar-shift-request-icon {
+  position: absolute;
+  top: -0.75rem;
+  left: 50%;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2px solid #18181b;
+  transform: translateX(-50%);
+  font-size: 1rem;
+}
+
+.gb-calendar-request-badge {
+  position: absolute;
+  top: -0.65rem;
+  right: -0.55rem;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.3rem;
+  border: 2px solid #18181b;
+  border-radius: 999px;
+  background: #facc15;
+  color: #18181b;
+  font-size: 0.68rem;
+  font-weight: 950;
+  box-shadow: 0 0 12px rgb(250 204 21 / 0.7);
+}
+
+.gb-calendar-request-dialog {
+  width: min(34rem, 100%);
+  max-height: calc(100dvh - 1.5rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid #52525b;
+  border-radius: 10px;
+  background: #18181b;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.6);
+}
+
+.gb-calendar-request-dialog > header,
+.gb-calendar-request-dialog > header > div,
+.gb-calendar-request-dialog > footer {
+  display: flex;
+  align-items: center;
+}
+
+.gb-calendar-request-dialog > header { justify-content: space-between; gap: 1rem; }
+.gb-calendar-request-dialog > header > div { gap: 0.7rem; }
+.gb-calendar-request-dialog h3 { font-size: 1.15rem; font-weight: 750; }
+.gb-calendar-request-dialog p { color: #a1a1aa; font-size: 0.78rem; }
+.gb-calendar-request-dialog-icon { width: 2.35rem; height: 2.35rem; flex: 0 0 auto; font-size: 1.25rem; }
+.gb-calendar-request-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.gb-calendar-request-fields label > span { display: block; margin-bottom: 0.3rem; color: #d4d4d8; font-size: 0.75rem; font-weight: 650; }
+.gb-calendar-request-fields input,
+.gb-calendar-request-fields select { width: 100%; min-height: 2.65rem; border: 1px solid #52525b; border-radius: 6px; background: #27272a; padding: 0.5rem 0.65rem; }
+.gb-calendar-request-error { margin-top: 0.75rem; padding: 0.55rem 0.7rem; border: 1px solid #ef4444; border-radius: 6px; background: rgb(127 29 29 / 0.35); color: #fecaca !important; }
+.gb-calendar-request-dialog > footer { justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.gb-calendar-request-dialog > footer button { min-height: 2.45rem; padding: 0.45rem 0.8rem; border: 1px solid #52525b; border-radius: 6px; background: #27272a; font-size: 0.82rem; font-weight: 700; }
+.gb-calendar-request-dialog > footer .submit { border-color: #4ade80; background: #39ff14; color: #09090b; }
+.gb-calendar-request-dialog > footer button:disabled { opacity: 0.55; }
+
 @media (min-width: 768px) and (max-width: 1100px) {
   .gb-calendar-window {
     padding: 0.75rem;
@@ -70,6 +178,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
     padding: 0.45rem 0.25rem;
     font-size: 0.75rem;
   }
+}
+
+@media (max-width: 767px) {
+  .gb-calendar-header { align-items: stretch; }
+  .gb-calendar-title-actions,
+  .gb-calendar-controls { width: 100%; }
+  .gb-calendar-title-actions h2 { width: 100%; font-size: 1.15rem; }
+  .gb-calendar-time-off { flex: 1 1 auto; }
+  .gb-calendar-controls { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .gb-calendar-shift-request { grid-column: 1 / -1; justify-self: start; }
+  .gb-calendar-content-schedule { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .gb-calendar-settings { grid-column: 1 / -1; }
+  .gb-calendar-request-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 .gb-icon-button {

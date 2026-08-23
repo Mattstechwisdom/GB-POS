@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.26 (2026-08-23)
+- Calendar Request Actions: places Request Time Off beside Schedule Management and moves the thicker Streaming/Content Schedule control directly into the date-navigation action group.
+- Time-Off Requests: lets technicians choose their name, date, and absence start/end times with required-field and time-order validation.
+- Shift-Change Requests: adds a compact, high-visibility entry point with an icon above it, preloads the technician's effective shift, and submits altered hours without changing the approved schedule.
+- Request Notifications: stores pending schedule requests in the synchronized calendar data and creates prominent notification entries with a live pending-count badge.
+- Responsive Calendar: reorganizes header actions and request forms for narrow desktop and mobile layouts while preserving the full desktop calendar workspace.
+
 ## v0.6.25 (2026-08-22)
 - Calendar Entry Rail: moves Parts/Products, Events, Consultation, Streaming/Content, and Tasks into a compact left-side selector while preserving the existing contextual fields on the right.
 - Per-Day Shift Changes: edits technician start/end times or marks a technician OFF for one selected date without changing the recurring schedule saved in Technicians.
