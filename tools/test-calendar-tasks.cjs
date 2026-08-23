@@ -11,6 +11,7 @@ const shiftLogic = read('src/lib/technicianSchedule.ts');
 const desktopCloud = read('app/electron/electron-main.ts');
 const mobileCloud = read('src/mobile/mobile-api.ts');
 const migration = read('supabase/migrations/20260811174737_add_calendar_tasks.sql');
+const shiftRequestMigration = read('supabase/migrations/20260823162803_add_calendar_shift_requests.sql');
 
 assert.match(calendar, /category\?:[^;]*'task'/, 'Calendar must support task records.');
 assert.match(calendar, /calendarEventGroupKey/, 'Calendar must group repeated event icons.');
@@ -45,18 +46,32 @@ assert.match(calendar, /gb-calendar-entry-type-rail/, 'The add-entry window must
 assert.match(calendar, /Shift Change/, 'The day shift window must expose date-specific shift changes.');
 assert.match(calendar, /Save Shift Changes/, 'Shift changes must have an explicit synced save action.');
 assert.match(calendar, /shiftOverridden/, 'Calendar shift icons must distinguish date-specific changes.');
+assert.match(calendar, /Request Time Off/, 'Calendar header must expose the prominent time-off request action.');
+assert.match(calendar, /gb-calendar-timeoff-badge/, 'Pending shift requests must display a prominent notification badge.');
+assert.match(calendar, /Full Day OFF/, 'Shift requests must support a full-day absence.');
+assert.match(calendar, /Different Hours/, 'Shift requests must support custom start and end hours.');
+assert.match(calendar, /Submit Shift Request/, 'Technicians must explicitly submit a synced shift request.');
+assert.match(calendar, /reviewShiftRequest\(request, 'approved'\)/, 'Approving a request must convert it into a dated shift override.');
+assert.match(calendar, /reviewShiftRequest\(request, 'declined'\)/, 'Schedule managers must be able to decline a pending request.');
 assert.match(shiftLogic, /SHIFT_OVERRIDE_SOURCE = 'shift-override'/, 'Shift overrides need a stable shared-record marker.');
+assert.match(shiftLogic, /SHIFT_REQUEST_SOURCE = 'shift-request'/, 'Shift requests need a stable shared-record marker.');
 assert.match(shiftLogic, /effectiveTechnicianShiftForDate/, 'Calendar and Daily Look must resolve date-specific overrides over master schedules.');
 assert.match(dailyLook, /technicianShiftsForDate\(techs, date, technician, events\)/, 'Daily Look must apply synced shift overrides.');
 assert.match(desktopCloud, /source[^\n]*shift-override/, 'Local backups must retain synced shift overrides.');
+assert.match(desktopCloud, /source[^\n]*shift-request/, 'Local backups must retain synced shift requests.');
 for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /taskCompleted:\s*row\.task_completed === true/);
   assert.match(source, /task_completed:\s*toCloudBool\(item\.taskCompleted\)/);
   assert.match(source, /task_completed_at:/);
+  assert.match(source, /requestStatus:\s*row\.request_status/);
+  assert.match(source, /request_status:\s*toCloudString\(item\.requestStatus\)/);
+  assert.match(source, /shift_request_off:/);
 }
 assert.match(desktopCloud, /key === 'calendarEvents'[\s\S]*Date\.now\(\) \* 1000/, 'Desktop tasks need cross-device-safe calendar ids.');
 assert.match(mobileCloud, /key === 'calendarEvents'[\s\S]*crypto\.getRandomValues/, 'Mobile tasks need cross-device-safe calendar ids.');
 assert.match(migration, /calendar_events_open_tasks_idx/);
 assert.match(migration, /where category = 'task' and task_completed = false/);
+assert.match(shiftRequestMigration, /request_status text/);
+assert.match(shiftRequestMigration, /calendar_events_pending_shift_requests_idx/);
 
 console.log('Calendar task carry-forward, grouping, and Supabase mapping checks passed.');

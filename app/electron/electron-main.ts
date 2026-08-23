@@ -4519,6 +4519,10 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       partName: row.part_name || '',
       source: row.source || '',
+      requestStatus: row.request_status || undefined,
+      shiftRequestOff: row.shift_request_off === true,
+      requestedAt: cloudDate(row.requested_at),
+      reviewedAt: cloudDate(row.reviewed_at),
       orderUrl: row.order_url || '',
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
@@ -4577,6 +4581,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
+      repairType: row.repair_type || '',
       partCategory: row.part_category || '',
       distributor: row.distributor || '',
       vendorRelationship: row.vendor_relationship || 'wholesale',
@@ -4821,6 +4826,10 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
+      request_status: toCloudString(item.requestStatus),
+      shift_request_off: typeof item.shiftRequestOff === 'boolean' ? item.shiftRequestOff : null,
+      requested_at: toCloudIso(item.requestedAt),
+      reviewed_at: toCloudIso(item.reviewedAt),
       order_url: toCloudString(item.orderUrl),
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
@@ -4905,6 +4914,7 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
+      repair_type: toCloudString(item.repairType),
       part_category: toCloudString(item.partCategory),
       distributor: toCloudString(item.distributor),
       vendor_relationship: toCloudString(item.vendorRelationship || 'wholesale'),
@@ -8692,7 +8702,8 @@ async function readCollectionForBackup(key: string, db: any): Promise<any[]> {
 function isLegacyScheduleBackupEvent(e: any) {
   try {
     const t = (e?.type || e?.kind || e?.category || '').toString().toLowerCase();
-    if (t === 'schedule' && String(e?.source || '').toLowerCase() !== 'shift-override') return true;
+    const source = String(e?.source || '').toLowerCase();
+    if (t === 'schedule' && source !== 'shift-override' && source !== 'shift-request') return true;
     if (e?.legacy === true) return true;
     if (e?.derived === true) return true;
     if (typeof e?.technicianId !== 'undefined' || typeof e?.techId !== 'undefined') return true;

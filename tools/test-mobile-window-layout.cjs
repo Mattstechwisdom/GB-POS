@@ -315,6 +315,37 @@ async function inspectWindow(win, type, orientation) {
     assert.equal(budget.fits, true, `Calendar Budget editor escaped the viewport in ${orientation.name}.`);
     assert.equal(budget.inputUsable, true, `Calendar Budget input was not touch-usable in ${orientation.name}.`);
     assert.equal(budget.cancelPresent, true, `Calendar Budget editor was missing Cancel in ${orientation.name}.`);
+    const shiftRequest = await win.webContents.executeJavaScript(`(async () => {
+      const button = Array.from(document.querySelectorAll('button')).find((entry) => entry.textContent.trim() === 'Request Time Off');
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      const dialog = document.querySelector('.gb-calendar-shift-request-dialog');
+      const rect = dialog?.getBoundingClientRect();
+      const custom = Array.from(dialog?.querySelectorAll('button') || []).find((entry) => entry.textContent.trim() === 'Different Hours');
+      custom?.click();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const times = dialog?.querySelectorAll('.gb-calendar-shift-request-times input[type="time"]') || [];
+      const submit = Array.from(dialog?.querySelectorAll('button') || []).find((entry) => entry.textContent.trim() === 'Submit Shift Request');
+      const close = dialog?.querySelector('button[aria-label="Close shift request"]');
+      const body = dialog?.querySelector('.gb-calendar-shift-request-body');
+      close?.click();
+      return {
+        buttonPresent: Boolean(button),
+        visible: Boolean(dialog && rect && rect.width > 280 && rect.height > 260),
+        fits: Boolean(rect && rect.left >= -2 && rect.right <= window.innerWidth + 2 && rect.top >= -2 && rect.bottom <= window.innerHeight + 2),
+        noHorizontalClip: Boolean(body && body.scrollWidth <= body.clientWidth + 3),
+        customTimes: times.length === 2,
+        submitVisible: Boolean(submit && submit.getBoundingClientRect().height >= 36),
+        closePresent: Boolean(close),
+      };
+    })()`);
+    assert.equal(shiftRequest.buttonPresent, true, `Calendar Request Time Off button was missing in ${orientation.name}.`);
+    assert.equal(shiftRequest.visible, true, `Calendar shift request dialog did not open in ${orientation.name}.`);
+    assert.equal(shiftRequest.fits, true, `Calendar shift request dialog escaped the viewport in ${orientation.name}.`);
+    assert.equal(shiftRequest.noHorizontalClip, true, `Calendar shift request dialog clipped horizontally in ${orientation.name}.`);
+    assert.equal(shiftRequest.customTimes, true, `Calendar shift request custom hours were unavailable in ${orientation.name}.`);
+    assert.equal(shiftRequest.submitVisible, true, `Calendar shift request submit action was not visible in ${orientation.name}.`);
+    assert.equal(shiftRequest.closePresent, true, `Calendar shift request close control was missing in ${orientation.name}.`);
   }
 
   if (type === 'quoteGenerator') {

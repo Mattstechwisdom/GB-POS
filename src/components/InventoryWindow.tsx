@@ -16,6 +16,7 @@ type InventoryItem = {
   category?: string;
   deviceModel?: string;
   associatedDevices?: string[];
+  repairType?: string;
   partCategory?: string;
   condition?: string;
   price?: number;
@@ -44,6 +45,28 @@ const PRODUCT_CONDITIONS = ['New', 'Like New', 'Excellent', 'Good', 'Fair', 'Poo
 const MARKUP_PRESETS = [5, 10, 15, 20, 25];
 const DEFAULT_MARKUP_PCT = '5';
 
+const INVENTORY_PREVIEW_PART: InventoryItem = {
+  id: 99001,
+  itemDescription: 'HDMI Port',
+  itemType: 'Part',
+  category: 'Game Console',
+  repairType: 'Port Repair',
+  deviceModel: 'PlayStation 5',
+  associatedDevices: ['PlayStation 5', 'PlayStation 5 Slim', 'PlayStation 5 Pro'],
+  partCategory: 'Charging Port',
+  condition: 'New',
+  internalCost: 8.5,
+  markupPct: 10,
+  price: 9.35,
+  distributor: 'Console Parts Direct',
+  distributorSku: 'GB-HDMI-PS5',
+  reorderQty: 10,
+  reorderUrlTemplate: 'https://example.com/ps5-hdmi-port',
+  trackStock: true,
+  stockCount: 10,
+  lowStockThreshold: 3,
+};
+
 function blankItem(mode: InventoryMode): InventoryItem {
   return {
     itemDescription: '',
@@ -51,6 +74,7 @@ function blankItem(mode: InventoryMode): InventoryItem {
     category: '',
     deviceModel: '',
     associatedDevices: [],
+    repairType: '',
     partCategory: mode === 'parts' ? 'Screen' : '',
     condition: 'New',
     price: undefined,
@@ -87,6 +111,7 @@ function normalizeOrderUrl(value: unknown): string {
 
 export default function InventoryWindow() {
   const api = (window as any).api;
+  const isInventoryPreview = import.meta.env.DEV && new URLSearchParams(window.location.search).get('inventoryPreview') === '1';
   const requestedInventoryIdRef = useRef<number | undefined>(undefined);
   const requestedInventoryIdInitializedRef = useRef(false);
   const skipNextModeResetRef = useRef(false);
@@ -102,6 +127,7 @@ export default function InventoryWindow() {
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
   const [deviceCategories, setDeviceCategories] = useState<any[]>([]);
   const [repairCategories, setRepairCategories] = useState<any[]>([]);
+  const [repairTypes, setRepairTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
@@ -125,23 +151,41 @@ export default function InventoryWindow() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (isInventoryPreview) {
+        skipNextModeResetRef.current = true;
+        setItems([INVENTORY_PREVIEW_PART]);
+        setVendors([{ id: 99001, name: 'Console Parts Direct', inventoryMode: 'Part', relationship: 'wholesale', taxExempt: true } as VendorRecord]);
+        setDeviceCategories([
+          { id: 99001, title: 'Game Console', name: 'PlayStation 5' },
+          { id: 99002, title: 'Game Console', name: 'PlayStation 5 Slim' },
+          { id: 99003, title: 'Game Console', name: 'PlayStation 5 Pro' },
+        ]);
+        setRepairCategories([{ id: 99001, category: 'Game Console', repairCategory: 'Port Repair', title: 'HDMI Port Replacement' }]);
+        setRepairTypes([{ id: 99001, name: 'Port Repair' }]);
+        setSelectedId(INVENTORY_PREVIEW_PART.id);
+        setEditing({ ...blankItem('parts'), ...INVENTORY_PREVIEW_PART });
+        setEditingOrderUrl(false);
+        return;
+      }
       await reconcilePaidSaleInventory(api).catch((error) => {
         console.error('Paid-sale inventory reconciliation failed', error);
       });
-      const [products, vendorRows, deviceRows, repairRows] = await Promise.all([
+      const [products, vendorRows, deviceRows, repairRows, repairTypeRows] = await Promise.all([
         api?.dbGet?.('products').catch(() => []),
         api?.dbGet?.('vendors').catch(() => []),
         api?.dbGet?.('deviceCategories').catch(() => []),
         api?.dbGet?.('repairCategories').catch(() => []),
+        api?.dbGet?.('repairTypes').catch(() => []),
       ]);
       setItems(Array.isArray(products) ? products : []);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setDeviceCategories(Array.isArray(deviceRows) ? deviceRows : []);
       setRepairCategories(Array.isArray(repairRows) ? repairRows : []);
+      setRepairTypes(Array.isArray(repairTypeRows) ? repairTypeRows : []);
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, isInventoryPreview]);
 
   useEffect(() => {
     load();
@@ -178,6 +222,7 @@ export default function InventoryWindow() {
           item.category,
           item.deviceModel,
           ...(Array.isArray(item.associatedDevices) ? item.associatedDevices : []),
+          item.repairType,
           item.partCategory,
           item.condition,
           item.distributor,
@@ -259,6 +304,15 @@ export default function InventoryWindow() {
       .filter(Boolean),
   ])).sort((a, b) => a.localeCompare(b)), [deviceCategories, items]);
 
+  const repairTypeOptions = useMemo(() => Array.from(new Set([
+    ...repairTypes.map((row) => String(row?.name || '').trim()).filter(Boolean),
+    ...repairCategories.map((row) => String(row?.repairCategory || '').trim()).filter(Boolean),
+    ...items
+      .filter((item) => (item.itemType || 'Product') === 'Part')
+      .map((item) => String(item.repairType || '').trim())
+      .filter(Boolean),
+  ])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })), [items, repairCategories, repairTypes]);
+
   const selectItem = (item: InventoryItem) => {
     const associatedDevices = Array.from(new Set([
       ...(Array.isArray(item.associatedDevices) ? item.associatedDevices : []),
@@ -337,6 +391,7 @@ export default function InventoryWindow() {
         category: String(editing.category || '').trim(),
         deviceModel: mode === 'parts' ? (associatedDevices[0] || '') : '',
         associatedDevices,
+        repairType: mode === 'parts' ? String(editing.repairType || '').trim() : '',
         partCategory: mode === 'parts' ? (String(editing.partCategory || 'Other').trim() || 'Other') : '',
         condition: String(editing.condition || 'New').trim() || 'New',
         markupPct: editing.markupPct ?? DEFAULT_MARKUP_PCT,
@@ -589,6 +644,7 @@ export default function InventoryWindow() {
                             <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-zinc-400">
                               <span>{item.category || 'Other'}</span>
                               {devices.length ? <span>- {devices.slice(0, 2).join(', ')}{devices.length > 2 ? ` +${devices.length - 2}` : ''}</span> : null}
+                              {mode === 'parts' && item.repairType ? <span>• {item.repairType}</span> : null}
                               {mode === 'parts' ? <span>• {item.partCategory || 'Part'}</span> : null}
                               <span>• {item.condition || 'New'}</span>
                               {item.distributor ? <span>• {item.distributor}</span> : null}
@@ -721,17 +777,35 @@ export default function InventoryWindow() {
                 />
               </label>
 
-              <label className="block">
-                <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
-                <input
-                  list="inventory-device-types"
-                  value={editing.category || ''}
-                  onChange={(event) => setEditing((current) => mode === 'parts'
-                    ? { ...current, category: event.target.value, associatedDevices: [], deviceModel: '' }
-                    : { ...current, category: event.target.value })}
-                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
-                />
-              </label>
+              <div className="grid min-w-0 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
+                  <input
+                    list="inventory-device-types"
+                    value={editing.category || ''}
+                    onChange={(event) => setEditing((current) => mode === 'parts'
+                      ? { ...current, category: event.target.value, associatedDevices: [], deviceModel: '' }
+                      : { ...current, category: event.target.value })}
+                    className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
+                  />
+                </label>
+                {mode === 'parts' ? (
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-zinc-400">Repair Type</span>
+                    <input
+                      list="inventory-repair-types"
+                      value={editing.repairType || ''}
+                      onChange={(event) => setEditing((current) => ({ ...current, repairType: event.target.value }))}
+                      className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
+                      placeholder="Select the repair this part supports"
+                    />
+                    <datalist id="inventory-repair-types">
+                      {repairTypeOptions.map((value) => <option key={value} value={value} />)}
+                    </datalist>
+                    <span className="mt-1 block text-[11px] text-zinc-500">The work order uses this with Compatible Devices to select and deduct the correct part.</span>
+                  </label>
+                ) : null}
+              </div>
               <datalist id="inventory-device-types">
                 {categoryOptions.map((value) => <option key={value} value={value} />)}
               </datalist>

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.26 (2026-08-23)
+- Inventory Repair Types: adds a saved Repair Type field directly beneath Device Category for repair parts on Windows and Android.
+- Exact Part Matching: resolves catalog repairs to inventory using Repair Type plus the work-order device category and compatible device models, with explicit repair links remaining authoritative.
+- Work-Order Stock: links the resolved part to the line item and deducts its quantity after a verified parts payment or completed checkout without double-consuming it across devices.
+- Installer Naming: publishes the Windows setup as `GB-POS-installerx64-<version>.exe` while retaining the separate universal Android APK.
+- Fixed Product Picker: confines scrolling to the left product catalog while keeping the right-side details, Save, Add, and Cancel controls stationary.
+- Fixed Quick Checkout: locks the window to the usable viewport and compacts its totals footer so Checkout remains visible without scrolling the page.
+- Responsive Checkout: preserves the fixed editor and footer behavior on desktop plus Android portrait and landscape layouts.
+- Time-Off Requests: adds a prominent synced Calendar request workflow for a full day OFF or custom start/end hours without changing recurring Technician schedules.
+- Schedule Review: displays a high-visibility pending badge and lets schedule managers approve or decline requests; approval becomes the existing dated shift override and red Shift indicator.
+- Calendar Header: moves the thicker Streaming/Content Schedule action beside the date controls while keeping Request Time Off alongside Schedule Management.
+- Supabase Parity: stores request status, full-day selection, submission time, and review time across Windows and Android, with local backup support.
+- Release Safety: verifies the desktop picker at 1280x720 and the full Android portrait/landscape window suite plus calendar request, shift, and cloud-mapping regressions.
+
 ## v0.6.25 (2026-08-22)
 - Calendar Entry Rail: moves Parts/Products, Events, Consultation, Streaming/Content, and Tasks into a compact left-side selector while preserving the existing contextual fields on the right.
 - Per-Day Shift Changes: edits technician start/end times or marks a technician OFF for one selected date without changing the recurring schedule saved in Technicians.

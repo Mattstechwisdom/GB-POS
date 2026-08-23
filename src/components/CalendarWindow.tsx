@@ -7,7 +7,7 @@ import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
 import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, toggleTaskAssignment } from '@/lib/calendarTasks';
-import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
+import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, SHIFT_REQUEST_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 
@@ -33,7 +33,7 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override' | 'shift-request';
   businessKind?: 'federalHoliday' | 'scTaxFreeWeekend' | 'daylightSaving' | 'estimatedTaxDeadline';
   saleId?: number;
   notes?: string;
@@ -56,6 +56,10 @@ type CalendarEvent = {
   taskCompletedBy?: string;
   shiftOverridden?: boolean;
   shiftOverrideId?: number;
+  requestStatus?: 'pending' | 'approved' | 'declined';
+  shiftRequestOff?: boolean;
+  requestedAt?: string;
+  reviewedAt?: string;
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -451,6 +455,10 @@ const CalendarWindow: React.FC = () => {
   const [shiftDrafts, setShiftDrafts] = useState<Record<string, { start: string; end: string; off: boolean }>>({});
   const [shiftSaving, setShiftSaving] = useState(false);
   const [shiftSaveError, setShiftSaveError] = useState('');
+  const [shiftRequestOpen, setShiftRequestOpen] = useState(false);
+  const [shiftRequestDraft, setShiftRequestDraft] = useState({ technician: '', date: fmtDate(new Date()), off: true, start: '', end: '', reason: '' });
+  const [shiftRequestSaving, setShiftRequestSaving] = useState(false);
+  const [shiftRequestError, setShiftRequestError] = useState('');
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
@@ -808,6 +816,126 @@ const CalendarWindow: React.FC = () => {
     [current.getFullYear() - 1, current.getFullYear(), current.getFullYear() + 1],
     businessCalendar,
   ), [businessCalendar, current]);
+
+  const activeTechnicians = useMemo(
+    () => techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled'),
+    [techs],
+  );
+  const pendingShiftRequests = useMemo(
+    () => events
+      .filter(event => event.source === SHIFT_REQUEST_SOURCE && (event.requestStatus || 'pending') === 'pending')
+      .sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`)),
+    [events],
+  );
+
+  function openShiftRequestWindow() {
+    setShiftRequestError('');
+    setShiftRequestDraft(currentDraft => ({
+      ...currentDraft,
+      technician: currentDraft.technician || (activeTechnicians[0] ? technicianDisplayName(activeTechnicians[0]) : ''),
+      date: currentDraft.date || fmtDate(new Date()),
+    }));
+    setShiftRequestOpen(true);
+  }
+
+  async function submitShiftRequest() {
+    const api = (window as any).api;
+    const technician = activeTechnicians.find((item: any) => technicianDisplayName(item) === shiftRequestDraft.technician);
+    if (!api?.dbAdd) return;
+    if (!technician) {
+      setShiftRequestError('Select a technician.');
+      return;
+    }
+    if (!shiftRequestDraft.date) {
+      setShiftRequestError('Select the requested date.');
+      return;
+    }
+    if (!shiftRequestDraft.off && (!shiftRequestDraft.start || !shiftRequestDraft.end)) {
+      setShiftRequestError('Enter both requested start and end times, or select OFF for the full day.');
+      return;
+    }
+    if (!shiftRequestDraft.off && toMinutes(shiftRequestDraft.end) <= toMinutes(shiftRequestDraft.start)) {
+      setShiftRequestError('The requested end time must be later than the start time.');
+      return;
+    }
+    setShiftRequestSaving(true);
+    setShiftRequestError('');
+    try {
+      const name = technicianDisplayName(technician);
+      const payload: CalendarEvent = {
+        date: shiftRequestDraft.date,
+        title: `${name} - ${shiftRequestDraft.off ? 'Time Off Request' : 'Shift Change Request'}`,
+        category: 'schedule',
+        source: SHIFT_REQUEST_SOURCE,
+        technician: name,
+        location: shiftOverrideLocation(technician),
+        time: shiftRequestDraft.off ? '' : shiftRequestDraft.start,
+        endTime: shiftRequestDraft.off ? '' : shiftRequestDraft.end,
+        notes: shiftRequestDraft.reason.trim(),
+        shiftRequestOff: shiftRequestDraft.off,
+        requestStatus: 'pending',
+        requestedAt: new Date().toISOString(),
+      };
+      const added = await api.dbAdd('calendarEvents', payload);
+      if (!added) throw new Error('The time-off request could not be saved.');
+      setEvents(currentEvents => [...currentEvents, added]);
+      setShiftRequestDraft({ technician: name, date: shiftRequestDraft.date, off: true, start: '', end: '', reason: '' });
+    } catch (error: any) {
+      setShiftRequestError(error?.message || 'The time-off request could not be saved.');
+    } finally {
+      setShiftRequestSaving(false);
+    }
+  }
+
+  async function reviewShiftRequest(request: CalendarEvent, decision: 'approved' | 'declined') {
+    const api = (window as any).api;
+    if (!api?.dbUpdate || request.id == null) return;
+    setShiftRequestSaving(true);
+    setShiftRequestError('');
+    try {
+      const reviewedAt = new Date().toISOString();
+      if (decision === 'declined') {
+        const declined = await api.dbUpdate('calendarEvents', request.id, { ...request, requestStatus: 'declined', reviewedAt });
+        if (!declined) throw new Error('The request could not be declined.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === request.id ? declined : event));
+        return;
+      }
+
+      const existingOverride = events.find(event => isShiftOverrideEvent(event)
+        && event.id !== request.id
+        && String(event.date || '').slice(0, 10) === String(request.date || '').slice(0, 10)
+        && (event.location === request.location || String(event.technician || '').toLowerCase() === String(request.technician || '').toLowerCase()));
+      const overridePayload: CalendarEvent = {
+        ...(existingOverride || request),
+        date: request.date,
+        title: `${request.technician || 'Technician'} - Shift Change`,
+        category: 'schedule',
+        source: SHIFT_OVERRIDE_SOURCE,
+        technician: request.technician,
+        location: request.location,
+        time: request.shiftRequestOff ? '' : request.time,
+        endTime: request.shiftRequestOff ? '' : request.endTime,
+        notes: request.shiftRequestOff ? 'OFF' : '',
+        requestStatus: undefined,
+        shiftRequestOff: undefined,
+        reviewedAt,
+      };
+      if (existingOverride?.id != null) {
+        const updatedOverride = await api.dbUpdate('calendarEvents', existingOverride.id, overridePayload);
+        const approvedRequest = await api.dbUpdate('calendarEvents', request.id, { ...request, requestStatus: 'approved', reviewedAt });
+        if (!updatedOverride || !approvedRequest) throw new Error('The approved shift change could not be saved.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === existingOverride.id ? updatedOverride : event.id === request.id ? approvedRequest : event));
+      } else {
+        const approvedOverride = await api.dbUpdate('calendarEvents', request.id, overridePayload);
+        if (!approvedOverride) throw new Error('The approved shift change could not be saved.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === request.id ? approvedOverride : event));
+      }
+    } catch (error: any) {
+      setShiftRequestError(error?.message || 'The request could not be reviewed.');
+    } finally {
+      setShiftRequestSaving(false);
+    }
+  }
 
   function openShiftDay(dateKey: string) {
     const drafts: Record<string, { start: string; end: string; off: boolean }> = {};
@@ -1498,14 +1626,18 @@ const CalendarWindow: React.FC = () => {
       <div className="gb-calendar-header flex shrink-0 flex-wrap items-center justify-between gap-3 mb-3">
         <div className="gb-calendar-title-actions flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
+          <div className="gb-calendar-timeoff-action relative">
+            {pendingShiftRequests.length ? <span className="gb-calendar-timeoff-badge" aria-label={`${pendingShiftRequests.length} pending time-off requests`}>!<strong>{pendingShiftRequests.length}</strong></span> : null}
+            <button type="button" className="gb-calendar-timeoff-button" onClick={openShiftRequestWindow}>Request Time Off</button>
+          </div>
+        </div>
+        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button
-            className="gb-calendar-content-schedule px-3 py-1 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
+            className="gb-calendar-content-schedule px-3 py-2 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm font-semibold"
             onClick={() => setContentScheduleOpen(true)}
           >
             Streaming/Content Schedule
           </button>
-        </div>
-        <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
           <button className="gb-calendar-period-arrow px-2 py-1 bg-zinc-800 border border-zinc-700 rounded" aria-label="Previous calendar period" onClick={() => movePeriod(-1)}>&lt;</button>
           <div className="gb-calendar-period text-sm text-zinc-300 w-36 text-center">
             {periodLabel}
@@ -1828,6 +1960,41 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {shiftRequestOpen && createPortal((
+        <div className="gb-calendar-shift-request-layer fixed inset-0 z-[100450] flex items-center justify-center bg-black/75 p-3" onMouseDown={event => { if (event.target === event.currentTarget) setShiftRequestOpen(false); }}>
+          <section className="gb-calendar-shift-request-dialog flex max-h-[90dvh] w-full max-w-[780px] flex-col overflow-hidden rounded border border-red-500/70 bg-zinc-900 shadow-[0_0_34px_rgba(239,68,68,0.18)]" role="dialog" aria-modal="true" aria-labelledby="calendar-shift-request-title">
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-700 p-4">
+              <div><h3 id="calendar-shift-request-title" className="text-xl font-semibold text-white">Request Time Off / Shift Change</h3><p className="mt-1 text-sm text-zinc-400">Submit a full day off or request different hours for one date. Saved Technician schedules are not changed.</p></div>
+              <button type="button" className="gb-icon-button" aria-label="Close shift request" onClick={() => setShiftRequestOpen(false)}>X</button>
+            </header>
+            <div className="gb-calendar-shift-request-body min-h-0 overflow-y-auto p-4">
+              <section className="gb-calendar-shift-request-form rounded border border-zinc-700 bg-zinc-950/55 p-3">
+                <label><span>Technician</span><select value={shiftRequestDraft.technician} onChange={event => setShiftRequestDraft(draft => ({ ...draft, technician: event.target.value }))}><option value="">Select technician</option>{activeTechnicians.map((technician: any) => { const name = technicianDisplayName(technician); return <option key={shiftOverrideLocation(technician)} value={name}>{name}</option>; })}</select></label>
+                <label><span>Date</span><input type="date" value={shiftRequestDraft.date} onChange={event => setShiftRequestDraft(draft => ({ ...draft, date: event.target.value }))} /></label>
+                <div className="gb-calendar-shift-request-mode" role="group" aria-label="Request type">
+                  <button type="button" className={shiftRequestDraft.off ? 'active' : ''} aria-pressed={shiftRequestDraft.off} onClick={() => setShiftRequestDraft(draft => ({ ...draft, off: true, start: '', end: '' }))}>Full Day OFF</button>
+                  <button type="button" className={!shiftRequestDraft.off ? 'active' : ''} aria-pressed={!shiftRequestDraft.off} onClick={() => setShiftRequestDraft(draft => ({ ...draft, off: false }))}>Different Hours</button>
+                </div>
+                {!shiftRequestDraft.off ? <div className="gb-calendar-shift-request-times"><label><span>Requested Start</span><input type="time" value={shiftRequestDraft.start} onChange={event => setShiftRequestDraft(draft => ({ ...draft, start: event.target.value }))} /></label><label><span>Requested End</span><input type="time" value={shiftRequestDraft.end} onChange={event => setShiftRequestDraft(draft => ({ ...draft, end: event.target.value }))} /></label></div> : <div className="gb-calendar-shift-request-off-summary">OFF for the full selected day</div>}
+                <label className="gb-calendar-shift-request-reason"><span>Reason / Notes</span><textarea value={shiftRequestDraft.reason} onChange={event => setShiftRequestDraft(draft => ({ ...draft, reason: event.target.value }))} placeholder="Optional details for the schedule manager" /></label>
+                {shiftRequestError ? <p className="gb-calendar-shift-request-error">{shiftRequestError}</p> : null}
+                <button type="button" className="gb-calendar-shift-request-submit" disabled={shiftRequestSaving} onClick={() => void submitShiftRequest()}>{shiftRequestSaving ? 'Saving Request...' : 'Submit Shift Request'}</button>
+              </section>
+
+              <section className="gb-calendar-pending-shift-requests mt-4">
+                <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Pending Requests</h4><span>{pendingShiftRequests.length}</span></div>
+                {!pendingShiftRequests.length ? <p className="mt-2 rounded border border-zinc-800 bg-zinc-950/40 p-3 text-sm text-zinc-500">No pending schedule requests.</p> : pendingShiftRequests.map(request => (
+                  <article key={request.id} className="gb-calendar-shift-request-card">
+                    <div className="min-w-0"><strong>{request.technician || 'Technician'}</strong><span>{new Date(`${request.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span><p>{request.shiftRequestOff ? 'Full Day OFF' : `${formatTime12FromHHmm(request.time || '')} - ${formatTime12FromHHmm(request.endTime || '')}`}</p>{request.notes ? <small>{request.notes}</small> : null}</div>
+                    <div className="gb-calendar-shift-request-review"><button type="button" disabled={shiftRequestSaving} onClick={() => void reviewShiftRequest(request, 'declined')}>Decline</button><button type="button" disabled={shiftRequestSaving} onClick={() => void reviewShiftRequest(request, 'approved')}>Approve</button></div>
+                  </article>
+                ))}
+              </section>
+            </div>
+          </section>
+        </div>
+      ), document.body)}
 
       {shiftDay && (() => {
         const day = new Date(`${shiftDay}T12:00:00`);

@@ -17,6 +17,7 @@ import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, Drop
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
 import { listTechnicians } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
+import { consumeInStockInventory } from '../lib/inventoryConsumption';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -1580,9 +1581,11 @@ const NewWorkOrderWindow: React.FC = () => {
         // Persist the work order. If it's brand-new (id=0) we create it here so the
         // receipt can include a real QR-code URL. If already saved, update it.
         let effectiveId = Number((wo as any).id || 0) || 0;
+        let workOrderPersisted = false;
         if (effectiveId > 0) {
           try {
             await api.update('workOrders', { ...nextWo });
+            workOrderPersisted = true;
           } catch (e) {
             console.error('Failed persisting checkout update', e);
           }
@@ -1594,11 +1597,25 @@ const NewWorkOrderWindow: React.FC = () => {
               : await api.dbAdd('workOrders', { ...nextWo });
             if (added?.id) {
               effectiveId = Number(added.id) || 0;
+              workOrderPersisted = true;
               // Sync state so autosave won't create a duplicate
               setWo(w => ({ ...w, id: effectiveId }));
             }
           } catch (e) {
             console.error('Failed creating work order on checkout', e);
+          }
+        }
+
+        const partsPaymentApplied = woPaymentAdds.some((payment: any) => Number(payment?.appliedParts || 0) > 0.009);
+        if (workOrderPersisted && effectiveId > 0 && (partsPaymentApplied || result.markClosed)) {
+          try {
+            const inventoryResult = await consumeInStockInventory(api, 'workOrder', effectiveId, updatedItems, { allowShortfall: true });
+            if (inventoryResult.shortfalls.length) {
+              triggerWarningBanner('Inventory reached zero', 'One or more repair parts need restocking.');
+            }
+          } catch (inventoryError) {
+            console.error('Work-order inventory update failed', inventoryError);
+            triggerWarningBanner('Inventory update needs attention', 'The checkout was saved, but inventory could not be adjusted.');
           }
         }
 
@@ -1872,6 +1889,9 @@ const NewWorkOrderWindow: React.FC = () => {
               items={wo.items}
               onChange={handleItemsChange}
               onCommit={handleItemsCommit}
+              deviceCategory={String(wo.productCategory || '')}
+              deviceName={String(wo.productDescription || '')}
+              deviceModel={String((wo as any).model || '')}
               onAddProduct={handleAddProduct}
               addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
               readonlyItems={readonlyAddonRows as any}

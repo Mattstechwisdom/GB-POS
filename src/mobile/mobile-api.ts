@@ -414,6 +414,10 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       partName: row.part_name || '',
       source: row.source || '',
+      requestStatus: row.request_status || undefined,
+      shiftRequestOff: row.shift_request_off === true,
+      requestedAt: cloudDate(row.requested_at),
+      reviewedAt: cloudDate(row.reviewed_at),
       orderUrl: row.order_url || '',
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
@@ -472,6 +476,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
+      repairType: row.repair_type || '',
       partCategory: row.part_category || '',
       distributor: row.distributor || '',
       vendorRelationship: row.vendor_relationship || 'wholesale',
@@ -761,6 +766,10 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
+      request_status: toCloudString(item.requestStatus),
+      shift_request_off: typeof item.shiftRequestOff === 'boolean' ? item.shiftRequestOff : null,
+      requested_at: toCloudIso(item.requestedAt),
+      reviewed_at: toCloudIso(item.reviewedAt),
       order_url: toCloudString(item.orderUrl),
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
@@ -828,6 +837,7 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
+      repair_type: toCloudString(item.repairType),
       part_category: toCloudString(item.partCategory),
       distributor: toCloudString(item.distributor),
       vendor_relationship: toCloudString(item.vendorRelationship || 'wholesale'),
@@ -1424,10 +1434,11 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
       onConflict: cloudConflictForKey(key),
       ignoreDuplicates: false,
     }).select('*').maybeSingle();
-    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|device_model|repair_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.part_category;
+      delete fallbackRow.repair_type;
       delete fallbackRow.distributor;
       delete fallbackRow.vendor_relationship;
       delete fallbackRow.vendor_share_pct;
@@ -1478,11 +1489,12 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     const row = toCloudRow(key, candidate);
     if (!row) throw new Error(`Cloud ${key} insert skipped: unsupported row.`);
     let res = await supabase.from(table).insert(row).select('*').single();
-    if (res.error && key === 'products' && /item_type|device_model|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'products' && /item_type|device_model|repair_type|part_category|distributor|distributor_sku|reorder_qty|reorder_url_template|associated_devices|purchase_restock_keys|inventory_consumption_keys|markup_pct|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.item_type;
       delete fallbackRow.device_model;
       delete fallbackRow.part_category;
+      delete fallbackRow.repair_type;
       delete fallbackRow.distributor;
       delete fallbackRow.vendor_relationship;
       delete fallbackRow.vendor_share_pct;

@@ -301,7 +301,7 @@ const QuickSaleWindow: React.FC = () => {
 
   return (
     <div className="gb-quick-checkout flex min-h-0 flex-col overflow-hidden bg-zinc-900 text-zinc-100 font-sans">
-      <div className="gb-quick-checkout-header p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div className="gb-quick-checkout-header shrink-0 p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#39FF14]">Quick Checkout</h1>
           <div className="text-xs text-zinc-400">Create a sale or repair checkout without customer info</div>
@@ -369,7 +369,7 @@ const QuickSaleWindow: React.FC = () => {
           />
         )}
 
-        <div className="gb-quick-checkout-totals relative z-10 shrink-0 bg-zinc-950 border border-zinc-700 rounded p-3 space-y-2 shadow-[0_-8px_20px_rgba(9,9,11,0.75)]">
+        <div className="gb-quick-checkout-totals relative z-10 shrink-0 bg-zinc-950 border border-zinc-700 rounded p-3 shadow-[0_-8px_20px_rgba(9,9,11,0.75)]">
           <div className="flex items-center justify-between gap-3">
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
               <input

@@ -107,7 +107,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          $setup = Join-Path 'release' "Windows-Installer-x64-$version.exe"
+          $setup = Join-Path 'release' "GB-POS-installerx64-$version.exe"
           if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -117,8 +117,8 @@ jobs:
         with:
           name: GadgetBoy-POS-installer
           path: |
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/GadgetBoy-POS-Instructions-${{ env.RELEASE_VERSION }}.pdf
             release/latest.yml
             release/builder-effective-config.yaml
@@ -130,8 +130,8 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}
           files: |
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/GadgetBoy-POS-Instructions-${{ env.RELEASE_VERSION }}.pdf
             release/latest.yml
         env:

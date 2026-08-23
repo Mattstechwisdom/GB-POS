@@ -1481,14 +1481,14 @@
   grid-template-columns: minmax(0, 1fr);
   position: relative;
   z-index: 2;
-  padding: 0.55rem !important;
+  padding: 0.4rem 0.5rem !important;
   margin: 0;
   box-shadow: none !important;
 }
 
 .gbpos-mobile .gb-quick-checkout-header {
-  min-height: 3.35rem;
-  padding: 0.55rem 0.75rem !important;
+  min-height: 3rem;
+  padding: 0.4rem 0.7rem !important;
   padding-right: 3.6rem !important;
 }
 
@@ -1606,11 +1606,16 @@
 
 .gbpos-mobile .gb-quick-checkout-totals .grid-cols-3 > div {
   min-width: 0;
-  padding: 0.45rem !important;
+  padding: 0.3rem 0.4rem !important;
 }
 
 .gbpos-mobile .gb-quick-checkout-totals .text-lg {
-  font-size: 1rem !important;
+  font-size: 0.9rem !important;
+}
+
+.gbpos-mobile .gb-quick-checkout-totals > .pt-2 button {
+  min-height: 2.15rem;
+  padding-block: 0.3rem !important;
 }
 
 @media (orientation: landscape) and (max-height: 560px) {
@@ -3376,7 +3381,7 @@
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     justify-items: center;
-    gap: 0.3rem !important;
+    gap: 0.45rem !important;
   }
 
   .gbpos-mobile .gb-calendar-header h2 {
@@ -3398,9 +3403,26 @@
   }
 
   .gbpos-mobile .gb-calendar-content-schedule {
+    grid-column: 1 / -1;
     width: min(100%, 21rem);
-    min-height: 2.3rem !important;
+    min-height: 2.65rem !important;
+    padding-block: 0.55rem !important;
     font-weight: 800;
+  }
+
+  .gbpos-mobile .gb-calendar-timeoff-action {
+    width: min(100%, 18rem);
+    margin-left: 0;
+  }
+
+  .gbpos-mobile .gb-calendar-timeoff-button {
+    width: 100%;
+    min-height: 2.65rem;
+  }
+
+  .gbpos-mobile .gb-calendar-timeoff-badge {
+    right: -0.35rem;
+    top: -0.65rem;
   }
 
   .gbpos-mobile .gb-calendar-settings {
@@ -3418,6 +3440,43 @@
 
   .gbpos-mobile .gb-calendar-daily-look {
     display: none !important;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-layer {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-dialog {
+    max-height: 94dvh !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-left: 0 !important;
+    border-radius: 8px 8px 0 0 !important;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-body {
+    padding: 0.7rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-form,
+  .gbpos-mobile .gb-calendar-shift-request-times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-form > *,
+  .gbpos-mobile .gb-calendar-shift-request-times > * {
+    grid-column: 1 / -1;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-review {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .gbpos-mobile .gb-calendar-view-toggle {
@@ -4239,7 +4298,24 @@
   }
 
   .gbpos-mobile .gb-calendar-controls {
-    grid-template-columns: 2.5rem minmax(8rem, auto) 2.5rem auto !important;
+    grid-template-columns: minmax(10rem, auto) 2.5rem minmax(8rem, auto) 2.5rem auto !important;
+  }
+
+  .gbpos-mobile .gb-calendar-content-schedule {
+    grid-column: auto;
+    width: auto;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-layer {
+    align-items: center !important;
+    padding: 0.65rem !important;
+  }
+
+  .gbpos-mobile .gb-calendar-shift-request-dialog {
+    max-width: 48rem !important;
+    max-height: 94dvh !important;
+    border: 1px solid #ef4444 !important;
+    border-radius: 8px !important;
   }
 
   .gbpos-mobile .gb-calendar-settings {
