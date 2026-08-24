@@ -6,7 +6,7 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
-import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, tasksPendingSave, toggleTaskAssignment } from '@/lib/calendarTasks';
+import { ALL_TECHNICIANS, calendarEventAutosaveEnabled, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, tasksPendingSave, toggleTaskAssignment } from '@/lib/calendarTasks';
 import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, SHIFT_REQUEST_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
@@ -1576,7 +1576,7 @@ const CalendarWindow: React.FC = () => {
     await saveEventSilent(val.ev);
   }, {
     debounceMs: 1000,
-    enabled: !!editing,
+    enabled: calendarEventAutosaveEnabled(editing),
     skipInitialSave: true,
     shouldSave: (v) => canAutosave(v.ev),
     equals: Object.is,

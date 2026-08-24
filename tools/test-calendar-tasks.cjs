@@ -23,9 +23,13 @@ const taskBuild = esbuild.buildSync({
 });
 const taskModule = { exports: {} };
 new Function('module', 'exports', 'require', taskBuild.outputFiles[0].text)(taskModule, taskModule.exports, require);
-const { tasksPendingSave } = taskModule.exports;
+const { calendarEventAutosaveEnabled, tasksPendingSave } = taskModule.exports;
 
 assert.equal(typeof tasksPendingSave, 'function', 'Task saving must include a typed draft even when Add to Task List was not clicked.');
+assert.equal(typeof calendarEventAutosaveEnabled, 'function', 'Calendar autosave eligibility must protect unsaved task drafts.');
+assert.equal(calendarEventAutosaveEnabled({ category: 'task', title: 'Draft task' }), false, 'A new task draft must not autosave into edit mode.');
+assert.equal(calendarEventAutosaveEnabled({ id: 42, category: 'task', title: 'Saved task' }), true, 'An existing task may continue to autosave while edited.');
+assert.equal(calendarEventAutosaveEnabled({ category: 'event', title: 'Store event' }), true, 'Other calendar entry types must retain autosave.');
 const typedDraft = { date: '2026-08-24', category: 'task', title: '  Count inventory  ', notes: 'Finish before close', technician: '' };
 const pendingTypedTask = tasksPendingSave([], typedDraft);
 assert.equal(pendingTypedTask.length, 1, 'Pressing Save with a typed task must produce one task to persist.');

@@ -11,6 +11,11 @@ export type CalendarTaskRecord = {
 
 export const ALL_TECHNICIANS = '__all_technicians__';
 
+export function calendarEventAutosaveEnabled(event: CalendarTaskRecord | null | undefined): boolean {
+  if (!event) return false;
+  return event.category !== 'task' || event.id != null;
+}
+
 export function isSharedTaskAssignment(value: unknown): boolean {
   const assignment = String(value || '').trim().toLowerCase();
   return !assignment || assignment === ALL_TECHNICIANS || assignment === 'all technicians';

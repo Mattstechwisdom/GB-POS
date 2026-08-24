@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.30 (2026-08-24)
+- Stable Task Composer: typing a task subject or body no longer triggers autosave and changes the Add Entry window into an existing-task editor.
+- Preserved Task Workflow: the entry-type rail, Add to Task List action, staged-task list, and Save Tasks action remain visible until the technician explicitly saves.
+- Existing Edit Autosave: edits to tasks already stored in Calendar continue to autosave normally, as do other calendar entry types.
+- Regression Coverage: verifies new task drafts stay unsaved while existing tasks and other calendar entries retain autosave eligibility.
+
 ## v0.6.29 (2026-08-24)
 - Direct Task Save: pressing Save Tasks now persists the valid task currently entered in the editor even when Add to Task List was not clicked first.
 - Multi-Task Preservation: staged tasks and the current typed task are committed together without duplicating blank or previously staged entries.

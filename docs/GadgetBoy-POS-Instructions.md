@@ -421,7 +421,7 @@ For automatic repair-part deduction, the Part must have stock tracking enabled, 
 ### Tasks and Calendar Icons
 
 1. Add a Task and choose the assigned technician. Choose All Technicians for shared shop duties.
-2. Enter the Subject and Task details. For one task, choose Save Tasks directly; the typed task is included automatically.
+2. Enter the Subject and Task details. The new-task editor remains open while typing and does not autosave or change modes. For one task, choose Save Tasks directly; the typed task is included automatically.
 3. To create several tasks together, choose Add to Task List after each entry. The fields clear while the technician, date, and time selection remain ready for the next task.
 4. Review the saved and pending tasks shown for that technician and day. Remove any pending mistake, then choose Save Tasks to commit the staged list plus any currently typed task to Calendar and Supabase. The button count shows the complete number that will be saved.
 5. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
