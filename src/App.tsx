@@ -22,7 +22,7 @@ import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
 import { publicAsset } from './lib/publicAsset';
-import { reconcilePaidSaleInventory } from './lib/inventoryConsumption';
+import { reconcilePaidSaleInventory, reconcilePaidWorkOrderInventory } from './lib/inventoryConsumption';
 import './styles/desktop-nav-preview.css';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
@@ -388,7 +388,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!cloudReady || !staffProfile?.shop_id) return;
-    void reconcilePaidSaleInventory((window as any).api).catch((error) => {
+    void (async () => {
+      await reconcilePaidSaleInventory((window as any).api);
+      await reconcilePaidWorkOrderInventory((window as any).api);
+    })().catch((error) => {
       console.error('Startup inventory reconciliation failed', error);
     });
   }, [cloudReady, staffProfile?.shop_id]);

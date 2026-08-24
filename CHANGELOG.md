@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.28 (2026-08-24)
+- Repair-Aware Inventory: resolves every checked-out repair to its inventory part using Repair Type plus the work order's saved device category, device name, and model.
+- Shared-Part Compatibility: one generic repair name such as HDMI or Screen Replacement can consume the correct PS5, Xbox, phone, or other part from its compatible-device list without device names in the repair title.
+- Missed Checkout Recovery: desktop and Android reconcile completed work-order parts at startup when a prior checkout saved without its inventory deduction.
+- Duplicate Protection: durable per-ticket line markers prevent the same repair from reducing stock again on another device or later app launch.
+- Historical Safety: reconciliation ignores work orders completed before the matched inventory part was created, avoiding deductions from repairs that predate tracked stock.
+- Supabase Sync: repaired quantities and consumption markers persist through the shared products collection so every signed-in installation receives the corrected stock.
+
 ## v0.6.27 (2026-08-23)
 - Recurring Calendar Entries: adds synced daily, weekly, and monthly recurrence to the Calendar Add Entry workflow on Windows and Android.
 - Flexible Monthly Rules: supports exact calendar dates plus first, second, third, fourth, or last weekday patterns such as the last Saturday of each month.

@@ -16,7 +16,7 @@ import MobileUpdateCheck, { getLatestMobileUpdate, openMobileUpdateDownload, typ
 import GidgetChat from '../components/GidgetChat';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
-import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
+import { reconcilePaidSaleInventory, reconcilePaidWorkOrderInventory } from '../lib/inventoryConsumption';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -683,7 +683,10 @@ const MobileAppRuntime: React.FC = () => {
 
   useEffect(() => {
     if (previewWindow || !cloudReady || !staffProfile?.shop_id) return;
-    void reconcilePaidSaleInventory(window.api as any).catch((error) => {
+    void (async () => {
+      await reconcilePaidSaleInventory(window.api as any);
+      await reconcilePaidWorkOrderInventory(window.api as any);
+    })().catch((error) => {
       console.error('Mobile startup inventory reconciliation failed', error);
     });
   }, [cloudReady, previewWindow, staffProfile?.shop_id]);

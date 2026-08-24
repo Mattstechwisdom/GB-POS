@@ -17,7 +17,7 @@ import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, Drop
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
 import { listTechnicians } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
-import { consumeInStockInventory } from '../lib/inventoryConsumption';
+import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -1607,9 +1607,17 @@ const NewWorkOrderWindow: React.FC = () => {
         }
 
         const partsPaymentApplied = woPaymentAdds.some((payment: any) => Number(payment?.appliedParts || 0) > 0.009);
-        if (workOrderPersisted && effectiveId > 0 && (partsPaymentApplied || result.markClosed)) {
+        if (workOrderPersisted && effectiveId > 0 && shouldConsumeWorkOrderInventory({ partsPaymentApplied, markClosed: result.markClosed, status })) {
           try {
-            const inventoryResult = await consumeInStockInventory(api, 'workOrder', effectiveId, updatedItems, { allowShortfall: true });
+            const inventoryResult = await consumeInStockInventory(api, 'workOrder', effectiveId, updatedItems, {
+              allowShortfall: true,
+              checkoutDate,
+              repairContext: {
+                deviceCategory: wo.productCategory,
+                deviceName: wo.productDescription,
+                deviceModel: (wo as any).model,
+              },
+            });
             if (inventoryResult.shortfalls.length) {
               triggerWarningBanner('Inventory reached zero', 'One or more repair parts need restocking.');
             }

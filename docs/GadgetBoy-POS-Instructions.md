@@ -226,6 +226,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 - Parts are repair components organized by device type and device model.
 - Use the compatible-device selector to assign one clean reusable part title to every model it fits. For example, save `HDMI Port` once and associate each supported console instead of duplicating the device name in the part title.
+- Set Repair Type to the reusable catalog repair name, such as `HDMI` or `Screen Replacement`. At checkout, the POS combines that repair type with the work order's saved device category, device name, and model to choose the compatible part. A PS5 HDMI repair therefore consumes a PS5-compatible HDMI port, while the same repair name on an Xbox consumes the Xbox-compatible part.
 - Store condition, SKU, quantity, internal cost, markup, sold price, distributor, order URL, and tax status where available.
 - Used and new parts must be distinguishable.
 - A saved order URL becomes a button after save.
@@ -253,15 +254,19 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 10. Enable stock tracking, set Low Alert At, and enter the MOQ / Reorder Qty the shop normally purchases when restocking.
 11. Save, then search for the new record to confirm it exists.
 
+For automatic repair-part deduction, the Part must have stock tracking enabled, a positive on-hand quantity, a Repair Type matching the repair selected on the work order, and every compatible saved device selected. The repair title itself should remain generic; do not add the console or phone name solely for inventory matching.
+
 ### Low-Stock Restocking from EOD
 
 1. Using an in-stock saved part or product on a work order or sale deducts its quantity once when the transaction is saved or checked out.
-2. If the remaining on-hand quantity stays above Low Alert At, no purchasing task is created.
-3. When on-hand quantity reaches or falls below Low Alert At, End of Day Report shows the item in Low Stock.
-4. Select the low-stock row and choose Add MOQ to Cart to add the saved MOQ / Reorder Qty to the purchasing cart. The action will not create a second pending restock for the same inventory item.
-5. Choose View Item to open the exact saved inventory record and verify cost, distributor, URL, threshold, or MOQ before ordering.
-6. Choose Dismiss only when no restock is needed at the current stock level. Dismissal does not edit inventory and the alert returns when the stock state changes.
-7. Adding MOQ to Cart does not increase on-hand inventory. Stock increases only after the distributor cart is paid and verified through EOD checkout.
+2. A work order that closes after full payment deducts its installed in-stock part even when the client-facing part charge is zero and the entire payment is recorded as labor.
+3. On startup, desktop and Android safely retry checked-out work-order deductions that did not finish previously. Per-line consumption markers prevent a second device or later launch from subtracting the same item twice, and repairs completed before an inventory listing was created are ignored.
+4. If the remaining on-hand quantity stays above Low Alert At, no purchasing task is created.
+5. When on-hand quantity reaches or falls below Low Alert At, End of Day Report shows the item in Low Stock.
+6. Select the low-stock row and choose Add MOQ to Cart to add the saved MOQ / Reorder Qty to the purchasing cart. The action will not create a second pending restock for the same inventory item.
+7. Choose View Item to open the exact saved inventory record and verify cost, distributor, URL, threshold, or MOQ before ordering.
+8. Choose Dismiss only when no restock is needed at the current stock level. Dismissal does not edit inventory and the alert returns when the stock state changes.
+9. Adding MOQ to Cart does not increase on-hand inventory. Stock increases only after the distributor cart is paid and verified through EOD checkout.
 
 ### Add a Saved Inventory Item to the Purchasing Cart
 
