@@ -241,6 +241,12 @@ const App: React.FC = () => {
       clientUpdateToken.current = '';
     }
   }
+  useEffect(() => {
+    if (!clientUpdateToken.current) return;
+    const previousTitle = document.title;
+    document.title = 'GB Update Interface';
+    return () => { document.title = previousTitle; };
+  }, []);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [technicianFilter, setTechnicianFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');

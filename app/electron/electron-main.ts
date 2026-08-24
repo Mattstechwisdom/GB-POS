@@ -4530,6 +4530,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       taskCompleted: row.task_completed === true,
       taskCompletedAt: cloudDate(row.task_completed_at),
       taskCompletedBy: row.task_completed_by || '',
+      recurrenceRule: row.recurrence_rule && typeof row.recurrence_rule === 'object' ? row.recurrence_rule : null,
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4837,6 +4838,7 @@ function toCloudRow(key: string, item: any): any | null {
       task_completed: toCloudBool(item.taskCompleted),
       task_completed_at: item.taskCompleted ? toCloudIso(item.taskCompletedAt) : null,
       task_completed_by: toCloudString(item.taskCompletedBy),
+      recurrence_rule: item.recurrenceRule && typeof item.recurrenceRule === 'object' ? toCloudObject(item.recurrenceRule) : null,
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -8261,7 +8263,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: windowTitle('Work Order Item'),
+    title: windowTitle('Devices / Repairs'),
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });

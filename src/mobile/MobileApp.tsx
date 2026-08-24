@@ -566,6 +566,12 @@ const MobileAppRuntime: React.FC = () => {
       return '';
     }
   });
+  useEffect(() => {
+    if (!clientUpdateToken) return;
+    const previousTitle = document.title;
+    document.title = 'GB Update Interface';
+    return () => { document.title = previousTitle; };
+  }, [clientUpdateToken]);
   const [authLoading, setAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);

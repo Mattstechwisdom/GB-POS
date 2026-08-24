@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import type { RepairItem } from '@/lib/types';
 
 type RepairType = {
   id: number | string;
@@ -14,6 +15,11 @@ type RepairRow = {
   id?: number | string;
   repairCategory?: string;
   [key: string]: unknown;
+};
+
+type RepairTypeManagerProps = {
+  onRepairEdit?: (repair: RepairItem) => void;
+  onRepairDeleted?: (repairId: string | number) => void;
 };
 
 function normalizeName(value: unknown): string {
@@ -41,15 +47,17 @@ function compareServiceTypeNames(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
 }
 
-export default function RepairTypeManager() {
+export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: RepairTypeManagerProps) {
   const [types, setTypes] = useState<RepairType[]>([]);
   const [repairRows, setRepairRows] = useState<RepairRow[]>([]);
   const [inputText, setInputText] = useState('');
   const [selectedId, setSelectedId] = useState<number | string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<number | string | null>(null);
+  const [expandedTypeIds, setExpandedTypeIds] = useState<Set<number | string>>(new Set());
+  const holdTimerRef = useRef<number | null>(null);
 
   const ctx = useContextMenu<RepairType>();
+  const repairCtx = useContextMenu<RepairRow>();
 
   async function reload() {
     const api = (window as any).api;
@@ -104,13 +112,11 @@ export default function RepairTypeManager() {
   function selectType(t: RepairType) {
     setSelectedId(t.id);
     setInputText(t.name);
-    setPendingDelete(null);
   }
 
   function clearSelection() {
     setSelectedId(null);
     setInputText('');
-    setPendingDelete(null);
   }
 
   async function save() {
@@ -162,23 +168,40 @@ export default function RepairTypeManager() {
   }
 
   async function deleteById(id: number | string) {
-    setPendingDelete(id);
-  }
-
-  async function confirmDelete() {
-    if (pendingDelete == null) return;
-    const id = pendingDelete;
-    setPendingDelete(null);
     const selected = types.find(t => String(t.id) === String(id));
     if (!selected?.definedId) return;
+    if (!window.confirm(`Delete "${selected.name}" from the saved type list? Repairs using it stay unchanged.`)) return;
     const api = (window as any).api;
     await api?.dbDelete?.('repairTypes', selected.definedId);
     if (String(selectedId) === String(id)) clearSelection();
     await reload();
   }
 
-  const selectedType = selectedId != null ? types.find(t => String(t.id) === String(selectedId)) : null;
-  const selectedCanDelete = !!selectedType?.definedId;
+  async function deleteRepairRow(row: RepairRow) {
+    if (row.id == null || !window.confirm(`Delete "${String((row as any).title || 'this repair')}"? This cannot be undone.`)) return;
+    await (window as any).api?.dbDelete?.('repairCategories', row.id);
+    onRepairDeleted?.(row.id);
+    await reload();
+  }
+
+  const toggleType = (id: number | string) => setExpandedTypeIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const clearHold = () => {
+    if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+  };
+
+  const holdContext = (event: React.PointerEvent, open: (x: number, y: number) => void) => {
+    if (event.pointerType === 'mouse') return;
+    clearHold();
+    const x = event.clientX;
+    const y = event.clientY;
+    holdTimerRef.current = window.setTimeout(() => open(x, y), 650);
+  };
 
   const ctxItems: ContextMenuItem[] = ctx.state.data
     ? [
@@ -220,14 +243,6 @@ export default function RepairTypeManager() {
         >
           {selectedId != null ? 'Update' : 'Add'}
         </button>
-        {selectedId != null && (
-          <button
-            onClick={clearSelection}
-            className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm"
-          >
-            Cancel
-          </button>
-        )}
       </div>
 
       <div className="flex-1 border border-zinc-700 rounded overflow-hidden flex flex-col min-h-0">
@@ -243,60 +258,50 @@ export default function RepairTypeManager() {
           ) : (
             <table className="w-full text-sm">
               <tbody>
-                {types.map((t, idx) => (
-                  <tr
-                    key={t.id}
-                    className={`cursor-pointer border-l-2 ${selectedId === t.id ? 'border-l-[#39FF14] bg-zinc-800/60' : 'border-l-transparent hover:bg-zinc-800/30'} ${idx % 2 ? 'bg-zinc-900' : ''}`}
-                    onClick={() => selectType(t)}
-                    onContextMenu={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      ctx.openFromEvent(e, t);
-                    }}
-                  >
-                    <td className="px-3 py-2 border-b border-zinc-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="min-w-0 truncate">{t.name}</span>
-                        <span className="shrink-0 text-[11px] text-zinc-500">
-                          {t.repairCount} item{t.repairCount === 1 ? '' : 's'}
-                          {t.source === 'recovered' ? ' - recovered' : ''}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {types.map((t, idx) => {
+                  const expanded = expandedTypeIds.has(t.id);
+                  const assigned = repairRows.filter((row) => serviceTypeKey(row.repairCategory) === serviceTypeKey(t.name));
+                  return <React.Fragment key={t.id}>
+                    <tr
+                      className={`cursor-pointer border-l-2 ${selectedId === t.id ? 'border-l-[#39FF14] bg-zinc-800/60' : 'border-l-transparent hover:bg-zinc-800/30'} ${idx % 2 ? 'bg-zinc-900' : ''}`}
+                      onClick={() => toggleType(t.id)}
+                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); ctx.openFromEvent(e, t); }}
+                      onPointerDown={(event) => holdContext(event, (x, y) => ctx.openAt(x, y, t))}
+                      onPointerUp={clearHold}
+                      onPointerCancel={clearHold}
+                      onPointerLeave={clearHold}
+                    >
+                      <td className="px-3 py-2 border-b border-zinc-800">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 truncate">{t.name}</span>
+                          <span className="flex shrink-0 items-center gap-2 text-[11px] text-zinc-500">
+                            {t.repairCount} item{t.repairCount === 1 ? '' : 's'}
+                            <span aria-hidden="true">{expanded ? '▲' : '▼'}</span>
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded ? <tr><td className="border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+                      <div className="mb-1 text-[11px] font-semibold uppercase text-zinc-500">Assigned repairs</div>
+                      {assigned.length ? assigned.map((repair) => <button
+                        type="button"
+                        key={String(repair.id)}
+                        className="flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800"
+                        onClick={() => onRepairEdit?.(repair as unknown as RepairItem)}
+                        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); repairCtx.openFromEvent(event, repair); }}
+                        onPointerDown={(event) => holdContext(event, (x, y) => repairCtx.openAt(x, y, repair))}
+                        onPointerUp={clearHold}
+                        onPointerCancel={clearHold}
+                        onPointerLeave={clearHold}
+                      ><span className="truncate">{String((repair as any).title || 'Untitled repair')}</span><span className="shrink-0 text-xs text-zinc-500">{String((repair as any).category || 'All devices')}</span></button>) : <div className="px-3 py-2 text-sm text-zinc-500">No assigned repairs.</div>}
+                    </td></tr> : null}
+                  </React.Fragment>;
+                })}
               </tbody>
             </table>
           )}
         </div>
       </div>
-
-      {selectedId != null && (
-        <div className="flex justify-start mt-3">
-          {pendingDelete === selectedId ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-red-400">
-                {selectedCanDelete
-                  ? `Delete "${selectedType?.name}" from the saved type list? Repairs using it stay unchanged.`
-                  : 'This type is recovered from repair items. Rename the type or edit the repair items first.'}
-              </span>
-              {selectedCanDelete && (
-                <button onClick={confirmDelete} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm">Yes, delete</button>
-              )}
-              <button onClick={() => setPendingDelete(null)} className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded text-sm">Cancel</button>
-            </div>
-          ) : (
-            <button
-              onClick={() => deleteById(selectedId)}
-              disabled={!selectedCanDelete}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              title={selectedCanDelete ? 'Delete saved service type' : 'Recovered types cannot be deleted directly'}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      )}
 
       <ContextMenu
         id="repair-type-ctx"
@@ -305,6 +310,19 @@ export default function RepairTypeManager() {
         y={ctx.state.y}
         items={ctxItems}
         onClose={ctx.close}
+      />
+      <ContextMenu
+        id="repair-type-item-ctx"
+        open={repairCtx.state.open}
+        x={repairCtx.state.x}
+        y={repairCtx.state.y}
+        items={repairCtx.state.data ? [
+          { type: 'header', label: String((repairCtx.state.data as any).title || 'Repair') },
+          { label: 'Edit Repair', onClick: () => onRepairEdit?.(repairCtx.state.data as unknown as RepairItem) },
+          { type: 'separator' },
+          { label: 'Delete Repair…', danger: true, onClick: () => { if (repairCtx.state.data) void deleteRepairRow(repairCtx.state.data); } },
+        ] : []}
+        onClose={repairCtx.close}
       />
     </div>
   );

@@ -10,6 +10,7 @@ import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAss
 import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, SHIFT_REQUEST_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import { expandRecurringEvent, monthlyWeekdayPatternForDate, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '@/lib/calendarRecurrence';
 
 function openConsultationAddressInMaps(address: string) {
   const destination = String(address || '').trim();
@@ -60,6 +61,10 @@ type CalendarEvent = {
   shiftRequestOff?: boolean;
   requestedAt?: string;
   reviewedAt?: string;
+  recurrenceRule?: CalendarRecurrenceRule | null;
+  recurrenceSeriesId?: number | string;
+  recurrenceMaster?: CalendarEvent;
+  occurrenceDate?: string;
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -442,6 +447,7 @@ const CalendarWindow: React.FC = () => {
   const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaveError, setNoteSaveError] = useState('');
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [taskQueue, setTaskQueue] = useState<CalendarEvent[]>([]);
   const [taskBatchSaving, setTaskBatchSaving] = useState(false);
@@ -1023,9 +1029,14 @@ const CalendarWindow: React.FC = () => {
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
+    const firstVisibleDate = calendarDays.length ? fmtDate(calendarDays[0]) : fmtDate(current);
+    const lastVisibleDate = calendarDays.length ? fmtDate(calendarDays[calendarDays.length - 1]) : firstVisibleDate;
+    const visibleEvents = events.flatMap((event) => event.recurrenceRule
+      ? expandRecurringEvent(event, firstVisibleDate, lastVisibleDate) as CalendarEvent[]
+      : [event]);
     
     // Process regular events
-    for (const ev of events) {
+    for (const ev of visibleEvents) {
       if (ev.category !== 'schedule') {
         // Apply filters
         const shouldShow = 
@@ -1106,19 +1117,24 @@ const CalendarWindow: React.FC = () => {
   async function saveNote() {
     const date = String(notesDate || '').slice(0, 10);
     const subject = noteDraft.subject.trim();
-    const body = noteDraft.body.trim();
-    if (!date || !subject || !body || noteSaving) return;
+    const body = noteDraft.body;
+    if (!date || !subject || !body.trim() || noteSaving) return;
     setNoteSaving(true);
+    setNoteSaveError('');
     try {
       const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === editingNoteId);
       const saved = existing
         ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
         : await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (saved) setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
+      if (!saved) throw new Error('The note was not returned after saving.');
+      setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
+      const canonical = await (window as any).api.dbGet('calendarNotes');
+      if (Array.isArray(canonical)) setCalendarNotes(canonical);
       setNoteDraft({ subject: '', body: '' });
       setEditingNoteId(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('save calendar note failed', error);
+      setNoteSaveError(error?.message || 'The note could not be saved. Please try again.');
     } finally {
       setNoteSaving(false);
     }
@@ -1162,8 +1178,18 @@ const CalendarWindow: React.FC = () => {
   async function setTaskCompleted(event: CalendarEvent, completed: boolean) {
     if (event.id == null || event.category !== 'task') return;
     const now = new Date().toISOString();
-    const updated = await (window as any).api.dbUpdate('calendarEvents', event.id, {
-      ...event,
+    const master = event.recurrenceMaster || event;
+    const occurrenceDate = event.occurrenceDate || event.date;
+    const recurrenceRule = master.recurrenceRule ? normalizeRecurrenceRule(master.recurrenceRule) : null;
+    if (recurrenceRule) {
+      const completedDates = new Set(recurrenceRule.completedDates || []);
+      if (completed) completedDates.add(occurrenceDate);
+      else completedDates.delete(occurrenceDate);
+      recurrenceRule.completedDates = Array.from(completedDates).sort();
+    }
+    const updated = await (window as any).api.dbUpdate('calendarEvents', master.id, {
+      ...master,
+      recurrenceRule,
       taskCompleted: completed,
       taskCompletedAt: completed ? now : '',
       taskCompletedBy: completed ? String(event.technician || '') : '',
@@ -1183,7 +1209,7 @@ const CalendarWindow: React.FC = () => {
     }
     setContentEditorLocked(false);
     setViewing(null);
-    setEditing(ev);
+    setEditing(ev.recurrenceMaster || ev);
     setDeliveryDateInput('');
     if (ev.category === 'parts') {
       const key = partsGroupKey(ev);
@@ -1212,6 +1238,7 @@ const CalendarWindow: React.FC = () => {
     try {
       // Derive title for certain categories if missing
       const payload: CalendarEvent = { ...ev };
+      payload.recurrenceRule = normalizeRecurrenceRule(payload.recurrenceRule);
       if (payload.category === 'parts' && !payload.partsStatus) payload.partsStatus = 'ordered';
       if (payload.category === 'parts' && (!payload.title || !payload.title.trim())) {
         payload.title = payload.partName || 'Part/Product';
@@ -1291,7 +1318,7 @@ const CalendarWindow: React.FC = () => {
       ...editing,
       id: undefined,
       title,
-      notes: String(editing.notes || '').trim(),
+      notes: String(editing.notes || ''),
       technician: editing.technician || ALL_TECHNICIANS,
       taskCompleted: false,
       taskCompletedAt: '',
@@ -1555,7 +1582,10 @@ const CalendarWindow: React.FC = () => {
     }
     schedules.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const todays = [...(Array.isArray(events) ? events : []), ...businessCalendarEvents].filter(e => String(e?.date || '').slice(0, 10) === ymd);
+    const expandedForDay = (Array.isArray(events) ? events : []).flatMap((event) => event.recurrenceRule
+      ? expandRecurringEvent(event, ymd, ymd) as CalendarEvent[]
+      : [event]);
+    const todays = [...expandedForDay, ...businessCalendarEvents].filter(e => String(e?.date || '').slice(0, 10) === ymd);
     const consultations = todays
       .filter(e => e.category === 'consultation')
       .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
@@ -1573,7 +1603,10 @@ const CalendarWindow: React.FC = () => {
       .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
     const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
-    const tasks = tasksForDailyLook(events, ymd, assigned);
+    const tasks = tasksForDailyLook([
+      ...events.filter((event) => !event.recurrenceRule),
+      ...expandedForDay.filter((event) => Boolean(event.recurrenceRule)),
+    ], ymd, assigned);
     const importantNotes = notesByDay[ymd] || [];
 
     return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered, tasks, importantNotes };
@@ -1941,6 +1974,7 @@ const CalendarWindow: React.FC = () => {
                 <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
                 <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
                 <textarea className="mt-2 min-h-0 flex-1 w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed" placeholder="Write the important note..." value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
+                {noteSaveError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">{noteSaveError}</div> : null}
                 <div className="mt-3 flex justify-end gap-2">
                 {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
                 <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
@@ -2273,6 +2307,47 @@ const CalendarWindow: React.FC = () => {
                   <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.endTime || ''} onChange={e => setEditing({ ...editing, endTime: e.target.value })} />
                 </div>
               )}
+              {!contentEditorLocked && !['business-calendar', 'shift-override', 'shift-request'].includes(String(editing.source || '')) ? (
+                <div className="col-span-2 rounded border border-zinc-700 bg-zinc-950/45 p-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" className="h-4 w-4 accent-[#39FF14]" checked={Boolean(editing.recurrenceRule)} onChange={(event) => {
+                      if (!event.target.checked) return setEditing({ ...editing, recurrenceRule: null });
+                      const start = new Date(`${editing.date}T12:00:00`);
+                      setEditing({ ...editing, recurrenceRule: { version: 1, frequency: 'weekly', interval: 1, weekdays: [Number.isNaN(start.getTime()) ? 0 : start.getDay()] } });
+                    }} />
+                    <span>Recurring entry</span>
+                  </label>
+                  {editing.recurrenceRule ? (() => {
+                    const rule = normalizeRecurrenceRule(editing.recurrenceRule) || { version: 1 as const, frequency: 'weekly' as const, interval: 1, weekdays: [] };
+                    const updateRule = (patch: Partial<CalendarRecurrenceRule>) => setEditing({ ...editing, recurrenceRule: { ...rule, ...patch } });
+                    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    return <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div><label className="block text-xs text-zinc-400">Repeats</label><select className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.frequency} onChange={(event) => {
+                        const frequency = event.target.value as CalendarRecurrenceRule['frequency'];
+                        const start = new Date(`${editing.date}T12:00:00`);
+                        if (frequency === 'daily') updateRule({ frequency, weekdays: undefined, monthlyMode: undefined });
+                        else if (frequency === 'weekly') updateRule({ frequency, weekdays: [Number.isNaN(start.getTime()) ? 0 : start.getDay()], monthlyMode: undefined });
+                        else updateRule({ frequency, weekdays: undefined, monthlyMode: 'dayOfMonth', monthDay: Number(editing.date.slice(8, 10)) || 1 });
+                      }}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+                      <div><label className="block text-xs text-zinc-400">End date (optional)</label><input type="date" min={editing.date} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.until || ''} onChange={(event) => updateRule({ until: event.target.value || undefined })} /></div>
+                      {rule.frequency === 'weekly' ? <div className="sm:col-span-2"><div className="mb-1 text-xs text-zinc-400">Repeat on</div><div className="grid grid-cols-7 gap-1">{weekdayLabels.map((label, weekday) => {
+                        const selected = (rule.weekdays || []).includes(weekday);
+                        return <button key={label} type="button" aria-pressed={selected} className={`min-h-9 rounded border px-1 text-xs font-semibold ${selected ? 'border-[#39FF14] bg-[#39FF14] text-black' : 'border-zinc-700 bg-zinc-800 text-zinc-300'}`} onClick={() => {
+                          const next = selected ? (rule.weekdays || []).filter((value) => value !== weekday) : [...(rule.weekdays || []), weekday].sort();
+                          if (next.length) updateRule({ weekdays: next });
+                        }}>{label}</button>;
+                      })}</div></div> : null}
+                      {rule.frequency === 'monthly' ? <div className="sm:col-span-2 space-y-2"><div className="grid grid-cols-2 gap-2">
+                        <button type="button" className={`rounded border px-2 py-2 text-sm ${rule.monthlyMode !== 'weekdayPattern' ? 'border-[#39FF14] bg-[#39FF14]/15 text-[#39FF14]' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => updateRule({ monthlyMode: 'dayOfMonth', monthDay: Number(editing.date.slice(8, 10)) || 1 })}>Day of month</button>
+                        <button type="button" className={`rounded border px-2 py-2 text-sm ${rule.monthlyMode === 'weekdayPattern' ? 'border-[#39FF14] bg-[#39FF14]/15 text-[#39FF14]' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => { const pattern = monthlyWeekdayPatternForDate(editing.date); updateRule({ monthlyMode: 'weekdayPattern', monthlyOrdinal: pattern.ordinal, monthlyWeekday: pattern.weekday }); }}>Weekday pattern</button>
+                      </div>{rule.monthlyMode === 'weekdayPattern' ? <div className="grid grid-cols-2 gap-2">
+                        <select className="rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthlyOrdinal || 1} onChange={(event) => updateRule({ monthlyOrdinal: Number(event.target.value) as 1 | 2 | 3 | 4 | -1 })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option><option value="4">Fourth</option><option value="-1">Last</option></select>
+                        <select className="rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthlyWeekday ?? 0} onChange={(event) => updateRule({ monthlyWeekday: Number(event.target.value) })}>{weekdayLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select>
+                      </div> : <label className="flex items-center gap-2 text-sm"><span>Day</span><input type="number" min="1" max="31" className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthDay || 1} onChange={(event) => updateRule({ monthDay: Math.max(1, Math.min(31, Number(event.target.value) || 1)) })} /><span className="text-zinc-400">of each month</span></label>}</div> : null}
+                    </div>;
+                  })() : null}
+                </div>
+              ) : null}
               {/* Dynamic fields per category */}
               {editing.category === 'parts' && (
                 <>
@@ -2396,8 +2471,8 @@ const CalendarWindow: React.FC = () => {
                   {editing.id == null ? <div className="gb-calendar-task-queue min-w-0 rounded border border-zinc-700 bg-zinc-950/60 p-3">
                     <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-sm">Tasks for {editing.date}</strong><span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs text-violet-200">{visibleTaskAssignments.length + taskQueue.length} total</span></div>
                     <div className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
-                      {visibleTaskAssignments.map((task, index) => <div key={task.id ?? `saved-${index}`} className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2"><strong className={`block break-words text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}>{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">Saved - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{task.notes}</p> : null}</div>)}
-                      {taskQueue.map((task, index) => <div key={`queued-${index}`} className="rounded border border-violet-400/60 bg-violet-950/30 px-3 py-2"><div className="flex items-start justify-between gap-2"><strong className="min-w-0 break-words text-sm">{task.title}</strong><button type="button" className="shrink-0 text-xs text-red-300 hover:text-red-200" onClick={() => setTaskQueue(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><small className="mt-1 block text-violet-200">Ready to save - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-300">{task.notes}</p> : null}</div>)}
+                      {visibleTaskAssignments.map((task, index) => <div key={task.id ?? `saved-${index}`} className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2"><strong className={`block break-words text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}>{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">Saved - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-zinc-400">{task.notes}</p> : null}</div>)}
+                      {taskQueue.map((task, index) => <div key={`queued-${index}`} className="rounded border border-violet-400/60 bg-violet-950/30 px-3 py-2"><div className="flex items-start justify-between gap-2"><strong className="min-w-0 break-words text-sm">{task.title}</strong><button type="button" className="shrink-0 text-xs text-red-300 hover:text-red-200" onClick={() => setTaskQueue(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><small className="mt-1 block text-violet-200">Ready to save - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-zinc-300">{task.notes}</p> : null}</div>)}
                       {!visibleTaskAssignments.length && !taskQueue.length ? <p className="py-8 text-center text-sm text-zinc-500">No tasks are assigned here yet.</p> : null}
                     </div>
                   </div> : null}

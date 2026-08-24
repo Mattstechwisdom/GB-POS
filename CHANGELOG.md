@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.6.27 (2026-08-23)
+- Recurring Calendar Entries: adds synced daily, weekly, and monthly recurrence to the Calendar Add Entry workflow on Windows and Android.
+- Flexible Monthly Rules: supports exact calendar dates plus first, second, third, fourth, or last weekday patterns such as the last Saturday of each month.
+- Recurring Tasks: shows recurring tasks in Calendar and Daily Look while keeping completion tracked per occurrence instead of completing the entire series.
+- Reliable Important Notes: immediately refreshes newly saved notes from the shared database and shows a visible error if persistence fails.
+- Exact Note Formatting: preserves pasted spaces, indentation, and line breaks in Calendar notes and task details across saved and reader views.
+- EOD Deliveries: adds an independently scrollable Deliveries section beneath Low Stock for purchased work-order and sale items awaiting arrival.
+- Arrival Workflow: marking an item delivered updates its exact invoice line, closes its expected-delivery calendar entry, updates the purchasing ledger, and sends the matching client arrival email.
+- Supabase Parity: deploys recurrence storage and round-trip mappings for desktop and mobile clients so every signed-in install renders the same calendar series.
+- Devices / Repairs Workspace: aligns the permanent repair catalog with Inventory by keeping the catalog list on the left and a fixed editor pane on the right.
+- Explicit Repair Actions: separates Update Repair from Add New Repair so edits cannot accidentally create duplicates and new entries cannot overwrite a selected repair.
+- Exact Device Scope: adds a model selector beneath Device Category while retaining category-wide repairs, allowing inventory parts to match the correct saved device model.
+- Expandable Catalog Management: device categories and repair types reveal their assigned devices or repairs, with edit/delete actions moved to right-click and mobile touch-and-hold menus.
+- Unified QR Routing: replaces newly printed work-order LAN/IP links with the same Supabase token-backed route used by sales and consultations, and brands the opened page as GB Update Interface.
+- Release Safety: verifies recurrence math, Supabase mappings, note/task regressions, cart client updates, TypeScript, production builds, and responsive Calendar editor layout.
+
 ## v0.6.26 (2026-08-23)
 - Inventory Repair Types: adds a saved Repair Type field directly beneath Device Category for repair parts on Windows and Android.
 - Exact Part Matching: resolves catalog repairs to inventory using Repair Type plus the work-order device category and compatible device models, with explicit repair links remaining authoritative.
