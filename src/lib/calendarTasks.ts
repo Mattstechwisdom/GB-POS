@@ -44,6 +44,21 @@ export function toggleTaskAssignment(value: unknown, technician: unknown): strin
   return selected.length ? selected.join(', ') : ALL_TECHNICIANS;
 }
 
+export function tasksPendingSave<T extends CalendarTaskRecord>(queue: readonly T[], draft: T | null | undefined): T[] {
+  const pending = Array.isArray(queue) ? [...queue] : [];
+  const title = String(draft?.title || '').trim();
+  if (!draft || draft.category !== 'task' || draft.id != null || !title) return pending;
+  return [...pending, {
+    ...draft,
+    id: undefined,
+    title,
+    technician: draft.technician || ALL_TECHNICIANS,
+    taskCompleted: false,
+    taskCompletedAt: '',
+    taskCompletedBy: '',
+  }];
+}
+
 export function isCalendarTask(event: CalendarTaskRecord | null | undefined): boolean {
   return event?.category === 'task';
 }

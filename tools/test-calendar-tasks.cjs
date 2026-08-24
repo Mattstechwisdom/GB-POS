@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const esbuild = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -12,6 +13,26 @@ const desktopCloud = read('app/electron/electron-main.ts');
 const mobileCloud = read('src/mobile/mobile-api.ts');
 const migration = read('supabase/migrations/20260811174737_add_calendar_tasks.sql');
 const shiftRequestMigration = read('supabase/migrations/20260823162803_add_calendar_shift_requests.sql');
+
+const taskBuild = esbuild.buildSync({
+  entryPoints: [path.join(root, 'src/lib/calendarTasks.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+});
+const taskModule = { exports: {} };
+new Function('module', 'exports', 'require', taskBuild.outputFiles[0].text)(taskModule, taskModule.exports, require);
+const { tasksPendingSave } = taskModule.exports;
+
+assert.equal(typeof tasksPendingSave, 'function', 'Task saving must include a typed draft even when Add to Task List was not clicked.');
+const typedDraft = { date: '2026-08-24', category: 'task', title: '  Count inventory  ', notes: 'Finish before close', technician: '' };
+const pendingTypedTask = tasksPendingSave([], typedDraft);
+assert.equal(pendingTypedTask.length, 1, 'Pressing Save with a typed task must produce one task to persist.');
+assert.equal(pendingTypedTask[0].title, 'Count inventory');
+assert.equal(pendingTypedTask[0].technician, '__all_technicians__');
+assert.equal(pendingTypedTask[0].taskCompleted, false);
+assert.equal(tasksPendingSave([{ ...typedDraft, title: 'Already staged' }], { ...typedDraft, title: '' }).length, 1, 'An empty draft must not duplicate staged tasks.');
 
 assert.match(calendar, /category\?:[^;]*'task'/, 'Calendar must support task records.');
 assert.match(calendar, /calendarEventGroupKey/, 'Calendar must group repeated event icons.');
@@ -27,7 +48,8 @@ assert.match(calendar, /addTaskToQueue/, 'Task editor must stage multiple tasks 
 assert.match(calendar, /saveTaskBatch/, 'Task editor must save the staged task list together.');
 assert.match(calendar, /Add to Task List/, 'Task editor must expose an explicit queue action.');
 assert.match(calendar, /visibleTaskAssignments/, 'Task editor must show existing assignments for the selected technician and day.');
-assert.match(calendar, /Save Tasks \(\$\{taskQueue\.length\}\)/, 'Task editor must show how many staged tasks will be saved.');
+assert.match(calendar, /tasksPendingSave/, 'Task save must include the current typed draft as well as staged tasks.');
+assert.match(calendar, /Save Tasks \(\$\{taskSaveCount\}\)/, 'Task editor must show the complete number of tasks that will be saved.');
 for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /endTime:\s*row\.end_time/, 'Task end time must load from the shared calendar record.');
   assert.match(source, /end_time:\s*toCloudString\(item\.endTime\)/, 'Task end time must save to the shared calendar record.');

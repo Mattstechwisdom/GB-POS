@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.29 (2026-08-24)
+- Direct Task Save: pressing Save Tasks now persists the valid task currently entered in the editor even when Add to Task List was not clicked first.
+- Multi-Task Preservation: staged tasks and the current typed task are committed together without duplicating blank or previously staged entries.
+- Clear Save Count: the Save Tasks button displays the complete number of tasks that will be written to Calendar and Supabase.
+- Validation and Sync: timed drafts retain start/end validation and saved tasks continue through the shared calendar collection on Windows and Android.
+
 ## v0.6.28 (2026-08-24)
 - Repair-Aware Inventory: resolves every checked-out repair to its inventory part using Repair Type plus the work order's saved device category, device name, and model.
 - Shared-Part Compatibility: one generic repair name such as HDMI or Screen Replacement can consume the correct PS5, Xbox, phone, or other part from its compatible-device list without device names in the repair title.

@@ -6,7 +6,7 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
-import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, toggleTaskAssignment } from '@/lib/calendarTasks';
+import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, tasksPendingSave, toggleTaskAssignment } from '@/lib/calendarTasks';
 import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, SHIFT_REQUEST_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
@@ -618,6 +618,11 @@ const CalendarWindow: React.FC = () => {
       return taskAssignmentIncludes(assigned, technician);
     });
   }, [editing, events]);
+
+  const taskSaveCount = useMemo(
+    () => tasksPendingSave(taskQueue, editing?.category === 'task' ? editing : null).length,
+    [editing, taskQueue],
+  );
 
   useEffect(() => {
     if (!targetEventId || targetOpenedRef.current || !events.length) return;
@@ -1330,15 +1335,28 @@ const CalendarWindow: React.FC = () => {
 
   async function saveTaskBatch() {
     if (!editing || editing.category !== 'task' || editing.id != null || taskBatchSaving) return;
-    if (!taskQueue.length) {
-      setTaskBatchError('Add at least one task to the list before saving.');
+    const pendingTasks = tasksPendingSave(taskQueue, editing);
+    if (!pendingTasks.length) {
+      setTaskBatchError('Enter a subject or add at least one task to the list before saving.');
       return;
+    }
+    for (const task of pendingTasks) {
+      const hasStart = Boolean(task.time);
+      const hasEnd = Boolean(task.endTime);
+      if (hasStart !== hasEnd) {
+        setTaskBatchError('Timed tasks require both a start and end time.');
+        return;
+      }
+      if (hasStart && hasEnd && toMinutes(task.endTime || '') <= toMinutes(task.time || '')) {
+        setTaskBatchError('Task end time must be later than its start time.');
+        return;
+      }
     }
     setTaskBatchSaving(true);
     setTaskBatchError('');
     const saved: CalendarEvent[] = [];
     try {
-      for (const task of taskQueue) {
+      for (const task of pendingTasks) {
         const added = await (window as any).api.dbAdd('calendarEvents', task);
         if (!added) throw new Error('A task was not returned after saving.');
         saved.push(added);
@@ -2604,7 +2622,7 @@ const CalendarWindow: React.FC = () => {
             <div className="flex justify-end gap-2 mt-3">
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
               <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setTaskQueue([]); setTaskBatchError(''); setContentEditorLocked(false); }}>Cancel</button>
-              <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskQueue.length})`) : 'Save'}</button>
+              <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskSaveCount})`) : 'Save'}</button>
             </div>
             </div>
             </div>
