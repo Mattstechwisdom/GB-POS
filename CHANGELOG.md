@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.32 (2026-08-25)
+- Android Task Saves: completing, reopening, or editing a task now persists immediately instead of showing a failure and reverting.
+- Calendar Save Recovery: ordinary calendar entries now send a valid null shift-request status, fixing Supabase rejection of task, note, event, and autosave updates.
+- Cross-Platform Consistency: Windows and Android use the same validated calendar status mapping so saved changes refresh consistently on every device.
+- Pending Mobile Writes: previously queued Android calendar updates can retry through the corrected serializer after the app updates.
+- Regression Coverage: executes both platform serializers and verifies empty or invalid request statuses become null while valid shift-request states remain intact.
+
 ## v0.6.31 (2026-08-25)
 - Immediate Task Feedback: Calendar and Daily Look update task checkboxes as soon as they are changed, including individual occurrences of recurring tasks.
 - Reliable Task Editing: saved task edits replace the visible calendar record immediately and restore the prior value with a clear warning if persistence fails.

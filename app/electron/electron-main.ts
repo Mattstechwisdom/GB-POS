@@ -4328,6 +4328,11 @@ function toCloudString(v: any): string {
   return String(v);
 }
 
+function calendarRequestStatus(value: any): 'pending' | 'approved' | 'declined' | null {
+  const status = String(value || '').trim().toLowerCase();
+  return status === 'pending' || status === 'approved' || status === 'declined' ? status : null;
+}
+
 function toCloudIso(v: any): string | null {
   if (!v) return null;
   const d = new Date(v);
@@ -4827,7 +4832,7 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
-      request_status: toCloudString(item.requestStatus),
+      request_status: calendarRequestStatus(item.requestStatus),
       shift_request_off: typeof item.shiftRequestOff === 'boolean' ? item.shiftRequestOff : null,
       requested_at: toCloudIso(item.requestedAt),
       reviewed_at: toCloudIso(item.reviewedAt),

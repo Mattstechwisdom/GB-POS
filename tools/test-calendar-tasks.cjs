@@ -14,6 +14,23 @@ const mobileCloud = read('src/mobile/mobile-api.ts');
 const migration = read('supabase/migrations/20260811174737_add_calendar_tasks.sql');
 const shiftRequestMigration = read('supabase/migrations/20260823162803_add_calendar_shift_requests.sql');
 
+function loadCalendarRequestStatus(source) {
+  const match = source.match(/function calendarRequestStatus\(value: any\):[^\{]+\{[\s\S]*?\n\}/);
+  assert.ok(match, 'Calendar cloud serializers must define request-status normalization.');
+  const js = match[0].replace(/\(value: any\):[^\{]+\{/, '(value) {');
+  return new Function(`${js}; return calendarRequestStatus;`)();
+}
+
+for (const source of [desktopCloud, mobileCloud]) {
+  const normalizeStatus = loadCalendarRequestStatus(source);
+  assert.equal(normalizeStatus(undefined), null);
+  assert.equal(normalizeStatus(''), null);
+  assert.equal(normalizeStatus('ordinary-task'), null);
+  assert.equal(normalizeStatus('PENDING'), 'pending');
+  assert.equal(normalizeStatus('approved'), 'approved');
+  assert.equal(normalizeStatus('declined'), 'declined');
+}
+
 const taskBuild = esbuild.buildSync({
   entryPoints: [path.join(root, 'src/lib/calendarTasks.ts')],
   bundle: true,
@@ -90,7 +107,7 @@ for (const source of [desktopCloud, mobileCloud]) {
   assert.match(source, /task_completed:\s*toCloudBool\(item\.taskCompleted\)/);
   assert.match(source, /task_completed_at:/);
   assert.match(source, /requestStatus:\s*row\.request_status/);
-  assert.match(source, /request_status:\s*toCloudString\(item\.requestStatus\)/);
+  assert.match(source, /request_status:\s*calendarRequestStatus\(item\.requestStatus\)/, 'Ordinary calendar entries must serialize a missing request status as null.');
   assert.match(source, /shift_request_off:/);
 }
 assert.match(desktopCloud, /key === 'calendarEvents'[\s\S]*Date\.now\(\) \* 1000/, 'Desktop tasks need cross-device-safe calendar ids.');
