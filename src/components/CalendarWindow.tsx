@@ -11,6 +11,7 @@ import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_S
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import { expandRecurringEvent, monthlyWeekdayPatternForDate, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '@/lib/calendarRecurrence';
+import { replaceRecordById, taskCompletionPatch } from '@/lib/immediatePersistence';
 
 function openConsultationAddressInMaps(address: string) {
   const destination = String(address || '').trim();
@@ -1124,21 +1125,26 @@ const CalendarWindow: React.FC = () => {
     const subject = noteDraft.subject.trim();
     const body = noteDraft.body;
     if (!date || !subject || !body.trim() || noteSaving) return;
+    const previousNotes = calendarNotes;
+    const now = new Date().toISOString();
+    const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === String(editingNoteId));
+    const optimisticNote: CalendarNote = existing
+      ? { ...existing, subject, body, updatedAt: now }
+      : { id: crypto.randomUUID(), date, subject, body, createdAt: now, updatedAt: now };
+    setCalendarNotes(list => replaceRecordById(list, optimisticNote));
     setNoteSaving(true);
     setNoteSaveError('');
     try {
-      const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === editingNoteId);
       const saved = existing
-        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
-        : await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, optimisticNote)
+        : await (window as any).api.dbAdd('calendarNotes', optimisticNote);
       if (!saved) throw new Error('The note was not returned after saving.');
-      setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
-      const canonical = await (window as any).api.dbGet('calendarNotes');
-      if (Array.isArray(canonical)) setCalendarNotes(canonical);
+      setCalendarNotes(list => replaceRecordById(list, saved));
       setNoteDraft({ subject: '', body: '' });
       setEditingNoteId(null);
     } catch (error: any) {
       console.error('save calendar note failed', error);
+      setCalendarNotes(previousNotes);
       setNoteSaveError(error?.message || 'The note could not be saved. Please try again.');
     } finally {
       setNoteSaving(false);
@@ -1182,28 +1188,26 @@ const CalendarWindow: React.FC = () => {
 
   async function setTaskCompleted(event: CalendarEvent, completed: boolean) {
     if (event.id == null || event.category !== 'task') return;
-    const now = new Date().toISOString();
     const master = event.recurrenceMaster || event;
     const occurrenceDate = event.occurrenceDate || event.date;
-    const recurrenceRule = master.recurrenceRule ? normalizeRecurrenceRule(master.recurrenceRule) : null;
-    if (recurrenceRule) {
-      const completedDates = new Set(recurrenceRule.completedDates || []);
-      if (completed) completedDates.add(occurrenceDate);
-      else completedDates.delete(occurrenceDate);
-      recurrenceRule.completedDates = Array.from(completedDates).sort();
-    }
-    const updated = await (window as any).api.dbUpdate('calendarEvents', master.id, {
-      ...master,
-      recurrenceRule,
-      taskCompleted: completed,
-      taskCompletedAt: completed ? now : '',
-      taskCompletedBy: completed ? String(event.technician || '') : '',
-      updatedAt: now,
-    });
-    if (updated) {
-      setEvents(list => list.map(item => String(item.id) === String(updated.id) ? updated : item));
-      setViewing(currentViewing => currentViewing && String(currentViewing.id) === String(updated.id) ? updated : currentViewing);
-      setViewingGroup(group => group ? group.map(item => String(item.id) === String(updated.id) ? updated : item) : group);
+    const previous = events.find(item => String(item.id) === String(master.id)) || master;
+    const optimistic = taskCompletionPatch(
+      { ...master, recurrenceRule: master.recurrenceRule ? normalizeRecurrenceRule(master.recurrenceRule) : null },
+      completed,
+      occurrenceDate,
+      String(event.technician || ''),
+    ) as CalendarEvent;
+    setEvents(list => replaceRecordById(list, optimistic));
+    try {
+      const updated = await (window as any).api.dbUpdate('calendarEvents', master.id, optimistic);
+      if (!updated) throw new Error('The task update was not saved.');
+      setEvents(list => replaceRecordById(list, updated));
+      setViewing(currentViewing => currentViewing && String((currentViewing.recurrenceMaster || currentViewing).id) === String(updated.id) ? { ...currentViewing, ...updated } : currentViewing);
+      setViewingGroup(group => group ? group.map(item => String((item.recurrenceMaster || item).id) === String(updated.id) ? { ...item, ...updated } : item) : group);
+    } catch (error) {
+      setEvents(list => replaceRecordById(list, previous));
+      console.error('save task completion failed', error);
+      alert('The task could not be updated. Check your connection and try again.');
     }
   }
   function onEdit(ev: CalendarEvent) {
@@ -1228,6 +1232,7 @@ const CalendarWindow: React.FC = () => {
   }
 
   async function saveEvent(ev: CalendarEvent) {
+    let rollbackEvent: CalendarEvent | null = null;
     if (ev.category === 'task') {
       const hasStart = Boolean(ev.time);
       const hasEnd = Boolean(ev.endTime);
@@ -1262,8 +1267,16 @@ const CalendarWindow: React.FC = () => {
         if (!deliveryDates.includes(deliveryDateInput)) deliveryDates.push(deliveryDateInput);
       }
       if (ev.id) {
+        const previous = events.find(item => String(item.id) === String(ev.id));
+        rollbackEvent = previous || null;
+        const optimistic = { ...payload, id: ev.id, updatedAt: new Date().toISOString() } as CalendarEvent;
+        setEvents(list => replaceRecordById(list, optimistic));
         const updated = await (window as any).api.dbUpdate('calendarEvents', ev.id, payload);
-        if (updated) setEvents(list => list.map(x => x.id === updated.id ? updated : x));
+        if (!updated) {
+          if (previous) setEvents(list => replaceRecordById(list, previous));
+          throw new Error('The calendar entry was not returned after saving.');
+        }
+        setEvents(list => replaceRecordById(list, updated));
       } else {
         const added = await (window as any).api.dbAdd('calendarEvents', payload);
         if (added) setEvents(list => [...list, added]);
@@ -1299,7 +1312,11 @@ const CalendarWindow: React.FC = () => {
       setContentEditorLocked(false);
       setDeliveryDates([]);
       setDeliveryDateInput('');
-    } catch (e) { console.error('save event failed', e); }
+    } catch (e) {
+      if (rollbackEvent) setEvents(list => replaceRecordById(list, rollbackEvent as CalendarEvent));
+      console.error('save event failed', e);
+      alert('The calendar entry could not be saved. Check your connection and try again.');
+    }
   }
 
   function addTaskToQueue() {

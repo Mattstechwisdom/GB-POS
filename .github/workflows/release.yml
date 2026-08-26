@@ -89,6 +89,7 @@ jobs:
           npm run test:inventory-part-persistence
           npm run test:calendar-journal-sync
           npm run test:calendar-tasks
+          npm run test:immediate-persistence
           npm run test:daily-look-shifts
           npm run test:desktop-navigation
           npm run test:main-record-types

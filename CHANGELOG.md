@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.31 (2026-08-25)
+- Immediate Task Feedback: Calendar and Daily Look update task checkboxes as soon as they are changed, including individual occurrences of recurring tasks.
+- Reliable Task Editing: saved task edits replace the visible calendar record immediately and restore the prior value with a clear warning if persistence fails.
+- Immediate Calendar Notes: newly saved or edited notes appear at once while Supabase stores the canonical shared record.
+- Durable Repair Journal: Save Note now writes existing work-order notes and journal history immediately instead of waiting for the general work-order autosave.
+- Cross-Device Refresh Ordering: desktop collection refresh events now fire after Supabase accepts or queues a change, preventing stale cloud rows from replacing fresh task and note updates.
+- Quote Prompt Copy: restores Copy AI Prompt on Windows and Android with a clipboard fallback for restricted Electron and mobile contexts.
+- Regression Coverage: verifies task recurrence completion, immediate note persistence, desktop/mobile synchronization mappings, and portrait/landscape behavior.
+
 ## v0.6.30 (2026-08-24)
 - Stable Task Composer: typing a task subject or body no longer triggers autosave and changes the Add Entry window into an existing-task editor.
 - Preserved Task Workflow: the entry-type rail, Add to Task List action, staged-task list, and Save Tasks action remain visible until the technician explicitly saves.

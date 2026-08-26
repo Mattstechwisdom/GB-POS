@@ -374,6 +374,25 @@ async function inspectWindow(win, type, orientation) {
     assert.equal(quoteClient.creatorVisible, true, `Quote Add Client fields did not open in ${orientation.name}.`);
     assert.equal(quoteClient.directlyBelow, true, `Quote Add Client fields were not beneath the client buttons in ${orientation.name}.`);
     assert.equal(quoteClient.fitsWidth, true, `Quote Add Client fields overflowed their panel in ${orientation.name}.`);
+
+    const promptCopy = await win.webContents.executeJavaScript(`(async () => {
+      const addItem = Array.from(document.querySelectorAll('button'))
+        .find((entry) => entry.textContent.trim() === '+ Add Item');
+      addItem?.click();
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      const copy = Array.from(document.querySelectorAll('button'))
+        .find((entry) => entry.textContent.trim() === 'Copy AI Prompt');
+      copy?.click();
+      await new Promise((resolve) => setTimeout(resolve, 125));
+      return {
+        addItemPresent: Boolean(addItem),
+        copyPresent: Boolean(copy),
+        copied: document.body.textContent.includes('AI prompt copied to clipboard'),
+      };
+    })()`);
+    assert.equal(promptCopy.addItemPresent, true, `Quote Add Item button was missing in ${orientation.name}.`);
+    assert.equal(promptCopy.copyPresent, true, `Quote Copy AI Prompt button was missing in ${orientation.name}.`);
+    assert.equal(promptCopy.copied, true, `Quote AI prompt did not copy in ${orientation.name}.`);
   }
 
   if (type === 'consultation') {

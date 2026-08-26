@@ -4,6 +4,7 @@ import { getOsOptions } from '../lib/osVersions';
 import { deviceTypes as DEVICE_TYPE_DEFS } from '../lib/deviceTypes';
 import { formatPhone } from '../lib/format';
 import { useAutosave } from '../lib/useAutosave';
+import { buildQuoteSalesPrompt, copyQuotePromptText } from '../lib/quoteSalesPrompt';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
@@ -4762,21 +4763,9 @@ function QuoteGeneratorWindow(): JSX.Element {
 
   async function copyPromptForItem(idx: number) {
     const it = sales.items[idx];
-    const prompt = buildAIPrompt(it);
-    // Try clipboard API with fallback
+    const prompt = buildQuoteSalesPrompt(it);
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(prompt);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = prompt;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
+      await copyQuotePromptText(prompt);
       setSaveMsg('AI prompt copied to clipboard');
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (_) {

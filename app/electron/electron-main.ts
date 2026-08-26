@@ -5541,8 +5541,8 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
   const ok = writeDb(nextDb);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('upsert', key, nextItem);
+    scheduleCollectionChanged(key);
     return nextItem;
   }
   return null;
@@ -5840,8 +5840,8 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('upsert', key, updatedItem);
+    scheduleCollectionChanged(key);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
@@ -5871,8 +5871,8 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('delete', key, id);
+    scheduleCollectionChanged(key);
   }
   return ok;
 });

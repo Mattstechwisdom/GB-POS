@@ -617,6 +617,41 @@ const NewWorkOrderWindow: React.FC = () => {
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
 
+  const persistJournalNote = useCallback(async (text: string) => {
+    const previous = woRef.current as WOState;
+    const stamp = new Date().toISOString();
+    const displayStamp = stamp.slice(0, 16).replace('T', ' ');
+    const entryText = `${displayStamp} — ${text}`;
+    const currentLog = Array.isArray(previous.internalNotesLog) ? previous.internalNotesLog : [];
+    const nextEntryId = currentLog.reduce((max, entry) => Math.max(max, Number(entry?.id || 0)), 0) + 1;
+    const next: WOState & { updatedAt: string } = {
+      ...previous,
+      internalNotes: (previous.internalNotes ? `${previous.internalNotes}\n` : '') + entryText,
+      internalNotesLog: [...currentLog, { id: nextEntryId, text: entryText, createdAt: stamp }],
+      updatedAt: stamp,
+    };
+    woRef.current = next;
+    setWo(next);
+
+    const id = Number(previous.id || 0);
+    if (!id) return;
+    try {
+      const api: any = (window as any).api || {};
+      const saved = typeof api.dbUpdate === 'function'
+        ? await api.dbUpdate('workOrders', id, next)
+        : await api.update?.('workOrders', next);
+      if (!saved) throw new Error('The work-order note was not returned after saving.');
+      woRef.current = saved;
+      setWo(saved);
+      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+      try { window.opener?.postMessage({ type: 'workorders:changed', id }, '*'); } catch {}
+    } catch (error) {
+      woRef.current = previous;
+      setWo(previous);
+      throw error;
+    }
+  }, []);
+
   // Bind the latest functions each render.
   onSaveRef.current = onSave;
   onCancelRef.current = onCancel;
@@ -1963,14 +1998,7 @@ const NewWorkOrderWindow: React.FC = () => {
                 notes={wo.internalNotes || ''}
                 log={wo.internalNotesLog || []}
                 onChange={n => setWo(w => ({ ...w, internalNotes: n }))}
-                onAdd={(text) => {
-                  const stamp = new Date().toISOString().slice(0,16).replace('T',' ');
-                  setWo(w => ({
-                    ...w,
-                    internalNotes: (w.internalNotes ? w.internalNotes + '\n' : '') + `${stamp} — ${text}`,
-                    internalNotesLog: [...(w.internalNotesLog || []), { id: (w.internalNotesLog?.length || 0) + 1, text: `${stamp} — ${text}`, createdAt: stamp }]
-                  }));
-                }}
+                onAdd={persistJournalNote}
               />
             </div>
           </div>
