@@ -73,6 +73,7 @@
     "test:eod-ticket-close": "node tools/test-eod-ticket-close.cjs",
     "test:cart-client-updates": "node tools/test-cart-client-updates.cjs",
     "test:purchase-budget": "node tools/test-purchase-budget.cjs",
+    "test:ticket-accounting": "node tools/test-ticket-accounting.cjs",
     "import:backup:supabase": "node tools/import-backup-to-supabase.cjs"
   },
   "dependencies": {

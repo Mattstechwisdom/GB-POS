@@ -40,6 +40,8 @@ export interface WorkOrderItem {
   trackStock?: boolean;
   partSource?: string;
   orderSourceUrl?: string;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
 }
 
 export interface WorkOrderFull {
@@ -62,6 +64,8 @@ export interface WorkOrderFull {
   productDescription: string;
   problemInfo?: string;
   password?: string;
+  diagnosticSelection?: { catalogId: string | number; label: string; amount: number } | null;
+  durantFullTransfer?: boolean;
   patternSequence?: number[];
   model?: string;
   serial?: string;
