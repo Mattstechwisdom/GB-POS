@@ -31,6 +31,11 @@ type MobileUpdateCheckProps = {
   delayMs?: number;
 };
 
+export function isNativeAndroidUpdateRuntime(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.GBPosAndroid?.downloadAndInstallApk === 'function';
+}
+
 function normalizeVersion(raw: string): string {
   return String(raw || '').trim().replace(/^v/i, '');
 }
@@ -158,6 +163,10 @@ export default function MobileUpdateCheck({ checkKey = 'default', delayMs = 2500
   const attemptedVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Browser and installed PWA builds are replaced by the deployed web bundle
+    // on reload. Only the native Android shell needs an APK update prompt.
+    if (!isNativeAndroidUpdateRuntime()) return;
+
     let alive = true;
     let timer: number | null = null;
 
