@@ -7,6 +7,7 @@ import PaymentPanel from '@/workorders/PaymentPanel';
 import { round2 } from '@/lib/calc';
 import { WorkOrderFull } from '@/lib/types';
 import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
+import { discountedLineTotal } from '@/lib/ticketAccounting';
 import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 
@@ -495,7 +496,7 @@ const SaleWindow: React.FC = () => {
     return Number.isFinite(qty) && qty > 0 ? qty : 0;
   };
 
-  const itemTotal = (row: SaleItemRow) => itemUnits(row) * (Number(row.price) || 0);
+  const itemTotal = (row: SaleItemRow) => discountedLineTotal({ units: itemUnits(row), unitPrice: Number(row.price) || 0, discountType: row.discountType, discountValue: row.discountValue });
 
   const isConsultationItem = (row: Partial<SaleItemRow> | null | undefined) => {
     const cat = (row as any)?.category;
@@ -961,6 +962,8 @@ const SaleWindow: React.FC = () => {
                 description: r.description || '',
                 qty: itemUnits(r) || 1,
                 price: Number(r.price) || 0,
+                discountType: (r as SaleItemRow).discountType,
+                discountValue: (r as SaleItemRow).discountValue,
               }));
               let customerPhoneAlt = '';
               let customerEmail = String((sale as any).customerEmail || '').trim();

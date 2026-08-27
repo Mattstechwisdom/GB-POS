@@ -2,6 +2,7 @@ import type { WorkOrder } from './releasePrint';
 import { buildPatternSvg } from './releasePrint';
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { discountedWorkOrderItemAmounts } from '../lib/ticketAccounting';
 
 function htmlEscape(s: string): string {
   return s
@@ -12,7 +13,7 @@ function htmlEscape(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): string {
+export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean }): string {
   const logoSrc = opts?.logoSrc ?? '';
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
@@ -25,13 +26,13 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
     : `<div style="height:72px; display:flex; align-items:center; font-weight:800; font-size:22pt; letter-spacing:0.8px;">GADGETBOY</div>`;
 
   const items = Array.isArray(wo.items) ? wo.items : [];
-  const rows = items.map(li => `
+  const rows = items.map(li => { const amount = discountedWorkOrderItemAmounts(li); return `
     <tr>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; overflow-wrap:anywhere;">${htmlEscape(li.description || '')}</td>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${(li.parts ?? 0).toFixed(2)}</td>
-      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${(li.labor ?? 0).toFixed(2)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; overflow-wrap:anywhere;">${htmlEscape(li.description || '')}${amount.discount > 0 ? `<br><small>Line discount: -$${amount.discount.toFixed(2)}</small>` : ''}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${amount.parts.toFixed(2)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e5e7eb; text-align:right;">${amount.labor.toFixed(2)}</td>
     </tr>
-  `);
+  `; });
   const fillerCount = Math.max(0, 5 - rows.length);
   for (let i = 0; i < fillerCount; i++) {
     rows.push(`
@@ -58,9 +59,10 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       html, body { background:#f3f4f6; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; }
       .page { width: 210mm; min-height: 297mm; margin: 10px auto 24px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display:flex; flex-direction:column; position:relative; }
       .page-inner { display:flex; flex-direction:column; min-height: 0; }
-      .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-      .brand-left { display:flex; align-items:center; gap:12px; }
-      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
+      .brand { display:grid; grid-template-columns:minmax(0,1fr) minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
+      .brand-left { display:flex; min-width:0; align-items:center; gap:12px; }
+      .brand-right { min-width:15rem; text-align:right; font-size: 10pt; line-height:1.25; }
+      .brand-right > div { white-space:nowrap; }
       .brand-title { font-weight:700; letter-spacing:0.3px; }
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:8px; margin-bottom:10px; }
@@ -132,6 +134,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
             </div>
           </div>
           <div class="brand-right">
+            ${wo.workOrderType === 'durantReport' ? `<div style="font-size:13pt;font-weight:900;">Durant Report</div>${wo.durantFullTransfer ? '<div style="font-weight:800;">Full Transfer — diagnostic payment applies toward Durant bench fee</div>' : '<div style="font-weight:700;">Device remains with GadgetBoy</div>'}` : ''}
             <div><strong>Invoice:</strong> ${htmlEscape(wo.invoiceId)}</div>
             <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
             <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>

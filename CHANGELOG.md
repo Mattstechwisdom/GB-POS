@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.27 (2026-08-27)
+- Distributor Order Dates: selected-item checkout can record the actual historical order day while whole-cart checkout remains on today; delivery estimates stay independent and client updates name the entered order date.
+- Item Discounts: work-order and sale line-item menus support custom percentage or fixed discounts, with net totals and printouts calculated consistently.
+- Diagnostic Minimums: every work-order type can select a configured Diagnostic outside the line-item list; it behaves as a minimum labor charge so prior diagnostic payments correctly reduce pickup balance.
+- Durant Reports: adds Full Transfer status, stable print headers, saved device passwords, Durant-specific receipt wording, hosted deep-link QR codes, shared notes, and chronological history.
+- Durant Media Workspace: adds a responsive, RLS-restricted Supabase role that can stage findings, labor, invoice links, markup-ready items, and transfers for GadgetBoy approval without changing authoritative reporting before approval.
+- Web & iOS: adds an installable responsive PWA with GadgetBoy home-screen icons and safe-area support.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.26 (2026-08-23)
 - Calendar Request Actions: places Request Time Off beside Schedule Management and moves the thicker Streaming/Content Schedule control directly into the date-navigation action group.
 - Time-Off Requests: lets technicians choose their name, date, and absence start/end times with required-field and time-order validation.

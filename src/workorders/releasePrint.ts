@@ -1,4 +1,4 @@
-export type LineItem = { description: string; parts: number; labor: number; qty?: number };
+export type LineItem = { description: string; parts: number; labor: number; qty?: number; discountType?: 'percent' | 'amount'; discountValue?: number };
 export type WorkOrder = {
   invoiceId: string;
   /** Numeric work-order / sale ID used to build the technician QR URL. Falls back to Number(invoiceId). */
@@ -27,10 +27,13 @@ export type WorkOrder = {
   taxes: number;
   amountPaid: number;
   notes?: string;
+  workOrderType?: string;
+  durantFullTransfer?: boolean;
 };
 
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { discountedWorkOrderItemAmounts } from '../lib/ticketAccounting';
 
 export function buildPatternSvg(seq: number[], size: number = 140): string {
   const padding = 12;
@@ -90,7 +93,7 @@ function htmlEscape(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean; qrSrc?: string }): string {
+export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean; qrSrc?: string }): string {
   const logoSrc = opts?.logoSrc ?? '';
   const autoCloseMs = typeof opts?.autoCloseMs === 'number' ? opts!.autoCloseMs : 3000;
   const autoPrint = opts?.autoPrint ?? true;
@@ -99,11 +102,10 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
   const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
   const displayPhoneAlt = formatPhone(String(wo.phoneAlt || '')) || String(wo.phoneAlt || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
-  const sanitizedItems = itemList.map(li => ({
-    description: htmlEscape(li.description || ''),
-    parts: (li.parts ?? 0).toFixed(2),
-    labor: (li.labor ?? 0).toFixed(2),
-  }));
+  const sanitizedItems = itemList.map(li => { const amount = discountedWorkOrderItemAmounts(li); return {
+    description: htmlEscape(li.description || '') + (amount.discount > 0 ? `<br><small>Line discount: -$${amount.discount.toFixed(2)}</small>` : ''),
+    parts: amount.parts.toFixed(2), labor: amount.labor.toFixed(2),
+  }; });
   const columnCount = sanitizedItems.length > 10 ? 2 : 1;
   const perCol = columnCount === 2 ? Math.ceil(sanitizedItems.length / 2) : sanitizedItems.length;
   const columns: string[] = [];
@@ -149,10 +151,11 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
       @page { size: A4; margin: 12mm; }
       html, body { background:#fff; color:#111; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 11pt; margin: 0; }
       .page { width: auto; margin: 0; background: #fff; box-sizing: border-box; padding: 12mm; }
-      .brand { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:0; margin-bottom:10px; }
-      .brand-left { display:flex; align-items:center; gap:12px; }
-      .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
-      .brand-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 auto; padding:0 16px; }
+      .brand { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
+      .brand-left { display:flex; min-width:0; align-items:center; gap:12px; }
+      .brand-right { min-width:15rem; text-align:right; font-size: 10pt; line-height:1.25; }
+      .brand-right > div { white-space:nowrap; }
+      .brand-center { display:flex; width:78px; flex-direction:column; align-items:center; justify-content:center; padding:0 3px; }
       .brand-title { font-weight:700; letter-spacing:0.3px; }
       .slogan { color:#444; font-style:italic; margin-top:4px; }
       .section { border:1px solid #d1d5db; border-radius:6px; padding:10px; margin-bottom:10px; }
@@ -220,6 +223,7 @@ function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?: numbe
         </div>
         ` : '<div class="brand-center"></div>'}
         <div class="brand-right">
+          ${wo.workOrderType === 'durantReport' ? `<div style="font-size:13pt;font-weight:900;letter-spacing:.5px;">Durant Report</div>${wo.durantFullTransfer ? '<div style="font-weight:800;">Full Transfer</div>' : ''}` : ''}
           <div><strong>Invoice:</strong> ${htmlEscape(invoiceDisplay)}</div>
           <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
           <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>
@@ -397,7 +401,10 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
           if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
         }
       } catch { /* QR server not running */ }
-      const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+      const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
+      const qrUrl = workOrder.workOrderType === 'durantReport'
+        ? `${publicBase}/?durantTicket=${encodeURIComponent(String(recordId))}`
+        : `http://${lanIp}:7777/status/${type}/${recordId}`;
       const QRCode = (await import('qrcode')).default;
       const dataUrl: string = await QRCode.toDataURL(qrUrl, {
         width: 176, margin: 1,

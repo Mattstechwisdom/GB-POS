@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import type { CustomBuildItemResult } from './CustomBuildItemWindow';
+import LineDiscountDialog from '@/components/LineDiscountDialog';
+import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 
 export type WorkOrderItemRow = {
   id: string;
@@ -11,6 +13,8 @@ export type WorkOrderItemRow = {
   labor: number;
   status?: string;
   note?: string;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
 };
 
 interface Props {
@@ -39,6 +43,7 @@ function money(n: any) {
 
 const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
+  const [discounting, setDiscounting] = useState<WorkOrderItemRow | null>(null);
 
   const ro = Array.isArray(readonlyItems) ? readonlyItems : [];
 
@@ -134,6 +139,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
       { type: 'header', label: ctxRow.repair || 'Line Item' },
       { label: 'Edit…', onClick: () => editItem(ctxRow) },
       { label: 'Duplicate', onClick: () => duplicateItem(ctxRow) },
+      { label: ctxRow.discountType ? 'Edit Discount…' : 'Add Discount…', onClick: () => setDiscounting(ctxRow) },
       { type: 'separator' },
       { label: 'Remove…', danger: true, onClick: () => removeItem(ctxRow) },
     ];
@@ -174,7 +180,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
                       : 'border-transparent hover:bg-zinc-800/60'
                   }`}
                 >
-                  <td className="px-2 py-1 font-medium overflow-hidden text-ellipsis">{it.repair}</td>
+                  <td className="px-2 py-1 font-medium overflow-hidden text-ellipsis">{it.repair}{it.discountType ? <span className="ml-2 text-[10px] font-semibold text-neon-green">Discount {it.discountType === 'percent' ? `${it.discountValue || 0}%` : `$${Number(it.discountValue || 0).toFixed(2)}`}</span> : null}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{money(it.parts)}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{money(it.labor)}</td>
                 </tr>
@@ -240,6 +246,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
         items={ctxItems}
         onClose={ctx.close}
       />
+      {discounting ? (() => { const amounts = discountedWorkOrderItemAmounts(discounting); return <LineDiscountDialog title={discounting.repair} gross={amounts.gross} value={discounting} onClose={() => setDiscounting(null)} onApply={(discount) => { onChange(items.map((item) => item.id === discounting.id ? { ...item, ...discount } : item)); setDiscounting(null); }} />; })() : null}
     </div>
   );
 };

@@ -414,7 +414,7 @@ const WorkOrderForm: React.FC<Props> = ({ workOrder, onChange, validationFlags, 
               <input
                 className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
                 value={localPassword}
-                onChange={e => setLocalPassword(e.target.value)}
+                onChange={e => { setLocalPassword(e.target.value); onChange({ password: e.target.value }); }}
                 onBlur={e => onChange({ password: e.target.value })}
               />
             </div>

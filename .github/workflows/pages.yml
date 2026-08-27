@@ -23,6 +23,7 @@ jobs:
       VITE_SHOP_LOGIN_USERNAME: ${{ vars.VITE_SHOP_LOGIN_USERNAME || secrets.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz' }}
       VITE_SHOP_LOGIN_EMAIL: ${{ vars.VITE_SHOP_LOGIN_EMAIL || secrets.VITE_SHOP_LOGIN_EMAIL }}
       VITE_PUBLIC_APP_URL: https://mattstechwisdom.github.io/GB-POS
+      VITE_DURANT_LOGIN_EMAIL: ${{ vars.VITE_DURANT_LOGIN_EMAIL || secrets.VITE_DURANT_LOGIN_EMAIL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

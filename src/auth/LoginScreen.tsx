@@ -16,8 +16,10 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
     setErrorMessage('');
     setLoading(true);
 
+    const enteredLogin = email.trim();
+    const durantEmail = String(import.meta.env.VITE_DURANT_LOGIN_EMAIL || 'durantmedia@gadgetboysc.com');
     const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: enteredLogin.toLowerCase() === 'durantmedia' ? durantEmail : enteredLogin,
       password,
     });
 
@@ -41,12 +43,12 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
         <p className="mt-2 text-sm text-slate-400">Sign in to access shop data.</p>
 
         <label className="mt-6 block text-sm font-medium text-slate-200">
-          Email
+          Username or Email
           <input
-            type="email"
+            type="text"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
+            autoComplete="username"
             required
             className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-emerald-400"
           />

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const read=p=>fs.readFileSync(path.join(process.cwd(),p),'utf8');
+const sql=read('supabase/migrations/20260827180234_durant_partner_access.sql');
+assert.match(sql,/sp\.role::text <> 'durant'/,'generic staff access must exclude Durant');
+assert.match(sql,/work_order_type = 'durantReport'/,'Durant work-order policy must filter report tickets');
+assert.match(sql,/durant reads attached clients/); assert.match(sql,/durant reads report credentials/);
+assert.match(sql,/approve_durant_proposal/); assert.match(sql,/status <> 'ready'/);
+assert.match(sql,/for update/); assert.match(sql,/for insert/); assert.match(sql,/durant_shared_notes/); assert.match(sql,/durant_history/);
+const app=read('src/durant/DurantApp.tsx'); assert.match(app,/Ready for GadgetBoy Review/); assert.match(app,/Shared Notes/); assert.match(app,/History/); assert.match(app,/invoiceUrl/);
+console.log('Durant role, approval boundary, notes, and history checks passed.');

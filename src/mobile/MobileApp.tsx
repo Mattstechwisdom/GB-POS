@@ -17,6 +17,7 @@ import GidgetChat from '../components/GidgetChat';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
+import DurantApp from '../durant/DurantApp';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -59,7 +60,7 @@ const GameMenuWindow = React.lazy(() => import('../components/GameMenuWindow'));
 type StaffProfile = {
   id: string;
   shop_id: string;
-  role: 'admin' | 'manager' | 'technician';
+  role: 'admin' | 'manager' | 'technician' | 'durant';
   status: 'invited' | 'active' | 'disabled';
   first_name: string | null;
   last_name: string | null;
@@ -722,6 +723,11 @@ const MobileAppRuntime: React.FC = () => {
         {accessError ? <div className="mobile-toast mobile-toast-danger">{accessError}</div> : null}
       </>
     );
+  }
+
+  if (staffProfile.role === 'durant') {
+    removeInitialHtmlLoader();
+    return <DurantApp session={session} shopId={staffProfile.shop_id} onSignOut={() => void supabase.auth.signOut()} />;
   }
 
   if (!cloudReady) {

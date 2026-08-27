@@ -405,10 +405,11 @@ const CustomerReceiptWindow: React.FC = () => {
         }
       .page { width: 210mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
       .page-inner { display: flex; flex-direction: column; min-height: 0; }
-        .brand { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-        .brand-left { display:flex; align-items:center; gap:12px; }
+        .brand { display:grid; grid-template-columns:minmax(0,1fr) minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
+        .brand-left { display:flex; min-width:0; align-items:center; gap:12px; }
         .brand-center { display:grid; justify-items:center; gap:2px; margin-left:auto; margin-right:14px; }
-        .brand-right { text-align:right; font-size: 10pt; line-height:1.2; }
+        .brand-right { min-width:15rem; text-align:right; font-size: 10pt; line-height:1.25; }
+        .brand-right > div, .brand-right > div > div { white-space:nowrap; }
         .brand-title { font-weight:700; letter-spacing:0.3px; }
         .slogan { color:#444; font-style:italic; margin-top:4px; }
   .section { border:1px solid #d1d5db; border-radius:6px; padding:8px; margin-bottom:10px; }
@@ -502,6 +503,7 @@ const CustomerReceiptWindow: React.FC = () => {
             </div>
           </div>
           <div className="brand-right">
+            {(data as any).workOrderType === 'durantReport' ? <><div style={{ fontWeight: 900, fontSize: '13pt' }}>Durant Report</div><div style={{ fontWeight: 800 }}>{(data as any).durantFullTransfer ? 'Full Transfer — diagnostic payment applies toward Durant bench fee' : 'Device remains with GadgetBoy'}</div></> : null}
             <div style={{ textAlign: 'right', fontSize: '10pt', lineHeight: '1.2' }}>
               <div><strong>Invoice:</strong> {invoiceNo}</div>
               <div><strong>Date/Time:</strong> {now.toLocaleDateString()} {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>

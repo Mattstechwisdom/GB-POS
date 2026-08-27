@@ -12,6 +12,7 @@ declare global {
     readonly VITE_SHOP_LOGIN_USERNAME?: string;
     readonly VITE_SHOP_LOGIN_EMAIL?: string;
     readonly VITE_PUBLIC_APP_URL?: string;
+    readonly VITE_DURANT_LOGIN_EMAIL?: string;
   }
 
   interface ImportMeta {

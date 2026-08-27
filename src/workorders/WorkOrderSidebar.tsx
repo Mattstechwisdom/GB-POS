@@ -164,6 +164,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     parts: typeof it.parts === 'number' ? it.parts : (typeof it.partCost === 'number' ? it.partCost : 0),
                     labor: typeof it.labor === 'number' ? it.labor : (typeof it.unitPrice === 'number' ? it.unitPrice : (typeof it.laborCost === 'number' ? it.laborCost : 0)),
                     qty: typeof it.qty === 'number' ? it.qty : undefined,
+                    discountType: it.discountType,
+                    discountValue: it.discountValue,
                   }));
 
                   const wo: PrintWorkOrder = {
@@ -192,6 +194,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     taxes: Number((workOrder as any).totals?.tax || 0),
                     amountPaid: Number((workOrder as any).amountPaid || 0),
                     notes: (workOrder as any).internalNotes || '',
+                    workOrderType: (workOrder as any).workOrderType || '',
+                    durantFullTransfer: !!(workOrder as any).durantFullTransfer,
                   };
 
                   await printReleaseForm(wo, { autoCloseMs: 0, autoPrint: true });
@@ -264,6 +268,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     taxRate: (workOrder as any).taxRate,
                     totals: (workOrder as any).totals,
                     amountPaid: (workOrder as any).amountPaid,
+                    workOrderType: (workOrder as any).workOrderType || '',
+                    durantFullTransfer: !!(workOrder as any).durantFullTransfer,
                   };
                   if ((window as any).api?.openCustomerReceipt) {
                     await (window as any).api.openCustomerReceipt(payload);

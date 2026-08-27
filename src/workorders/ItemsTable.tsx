@@ -3,6 +3,8 @@ import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
 import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import LineDiscountDialog from '@/components/LineDiscountDialog';
+import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -34,6 +36,8 @@ export type WorkOrderItemRow = {
   purchaseQueueRemovedAt?: string;
   purchaseQueueRemovalNotice?: string;
   purchaseQueueRemovalPaymentStatus?: string;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
 };
 
 const MAX_ITEMS = 5;
@@ -55,6 +59,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
 
   const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
   const [editing, setEditing] = useState<WorkOrderItemRow | null>(null);
+  const [discounting, setDiscounting] = useState<WorkOrderItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
   const [scrapingOrderUrl, setScrapingOrderUrl] = useState(false);
 
@@ -129,6 +134,10 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
           setSelected(copy.id);
           setEditing(null);
         },
+      },
+      {
+        label: ctxRow.discountType ? 'Edit Discount…' : 'Add Discount…',
+        onClick: () => setDiscounting(ctxRow),
       },
       { type: 'separator' },
       {
@@ -301,7 +310,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                 >
                   <td data-label="Device" className="px-2 py-1 font-medium text-left">{it.device || ''}</td>
                   <td data-label="Type" className="px-2 py-1 text-left text-zinc-400 text-xs">{it.repairCategory || ''}</td>
-                  <td data-label="Repair" className="px-2 py-1 text-left">{it.repair}</td>
+                  <td data-label="Repair" className="px-2 py-1 text-left">{it.repair}{it.discountType ? <span className="ml-2 text-[10px] font-semibold text-neon-green">Discount {it.discountType === 'percent' ? `${it.discountValue || 0}%` : `$${Number(it.discountValue || 0).toFixed(2)}`}</span> : null}</td>
                   <td data-label="Parts" className="px-2 py-1 text-right tabular-nums">{typeof it.parts === 'number' ? `$${it.parts.toFixed(2)}` : ''}</td>
                   <td data-label="Labor" className="px-2 py-1 text-right tabular-nums">{typeof it.labor === 'number' ? `$${it.labor.toFixed(2)}` : ''}</td>
                 </tr>
@@ -576,6 +585,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         items={ctxItems}
         onClose={ctx.close}
       />
+      {discounting ? (() => { const amounts = discountedWorkOrderItemAmounts(discounting); return <LineDiscountDialog title={`${discounting.device} — ${discounting.repair}`} gross={amounts.gross} value={discounting} onClose={() => setDiscounting(null)} onApply={discount => { const next = items.map(item => item.id === discounting.id ? { ...item, discountType: discount.discountType, discountValue: discount.discountValue } : item); onChange(next); void onCommit?.(next); setDiscounting(null); }} />; })() : null}
     </div>
   );
 }

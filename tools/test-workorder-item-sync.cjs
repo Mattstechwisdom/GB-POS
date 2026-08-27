@@ -11,12 +11,14 @@ const desktop = read('app/electron/electron-main.ts');
 const mobile = read('src/mobile/mobile-api.ts');
 const desktopCss = read('src/styles/index.css');
 const mobileCss = read('src/mobile/mobile.css');
+const ticketAccounting = read('src/lib/ticketAccounting.ts');
 
 assert.match(workOrder, /mappedItems:[\s\S]*\.\.\.it,[\s\S]*orderSourceUrl:[\s\S]*internalCost:[\s\S]*quantity:/, 'Reopening a work order must preserve its complete Supabase line-item ordering payload.');
 assert.match(workOrder, /const items = wo\.items\.map\(row => \(\{[\s\S]*\.\.\.row,[\s\S]*qty: workOrderItemQuantity\(row\)/, 'Shared work-order records must retain ordering metadata and quantity.');
 assert.match(workOrder, /onCommit=\{handleItemsCommit\}/, 'The work-order item editor must use the durable commit callback.');
 assert.match(workOrder, /handleItemsCommit[\s\S]*dbUpdate\('workOrders', id, payload\)/, 'Line-item Save must immediately persist the complete work order.');
-assert.match(workOrder, /calculateWorkOrderItemAmounts[\s\S]*Number\(item\.parts\)[\s\S]*workOrderItemQuantity\(item\)/, 'Work-order checkout totals must multiply the client part charge by quantity.');
+assert.match(workOrder, /calculateWorkOrderItemAmounts[\s\S]*discountedWorkOrderItemAmounts\(item\)/, 'Work-order totals must route every row through shared discount accounting.');
+assert.match(ticketAccounting, /partsGross[\s\S]*Number\(input\.parts\)[\s\S]*quantity/, 'Shared accounting must multiply the client part charge by quantity.');
 assert.match(items, /await onCommit\?\.\(nextItems\);[\s\S]*onChange\(nextItems\);[\s\S]*setEditing\(null\)/, 'The editor must wait for persistence before closing or accepting the updated row.');
 assert.doesNotMatch(items, /repair:\s*(?:meta\.title|normalizedTitle)/, 'Supplier autofill must not overwrite a technician-entered repair title.');
 assert.match(items, /internalCost,[\s\S]*parts: suggestedParts \?\? current\.parts/, 'Supplier cost and marked-up client charge must be kept together.');

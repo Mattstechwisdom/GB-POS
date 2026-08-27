@@ -1,7 +1,8 @@
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
+import { discountedLineTotal, lineDiscountAmount } from '../lib/ticketAccounting';
 
-export type SaleLine = { description: string; qty: number; price: number };
+export type SaleLine = { description: string; qty: number; price: number; discountType?: 'percent' | 'amount'; discountValue?: number };
 
 export type SaleOrderPrint = {
   invoiceId: string;
@@ -30,7 +31,7 @@ function htmlEscape(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildSaleHtml(
+export function buildSaleHtml(
   sale: SaleOrderPrint,
   opts?: { logoSrc?: string; autoCloseMs?: number; autoPrint?: boolean; qrSrc?: string },
 ): string {
@@ -55,10 +56,12 @@ function buildSaleHtml(
     : `<div style="height:72px; display:flex; align-items:center; font-weight:800; font-size:22pt; letter-spacing:0.8px;">GADGETBOY</div>`;
 
   const itemRows = (Array.isArray(sale.items) ? sale.items : []).map(li => {
-    const total = (Number(li.qty) || 0) * (Number(li.price) || 0);
+    const input = { units: Number(li.qty) || 0, unitPrice: Number(li.price) || 0, discountType: li.discountType, discountValue: li.discountValue };
+    const total = discountedLineTotal(input);
+    const lineDiscount = lineDiscountAmount(input);
     return `
       <tr>
-        <td class="item-desc">${htmlEscape(li.description || '')}</td>
+        <td class="item-desc">${htmlEscape(li.description || '')}${lineDiscount > 0 ? `<br><small>Line discount: -$${lineDiscount.toFixed(2)}</small>` : ''}</td>
         <td class="item-num">${li.qty}</td>
         <td class="item-num">$${(Number(li.price) || 0).toFixed(2)}</td>
         <td class="item-num">$${total.toFixed(2)}</td>

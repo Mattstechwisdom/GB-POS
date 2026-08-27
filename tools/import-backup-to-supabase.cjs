@@ -391,6 +391,8 @@ async function importWorkOrders(shopId, customerMap, workOrderMap) {
       intake_source: str(w.intakeSource),
       problem_info: str(w.problemInfo),
       work_order_type: str(w.workOrderType),
+      diagnostic_selection: w.diagnosticSelection && typeof w.diagnosticSelection === 'object' ? w.diagnosticSelection : null,
+      durant_full_transfer: bool(w.durantFullTransfer),
       parts_ordered: bool(w.partsOrdered),
       parts_dates: str(w.partsDates),
       parts_order_url: str(w.partsOrderUrl),

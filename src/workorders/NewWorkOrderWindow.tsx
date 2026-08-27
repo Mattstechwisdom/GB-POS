@@ -13,10 +13,12 @@ import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPane
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import ClientUpdatePanel from './ClientUpdatePanel';
 import { computeTotals, round2 } from '../lib/calc';
-import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus } from '../lib/types';
+import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus, RepairItem } from '../lib/types';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
 import { listTechnicians } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
+import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticketAccounting';
+import DurantProposalReview from './DurantProposalReview';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -38,9 +40,10 @@ function workOrderItemQuantity(item: Partial<WorkOrderItemRow>) {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 }
 
-function calculateWorkOrderItemAmounts(items: WorkOrderItemRow[], discount: number, taxRate: number, amountPaid: number) {
-  const partCosts = round2(items.reduce((sum, item) => sum + (Number(item.parts) || 0) * workOrderItemQuantity(item), 0));
-  const laborCost = round2(items.reduce((sum, item) => sum + (Number(item.labor) || 0), 0));
+function calculateWorkOrderItemAmounts(items: WorkOrderItemRow[], discount: number, taxRate: number, amountPaid: number, diagnostic?: WorkOrderFull['diagnosticSelection']) {
+  const discounted = items.map(item => discountedWorkOrderItemAmounts(item));
+  const partCosts = round2(discounted.reduce((sum, item) => sum + item.parts, 0));
+  const laborCost = ticketLaborCharge(discounted, diagnostic);
   return {
     partCosts,
     laborCost,
@@ -335,6 +338,8 @@ const NewWorkOrderWindow: React.FC = () => {
   const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
   const [partsTrackingExpanded, setPartsTrackingExpanded] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
+  const [diagnosticOptions, setDiagnosticOptions] = useState<RepairItem[]>([]);
+  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const now = new Date().toISOString();
   type WOState = Omit<WorkOrderFull, 'items'> & {
     items: WorkOrderItemRow[];
@@ -395,6 +400,16 @@ const NewWorkOrderWindow: React.FC = () => {
     checkout: false,
     close: false,
   });
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const rows = await (window as any).api?.dbGet?.('repairCategories').catch(() => []);
+      if (!active) return;
+      setDiagnosticOptions((Array.isArray(rows) ? rows : []).filter((item: RepairItem) => /diagnostic/i.test(`${item.repairCategory || ''} ${item.title || ''}`)));
+    })();
+    return () => { active = false; };
+  }, []);
 
   // Load the attached retail sale (if any) so we can display quick context.
   useEffect(() => {
@@ -590,6 +605,7 @@ const NewWorkOrderWindow: React.FC = () => {
       wo.discount || 0,
       wo.taxRate || 0,
       wo.amountPaid || 0,
+      wo.diagnosticSelection,
     );
     setWo(w => {
       const existing = w.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
@@ -607,7 +623,7 @@ const NewWorkOrderWindow: React.FC = () => {
       }
       return { ...w, partCosts, laborCost, totals };
     });
-  }, [wo.items, wo.discount, wo.taxRate, wo.amountPaid, (wo as any).discountType, (wo as any).discountPctValue, (wo as any).discountCustomAmount]);
+  }, [wo.items, wo.discount, wo.taxRate, wo.amountPaid, wo.diagnosticSelection, (wo as any).discountType, (wo as any).discountPctValue, (wo as any).discountCustomAmount]);
 
   const onSaveRef = useRef<() => void>(() => {});
   const onCancelRef = useRef<() => void>(() => {});
@@ -1858,6 +1874,12 @@ const NewWorkOrderWindow: React.FC = () => {
             />
           )}
 
+          <div className="rounded border border-zinc-700 bg-zinc-900 p-2">
+            <div className="flex flex-wrap items-center gap-2"><button type="button" className="rounded border border-violet-400/70 bg-violet-500/15 px-3 py-1.5 text-sm font-semibold text-violet-100" onClick={() => setDiagnosticOpen(value => !value)}>Add Diagnostic</button>{wo.diagnosticSelection ? <><span className="text-sm text-zinc-200">{wo.diagnosticSelection.label} — ${Number(wo.diagnosticSelection.amount).toFixed(2)} minimum labor</span><button type="button" className="text-xs text-red-300" onClick={() => setWo(current => ({ ...current, diagnosticSelection: null }))}>Remove</button></> : <span className="text-xs text-zinc-500">Optional for every work order type</span>}</div>
+            {diagnosticOpen ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{diagnosticOptions.length ? diagnosticOptions.map(item => { const amount = Math.max(0, Number(item.laborCost || 0) + Number(item.partCost || 0)); return <button key={item.id} type="button" className="rounded border border-zinc-700 bg-zinc-800 p-2 text-left text-sm hover:border-violet-400" onClick={() => { setWo(current => ({ ...current, diagnosticSelection: { catalogId: item.id, label: item.title || item.repairCategory || 'Diagnostic', amount } })); setDiagnosticOpen(false); }}><strong className="block">{item.title || item.repairCategory}</strong><span className="text-zinc-400">${amount.toFixed(2)}</span></button>; }) : <div className="text-xs text-zinc-400">No repairs titled Diagnostic are configured.</div>}</div> : null}
+            {isDurantReport ? <label className="mt-2 flex items-center gap-2 rounded border border-purple-500/40 bg-purple-950/20 p-2 text-sm font-semibold text-purple-100"><input type="checkbox" checked={!!wo.durantFullTransfer} onChange={event => setWo(current => ({ ...current, durantFullTransfer: event.target.checked }))} />Full Transfer to Durant Media</label> : null}
+          </div>
+
           {isCustomBuild ? (
             <CustomBuildItemsTable
               items={wo.items}
@@ -1883,6 +1905,7 @@ const NewWorkOrderWindow: React.FC = () => {
             accessories={wo.dropoffAccessories ?? []}
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
+          {isDurantReport && (wo as any).cloudId ? <DurantProposalReview workOrderId={String((wo as any).cloudId)} onApproved={() => window.location.reload()} /> : null}
           {/* Parts dates + order URL (under line items) */}
           <div className={`gb-wo-parts-card gb-wo-expandable ${partsTrackingExpanded ? 'is-expanded' : 'is-collapsed'} bg-zinc-900 border border-zinc-700 rounded p-2`}>
             <div className="gb-wo-parts-header flex items-center justify-between mb-1">

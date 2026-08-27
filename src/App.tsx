@@ -18,6 +18,7 @@ import { PaginationProvider, usePagination } from './lib/pagination';
 import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib/modalBus';
 import { storeWindowPayload } from './lib/windowPayload';
 import { LoginScreen } from './auth/LoginScreen';
+import DurantApp from './durant/DurantApp';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
@@ -204,7 +205,7 @@ function getActivityDate(record: any): Date {
 type StaffProfile = {
   id: string;
   shop_id: string;
-  role: 'admin' | 'manager' | 'technician';
+  role: 'admin' | 'manager' | 'technician' | 'durant';
   status: 'invited' | 'active' | 'disabled';
   first_name: string | null;
   last_name: string | null;
@@ -409,6 +410,11 @@ const App: React.FC = () => {
         ) : null}
       </>
     );
+  }
+
+  if (staffProfile.role === 'durant') {
+    removeInitialHtmlLoader();
+    return <DurantApp session={session} shopId={staffProfile.shop_id} onSignOut={() => void supabase.auth.signOut()} />;
   }
 
   if (!cloudReady) {

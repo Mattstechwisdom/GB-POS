@@ -3,6 +3,8 @@ import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
 import { derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import LineDiscountDialog from '@/components/LineDiscountDialog';
+import { discountedLineTotal } from '@/lib/ticketAccounting';
 
 export type SaleItemRow = {
   id: string;
@@ -35,6 +37,8 @@ export type SaleItemRow = {
   reorderQty?: number;
   notes?: string;
   taxExempt?: boolean;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
 };
 
 interface Props {
@@ -65,7 +69,7 @@ function effectiveUnits(row: Partial<SaleItemRow> | null | undefined) {
 }
 
 function lineTotalFor(row: Partial<SaleItemRow> | null | undefined) {
-  return effectiveUnits(row) * (Number(row?.price) || 0);
+  return discountedLineTotal({ units: effectiveUnits(row), unitPrice: Number(row?.price) || 0, discountType: row?.discountType, discountValue: row?.discountValue });
 }
 
 const SaleItemsTable: React.FC<Props> = ({
@@ -80,6 +84,7 @@ const SaleItemsTable: React.FC<Props> = ({
 }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
+  const [discounting, setDiscounting] = useState<SaleItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
   const [scrapingProductUrl, setScrapingProductUrl] = useState(false);
   const holdRef = useRef<{ timer: number; x: number; y: number } | null>(null);
@@ -169,6 +174,7 @@ const SaleItemsTable: React.FC<Props> = ({
           setEditing(null);
         },
       },
+      { label: ctxRow.discountType ? 'Edit Discount…' : 'Add Discount…', onClick: () => setDiscounting(ctxRow) },
       ...(url
         ? ([
             { type: 'separator' as const },
@@ -363,7 +369,7 @@ const SaleItemsTable: React.FC<Props> = ({
                   }}
                   className={`cursor-pointer transition-colors border-l-4 ${isSel ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_5px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/60'}`}
                 >
-                  <td data-label="Item" className="px-2 py-1 font-medium truncate" title={it.description}>{it.description}</td>
+                  <td data-label="Item" className="px-2 py-1 font-medium truncate" title={it.description}>{it.description}{it.discountType ? <span className="ml-2 text-[10px] font-semibold text-neon-green">Discount {it.discountType === 'percent' ? `${it.discountValue || 0}%` : `$${Number(it.discountValue || 0).toFixed(2)}`}</span> : null}</td>
                   <td data-label="Qty / Hrs" className="px-2 py-1">{Number.isFinite(units) ? units : ''}</td>
                   <td data-label="Price" className="px-2 py-1">{typeof it.price === 'number' ? `$${it.price.toFixed(2)}` : ''}</td>
                   <td data-label="Total" className="px-2 py-1" style={{ textAlign: 'right' }}>{`$${lineTotal.toFixed(2)}`}</td>
@@ -644,6 +650,7 @@ const SaleItemsTable: React.FC<Props> = ({
         onClose={ctx.close}
         zIndex={100600}
       />
+      {discounting ? <LineDiscountDialog title={discounting.description} gross={effectiveUnits(discounting) * (Number(discounting.price) || 0)} value={discounting} onClose={() => setDiscounting(null)} onApply={discount => { const next = items.map(item => item.id === discounting.id ? { ...item, discountType: discount.discountType, discountValue: discount.discountValue } : item); onChange(next); void onCommit?.(next); setDiscounting(null); }} /> : null}
     </div>
   );
 };

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -21,10 +22,12 @@ const ALL_WINDOWS = [
 const WINDOWS = process.env.MOBILE_WINDOW_LAYOUT_TYPE
   ? [process.env.MOBILE_WINDOW_LAYOUT_TYPE]
   : ALL_WINDOWS;
-const ORIENTATIONS = [
+const BASE_ORIENTATIONS = [
   { name: 'portrait', width: 390, height: 844 },
   { name: 'landscape', width: 844, height: 390 },
+  ...(process.env.CAPTURE_RELEASE_PREVIEWS ? [{ name: 'desktop', width: 1440, height: 1000 }] : []),
 ];
+const ORIENTATIONS = process.env.MOBILE_WINDOW_LAYOUT_ORIENTATION ? BASE_ORIENTATIONS.filter(entry => entry.name === process.env.MOBILE_WINDOW_LAYOUT_ORIENTATION) : BASE_ORIENTATIONS;
 
 function waitForServer(timeoutMs = 30_000) {
   const started = Date.now();
@@ -68,7 +71,6 @@ async function inspectWindow(win, type, orientation) {
     : '';
   await win.loadURL(`${BASE_URL}/mobile.html?mobileWindowPreview=${encodeURIComponent(type)}${checkoutPayload}`);
   await new Promise((resolve) => setTimeout(resolve, 425));
-
   const layout = await win.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.mobile-modal-shell');
     const content = document.querySelector('.mobile-modal-content');
@@ -95,7 +97,7 @@ async function inspectWindow(win, type, orientation) {
     };
   })()`);
 
-  assert.equal(layout.shell, true, `${type} (${orientation.name}) did not render its mobile window shell.`);
+  assert.equal(layout.shell, true, `${type} (${orientation.name}) did not render its mobile window shell. Renderer errors: ${runtimeErrors.join(' | ')}`);
   assert.equal(layout.content, true, `${type} (${orientation.name}) did not render mobile content.`);
   assert.equal(layout.unknown, false, `${type} (${orientation.name}) mapped to an unknown window.`);
   assert.equal(layout.uncaught, false, `${type} (${orientation.name}) rendered an uncaught-error screen.`);
@@ -104,6 +106,10 @@ async function inspectWindow(win, type, orientation) {
   assert.equal(layout.shellFits, true, `${type} (${orientation.name}) escaped the mobile viewport.`);
   assert.equal(layout.closeVisible, true, `${type} (${orientation.name}) hid its close control.`);
   assert.equal(runtimeErrors.length, 0, `${type} (${orientation.name}) logged errors: ${runtimeErrors.join(' | ')}`);
+  if (process.env.CAPTURE_RELEASE_PREVIEWS) {
+    const previewDir = path.resolve(ROOT, process.env.CAPTURE_RELEASE_PREVIEWS); fs.mkdirSync(previewDir, { recursive: true });
+    const image = await win.webContents.capturePage(); fs.writeFileSync(path.join(previewDir, `${type}-${orientation.name}.png`), image.toPNG());
+  }
 
   if (type === 'quickSale') {
     await win.webContents.executeJavaScript(`(() => {
@@ -383,7 +389,7 @@ async function run() {
   try {
     await waitForServer();
     const win = new BrowserWindow({
-      show: false,
+      show: Boolean(process.env.CAPTURE_RELEASE_PREVIEWS),
       width: 390,
       height: 844,
       useContentSize: true,

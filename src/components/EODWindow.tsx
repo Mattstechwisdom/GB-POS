@@ -786,6 +786,8 @@ const EODWindow: React.FC = () => {
   const [selectingDistributors, setSelectingDistributors] = useState<Set<string>>(() => new Set());
   const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
   const [checkoutCandidateRows, setCheckoutCandidateRows] = useState<OrderCartRow[] | null>(null);
+  const [useHistoricalOrderDate, setUseHistoricalOrderDate] = useState(false);
+  const [historicalOrderDate, setHistoricalOrderDate] = useState('');
   const [previewDeletedPurchaseKeys, setPreviewDeletedPurchaseKeys] = useState<Set<string>>(() => new Set());
   const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
   const [deliveryByDistributor, setDeliveryByDistributor] = useState<Record<string, string>>({});
@@ -1787,7 +1789,7 @@ const EODWindow: React.FC = () => {
     }
   }, [isCartLayoutPreview, sales, workOrders]);
 
-  const markSelectedPurchasesOrdered = useCallback(async (selectedOverride?: OrderCartRow[]) => {
+  const markSelectedPurchasesOrdered = useCallback(async (selectedOverride?: OrderCartRow[], orderedOn?: string) => {
     const selected = selectedOverride || partsPurchaseQueue.filter((row) => selectedPurchaseRows.has(row.key));
     if (!selected.length) return;
     if (isCartLayoutPreview) {
@@ -1821,8 +1823,11 @@ const EODWindow: React.FC = () => {
     setPurchaseUpdateBusy(true);
     setPurchaseUpdateMessage('');
     const api = (window as any).api || {};
-    const now = new Date().toISOString();
-    const date = now.slice(0, 10);
+    const today = new Date();
+    const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(orderedOn || '')) ? String(orderedOn) : todayLocal;
+    if (date > todayLocal) { setPurchaseUpdateMessage('Ordered date cannot be in the future.'); return; }
+    const now = orderedOn ? new Date(`${date}T12:00:00`).toISOString() : new Date().toISOString();
     let updatedCount = 0;
     let emailCount = 0;
     let queuedEmailCount = 0;
@@ -1943,13 +1948,13 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: date, estimatedDelivery: deliveryForRow(cartRow) };
         });
         const updated = {
           ...current,
           items,
           partsOrdered: true,
-          partsOrderDate: current.partsOrderDate || date,
+          partsOrderDate: date,
           repairStatus: 'Part Ordered',
           statusUpdate: 'Part Ordered',
           statusUpdatedAt: now,
@@ -1971,7 +1976,7 @@ const EODWindow: React.FC = () => {
               recordId: Number(workOrderId),
               statusKey: 'part_ordered',
               estimatedDate: deliveryDates[deliveryDates.length - 1] || '',
-              notes: `Ordered: ${selectedForWorkOrder.map(row => row.title).join(', ')}`,
+              notes: `Ordered on ${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${selectedForWorkOrder.map(row => row.title).join(', ')}`,
             });
             if (result?.deliveryStatus === 'sent') emailCount += 1;
             else queuedEmailCount += 1;
@@ -1993,7 +1998,7 @@ const EODWindow: React.FC = () => {
           const supplierTax = supplierTaxByRow.get(cartRow.key) || 0;
           const taxExempt = distributorIsTaxExempt(cartRow.distributor, purchaseGroups.find(group => group.distributor === cartRow.distributor)?.rows || [cartRow]);
           const fullUnitCost = round2((Number(item.internalCost) || 0) + ((supplierTax + extra) / Math.max(1, cartRow.quantity)));
-          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: item.orderDate || date, estimatedDelivery: deliveryForRow(cartRow) };
+          return { ...item, qty: cartRow.quantity, internalCost: fullUnitCost, supplierTax, supplierTaxRate: SC_SALES_TAX_RATE, vendorTaxExempt: taxExempt, checkoutAdditionalCost: extra, requiresOrder: true, orderStatus: 'ordered', orderDate: date, estimatedDelivery: deliveryForRow(cartRow) };
         });
         const updated = { ...current, items, status: 'Product Ordered', statusUpdate: 'Product Ordered', statusUpdatedAt: now, updatedAt: now };
         try {
@@ -2012,7 +2017,7 @@ const EODWindow: React.FC = () => {
               recordId: Number(saleId),
               statusKey: 'product_ordered',
               estimatedDate: deliveryDates[deliveryDates.length - 1] || '',
-              notes: `Ordered: ${selectedForSale.map(row => row.title).join(', ')}`,
+              notes: `Ordered on ${new Date(`${date}T12:00:00`).toLocaleDateString()}: ${selectedForSale.map(row => row.title).join(', ')}`,
             });
             if (result?.deliveryStatus === 'sent') emailCount += 1;
             else queuedEmailCount += 1;
@@ -3349,7 +3354,7 @@ const EODWindow: React.FC = () => {
               const receiptHasMissingCost = receiptRows.some(row => !row.hasCost);
               const receiptBudget = purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, receiptCostTotal);
               return (
-              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => setCheckoutCandidateRows(null)}>
+              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); }}>
                 <section className="w-full max-w-lg rounded-lg border border-[#39FF14]/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm selected checkout">
                   <header><h3 className="text-xl font-semibold text-[#39FF14]">Confirm Checkout</h3><p className="mt-2 text-sm text-zinc-300">Review each item's cost before checking out {receiptRows.length} selected item{receiptRows.length === 1 ? '' : 's'}.</p></header>
                   {receiptHasMissingCost ? <div className="mt-4 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-sm text-amber-100"><strong className="block text-amber-300">Missing cost</strong>Some selected items are missing a cost and will not be included in the total below.</div> : null}
@@ -3369,7 +3374,8 @@ const EODWindow: React.FC = () => {
                     <div><span className="text-zinc-500">Cost incl. tax</span><strong className="float-right">{formatCurrency(receiptCostTotal)}</strong></div>
                     <div className="mt-1"><span className="text-zinc-500">Client charges</span><strong className="float-right">{formatCurrency(receiptChargeTotal)}</strong></div>
                   </div>
-                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => setCheckoutCandidateRows(null)}>Cancel</button><button type="button" disabled={purchaseUpdateBusy} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { const rows = checkoutCandidateRows; setCheckoutCandidateRows(null); void markSelectedPurchasesOrdered(rows || undefined); }}>{purchaseUpdateBusy ? 'Checking out...' : 'Checkout'}</button></footer>
+                  <div className="mt-4 rounded border border-violet-500/50 bg-violet-950/20 p-3"><label className="flex items-center gap-2 text-sm font-semibold text-violet-100"><input type="checkbox" checked={useHistoricalOrderDate} onChange={event => setUseHistoricalOrderDate(event.target.checked)} />Ordered on Different Day</label>{useHistoricalOrderDate ? <label className="mt-3 block text-xs text-zinc-300">Date order was checked out<input type="date" max={new Date().toLocaleDateString('en-CA')} required className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base" value={historicalOrderDate} onChange={event => setHistoricalOrderDate(event.target.value)} /></label> : null}</div>
+                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); }}>Cancel</button><button type="button" disabled={purchaseUpdateBusy || (useHistoricalOrderDate && !historicalOrderDate)} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { const rows = checkoutCandidateRows; const chosenDate = useHistoricalOrderDate ? historicalOrderDate : undefined; setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); void markSelectedPurchasesOrdered(rows || undefined, chosenDate); }}>{purchaseUpdateBusy ? 'Checking out...' : 'Checkout'}</button></footer>
                 </section>
               </div>
               );
