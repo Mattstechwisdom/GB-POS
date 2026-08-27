@@ -13,6 +13,7 @@ export type EffectiveTechnicianShift = TechnicianShift & {
 };
 
 export const SHIFT_OVERRIDE_SOURCE = 'shift-override';
+export const SHIFT_REQUEST_SOURCE = 'shift-request';
 const SHIFT_TECHNICIAN_PREFIX = 'technician:';
 
 const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;

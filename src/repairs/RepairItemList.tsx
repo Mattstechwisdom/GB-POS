@@ -85,6 +85,8 @@ export default function RepairItemList({
   ]), [dbRepairTypeOptions, items]);
 
   const selectedIndexRef = useRef<number>(selectedIndex);
+  const mobileContextTimerRef = useRef<number | null>(null);
+  const mobileContextStartRef = useRef<{ x: number; y: number } | null>(null);
   const filteredItemsRef = useRef<RepairItem[]>(filteredItems);
   const onItemSelectRef = useRef<(item: RepairItem) => void>(onItemSelect);
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
@@ -183,6 +185,40 @@ export default function RepairItemList({
       window.close();
     }
   };
+
+  const clearMobileContextTimer = () => {
+    if (mobileContextTimerRef.current !== null) window.clearTimeout(mobileContextTimerRef.current);
+    mobileContextTimerRef.current = null;
+    mobileContextStartRef.current = null;
+  };
+
+  const mobileContextHandlers = (item: RepairItem) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLTableRowElement>) => {
+      if (event.pointerType === 'mouse') return;
+      clearMobileContextTimer();
+      mobileContextStartRef.current = { x: event.clientX, y: event.clientY };
+      const currentTarget = event.currentTarget;
+      const clientX = event.clientX;
+      const clientY = event.clientY;
+      mobileContextTimerRef.current = window.setTimeout(() => {
+        mobileContextTimerRef.current = null;
+        onItemContextMenu?.({
+          clientX,
+          clientY,
+          currentTarget,
+          preventDefault: () => undefined,
+          stopPropagation: () => undefined,
+        } as unknown as React.MouseEvent, item);
+      }, 650);
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLTableRowElement>) => {
+      const start = mobileContextStartRef.current;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) clearMobileContextTimer();
+    },
+    onPointerUp: clearMobileContextTimer,
+    onPointerCancel: clearMobileContextTimer,
+    onPointerLeave: clearMobileContextTimer,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -399,6 +435,7 @@ export default function RepairItemList({
                     return (
                       <tr
                         key={item.id}
+                        {...mobileContextHandlers(item)}
                         onClick={() => handleRowClick(item, pageStart + index)}
                         onDoubleClick={() => handleRowDoubleClick(item)}
                         onContextMenu={(e) => {

@@ -1,3 +1,5 @@
+import { findInventoryPartForRepair, InventoryPartMatchContext } from './inventoryPartMatching';
+
 type InventoryApi = {
   dbGet?: (key: string) => Promise<any[]>;
   update?: (key: string, value: any) => Promise<any>;
@@ -6,6 +8,9 @@ type InventoryApi = {
 
 type ConsumeOptions = {
   allowShortfall?: boolean;
+  repairContext?: InventoryPartMatchContext;
+  respectProductCreatedAt?: boolean;
+  checkoutDate?: unknown;
 };
 
 type ConsumptionResult = {
@@ -15,13 +20,14 @@ type ConsumptionResult = {
 };
 
 let reconciliationPromise: Promise<ConsumptionResult> | null = null;
+let workOrderReconciliationPromise: Promise<ConsumptionResult> | null = null;
 
 function units(item: any) {
   const value = Number(item?.qty ?? item?.quantity ?? 1);
   return Number.isFinite(value) && value > 0 ? Math.max(1, Math.round(value)) : 1;
 }
 
-function itemConsumptionKey(sourceType: 'sale' | 'workOrder', sourceId: number, item: any, index: number) {
+function itemConsumptionKey(sourceType: 'sale' | 'workOrder', sourceId: number | string, item: any, index: number) {
   const lineId = String(item?.id || '').trim() || `line-${index}`;
   return `${sourceType}:${sourceId}:${lineId}`;
 }
@@ -40,6 +46,16 @@ export function saleHasCheckoutPayment(sale: any) {
   return paidAmount(sale) > 0;
 }
 
+export function shouldConsumeWorkOrderInventory(input: {
+  partsPaymentApplied?: boolean;
+  markClosed?: boolean;
+  status?: unknown;
+}) {
+  return input.partsPaymentApplied === true
+    || input.markClosed === true
+    || String(input.status || '').trim().toLowerCase() === 'closed';
+}
+
 async function saveProduct(api: InventoryApi, product: any) {
   if (api.update) return api.update('products', product);
   return api.dbUpdate?.('products', Number(product.id), product);
@@ -49,7 +65,7 @@ async function consumeWithProducts(
   api: InventoryApi,
   products: any[],
   sourceType: 'sale' | 'workOrder',
-  sourceId: number,
+  sourceId: number | string,
   items: any[],
   options: ConsumeOptions = {},
 ): Promise<ConsumptionResult> {
@@ -57,13 +73,25 @@ async function consumeWithProducts(
   const dirtyProducts = new Map<number, any>();
 
   for (const [index, item] of (Array.isArray(items) ? items : []).entries()) {
-    const inventoryId = Number(item?.inventoryProductId || 0);
+    const matchedPart = sourceType === 'workOrder' && !item?.inventoryProductId
+      ? findInventoryPartForRepair(products, item, options.repairContext)
+      : null;
+    const inventoryId = Number(item?.inventoryProductId || matchedPart?.id || 0);
     if (!(inventoryId > 0) || item?.requiresOrder === true) continue;
     const productIndex = products.findIndex((row: any) => Number(row?.id) === inventoryId);
     const product = productIndex >= 0 ? products[productIndex] : null;
     if (!product || product.trackStock !== true) {
       result.skipped += 1;
       continue;
+    }
+
+    if (options.respectProductCreatedAt) {
+      const checkoutAt = new Date(String(options.checkoutDate || '')).getTime();
+      const productCreatedAt = new Date(String(product.createdAt || '')).getTime();
+      if (Number.isFinite(checkoutAt) && Number.isFinite(productCreatedAt) && checkoutAt < productCreatedAt) {
+        result.skipped += 1;
+        continue;
+      }
     }
 
     const key = itemConsumptionKey(sourceType, sourceId, item, index);
@@ -115,7 +143,7 @@ async function consumeWithProducts(
 export async function consumeInStockInventory(
   api: InventoryApi,
   sourceType: 'sale' | 'workOrder',
-  sourceId: number,
+  sourceId: number | string,
   items: any[],
   options: ConsumeOptions = {},
 ) {
@@ -162,4 +190,61 @@ export async function reconcilePaidSaleInventory(api: InventoryApi): Promise<Con
   });
 
   return reconciliationPromise;
+}
+
+function workOrderHasCheckout(workOrder: any): boolean {
+  if (String(workOrder?.checkoutDate || '').trim()) return true;
+  return String(workOrder?.status || '').trim().toLowerCase() === 'closed' && paidAmount(workOrder) > 0;
+}
+
+export async function reconcilePaidWorkOrderInventory(api: InventoryApi): Promise<ConsumptionResult> {
+  if (!api?.dbGet) return { applied: 0, skipped: 0, shortfalls: [] };
+  if (workOrderReconciliationPromise) return workOrderReconciliationPromise;
+
+  workOrderReconciliationPromise = (async () => {
+    const [workOrders, products] = await Promise.all([
+      api.dbGet!('workOrders').catch(() => []),
+      api.dbGet!('products').catch(() => []),
+    ]);
+    if (!Array.isArray(workOrders) || !Array.isArray(products)) {
+      throw new Error('Work orders or inventory could not be loaded for reconciliation.');
+    }
+
+    const total: ConsumptionResult = { applied: 0, skipped: 0, shortfalls: [] };
+    const checkedOut = workOrders
+      .filter((workOrder: any) => workOrder?.id && workOrderHasCheckout(workOrder))
+      .sort((a: any, b: any) => {
+        const aTime = new Date(String(a?.checkoutDate || a?.updatedAt || 0)).getTime() || 0;
+        const bTime = new Date(String(b?.checkoutDate || b?.updatedAt || 0)).getTime() || 0;
+        return aTime - bTime;
+      });
+
+    for (const workOrder of checkedOut) {
+      const result = await consumeWithProducts(
+        api,
+        products,
+        'workOrder',
+        workOrder.id,
+        Array.isArray(workOrder.items) ? workOrder.items : [],
+        {
+          allowShortfall: true,
+          respectProductCreatedAt: true,
+          checkoutDate: workOrder.checkoutDate,
+          repairContext: {
+            deviceCategory: workOrder.productCategory,
+            deviceName: workOrder.productDescription,
+            deviceModel: workOrder.model,
+          },
+        },
+      );
+      total.applied += result.applied;
+      total.skipped += result.skipped;
+      total.shortfalls.push(...result.shortfalls);
+    }
+    return total;
+  })().finally(() => {
+    workOrderReconciliationPromise = null;
+  });
+
+  return workOrderReconciliationPromise;
 }

@@ -10,12 +10,71 @@
 
 Web Interface: https://mattstechwisdom.github.io/GB-POS
 
+## v0.6.32 (2026-08-25)
+- Android Task Saves: completing, reopening, or editing a task now persists immediately instead of showing a failure and reverting.
+- Calendar Save Recovery: ordinary calendar entries now send a valid null shift-request status, fixing Supabase rejection of task, note, event, and autosave updates.
+- Cross-Platform Consistency: Windows and Android use the same validated calendar status mapping so saved changes refresh consistently on every device.
+- Pending Mobile Writes: previously queued Android calendar updates can retry through the corrected serializer after the app updates.
+- Regression Coverage: executes both platform serializers and verifies empty or invalid request statuses become null while valid shift-request states remain intact.
+
+## v0.6.31 (2026-08-25)
+- Immediate Task Feedback: Calendar and Daily Look update task checkboxes as soon as they are changed, including individual occurrences of recurring tasks.
+- Reliable Task Editing: saved task edits replace the visible calendar record immediately and restore the prior value with a clear warning if persistence fails.
+- Immediate Calendar Notes: newly saved or edited notes appear at once while Supabase stores the canonical shared record.
+- Durable Repair Journal: Save Note now writes existing work-order notes and journal history immediately instead of waiting for the general work-order autosave.
+- Cross-Device Refresh Ordering: desktop collection refresh events now fire after Supabase accepts or queues a change, preventing stale cloud rows from replacing fresh task and note updates.
+- Quote Prompt Copy: restores Copy AI Prompt on Windows and Android with a clipboard fallback for restricted Electron and mobile contexts.
+- Regression Coverage: verifies task recurrence completion, immediate note persistence, desktop/mobile synchronization mappings, and portrait/landscape behavior.
+
+## v0.6.30 (2026-08-24)
+- Stable Task Composer: typing a task subject or body no longer triggers autosave and changes the Add Entry window into an existing-task editor.
+- Preserved Task Workflow: the entry-type rail, Add to Task List action, staged-task list, and Save Tasks action remain visible until the technician explicitly saves.
+- Existing Edit Autosave: edits to tasks already stored in Calendar continue to autosave normally, as do other calendar entry types.
+- Regression Coverage: verifies new task drafts stay unsaved while existing tasks and other calendar entries retain autosave eligibility.
+
+## v0.6.29 (2026-08-24)
+- Direct Task Save: pressing Save Tasks now persists the valid task currently entered in the editor even when Add to Task List was not clicked first.
+- Multi-Task Preservation: staged tasks and the current typed task are committed together without duplicating blank or previously staged entries.
+- Clear Save Count: the Save Tasks button displays the complete number of tasks that will be written to Calendar and Supabase.
+- Validation and Sync: timed drafts retain start/end validation and saved tasks continue through the shared calendar collection on Windows and Android.
+
+## v0.6.28 (2026-08-24)
+- Repair-Aware Inventory: resolves every checked-out repair to its inventory part using Repair Type plus the work order's saved device category, device name, and model.
+- Shared-Part Compatibility: one generic repair name such as HDMI or Screen Replacement can consume the correct PS5, Xbox, phone, or other part from its compatible-device list without device names in the repair title.
+- Missed Checkout Recovery: desktop and Android reconcile completed work-order parts at startup when a prior checkout saved without its inventory deduction.
+- Duplicate Protection: durable per-ticket line markers prevent the same repair from reducing stock again on another device or later app launch.
+- Historical Safety: reconciliation ignores work orders completed before the matched inventory part was created, avoiding deductions from repairs that predate tracked stock.
+- Supabase Sync: repaired quantities and consumption markers persist through the shared products collection so every signed-in installation receives the corrected stock.
+
+## v0.6.27 (2026-08-23)
+- Recurring Calendar Entries: adds synced daily, weekly, and monthly recurrence to the Calendar Add Entry workflow on Windows and Android.
+- Flexible Monthly Rules: supports exact calendar dates plus first, second, third, fourth, or last weekday patterns such as the last Saturday of each month.
+- Recurring Tasks: shows recurring tasks in Calendar and Daily Look while keeping completion tracked per occurrence instead of completing the entire series.
+- Reliable Important Notes: immediately refreshes newly saved notes from the shared database and shows a visible error if persistence fails.
+- Exact Note Formatting: preserves pasted spaces, indentation, and line breaks in Calendar notes and task details across saved and reader views.
+- EOD Deliveries: adds an independently scrollable Deliveries section beneath Low Stock for purchased work-order and sale items awaiting arrival.
+- Arrival Workflow: marking an item delivered updates its exact invoice line, closes its expected-delivery calendar entry, updates the purchasing ledger, and sends the matching client arrival email.
+- Supabase Parity: deploys recurrence storage and round-trip mappings for desktop and mobile clients so every signed-in install renders the same calendar series.
+- Devices / Repairs Workspace: aligns the permanent repair catalog with Inventory by keeping the catalog list on the left and a fixed editor pane on the right.
+- Explicit Repair Actions: separates Update Repair from Add New Repair so edits cannot accidentally create duplicates and new entries cannot overwrite a selected repair.
+- Exact Device Scope: adds a model selector beneath Device Category while retaining category-wide repairs, allowing inventory parts to match the correct saved device model.
+- Expandable Catalog Management: device categories and repair types reveal their assigned devices or repairs, with edit/delete actions moved to right-click and mobile touch-and-hold menus.
+- Unified QR Routing: replaces newly printed work-order LAN/IP links with the same Supabase token-backed route used by sales and consultations, and brands the opened page as GB Update Interface.
+- Release Safety: verifies recurrence math, Supabase mappings, note/task regressions, cart client updates, TypeScript, production builds, and responsive Calendar editor layout.
+
 ## v0.6.26 (2026-08-23)
-- Calendar Request Actions: places Request Time Off beside Schedule Management and moves the thicker Streaming/Content Schedule control directly into the date-navigation action group.
-- Time-Off Requests: lets technicians choose their name, date, and absence start/end times with required-field and time-order validation.
-- Shift-Change Requests: adds a compact, high-visibility entry point with an icon above it, preloads the technician's effective shift, and submits altered hours without changing the approved schedule.
-- Request Notifications: stores pending schedule requests in the synchronized calendar data and creates prominent notification entries with a live pending-count badge.
-- Responsive Calendar: reorganizes header actions and request forms for narrow desktop and mobile layouts while preserving the full desktop calendar workspace.
+- Inventory Repair Types: adds a saved Repair Type field directly beneath Device Category for repair parts on Windows and Android.
+- Exact Part Matching: resolves catalog repairs to inventory using Repair Type plus the work-order device category and compatible device models, with explicit repair links remaining authoritative.
+- Work-Order Stock: links the resolved part to the line item and deducts its quantity after a verified parts payment or completed checkout without double-consuming it across devices.
+- Installer Naming: publishes the Windows setup as `GB-POS-installerx64-<version>.exe` while retaining the separate universal Android APK.
+- Fixed Product Picker: confines scrolling to the left product catalog while keeping the right-side details, Save, Add, and Cancel controls stationary.
+- Fixed Quick Checkout: locks the window to the usable viewport and compacts its totals footer so Checkout remains visible without scrolling the page.
+- Responsive Checkout: preserves the fixed editor and footer behavior on desktop plus Android portrait and landscape layouts.
+- Time-Off Requests: adds a prominent synced Calendar request workflow for a full day OFF or custom start/end hours without changing recurring Technician schedules.
+- Schedule Review: displays a high-visibility pending badge and lets schedule managers approve or decline requests; approval becomes the existing dated shift override and red Shift indicator.
+- Calendar Header: moves the thicker Streaming/Content Schedule action beside the date controls while keeping Request Time Off alongside Schedule Management.
+- Supabase Parity: stores request status, full-day selection, submission time, and review time across Windows and Android, with local backup support.
+- Release Safety: verifies the desktop picker at 1280x720 and the full Android portrait/landscape window suite plus calendar request, shift, and cloud-mapping regressions.
 
 ## v0.6.25 (2026-08-22)
 - Calendar Entry Rail: moves Parts/Products, Events, Consultation, Streaming/Content, and Tasks into a compact left-side selector while preserving the existing contextual fields on the right.

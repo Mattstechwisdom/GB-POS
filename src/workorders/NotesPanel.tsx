@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface NoteEntry { id: number; text: string; createdAt?: string }
-interface Props { notes: string; onChange: (n: string) => void; log?: NoteEntry[]; onAdd?: (text: string) => void }
+interface Props { notes: string; onChange: (n: string) => void; log?: NoteEntry[]; onAdd?: (text: string) => void | Promise<void> }
 
 function noteBody(text: string): string {
   return String(text || '').replace(/^\d{4}-\d{2}-\d{2}[^\n]*?(?: - | \u2014 | \u00e2\u20ac\u201d )/, '');
@@ -10,16 +10,27 @@ function noteBody(text: string): string {
 const NotesPanel: React.FC<Props> = ({ notes, onChange, log = [], onAdd }) => {
   const [draft, setDraft] = useState('');
   const [journalOpen, setJournalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
-  function add() {
-    if (!draft.trim()) return;
-    if (onAdd) {
-      onAdd(draft.trim());
-    } else {
-      const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
-      onChange((notes || '') + (notes ? '\n' : '') + `${stamp} - ${draft.trim()}`);
+  async function add(): Promise<void> {
+    const text = draft.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      if (onAdd) {
+        await onAdd(text);
+      } else {
+        const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        onChange((notes || '') + (notes ? '\n' : '') + `${stamp} - ${text}`);
+      }
+      setDraft('');
+    } catch (error: any) {
+      setSaveError(error?.message || 'The note could not be saved.');
+    } finally {
+      setSaving(false);
     }
-    setDraft('');
   }
 
   const newest = log.slice().reverse().slice(0, 2);
@@ -48,12 +59,15 @@ const NotesPanel: React.FC<Props> = ({ notes, onChange, log = [], onAdd }) => {
             value={draft}
             onChange={e => setDraft(e.target.value)}
           />
+          {saveError ? <div className="mt-2 text-xs text-red-300">{saveError}</div> : null}
           <div className="flex justify-end mt-2">
             <button
+              type="button"
               className="px-3 py-1.5 rounded font-semibold bg-neon-green text-zinc-900 text-xs shadow hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-neon-green/70 active:scale-[0.97]"
-              onClick={add}
+              onClick={() => { void add(); }}
+              disabled={saving || !draft.trim()}
             >
-              Save Note
+              {saving ? 'Saving...' : 'Save Note'}
             </button>
           </div>
         </div>

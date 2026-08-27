@@ -161,7 +161,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ### If Update Buttons Do Not Work
 
-1. Confirm the QR page loaded from the GadgetBoy POS GitHub Pages URL.
+1. Confirm the scanned link opens the page titled **GB Update Interface**. New work-order, sale, and consultation codes all use a Supabase-backed token instead of a shop-computer IP address.
 2. Confirm the installed app can connect to Supabase.
 3. Confirm the client has a valid email or phone.
 4. Retry from Update Client inside the POS.
@@ -210,6 +210,11 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Devices define models used by reusable repair records.
 - Repair categories organize services. Diagnostic must appear first, Additional Fees second, and remaining categories alphabetically.
 - Service and repair lists can be searched and filtered by category/device.
+- The left catalog list is the scrolling workspace; the editor on the right remains available while a repair is selected.
+- Select **Specific to a device**, choose the broad Device Category, then choose an Exact Device when the repair applies to one model. Leave Exact Device on **All devices in category** for category-wide repairs.
+- Use **Update Repair** only to save changes to the selected repair. Use **Add New Repair** to create a separate catalog record from the current fields.
+- Right-click a repair, device, device category, or repair type for edit and delete actions. On Android, touch and hold the same row.
+- Select a device-category or repair-type count row to expand the devices or repairs assigned beneath it.
 - Repair Selection shows device, category, repair title, part price, labor, and total.
 - On mobile, long values are shortened visually; opening the row shows the complete record.
 - Use Select Part to pull from Parts inventory rather than duplicating ordering data in multiple places.
@@ -221,6 +226,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 - Parts are repair components organized by device type and device model.
 - Use the compatible-device selector to assign one clean reusable part title to every model it fits. For example, save `HDMI Port` once and associate each supported console instead of duplicating the device name in the part title.
+- Set Repair Type to the reusable catalog repair name, such as `HDMI` or `Screen Replacement`. At checkout, the POS combines that repair type with the work order's saved device category, device name, and model to choose the compatible part. A PS5 HDMI repair therefore consumes a PS5-compatible HDMI port, while the same repair name on an Xbox consumes the Xbox-compatible part.
 - Store condition, SKU, quantity, internal cost, markup, sold price, distributor, order URL, and tax status where available.
 - Used and new parts must be distinguishable.
 - A saved order URL becomes a button after save.
@@ -248,15 +254,19 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 10. Enable stock tracking, set Low Alert At, and enter the MOQ / Reorder Qty the shop normally purchases when restocking.
 11. Save, then search for the new record to confirm it exists.
 
+For automatic repair-part deduction, the Part must have stock tracking enabled, a positive on-hand quantity, a Repair Type matching the repair selected on the work order, and every compatible saved device selected. The repair title itself should remain generic; do not add the console or phone name solely for inventory matching.
+
 ### Low-Stock Restocking from EOD
 
 1. Using an in-stock saved part or product on a work order or sale deducts its quantity once when the transaction is saved or checked out.
-2. If the remaining on-hand quantity stays above Low Alert At, no purchasing task is created.
-3. When on-hand quantity reaches or falls below Low Alert At, End of Day Report shows the item in Low Stock.
-4. Select the low-stock row and choose Add MOQ to Cart to add the saved MOQ / Reorder Qty to the purchasing cart. The action will not create a second pending restock for the same inventory item.
-5. Choose View Item to open the exact saved inventory record and verify cost, distributor, URL, threshold, or MOQ before ordering.
-6. Choose Dismiss only when no restock is needed at the current stock level. Dismissal does not edit inventory and the alert returns when the stock state changes.
-7. Adding MOQ to Cart does not increase on-hand inventory. Stock increases only after the distributor cart is paid and verified through EOD checkout.
+2. A work order that closes after full payment deducts its installed in-stock part even when the client-facing part charge is zero and the entire payment is recorded as labor.
+3. On startup, desktop and Android safely retry checked-out work-order deductions that did not finish previously. Per-line consumption markers prevent a second device or later launch from subtracting the same item twice, and repairs completed before an inventory listing was created are ignored.
+4. If the remaining on-hand quantity stays above Low Alert At, no purchasing task is created.
+5. When on-hand quantity reaches or falls below Low Alert At, End of Day Report shows the item in Low Stock.
+6. Select the low-stock row and choose Add MOQ to Cart to add the saved MOQ / Reorder Qty to the purchasing cart. The action will not create a second pending restock for the same inventory item.
+7. Choose View Item to open the exact saved inventory record and verify cost, distributor, URL, threshold, or MOQ before ordering.
+8. Choose Dismiss only when no restock is needed at the current stock level. Dismissal does not edit inventory and the alert returns when the stock state changes.
+9. Adding MOQ to Cart does not increase on-hand inventory. Stock increases only after the distributor cart is paid and verified through EOD checkout.
 
 ### Add a Saved Inventory Item to the Purchasing Cart
 
@@ -399,20 +409,30 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Right-click a calendar icon on Windows, or press and hold it on Android, to open the available actions. Depending on the entry, these include opening details, editing, opening the linked invoice, opening order/tracking URLs, and deleting the entry.
 - When multiple entries share one grouped icon, open the group to choose a specific record before using its contextual actions.
 
+### Recurring Entries
+
+1. Choose + Add on the starting date and select the entry type.
+2. Check Recurring entry. This option is for entries created manually in Calendar; automatic order, delivery, business-calendar, and shift records remain single-purpose entries.
+3. Choose Daily, Weekly, or Monthly. Weekly entries let you select one or more weekday buttons.
+4. For Monthly, choose Day of month for a numbered date or Weekday pattern for rules such as First Monday or Last Saturday.
+5. Optionally enter an End date. Leaving it blank keeps the series active.
+6. Finish the entry and choose Save. The rule is stored once in Supabase and every signed-in Windows or Android installation renders the same occurrences.
+
 ### Tasks and Calendar Icons
 
 1. Add a Task and choose the assigned technician. Choose All Technicians for shared shop duties.
-2. Enter the Subject and Task details, then choose Add to Task List. The entry fields clear while the technician, date, and time selection remain ready for another task.
-3. Review the saved and pending tasks shown for that technician and day. Remove any pending mistake, then choose Save Tasks to commit the full staged list to Calendar and Supabase.
-4. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
-5. Open Calendar Settings to replace each event category's default character with a short letter, symbol, emoji, or small uploaded icon.
-6. Save Calendar Settings to sync the icon choices with the shop settings on other signed-in devices.
+2. Enter the Subject and Task details. The new-task editor remains open while typing and does not autosave or change modes. For one task, choose Save Tasks directly; the typed task is included automatically.
+3. To create several tasks together, choose Add to Task List after each entry. The fields clear while the technician, date, and time selection remain ready for the next task.
+4. Review the saved and pending tasks shown for that technician and day. Remove any pending mistake, then choose Save Tasks to commit the staged list plus any currently typed task to Calendar and Supabase. The button count shows the complete number that will be saved.
+5. Incomplete tasks carry into Daily Look until checked off; completion syncs through Supabase.
+6. Open Calendar Settings to replace each event category's default character with a short letter, symbol, emoji, or small uploaded icon.
+7. Save Calendar Settings to sync the icon choices with the shop settings on other signed-in devices.
 
 ### Important Notes, Daily Look, and Technician Journal
 
 1. Open Calendar and choose Notes on the correct day.
 2. On desktop, use the large left editor to write the note and the right-hand list to switch between multiple notes saved for that day. On mobile, the list stacks above the editor.
-3. Important notes sync through Supabase and appear on every signed-in Windows or Android installation.
+3. Important notes sync through Supabase and appear on every signed-in Windows or Android installation. Saved bodies retain their typed line breaks, spaces, and indentation.
 4. Open Daily Look to see the selected day's important notes beside schedules, consultations, orders, deliveries, events, and content work.
 5. Choose a task's text to open its details and notes; use its checkbox only to change completion. Choose consultations, events, orders, or deliveries to open the linked calendar entry, invoice, or purchasing cart.
 6. On mobile, open Technician Tools > Journal to review calendar notes, work-order Repair Journal entries, and sale notes grouped by day. Journal is read-only; edit the source calendar note or ticket when a correction is required.
@@ -474,8 +494,9 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - End of Day is a concise overview of the current shop accounting day only.
 - It rolls into a new day at the saved Batch Out time; it is not the monthly accounting report.
 - Review labor collected, parts/products charged, COGS, verified supplier spend, consultations, sales count, and items awaiting purchase.
-- On desktop, the current-day overview is fixed to one screen: Low Stock occupies the left rail, accounting figures are grouped by purpose, and Open/Closed tickets appear side by side.
+- On desktop, the current-day overview is fixed to one screen: Low Stock and Deliveries share the left rail in independently scrollable sections, accounting figures are grouped by purpose, and Open/Closed tickets appear side by side.
 - Review Low Stock for tracked parts/products at or below their saved threshold. Add the saved MOQ to Cart, inspect the inventory record, or dismiss the current stock-state alert.
+- Review Deliveries for client items previously purchased through Cart. Mark Delivered only after confirming arrival; the POS updates the exact invoice line, removes its expected-delivery Calendar entry, records delivery in the purchasing ledger, and sends the matching work-order or sale arrival email.
 - Parts charged, COGS, and verified supplier spend must remain separate.
 - EOD buttons are organized as EOD Report Email, Cart, and Batch Out now. Sending the report is performed inside EOD Report Email.
 - Distributor rows in Cart are collapsed by default. Select a distributor row to expand it and select it again to collapse it.
@@ -802,7 +823,7 @@ Use this directory as a map of the POS. Detailed operating steps remain in the e
 
 ### QR Page Opens but Buttons Fail
 
-- Verify the GitHub Pages deployment is healthy and the Supabase `qr-status` and `client-updates` Edge Functions are active.
+- Verify the public GB Update Interface is reachable and Supabase authentication, QR token storage, and the `client-updates` Edge Function are active.
 - Confirm the ticket ID exists in the shared database.
 - Try Update Client inside the app.
 - Check update History before retrying.

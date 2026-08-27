@@ -163,7 +163,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
     <ErrorBoundary>
       <div className={`gb-repair-catalog-window flex ${isModalShell ? 'h-full' : 'h-screen'} overflow-hidden bg-zinc-900 text-gray-100`}>
         {/* Two-column grid: 620px | 1fr with 16px gap */}
-        <div className="gb-repair-catalog-layout grid grid-cols-[minmax(680px,0.95fr)_minmax(430px,1.05fr)] gap-4 h-full p-4 overflow-hidden w-full">
+        <div className="gb-repair-catalog-layout grid h-full w-full grid-cols-[minmax(440px,38%)_minmax(0,1fr)] gap-4 overflow-hidden p-4">
           {/* Left pane: Item list */}
           <div className="gb-repair-catalog-list-pane flex flex-col min-h-0">
             <RepairItemList 
@@ -181,7 +181,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
           </div>
 
           {/* Right pane: Form */}
-          <div className="gb-repair-catalog-form-pane flex flex-col min-h-0 overflow-hidden">
+          <div className="gb-repair-catalog-form-pane flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950 p-4">
             {/* Header actions: toggle between Repair and Device creation */}
             {mode === 'admin' && (
               <div className="flex gap-2 mb-4 shrink-0">
@@ -224,7 +224,13 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                   showCreateAction={false}
                 />
               ) : paneMode === 'repairType' ? (
-                <RepairTypeManager />
+                <RepairTypeManager
+                  onRepairEdit={(repair) => { setSelectedItem(repair); setPaneMode('repair'); }}
+                  onRepairDeleted={(repairId) => {
+                    setRepairItems((items) => items.filter((item) => String(item.id) !== String(repairId)));
+                    setSelectedItem((item) => item && String(item.id) === String(repairId) ? null : item);
+                  }}
+                />
               ) : (
                 (() => {
                   const initialDeviceName = selectedItem?.category;

@@ -11,7 +11,13 @@ const build = esbuild.buildSync({
 });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { consumeInStockInventory, reconcilePaidSaleInventory, saleHasCheckoutPayment } = moduleShim.exports;
+const {
+  consumeInStockInventory,
+  reconcilePaidSaleInventory,
+  reconcilePaidWorkOrderInventory,
+  saleHasCheckoutPayment,
+  shouldConsumeWorkOrderInventory,
+} = moduleShim.exports;
 
 async function main() {
   let products = [{ id: 7, itemDescription: 'Test Part', trackStock: true, stockCount: 5, inventoryConsumptionKeys: [] }];
@@ -40,6 +46,8 @@ async function main() {
 
   assert.equal(saleHasCheckoutPayment({ amountPaid: 0, payments: [] }), false);
   assert.equal(saleHasCheckoutPayment({ amountPaid: 0, payments: [{ applied: 2 }] }), true);
+  assert.equal(shouldConsumeWorkOrderInventory({ partsPaymentApplied: false, markClosed: false, status: 'closed' }), true, 'A fully paid labor-only checkout that closes a repair must still consume its installed part.');
+  assert.equal(shouldConsumeWorkOrderInventory({ partsPaymentApplied: false, markClosed: false, status: 'open' }), false, 'An open unpaid repair must not consume stock.');
 
   let historyProducts = [{ id: 9, itemDescription: 'GadgetBoy Drink', trackStock: true, stockCount: 8, inventoryConsumptionKeys: [] }];
   const historySales = [
@@ -77,6 +85,89 @@ async function main() {
   const shortResult = await reconcilePaidSaleInventory(shortApi);
   assert.equal(shortStock[0].stockCount, 0, 'Historical overselling should reconcile to zero, never negative stock.');
   assert.equal(shortResult.shortfalls.length, 1);
+
+  let repairProducts = [
+    {
+      id: 26,
+      itemType: 'Part',
+      itemDescription: 'PS5 HDMI Port',
+      category: 'Game Console',
+      repairType: 'HDMI',
+      associatedDevices: ['PS5 OG (Digital)', 'PS5 OG (Disc)', 'PS5 Pro (Digital)', 'PS5 Slim (Digital)', 'PS5 Slim (Disc)'],
+      trackStock: true,
+      stockCount: 10,
+      createdAt: '2026-08-23T16:35:49.096Z',
+      inventoryConsumptionKeys: [],
+    },
+    {
+      id: 27,
+      itemType: 'Part',
+      itemDescription: 'Xbox HDMI Port',
+      category: 'Game Console',
+      repairType: 'HDMI',
+      associatedDevices: ['Xbox Series S', 'Xbox Series X'],
+      trackStock: true,
+      stockCount: 6,
+      createdAt: '2026-08-23T16:35:49.096Z',
+      inventoryConsumptionKeys: [],
+    },
+    {
+      id: 28,
+      itemType: 'Part',
+      itemDescription: 'iPhone 14 OLED Assembly',
+      category: 'Phone',
+      repairType: 'Screen Replacement',
+      associatedDevices: ['iPhone 14'],
+      trackStock: true,
+      stockCount: 4,
+      createdAt: '2026-08-23T16:35:49.096Z',
+      inventoryConsumptionKeys: [],
+    },
+  ];
+  const missedWorkOrders = [
+    {
+      id: 1166,
+      status: 'closed',
+      checkoutDate: '2026-08-24T16:46:00.859Z',
+      productCategory: 'Game Console',
+      productDescription: 'PS5 OG (Disc)',
+      items: [{ id: 'ps5-hdmi', repair: 'HDMI', repairCategory: 'HDMI', quantity: 1, requiresOrder: false }],
+    },
+    {
+      id: 1167,
+      status: 'closed',
+      checkoutDate: '2026-08-24T17:00:00.000Z',
+      productCategory: 'Phone',
+      productDescription: 'iPhone 14',
+      items: [{ id: 'iphone-screen', repair: 'Screen Replacement', repairCategory: 'Screen Replacement', quantity: 1, requiresOrder: false }],
+    },
+    {
+      id: 1100,
+      status: 'closed',
+      checkoutDate: '2026-08-20T17:00:00.000Z',
+      productCategory: 'Game Console',
+      productDescription: 'PS5 OG (Disc)',
+      items: [{ id: 'old-ps5-hdmi', repair: 'HDMI', repairCategory: 'HDMI', quantity: 1, requiresOrder: false }],
+    },
+  ];
+  const repairApi = {
+    dbGet: async (key) => key === 'products'
+      ? repairProducts.map((row) => ({ ...row, associatedDevices: [...row.associatedDevices], inventoryConsumptionKeys: [...row.inventoryConsumptionKeys] }))
+      : key === 'workOrders' ? missedWorkOrders.map((row) => ({ ...row, items: row.items.map((item) => ({ ...item })) })) : [],
+    update: async (_key, value) => {
+      repairProducts = repairProducts.map((row) => row.id === value.id ? { ...value } : row);
+      return { ...value };
+    },
+  };
+  const repaired = await reconcilePaidWorkOrderInventory(repairApi);
+  assert.equal(repaired.applied, 2, 'Only eligible checked-out work-order repairs should be reconciled.');
+  assert.equal(repairProducts.find((row) => row.id === 26).stockCount, 9, 'PS5 HDMI must consume the PS5-compatible HDMI port.');
+  assert.equal(repairProducts.find((row) => row.id === 27).stockCount, 6, 'PS5 HDMI must never consume an Xbox HDMI port.');
+  assert.equal(repairProducts.find((row) => row.id === 28).stockCount, 3, 'Phone screen repairs must use the same repair-type and compatible-device matching.');
+
+  const repairedRetry = await reconcilePaidWorkOrderInventory(repairApi);
+  assert.equal(repairedRetry.applied, 0, 'Missed work-order reconciliation must be idempotent across app launches.');
+  assert.equal(repairProducts.find((row) => row.id === 26).stockCount, 9);
   console.log('Inventory consumption checks passed.');
 }
 

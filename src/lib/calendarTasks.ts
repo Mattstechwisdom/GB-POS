@@ -11,6 +11,11 @@ export type CalendarTaskRecord = {
 
 export const ALL_TECHNICIANS = '__all_technicians__';
 
+export function calendarEventAutosaveEnabled(event: CalendarTaskRecord | null | undefined): boolean {
+  if (!event) return false;
+  return event.category !== 'task' || event.id != null;
+}
+
 export function isSharedTaskAssignment(value: unknown): boolean {
   const assignment = String(value || '').trim().toLowerCase();
   return !assignment || assignment === ALL_TECHNICIANS || assignment === 'all technicians';
@@ -42,6 +47,21 @@ export function toggleTaskAssignment(value: unknown, technician: unknown): strin
   if (existingIndex >= 0) selected.splice(existingIndex, 1);
   else selected.push(name);
   return selected.length ? selected.join(', ') : ALL_TECHNICIANS;
+}
+
+export function tasksPendingSave<T extends CalendarTaskRecord>(queue: readonly T[], draft: T | null | undefined): T[] {
+  const pending = Array.isArray(queue) ? [...queue] : [];
+  const title = String(draft?.title || '').trim();
+  if (!draft || draft.category !== 'task' || draft.id != null || !title) return pending;
+  return [...pending, {
+    ...draft,
+    id: undefined,
+    title,
+    technician: draft.technician || ALL_TECHNICIANS,
+    taskCompleted: false,
+    taskCompletedAt: '',
+    taskCompletedBy: '',
+  }];
 }
 
 export function isCalendarTask(event: CalendarTaskRecord | null | undefined): boolean {

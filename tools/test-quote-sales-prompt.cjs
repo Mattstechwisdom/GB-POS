@@ -12,7 +12,9 @@ const result = esbuild.buildSync({
 });
 const compiled = { exports: {} };
 new Function('module', 'exports', 'require', result.outputFiles[0].text)(compiled, compiled.exports, require);
-const { buildQuoteSalesPrompt } = compiled.exports;
+const { buildQuoteSalesPrompt, copyQuotePromptText } = compiled.exports;
+
+assert.equal(typeof copyQuotePromptText, 'function', 'quote prompt clipboard helper should be exported');
 
 const iphonePrompt = buildQuoteSalesPrompt({
   deviceType: 'Apple Devices',
@@ -48,4 +50,52 @@ assert.match(customBuildPrompt, /8 cores/);
 assert.match(customBuildPrompt, /RAM: 32/);
 assert.match(customBuildPrompt, /850W/);
 
-console.log('Quote sales prompt tests passed.');
+async function testClipboardFallback() {
+  const calls = [];
+  const textarea = {
+    value: '',
+    style: {},
+    focus() { calls.push('focus'); },
+    select() { calls.push('select'); },
+  };
+  const copyEnvironment = {
+    clipboard: {
+      async writeText() {
+        calls.push('modern-copy');
+        throw new Error('Clipboard permission denied');
+      },
+    },
+    document: {
+      body: {
+        appendChild(node) {
+          assert.equal(node, textarea);
+          calls.push('append');
+        },
+        removeChild(node) {
+          assert.equal(node, textarea);
+          calls.push('remove');
+        },
+      },
+      createElement(tag) {
+        assert.equal(tag, 'textarea');
+        return textarea;
+      },
+      execCommand(command) {
+        assert.equal(command, 'copy');
+        calls.push('fallback-copy');
+        return true;
+      },
+    },
+  };
+
+  await copyQuotePromptText('Generated quote prompt', copyEnvironment);
+  assert.equal(textarea.value, 'Generated quote prompt');
+  assert.deepEqual(calls, ['modern-copy', 'append', 'focus', 'select', 'fallback-copy', 'remove']);
+}
+
+testClipboardFallback()
+  .then(() => console.log('Quote sales prompt tests passed.'))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

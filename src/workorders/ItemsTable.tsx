@@ -5,6 +5,7 @@ import MoneyInput from '@/components/MoneyInput';
 import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
+import { findInventoryPartForRepair } from '@/lib/inventoryPartMatching';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -52,9 +53,12 @@ interface Props {
   readonlyItems?: WorkOrderItemRow[];
   /** Optional handler for removing a read-only row from its backing record (e.g., attached retail Sale). */
   onRemoveReadonlyItem?: (row: WorkOrderItemRow) => void | Promise<void>;
+  deviceCategory?: string;
+  deviceName?: string;
+  deviceModel?: string;
 }
 
-const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem }) => {
+const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, addProductDisabled, readonlyItems, onRemoveReadonlyItem, deviceCategory, deviceName, deviceModel }) => {
   const ro = useMemo(() => (Array.isArray(readonlyItems) ? readonlyItems : []), [readonlyItems]);
 
   const [selected, setSelected] = useState<string | null>(() => items[0]?.id || ro[0]?.id || null);
@@ -160,7 +164,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
     if (typeof api.pickRepairItem === 'function') {
       let selected: any;
       try {
-        selected = await api.pickRepairItem();
+        selected = await api.pickRepairItem({ deviceCategory, deviceName });
         console.log('[ItemsTable] pickRepairItem resolved', selected);
       } catch (e) {
         console.error('[ItemsTable] pickRepairItem failed', e);
@@ -168,9 +172,13 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
       }
       if (!selected) return; // cancelled
       let linkedInventory: any = null;
-      if (selected.inventoryProductId && api?.dbGet) {
+      if (api?.dbGet) {
         const products = await api.dbGet('products').catch(() => []);
-        linkedInventory = Array.isArray(products) ? products.find((product: any) => Number(product?.id) === Number(selected.inventoryProductId)) : null;
+        if (Array.isArray(products)) {
+          linkedInventory = selected.inventoryProductId
+            ? products.find((product: any) => Number(product?.id) === Number(selected.inventoryProductId))
+            : findInventoryPartForRepair(products, selected, { deviceCategory, deviceName, deviceModel });
+        }
       }
       const trackedOutOfStock = !!linkedInventory?.trackStock && Number(linkedInventory?.stockCount || 0) <= 0;
       const row: WorkOrderItemRow = {
@@ -180,16 +188,16 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         // The catalog title is the billable repair name. altDescription is
         // supporting catalog copy and must not replace it in the line item.
         repair: selected.title || selected.repair || selected.altDescription || '',
-        parts: Number(selected.partCost ?? 0) || 0,
+        parts: Number(selected.partCost ?? linkedInventory?.price ?? 0) || 0,
         labor: Number(selected.laborCost ?? 0) || 0,
         status: 'pending',
         note: selected.model || selected.modelNumber || '',
-        partSource: selected.partSource || '',
-        orderSourceUrl: selected.orderSourceUrl || selected.reorderUrlTemplate || '',
-        internalCost: typeof selected.internalCost === 'number' ? selected.internalCost : undefined,
-        markupPct: selected.markupPct ?? 10,
-        distributor: selected.distributor || selected.partSource || '',
-        inventoryProductId: Number(selected.inventoryProductId || 0) || undefined,
+        partSource: selected.partSource || linkedInventory?.distributor || '',
+        orderSourceUrl: selected.orderSourceUrl || selected.reorderUrlTemplate || linkedInventory?.reorderUrlTemplate || '',
+        internalCost: typeof selected.internalCost === 'number' ? selected.internalCost : (typeof linkedInventory?.internalCost === 'number' ? linkedInventory.internalCost : undefined),
+        markupPct: selected.markupPct ?? linkedInventory?.markupPct ?? 10,
+        distributor: selected.distributor || selected.partSource || linkedInventory?.distributor || '',
+        inventoryProductId: Number(selected.inventoryProductId || linkedInventory?.id || 0) || undefined,
         trackStock: linkedInventory?.trackStock === true || selected.trackStock === true,
         requiresOrder: trackedOutOfStock,
         taxExempt: selected.taxExempt === true,

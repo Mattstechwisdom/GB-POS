@@ -6,10 +6,12 @@ import { formatTime12FromHHmm } from '@/lib/datetime';
 import { listTechnicians, technicianDisplayName } from '@/lib/admin';
 import { consumeWindowPayload } from '@/lib/windowPayload';
 import { consultationLocationDisplay } from '@/lib/consultationLocation';
-import { ALL_TECHNICIANS, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, toggleTaskAssignment } from '@/lib/calendarTasks';
-import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
+import { ALL_TECHNICIANS, calendarEventAutosaveEnabled, calendarEventGroupKey, isSharedTaskAssignment, taskAssignmentIncludes, taskAssignmentLabel, taskAssignments, taskIsCompleted, tasksForDailyLook, tasksPendingSave, toggleTaskAssignment } from '@/lib/calendarTasks';
+import { effectiveTechnicianShiftForDate, isShiftOverrideEvent, SHIFT_OVERRIDE_SOURCE, SHIFT_REQUEST_SOURCE, shiftOverrideLocation } from '@/lib/technicianSchedule';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import { expandRecurringEvent, monthlyWeekdayPatternForDate, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '@/lib/calendarRecurrence';
+import { replaceRecordById, taskCompletionPatch } from '@/lib/immediatePersistence';
 
 function openConsultationAddressInMaps(address: string) {
   const destination = String(address || '').trim();
@@ -33,7 +35,7 @@ type CalendarEvent = {
   // For parts category, refine status for display
   partsStatus?: 'ordered' | 'delivery';
   // Identify source to style differently (e.g., sales vs work order)
-  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override' | 'schedule-request';
+  source?: 'sale' | 'workorder' | 'consultation' | 'streaming' | 'content' | 'business-calendar' | 'shift-override' | 'shift-request' | 'schedule-request';
   businessKind?: 'federalHoliday' | 'scTaxFreeWeekend' | 'daylightSaving' | 'estimatedTaxDeadline';
   saleId?: number;
   notes?: string;
@@ -58,6 +60,13 @@ type CalendarEvent = {
   shiftOverrideId?: number;
   requestKind?: 'time-off' | 'shift-change';
   requestStatus?: 'pending' | 'approved' | 'declined';
+  shiftRequestOff?: boolean;
+  requestedAt?: string;
+  reviewedAt?: string;
+  recurrenceRule?: CalendarRecurrenceRule | null;
+  recurrenceSeriesId?: number | string;
+  recurrenceMaster?: CalendarEvent;
+  occurrenceDate?: string;
   // Weekly schedule (for category 'schedule')
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
@@ -440,6 +449,7 @@ const CalendarWindow: React.FC = () => {
   const [noteDraft, setNoteDraft] = useState({ subject: '', body: '' });
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaveError, setNoteSaveError] = useState('');
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [taskQueue, setTaskQueue] = useState<CalendarEvent[]>([]);
   const [taskBatchSaving, setTaskBatchSaving] = useState(false);
@@ -457,6 +467,10 @@ const CalendarWindow: React.FC = () => {
   const [requestDraft, setRequestDraft] = useState({ technician: '', date: fmtDate(new Date()), start: '', end: '' });
   const [requestSaving, setRequestSaving] = useState(false);
   const [requestError, setRequestError] = useState('');
+  const [shiftRequestOpen, setShiftRequestOpen] = useState(false);
+  const [shiftRequestDraft, setShiftRequestDraft] = useState({ technician: '', date: fmtDate(new Date()), off: true, start: '', end: '', reason: '' });
+  const [shiftRequestSaving, setShiftRequestSaving] = useState(false);
+  const [shiftRequestError, setShiftRequestError] = useState('');
   const [contentScheduleOpen, setContentScheduleOpen] = useState(false);
   const [dailyLookOpen, setDailyLookOpen] = useState<boolean>(() => Boolean(calendarPayload?.dailyLook));
   const [dailyLookDate, setDailyLookDate] = useState<string>(fmtDate(new Date()));
@@ -610,6 +624,11 @@ const CalendarWindow: React.FC = () => {
       return taskAssignmentIncludes(assigned, technician);
     });
   }, [editing, events]);
+
+  const taskSaveCount = useMemo(
+    () => tasksPendingSave(taskQueue, editing?.category === 'task' ? editing : null).length,
+    [editing, taskQueue],
+  );
 
   useEffect(() => {
     if (!targetEventId || targetOpenedRef.current || !events.length) return;
@@ -815,6 +834,126 @@ const CalendarWindow: React.FC = () => {
     businessCalendar,
   ), [businessCalendar, current]);
 
+  const activeTechnicians = useMemo(
+    () => techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled'),
+    [techs],
+  );
+  const pendingShiftRequests = useMemo(
+    () => events
+      .filter(event => event.source === SHIFT_REQUEST_SOURCE && (event.requestStatus || 'pending') === 'pending')
+      .sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`)),
+    [events],
+  );
+
+  function openShiftRequestWindow() {
+    setShiftRequestError('');
+    setShiftRequestDraft(currentDraft => ({
+      ...currentDraft,
+      technician: currentDraft.technician || (activeTechnicians[0] ? technicianDisplayName(activeTechnicians[0]) : ''),
+      date: currentDraft.date || fmtDate(new Date()),
+    }));
+    setShiftRequestOpen(true);
+  }
+
+  async function submitShiftRequest() {
+    const api = (window as any).api;
+    const technician = activeTechnicians.find((item: any) => technicianDisplayName(item) === shiftRequestDraft.technician);
+    if (!api?.dbAdd) return;
+    if (!technician) {
+      setShiftRequestError('Select a technician.');
+      return;
+    }
+    if (!shiftRequestDraft.date) {
+      setShiftRequestError('Select the requested date.');
+      return;
+    }
+    if (!shiftRequestDraft.off && (!shiftRequestDraft.start || !shiftRequestDraft.end)) {
+      setShiftRequestError('Enter both requested start and end times, or select OFF for the full day.');
+      return;
+    }
+    if (!shiftRequestDraft.off && toMinutes(shiftRequestDraft.end) <= toMinutes(shiftRequestDraft.start)) {
+      setShiftRequestError('The requested end time must be later than the start time.');
+      return;
+    }
+    setShiftRequestSaving(true);
+    setShiftRequestError('');
+    try {
+      const name = technicianDisplayName(technician);
+      const payload: CalendarEvent = {
+        date: shiftRequestDraft.date,
+        title: `${name} - ${shiftRequestDraft.off ? 'Time Off Request' : 'Shift Change Request'}`,
+        category: 'schedule',
+        source: SHIFT_REQUEST_SOURCE,
+        technician: name,
+        location: shiftOverrideLocation(technician),
+        time: shiftRequestDraft.off ? '' : shiftRequestDraft.start,
+        endTime: shiftRequestDraft.off ? '' : shiftRequestDraft.end,
+        notes: shiftRequestDraft.reason.trim(),
+        shiftRequestOff: shiftRequestDraft.off,
+        requestStatus: 'pending',
+        requestedAt: new Date().toISOString(),
+      };
+      const added = await api.dbAdd('calendarEvents', payload);
+      if (!added) throw new Error('The time-off request could not be saved.');
+      setEvents(currentEvents => [...currentEvents, added]);
+      setShiftRequestDraft({ technician: name, date: shiftRequestDraft.date, off: true, start: '', end: '', reason: '' });
+    } catch (error: any) {
+      setShiftRequestError(error?.message || 'The time-off request could not be saved.');
+    } finally {
+      setShiftRequestSaving(false);
+    }
+  }
+
+  async function reviewShiftRequest(request: CalendarEvent, decision: 'approved' | 'declined') {
+    const api = (window as any).api;
+    if (!api?.dbUpdate || request.id == null) return;
+    setShiftRequestSaving(true);
+    setShiftRequestError('');
+    try {
+      const reviewedAt = new Date().toISOString();
+      if (decision === 'declined') {
+        const declined = await api.dbUpdate('calendarEvents', request.id, { ...request, requestStatus: 'declined', reviewedAt });
+        if (!declined) throw new Error('The request could not be declined.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === request.id ? declined : event));
+        return;
+      }
+
+      const existingOverride = events.find(event => isShiftOverrideEvent(event)
+        && event.id !== request.id
+        && String(event.date || '').slice(0, 10) === String(request.date || '').slice(0, 10)
+        && (event.location === request.location || String(event.technician || '').toLowerCase() === String(request.technician || '').toLowerCase()));
+      const overridePayload: CalendarEvent = {
+        ...(existingOverride || request),
+        date: request.date,
+        title: `${request.technician || 'Technician'} - Shift Change`,
+        category: 'schedule',
+        source: SHIFT_OVERRIDE_SOURCE,
+        technician: request.technician,
+        location: request.location,
+        time: request.shiftRequestOff ? '' : request.time,
+        endTime: request.shiftRequestOff ? '' : request.endTime,
+        notes: request.shiftRequestOff ? 'OFF' : '',
+        requestStatus: undefined,
+        shiftRequestOff: undefined,
+        reviewedAt,
+      };
+      if (existingOverride?.id != null) {
+        const updatedOverride = await api.dbUpdate('calendarEvents', existingOverride.id, overridePayload);
+        const approvedRequest = await api.dbUpdate('calendarEvents', request.id, { ...request, requestStatus: 'approved', reviewedAt });
+        if (!updatedOverride || !approvedRequest) throw new Error('The approved shift change could not be saved.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === existingOverride.id ? updatedOverride : event.id === request.id ? approvedRequest : event));
+      } else {
+        const approvedOverride = await api.dbUpdate('calendarEvents', request.id, overridePayload);
+        if (!approvedOverride) throw new Error('The approved shift change could not be saved.');
+        setEvents(currentEvents => currentEvents.map(event => event.id === request.id ? approvedOverride : event));
+      }
+    } catch (error: any) {
+      setShiftRequestError(error?.message || 'The request could not be reviewed.');
+    } finally {
+      setShiftRequestSaving(false);
+    }
+  }
+
   function openShiftDay(dateKey: string) {
     const drafts: Record<string, { start: string; end: string; off: boolean }> = {};
     for (const technician of techs.filter((item: any) => item?.active !== false && item?.status !== 'disabled')) {
@@ -986,9 +1125,14 @@ const CalendarWindow: React.FC = () => {
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
+    const firstVisibleDate = calendarDays.length ? fmtDate(calendarDays[0]) : fmtDate(current);
+    const lastVisibleDate = calendarDays.length ? fmtDate(calendarDays[calendarDays.length - 1]) : firstVisibleDate;
+    const visibleEvents = events.flatMap((event) => event.recurrenceRule
+      ? expandRecurringEvent(event, firstVisibleDate, lastVisibleDate) as CalendarEvent[]
+      : [event]);
     
     // Process regular events
-    for (const ev of events) {
+    for (const ev of visibleEvents) {
       if (ev.category !== 'schedule') {
         // Apply filters
         const shouldShow = 
@@ -1069,19 +1213,29 @@ const CalendarWindow: React.FC = () => {
   async function saveNote() {
     const date = String(notesDate || '').slice(0, 10);
     const subject = noteDraft.subject.trim();
-    const body = noteDraft.body.trim();
-    if (!date || !subject || !body || noteSaving) return;
+    const body = noteDraft.body;
+    if (!date || !subject || !body.trim() || noteSaving) return;
+    const previousNotes = calendarNotes;
+    const now = new Date().toISOString();
+    const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === String(editingNoteId));
+    const optimisticNote: CalendarNote = existing
+      ? { ...existing, subject, body, updatedAt: now }
+      : { id: crypto.randomUUID(), date, subject, body, createdAt: now, updatedAt: now };
+    setCalendarNotes(list => replaceRecordById(list, optimisticNote));
     setNoteSaving(true);
+    setNoteSaveError('');
     try {
-      const existing = editingNoteId === null ? null : calendarNotes.find(note => String(note.id) === editingNoteId);
       const saved = existing
-        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, { ...existing, subject, body, updatedAt: new Date().toISOString() })
-        : await (window as any).api.dbAdd('calendarNotes', { id: crypto.randomUUID(), date, subject, body, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (saved) setCalendarNotes(list => existing ? list.map(note => String(note.id) === String(saved.id) ? saved : note) : [...list, saved]);
+        ? await (window as any).api.dbUpdate('calendarNotes', existing.id, optimisticNote)
+        : await (window as any).api.dbAdd('calendarNotes', optimisticNote);
+      if (!saved) throw new Error('The note was not returned after saving.');
+      setCalendarNotes(list => replaceRecordById(list, saved));
       setNoteDraft({ subject: '', body: '' });
       setEditingNoteId(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('save calendar note failed', error);
+      setCalendarNotes(previousNotes);
+      setNoteSaveError(error?.message || 'The note could not be saved. Please try again.');
     } finally {
       setNoteSaving(false);
     }
@@ -1124,18 +1278,26 @@ const CalendarWindow: React.FC = () => {
 
   async function setTaskCompleted(event: CalendarEvent, completed: boolean) {
     if (event.id == null || event.category !== 'task') return;
-    const now = new Date().toISOString();
-    const updated = await (window as any).api.dbUpdate('calendarEvents', event.id, {
-      ...event,
-      taskCompleted: completed,
-      taskCompletedAt: completed ? now : '',
-      taskCompletedBy: completed ? String(event.technician || '') : '',
-      updatedAt: now,
-    });
-    if (updated) {
-      setEvents(list => list.map(item => String(item.id) === String(updated.id) ? updated : item));
-      setViewing(currentViewing => currentViewing && String(currentViewing.id) === String(updated.id) ? updated : currentViewing);
-      setViewingGroup(group => group ? group.map(item => String(item.id) === String(updated.id) ? updated : item) : group);
+    const master = event.recurrenceMaster || event;
+    const occurrenceDate = event.occurrenceDate || event.date;
+    const previous = events.find(item => String(item.id) === String(master.id)) || master;
+    const optimistic = taskCompletionPatch(
+      { ...master, recurrenceRule: master.recurrenceRule ? normalizeRecurrenceRule(master.recurrenceRule) : null },
+      completed,
+      occurrenceDate,
+      String(event.technician || ''),
+    ) as CalendarEvent;
+    setEvents(list => replaceRecordById(list, optimistic));
+    try {
+      const updated = await (window as any).api.dbUpdate('calendarEvents', master.id, optimistic);
+      if (!updated) throw new Error('The task update was not saved.');
+      setEvents(list => replaceRecordById(list, updated));
+      setViewing(currentViewing => currentViewing && String((currentViewing.recurrenceMaster || currentViewing).id) === String(updated.id) ? { ...currentViewing, ...updated } : currentViewing);
+      setViewingGroup(group => group ? group.map(item => String((item.recurrenceMaster || item).id) === String(updated.id) ? { ...item, ...updated } : item) : group);
+    } catch (error) {
+      setEvents(list => replaceRecordById(list, previous));
+      console.error('save task completion failed', error);
+      alert('The task could not be updated. Check your connection and try again.');
     }
   }
   function onEdit(ev: CalendarEvent) {
@@ -1146,7 +1308,7 @@ const CalendarWindow: React.FC = () => {
     }
     setContentEditorLocked(false);
     setViewing(null);
-    setEditing(ev);
+    setEditing(ev.recurrenceMaster || ev);
     setDeliveryDateInput('');
     if (ev.category === 'parts') {
       const key = partsGroupKey(ev);
@@ -1160,6 +1322,7 @@ const CalendarWindow: React.FC = () => {
   }
 
   async function saveEvent(ev: CalendarEvent) {
+    let rollbackEvent: CalendarEvent | null = null;
     if (ev.category === 'task') {
       const hasStart = Boolean(ev.time);
       const hasEnd = Boolean(ev.endTime);
@@ -1175,6 +1338,7 @@ const CalendarWindow: React.FC = () => {
     try {
       // Derive title for certain categories if missing
       const payload: CalendarEvent = { ...ev };
+      payload.recurrenceRule = normalizeRecurrenceRule(payload.recurrenceRule);
       if (payload.category === 'parts' && !payload.partsStatus) payload.partsStatus = 'ordered';
       if (payload.category === 'parts' && (!payload.title || !payload.title.trim())) {
         payload.title = payload.partName || 'Part/Product';
@@ -1193,8 +1357,16 @@ const CalendarWindow: React.FC = () => {
         if (!deliveryDates.includes(deliveryDateInput)) deliveryDates.push(deliveryDateInput);
       }
       if (ev.id) {
+        const previous = events.find(item => String(item.id) === String(ev.id));
+        rollbackEvent = previous || null;
+        const optimistic = { ...payload, id: ev.id, updatedAt: new Date().toISOString() } as CalendarEvent;
+        setEvents(list => replaceRecordById(list, optimistic));
         const updated = await (window as any).api.dbUpdate('calendarEvents', ev.id, payload);
-        if (updated) setEvents(list => list.map(x => x.id === updated.id ? updated : x));
+        if (!updated) {
+          if (previous) setEvents(list => replaceRecordById(list, previous));
+          throw new Error('The calendar entry was not returned after saving.');
+        }
+        setEvents(list => replaceRecordById(list, updated));
       } else {
         const added = await (window as any).api.dbAdd('calendarEvents', payload);
         if (added) setEvents(list => [...list, added]);
@@ -1230,7 +1402,11 @@ const CalendarWindow: React.FC = () => {
       setContentEditorLocked(false);
       setDeliveryDates([]);
       setDeliveryDateInput('');
-    } catch (e) { console.error('save event failed', e); }
+    } catch (e) {
+      if (rollbackEvent) setEvents(list => replaceRecordById(list, rollbackEvent as CalendarEvent));
+      console.error('save event failed', e);
+      alert('The calendar entry could not be saved. Check your connection and try again.');
+    }
   }
 
   function addTaskToQueue() {
@@ -1254,7 +1430,7 @@ const CalendarWindow: React.FC = () => {
       ...editing,
       id: undefined,
       title,
-      notes: String(editing.notes || '').trim(),
+      notes: String(editing.notes || ''),
       technician: editing.technician || ALL_TECHNICIANS,
       taskCompleted: false,
       taskCompletedAt: '',
@@ -1266,15 +1442,28 @@ const CalendarWindow: React.FC = () => {
 
   async function saveTaskBatch() {
     if (!editing || editing.category !== 'task' || editing.id != null || taskBatchSaving) return;
-    if (!taskQueue.length) {
-      setTaskBatchError('Add at least one task to the list before saving.');
+    const pendingTasks = tasksPendingSave(taskQueue, editing);
+    if (!pendingTasks.length) {
+      setTaskBatchError('Enter a subject or add at least one task to the list before saving.');
       return;
+    }
+    for (const task of pendingTasks) {
+      const hasStart = Boolean(task.time);
+      const hasEnd = Boolean(task.endTime);
+      if (hasStart !== hasEnd) {
+        setTaskBatchError('Timed tasks require both a start and end time.');
+        return;
+      }
+      if (hasStart && hasEnd && toMinutes(task.endTime || '') <= toMinutes(task.time || '')) {
+        setTaskBatchError('Task end time must be later than its start time.');
+        return;
+      }
     }
     setTaskBatchSaving(true);
     setTaskBatchError('');
     const saved: CalendarEvent[] = [];
     try {
-      for (const task of taskQueue) {
+      for (const task of pendingTasks) {
         const added = await (window as any).api.dbAdd('calendarEvents', task);
         if (!added) throw new Error('A task was not returned after saving.');
         saved.push(added);
@@ -1494,7 +1683,7 @@ const CalendarWindow: React.FC = () => {
     await saveEventSilent(val.ev);
   }, {
     debounceMs: 1000,
-    enabled: !!editing,
+    enabled: calendarEventAutosaveEnabled(editing),
     skipInitialSave: true,
     shouldSave: (v) => canAutosave(v.ev),
     equals: Object.is,
@@ -1518,7 +1707,10 @@ const CalendarWindow: React.FC = () => {
     }
     schedules.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const todays = [...(Array.isArray(events) ? events : []), ...businessCalendarEvents].filter(e => String(e?.date || '').slice(0, 10) === ymd);
+    const expandedForDay = (Array.isArray(events) ? events : []).flatMap((event) => event.recurrenceRule
+      ? expandRecurringEvent(event, ymd, ymd) as CalendarEvent[]
+      : [event]);
+    const todays = [...expandedForDay, ...businessCalendarEvents].filter(e => String(e?.date || '').slice(0, 10) === ymd);
     const consultations = todays
       .filter(e => e.category === 'consultation')
       .filter(e => (!assigned ? true : (String(e.technician || '').trim() === assigned)))
@@ -1536,7 +1728,10 @@ const CalendarWindow: React.FC = () => {
       .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
     const partsDelivery = partsAll.filter(e => (e.partsStatus === 'delivery' || !e.partsStatus));
     const partsOrdered = partsAll.filter(e => e.partsStatus === 'ordered');
-    const tasks = tasksForDailyLook(events, ymd, assigned);
+    const tasks = tasksForDailyLook([
+      ...events.filter((event) => !event.recurrenceRule),
+      ...expandedForDay.filter((event) => Boolean(event.recurrenceRule)),
+    ], ymd, assigned);
     const importantNotes = notesByDay[ymd] || [];
 
     return { ymd, assigned, schedules, consultations, eventItems, contentItems, partsDelivery, partsOrdered, tasks, importantNotes };
@@ -1589,22 +1784,23 @@ const CalendarWindow: React.FC = () => {
       <div className="gb-calendar-header flex shrink-0 flex-wrap items-center justify-between gap-3 mb-3">
         <div className="gb-calendar-title-actions flex min-w-0 flex-wrap items-center gap-2">
           <h2 className="min-w-0 text-2xl font-semibold">Calendar - Schedule Management</h2>
-          <button
-            type="button"
-            className="gb-calendar-time-off"
-            onClick={() => openScheduleRequest('time-off')}
-          >
-            Request Time Off
-          </button>
+          <div className="gb-calendar-timeoff-action relative">
+            {pendingShiftRequests.length ? <span className="gb-calendar-timeoff-badge" aria-label={`${pendingShiftRequests.length} pending time-off requests`}>!<strong>{pendingShiftRequests.length}</strong></span> : null}
+            <button type="button" className="gb-calendar-timeoff-button" onClick={openShiftRequestWindow}>Request Time Off</button>
+          </div>
         </div>
         <div className="gb-calendar-controls flex flex-wrap items-center justify-end gap-2">
-          <button type="button" className="gb-calendar-shift-request" onClick={() => openScheduleRequest('shift-change')}>
+          <button
+            type="button"
+            className="gb-calendar-shift-request"
+            onClick={() => openScheduleRequest('shift-change')}
+          >
             <span className="gb-calendar-shift-request-icon" aria-hidden="true">⇄</span>
             <span>Request Shift Change</span>
             {pendingScheduleRequests.length ? <strong className="gb-calendar-request-badge" aria-label={`${pendingScheduleRequests.length} pending schedule requests`}>{pendingScheduleRequests.length}</strong> : null}
           </button>
           <button
-            className="gb-calendar-content-schedule px-3 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm"
+            className="gb-calendar-content-schedule px-3 py-2 bg-fuchsia-700 border border-fuchsia-500 rounded text-sm font-semibold"
             onClick={() => setContentScheduleOpen(true)}
           >
             Streaming/Content Schedule
@@ -1929,6 +2125,7 @@ const CalendarWindow: React.FC = () => {
                 <div className="font-semibold text-sm mb-2">{editingNoteId === null ? 'Add New Note' : 'Edit Note'}</div>
                 <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
                 <textarea className="mt-2 min-h-0 flex-1 w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed" placeholder="Write the important note..." value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
+                {noteSaveError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">{noteSaveError}</div> : null}
                 <div className="mt-3 flex justify-end gap-2">
                 {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
                 <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>
@@ -1948,6 +2145,41 @@ const CalendarWindow: React.FC = () => {
           </div>
         </div>
       )}
+
+      {shiftRequestOpen && createPortal((
+        <div className="gb-calendar-shift-request-layer fixed inset-0 z-[100450] flex items-center justify-center bg-black/75 p-3" onMouseDown={event => { if (event.target === event.currentTarget) setShiftRequestOpen(false); }}>
+          <section className="gb-calendar-shift-request-dialog flex max-h-[90dvh] w-full max-w-[780px] flex-col overflow-hidden rounded border border-red-500/70 bg-zinc-900 shadow-[0_0_34px_rgba(239,68,68,0.18)]" role="dialog" aria-modal="true" aria-labelledby="calendar-shift-request-title">
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-700 p-4">
+              <div><h3 id="calendar-shift-request-title" className="text-xl font-semibold text-white">Request Time Off / Shift Change</h3><p className="mt-1 text-sm text-zinc-400">Submit a full day off or request different hours for one date. Saved Technician schedules are not changed.</p></div>
+              <button type="button" className="gb-icon-button" aria-label="Close shift request" onClick={() => setShiftRequestOpen(false)}>X</button>
+            </header>
+            <div className="gb-calendar-shift-request-body min-h-0 overflow-y-auto p-4">
+              <section className="gb-calendar-shift-request-form rounded border border-zinc-700 bg-zinc-950/55 p-3">
+                <label><span>Technician</span><select value={shiftRequestDraft.technician} onChange={event => setShiftRequestDraft(draft => ({ ...draft, technician: event.target.value }))}><option value="">Select technician</option>{activeTechnicians.map((technician: any) => { const name = technicianDisplayName(technician); return <option key={shiftOverrideLocation(technician)} value={name}>{name}</option>; })}</select></label>
+                <label><span>Date</span><input type="date" value={shiftRequestDraft.date} onChange={event => setShiftRequestDraft(draft => ({ ...draft, date: event.target.value }))} /></label>
+                <div className="gb-calendar-shift-request-mode" role="group" aria-label="Request type">
+                  <button type="button" className={shiftRequestDraft.off ? 'active' : ''} aria-pressed={shiftRequestDraft.off} onClick={() => setShiftRequestDraft(draft => ({ ...draft, off: true, start: '', end: '' }))}>Full Day OFF</button>
+                  <button type="button" className={!shiftRequestDraft.off ? 'active' : ''} aria-pressed={!shiftRequestDraft.off} onClick={() => setShiftRequestDraft(draft => ({ ...draft, off: false }))}>Different Hours</button>
+                </div>
+                {!shiftRequestDraft.off ? <div className="gb-calendar-shift-request-times"><label><span>Requested Start</span><input type="time" value={shiftRequestDraft.start} onChange={event => setShiftRequestDraft(draft => ({ ...draft, start: event.target.value }))} /></label><label><span>Requested End</span><input type="time" value={shiftRequestDraft.end} onChange={event => setShiftRequestDraft(draft => ({ ...draft, end: event.target.value }))} /></label></div> : <div className="gb-calendar-shift-request-off-summary">OFF for the full selected day</div>}
+                <label className="gb-calendar-shift-request-reason"><span>Reason / Notes</span><textarea value={shiftRequestDraft.reason} onChange={event => setShiftRequestDraft(draft => ({ ...draft, reason: event.target.value }))} placeholder="Optional details for the schedule manager" /></label>
+                {shiftRequestError ? <p className="gb-calendar-shift-request-error">{shiftRequestError}</p> : null}
+                <button type="button" className="gb-calendar-shift-request-submit" disabled={shiftRequestSaving} onClick={() => void submitShiftRequest()}>{shiftRequestSaving ? 'Saving Request...' : 'Submit Shift Request'}</button>
+              </section>
+
+              <section className="gb-calendar-pending-shift-requests mt-4">
+                <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Pending Requests</h4><span>{pendingShiftRequests.length}</span></div>
+                {!pendingShiftRequests.length ? <p className="mt-2 rounded border border-zinc-800 bg-zinc-950/40 p-3 text-sm text-zinc-500">No pending schedule requests.</p> : pendingShiftRequests.map(request => (
+                  <article key={request.id} className="gb-calendar-shift-request-card">
+                    <div className="min-w-0"><strong>{request.technician || 'Technician'}</strong><span>{new Date(`${request.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span><p>{request.shiftRequestOff ? 'Full Day OFF' : `${formatTime12FromHHmm(request.time || '')} - ${formatTime12FromHHmm(request.endTime || '')}`}</p>{request.notes ? <small>{request.notes}</small> : null}</div>
+                    <div className="gb-calendar-shift-request-review"><button type="button" disabled={shiftRequestSaving} onClick={() => void reviewShiftRequest(request, 'declined')}>Decline</button><button type="button" disabled={shiftRequestSaving} onClick={() => void reviewShiftRequest(request, 'approved')}>Approve</button></div>
+                  </article>
+                ))}
+              </section>
+            </div>
+          </section>
+        </div>
+      ), document.body)}
 
       {shiftDay && (() => {
         const day = new Date(`${shiftDay}T12:00:00`);
@@ -2226,6 +2458,47 @@ const CalendarWindow: React.FC = () => {
                   <input type="time" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={editing.endTime || ''} onChange={e => setEditing({ ...editing, endTime: e.target.value })} />
                 </div>
               )}
+              {!contentEditorLocked && !['business-calendar', 'shift-override', 'shift-request'].includes(String(editing.source || '')) ? (
+                <div className="col-span-2 rounded border border-zinc-700 bg-zinc-950/45 p-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" className="h-4 w-4 accent-[#39FF14]" checked={Boolean(editing.recurrenceRule)} onChange={(event) => {
+                      if (!event.target.checked) return setEditing({ ...editing, recurrenceRule: null });
+                      const start = new Date(`${editing.date}T12:00:00`);
+                      setEditing({ ...editing, recurrenceRule: { version: 1, frequency: 'weekly', interval: 1, weekdays: [Number.isNaN(start.getTime()) ? 0 : start.getDay()] } });
+                    }} />
+                    <span>Recurring entry</span>
+                  </label>
+                  {editing.recurrenceRule ? (() => {
+                    const rule = normalizeRecurrenceRule(editing.recurrenceRule) || { version: 1 as const, frequency: 'weekly' as const, interval: 1, weekdays: [] };
+                    const updateRule = (patch: Partial<CalendarRecurrenceRule>) => setEditing({ ...editing, recurrenceRule: { ...rule, ...patch } });
+                    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    return <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div><label className="block text-xs text-zinc-400">Repeats</label><select className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.frequency} onChange={(event) => {
+                        const frequency = event.target.value as CalendarRecurrenceRule['frequency'];
+                        const start = new Date(`${editing.date}T12:00:00`);
+                        if (frequency === 'daily') updateRule({ frequency, weekdays: undefined, monthlyMode: undefined });
+                        else if (frequency === 'weekly') updateRule({ frequency, weekdays: [Number.isNaN(start.getTime()) ? 0 : start.getDay()], monthlyMode: undefined });
+                        else updateRule({ frequency, weekdays: undefined, monthlyMode: 'dayOfMonth', monthDay: Number(editing.date.slice(8, 10)) || 1 });
+                      }}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+                      <div><label className="block text-xs text-zinc-400">End date (optional)</label><input type="date" min={editing.date} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.until || ''} onChange={(event) => updateRule({ until: event.target.value || undefined })} /></div>
+                      {rule.frequency === 'weekly' ? <div className="sm:col-span-2"><div className="mb-1 text-xs text-zinc-400">Repeat on</div><div className="grid grid-cols-7 gap-1">{weekdayLabels.map((label, weekday) => {
+                        const selected = (rule.weekdays || []).includes(weekday);
+                        return <button key={label} type="button" aria-pressed={selected} className={`min-h-9 rounded border px-1 text-xs font-semibold ${selected ? 'border-[#39FF14] bg-[#39FF14] text-black' : 'border-zinc-700 bg-zinc-800 text-zinc-300'}`} onClick={() => {
+                          const next = selected ? (rule.weekdays || []).filter((value) => value !== weekday) : [...(rule.weekdays || []), weekday].sort();
+                          if (next.length) updateRule({ weekdays: next });
+                        }}>{label}</button>;
+                      })}</div></div> : null}
+                      {rule.frequency === 'monthly' ? <div className="sm:col-span-2 space-y-2"><div className="grid grid-cols-2 gap-2">
+                        <button type="button" className={`rounded border px-2 py-2 text-sm ${rule.monthlyMode !== 'weekdayPattern' ? 'border-[#39FF14] bg-[#39FF14]/15 text-[#39FF14]' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => updateRule({ monthlyMode: 'dayOfMonth', monthDay: Number(editing.date.slice(8, 10)) || 1 })}>Day of month</button>
+                        <button type="button" className={`rounded border px-2 py-2 text-sm ${rule.monthlyMode === 'weekdayPattern' ? 'border-[#39FF14] bg-[#39FF14]/15 text-[#39FF14]' : 'border-zinc-700 bg-zinc-800'}`} onClick={() => { const pattern = monthlyWeekdayPatternForDate(editing.date); updateRule({ monthlyMode: 'weekdayPattern', monthlyOrdinal: pattern.ordinal, monthlyWeekday: pattern.weekday }); }}>Weekday pattern</button>
+                      </div>{rule.monthlyMode === 'weekdayPattern' ? <div className="grid grid-cols-2 gap-2">
+                        <select className="rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthlyOrdinal || 1} onChange={(event) => updateRule({ monthlyOrdinal: Number(event.target.value) as 1 | 2 | 3 | 4 | -1 })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option><option value="4">Fourth</option><option value="-1">Last</option></select>
+                        <select className="rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthlyWeekday ?? 0} onChange={(event) => updateRule({ monthlyWeekday: Number(event.target.value) })}>{weekdayLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select>
+                      </div> : <label className="flex items-center gap-2 text-sm"><span>Day</span><input type="number" min="1" max="31" className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-2" value={rule.monthDay || 1} onChange={(event) => updateRule({ monthDay: Math.max(1, Math.min(31, Number(event.target.value) || 1)) })} /><span className="text-zinc-400">of each month</span></label>}</div> : null}
+                    </div>;
+                  })() : null}
+                </div>
+              ) : null}
               {/* Dynamic fields per category */}
               {editing.category === 'parts' && (
                 <>
@@ -2349,8 +2622,8 @@ const CalendarWindow: React.FC = () => {
                   {editing.id == null ? <div className="gb-calendar-task-queue min-w-0 rounded border border-zinc-700 bg-zinc-950/60 p-3">
                     <div className="mb-2 flex items-center justify-between gap-2"><strong className="text-sm">Tasks for {editing.date}</strong><span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs text-violet-200">{visibleTaskAssignments.length + taskQueue.length} total</span></div>
                     <div className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
-                      {visibleTaskAssignments.map((task, index) => <div key={task.id ?? `saved-${index}`} className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2"><strong className={`block break-words text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}>{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">Saved - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{task.notes}</p> : null}</div>)}
-                      {taskQueue.map((task, index) => <div key={`queued-${index}`} className="rounded border border-violet-400/60 bg-violet-950/30 px-3 py-2"><div className="flex items-start justify-between gap-2"><strong className="min-w-0 break-words text-sm">{task.title}</strong><button type="button" className="shrink-0 text-xs text-red-300 hover:text-red-200" onClick={() => setTaskQueue(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><small className="mt-1 block text-violet-200">Ready to save - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 text-xs text-zinc-300">{task.notes}</p> : null}</div>)}
+                      {visibleTaskAssignments.map((task, index) => <div key={task.id ?? `saved-${index}`} className="rounded border border-zinc-800 bg-zinc-900 px-3 py-2"><strong className={`block break-words text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`}>{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">Saved - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-zinc-400">{task.notes}</p> : null}</div>)}
+                      {taskQueue.map((task, index) => <div key={`queued-${index}`} className="rounded border border-violet-400/60 bg-violet-950/30 px-3 py-2"><div className="flex items-start justify-between gap-2"><strong className="min-w-0 break-words text-sm">{task.title}</strong><button type="button" className="shrink-0 text-xs text-red-300 hover:text-red-200" onClick={() => setTaskQueue(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div><small className="mt-1 block text-violet-200">Ready to save - {taskAssignmentLabel(task.technician)}</small>{task.notes ? <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-zinc-300">{task.notes}</p> : null}</div>)}
                       {!visibleTaskAssignments.length && !taskQueue.length ? <p className="py-8 text-center text-sm text-zinc-500">No tasks are assigned here yet.</p> : null}
                     </div>
                   </div> : null}
@@ -2482,7 +2755,7 @@ const CalendarWindow: React.FC = () => {
             <div className="flex justify-end gap-2 mt-3">
               {editing.id && <button className="px-3 py-1 bg-red-700 text-white rounded" onClick={() => deleteEvent(editing)}>Delete</button>}
               <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditing(null); setTaskQueue([]); setTaskBatchError(''); setContentEditorLocked(false); }}>Cancel</button>
-              <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskQueue.length})`) : 'Save'}</button>
+              <button className="px-3 py-1 bg-[#39FF14] text-black rounded disabled:opacity-50" disabled={taskBatchSaving} onClick={() => editing.category === 'task' && editing.id == null ? void saveTaskBatch() : void saveEvent(editing)}>{editing.category === 'task' && editing.id == null ? (taskBatchSaving ? 'Saving Tasks...' : `Save Tasks (${taskSaveCount})`) : 'Save'}</button>
             </div>
             </div>
             </div>

@@ -11,11 +11,28 @@ interface AccordionProps {
   onToggle: (title: string) => void;
   onSelect: (d: DeviceItem) => void;
   onContextMenu: (e: React.MouseEvent, d: DeviceItem) => void;
+  onCategoryContextMenu: (e: React.MouseEvent, title: string) => void;
 }
 
 const DeviceAccordion = React.memo(function DeviceAccordion({
-  groupedDevices, selectedDeviceId, expandedCategories, onToggle, onSelect, onContextMenu,
+  groupedDevices, selectedDeviceId, expandedCategories, onToggle, onSelect, onContextMenu, onCategoryContextMenu,
 }: AccordionProps) {
+  const holdTimerRef = useRef<number | null>(null);
+  const clearHold = () => {
+    if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+  };
+  const holdContext = (event: React.PointerEvent, callback: (synthetic: React.MouseEvent) => void) => {
+    if (event.pointerType === 'mouse') return;
+    clearHold();
+    const target = event.currentTarget;
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    holdTimerRef.current = window.setTimeout(() => callback({
+      clientX, clientY, currentTarget: target,
+      preventDefault: () => undefined, stopPropagation: () => undefined,
+    } as unknown as React.MouseEvent), 650);
+  };
   if (groupedDevices.length === 0) {
     return <div className="p-4 text-center text-zinc-500 text-sm">No devices yet</div>;
   }
@@ -30,6 +47,11 @@ const DeviceAccordion = React.memo(function DeviceAccordion({
               className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-left text-sm font-medium text-gray-100 focus:outline-none focus:bg-zinc-700"
               style={{ background: isOpen ? '#27272a' : undefined }}
               onClick={() => onToggle(catTitle)}
+              onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onCategoryContextMenu(event, catTitle); }}
+              onPointerDown={(event) => holdContext(event, (synthetic) => onCategoryContextMenu(synthetic, catTitle))}
+              onPointerUp={clearHold}
+              onPointerCancel={clearHold}
+              onPointerLeave={clearHold}
             >
               <span>{catTitle}</span>
               <span className="flex items-center gap-2 text-xs text-zinc-400">
@@ -51,6 +73,10 @@ const DeviceAccordion = React.memo(function DeviceAccordion({
                     }`}
                     onClick={() => onSelect(d)}
                     onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, d); }}
+                    onPointerDown={(event) => holdContext(event, (synthetic) => onContextMenu(synthetic, d))}
+                    onPointerUp={clearHold}
+                    onPointerCancel={clearHold}
+                    onPointerLeave={clearHold}
                     title="Click to load into fields for editing"
                   >
                     <span>{d.name}</span>
@@ -298,6 +324,31 @@ export default function DeviceForm({ onCancel, onSaved, onDeleted, titles, devic
     }
   }
 
+  async function renameCategoryByTitle(titleRaw: string) {
+    const previousTitle = String(titleRaw || '').trim();
+    if (!previousTitle) return;
+    const nextTitle = String(window.prompt('Rename device category', previousTitle) || '').trim();
+    if (!nextTitle || nextTitle === previousTitle) return;
+    const affected = devices.filter((device) => String(device.title || '').trim() === previousTitle && device.id != null);
+    setSaving(true);
+    try {
+      const api: any = (window as any).api || {};
+      for (const device of affected) {
+        await api.dbUpdate?.('deviceCategories', device.id, { ...device, title: nextTitle });
+      }
+      setTitleText(nextTitle);
+      setExpandedCategories((current) => {
+        const next = new Set(current);
+        next.delete(previousTitle);
+        next.add(nextTitle);
+        return next;
+      });
+      await Promise.resolve(onSaved());
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteCategory() {
     await deleteCategoryByTitle(effectiveTitle);
   }
@@ -386,54 +437,19 @@ export default function DeviceForm({ onCancel, onSaved, onDeleted, titles, devic
             onToggle={handleAccordionToggle}
             onSelect={handleAccordionSelect}
             onContextMenu={handleAccordionContextMenu}
+            onCategoryContextMenu={(event, title) => deviceCtx.openFromEvent(event, { title, name: '' })}
           />
         </div>
       </div>
 
-      <div className="mt-auto pt-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={deleteSelected}
-            disabled={selectedDeviceId === undefined || saving}
-            className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
-            title={selectedDeviceId === undefined ? 'Select a device first' : 'Delete selected device'}
-          >
-            Delete Device
-          </button>
-          <button
-            onClick={deleteCategory}
-            disabled={!effectiveTitle || saving}
-            className="h-9 px-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm disabled:opacity-50"
-            title={!effectiveTitle ? 'Type a category name first' : 'Delete this entire category'}
-          >
-            Delete Category
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-          <button
-            onClick={() => {
-              // If the form is empty, keep the old behavior (back).
-              // Otherwise, treat Cancel as "reset fields" so the user can continue adding.
-              const hasAny = (titleText || '').trim() || (deviceNameText || '').trim() || selectedDeviceId !== undefined;
-              if (!hasAny) {
-                try { onCancel(); } catch {}
-                return;
-              }
-              resetForNextDeviceEntry({ clearTitle: false });
-              focusDeviceSoon();
-            }}
-            className="h-9 px-3 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm"
-          >
-            Cancel
-          </button>
+      <div className="mt-auto pt-4 flex justify-end gap-2">
           <button
             onClick={save}
             disabled={!canSave || saving}
             className="h-9 px-3 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm disabled:opacity-50"
           >
-            {saving ? 'Saving…' : (selectedDeviceId !== undefined ? 'Update Device' : 'Save Device')}
+            {saving ? 'Saving…' : (selectedDeviceId !== undefined ? 'Update Device' : 'Add New Device')}
           </button>
-        </div>
       </div>
 
       <ContextMenu
@@ -447,6 +463,12 @@ export default function DeviceForm({ onCancel, onSaved, onDeleted, titles, devic
           const deviceId = typeof d.id === 'number' ? d.id : undefined;
           const title = String(d.title || '').trim();
           const name = String(d.name || '').trim();
+          if (!name) return [
+            { type: 'header', label: title || 'Device Category' },
+            { label: 'Edit category…', disabled: !title || saving, onClick: async () => { await renameCategoryByTitle(title); } },
+            { type: 'separator' },
+            { label: 'Delete category…', danger: true, disabled: !title || saving, onClick: async () => { await deleteCategoryByTitle(title); } },
+          ];
           return [
             { type: 'header', label: `${title || 'Category'} — ${name || 'Device'}` },
             {

@@ -44,6 +44,8 @@ const saleItemsTable = fs.readFileSync(path.join(__dirname, '..', 'src', 'sales'
 const quickSale = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'QuickSaleWindow.tsx'), 'utf8');
 const productsWindow = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ProductsWindow.tsx'), 'utf8');
 const electronMain = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
+const desktopCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles', 'index.css'), 'utf8');
+const mobileCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'mobile', 'mobile.css'), 'utf8');
 assert.match(saleItemsTable, /onContextMenu=/, 'Quick Checkout sale items must support desktop right-click.');
 assert.match(saleItemsTable, /onPointerDown=\{\(event\) => startHold\(event, it\)\}/, 'Quick Checkout sale items must support mobile press-and-hold.');
 assert.match(saleItemsTable, /zIndex=\{100600\}/, 'The line-item menu must render above desktop and mobile modal shells.');
@@ -69,5 +71,11 @@ assert.match(electronMain, /function fitWindowIntoWorkArea[\s\S]*?setMinimumSize
 assert.match(electronMain, /const reveal = \(\) => \{[\s\S]*?fitWindowIntoWorkArea\(win\)/, 'The shared daughter-window reveal path must enforce dynamic display fitting.');
 assert.match(quickSale, /document\.documentElement[\s\S]*?html\.style\.overflow = 'hidden'[\s\S]*?body\.style\.overflow = 'hidden'/, 'Quick Checkout must lock document scrolling while open.');
 assert.doesNotMatch(quickSale, />\s*Close\s*</, 'Quick Checkout must rely on its window X instead of rendering a duplicate Close button.');
+assert.match(desktopCss, /\.gb-sale-catalog-picker\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?overflow:\s*hidden;/, 'The desktop product picker must remain locked to the daughter-window viewport.');
+assert.match(desktopCss, /\.gb-sale-catalog-scroll\s*\{[\s\S]*?overflow-y:\s*auto;/, 'The left product list must own product-picker scrolling.');
+assert.match(desktopCss, /\.gb-sale-catalog-editor-content\s*\{[\s\S]*?overflow:\s*hidden;/, 'Product detail fields and actions must remain stationary.');
+assert.match(desktopCss, /\.gb-quick-checkout-layout\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden;/, 'Quick Checkout must constrain its center content above the totals footer.');
+assert.match(desktopCss, /\.gb-quick-checkout-totals\s*\{[\s\S]*?padding:\s*0\.55rem 0\.75rem !important;/, 'The Quick Checkout footer must remain compact enough to keep Checkout visible.');
+assert.match(mobileCss, /\.gbpos-mobile \.gb-quick-checkout-totals > \.pt-2 button\s*\{[\s\S]*?min-height:\s*2\.15rem;/, 'Mobile Quick Checkout must keep its Checkout action compact and visible.');
 
 console.log('Sale product picker tests passed.');

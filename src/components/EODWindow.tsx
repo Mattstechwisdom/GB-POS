@@ -97,7 +97,7 @@ function round2(n: number) {
 async function sendCartClientUpdate(payload: {
   recordType: 'repair' | 'sale';
   recordId: number;
-  statusKey: 'part_ordered' | 'product_ordered';
+  statusKey: 'part_ordered' | 'product_ordered' | 'part_delivered' | 'product_in_shop';
   estimatedDate?: string;
   notes?: string;
 }) {
@@ -806,6 +806,8 @@ const EODWindow: React.FC = () => {
   const [selectedLowStockItem, setSelectedLowStockItem] = useState<any | null>(null);
   const [lowStockBusy, setLowStockBusy] = useState(false);
   const [lowStockMessage, setLowStockMessage] = useState('');
+  const [deliveryBusyId, setDeliveryBusyId] = useState<number | null>(null);
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   const [previewLowStockCartIds, setPreviewLowStockCartIds] = useState<Set<number>>(() => new Set());
   const [lowStockDismissals, setLowStockDismissals] = useState<Record<string, string>>(() => {
     try {
@@ -1521,6 +1523,10 @@ const EODWindow: React.FC = () => {
     });
     return ids;
   }, [previewLowStockCartIds, purchaseOrders]);
+  const pendingDeliveries = useMemo(() => purchaseOrders
+    .filter((record: any) => ['checked_out', 'ordered'].includes(String(record?.status || '').toLowerCase()))
+    .filter((record: any) => !record?.deliveredAt)
+    .sort((left: any, right: any) => String(left?.estimatedDelivery || '9999-12-31').localeCompare(String(right?.estimatedDelivery || '9999-12-31'))), [purchaseOrders]);
 
   const distributorIsTaxExempt = useCallback((distributor: string, rows: OrderCartRow[]) => {
     if (Object.prototype.hasOwnProperty.call(taxExemptByDistributor, distributor)) return taxExemptByDistributor[distributor];
@@ -2053,6 +2059,76 @@ const EODWindow: React.FC = () => {
       setPurchaseUpdateBusy(false);
     }
   }, [additionalCostsByDistributor, customers, deliveryByDistributor, deliveryByRow, distributorIsTaxExempt, inventoryProducts, isCartLayoutPreview, partsPurchaseQueue, purchaseGroups, purchaseOrders, sales, selectedPurchaseRows, splitDeliveryByDistributor, workOrders]);
+
+  const markPurchaseDelivered = useCallback(async (purchase: any) => {
+    const api: any = (window as any).api;
+    const purchaseId = Number(purchase?.id || 0);
+    if (!purchaseId || deliveryBusyId != null) return;
+    const sourceType = String(purchase?.sourceType || '');
+    const sourceId = Number(purchase?.sourceId || 0);
+    const sourceItemIndex = Number(purchase?.sourceItemIndex);
+    const sourceItemId = String(purchase?.sourceItemId || '');
+    const now = new Date().toISOString();
+    setDeliveryBusyId(purchaseId);
+    setDeliveryMessage('');
+    try {
+      const sendsClientUpdate = sourceType === 'workOrder' || sourceType === 'sale';
+      if (!sendsClientUpdate) {
+        const savedPurchase = await api.dbUpdate?.('purchaseOrders', purchaseId, { ...purchase, status: 'delivered', deliveredAt: now, updatedAt: now });
+        if (!savedPurchase) throw new Error('The purchase ledger did not confirm delivery.');
+        setPurchaseOrders((list) => list.map((item) => Number(item?.id) === purchaseId ? savedPurchase : item));
+        setDeliveryMessage(`${purchase?.title || 'Item'} marked delivered. No client update was required.`);
+        return;
+      }
+      const records = sourceType === 'workOrder' ? workOrders : sales;
+      const record = records.find((item: any) => Number(item?.id) === sourceId);
+      if (!record) throw new Error(`The linked ${sourceType === 'workOrder' ? 'work order' : 'sale'} could not be found.`);
+      let matched = false;
+      const items = (Array.isArray(record.items) ? record.items : []).map((item: any, index: number) => {
+        const itemMatches = Number.isFinite(sourceItemIndex) && sourceItemIndex >= 0
+          ? index === sourceItemIndex
+          : Boolean(sourceItemId) && String(item?.id || '') === sourceItemId;
+        if (!itemMatches) return item;
+        matched = true;
+        return { ...item, orderStatus: 'received', receivedAt: now, partDeliveredAt: now };
+      });
+      if (!matched) throw new Error('The linked invoice line item could not be matched, so nothing was changed.');
+
+      const invoiceUpdate = sourceType === 'workOrder'
+        ? { ...record, items, repairStatus: 'Part Delivered', statusUpdate: 'Part Delivered', statusUpdatedAt: now, updatedAt: now }
+        : { ...record, items, status: 'Product Arrived', statusUpdate: 'Product Arrived', statusUpdatedAt: now, updatedAt: now };
+      const savedInvoice = sourceType === 'workOrder'
+        ? (api.update ? await api.update('workOrders', invoiceUpdate) : await api.dbUpdate?.('workOrders', sourceId, invoiceUpdate))
+        : await api.dbUpdate?.('sales', sourceId, invoiceUpdate);
+      if (!savedInvoice) throw new Error('The linked invoice did not confirm its update.');
+
+      const savedPurchase = await api.dbUpdate?.('purchaseOrders', purchaseId, { ...purchase, status: 'delivered', deliveredAt: now, updatedAt: now });
+      if (!savedPurchase) throw new Error('The purchase ledger did not confirm delivery.');
+      if (sourceType === 'workOrder') setWorkOrders((list) => list.map((item) => Number(item?.id) === sourceId ? savedInvoice : item));
+      else setSales((list) => list.map((item) => Number(item?.id) === sourceId ? savedInvoice : item));
+      setPurchaseOrders((list) => list.map((item) => Number(item?.id) === purchaseId ? savedPurchase : item));
+
+      const calendarEvents = await api.dbGet?.('calendarEvents').catch(() => []);
+      const matchingDeliveries = (Array.isArray(calendarEvents) ? calendarEvents : []).filter((event: any) => event?.category === 'parts'
+        && event?.partsStatus === 'delivery'
+        && (sourceType === 'workOrder' ? Number(event?.workOrderId) === sourceId : Number(event?.saleId) === sourceId)
+        && String(event?.partName || event?.title || '').trim().toLowerCase() === String(purchase?.title || '').trim().toLowerCase());
+      for (const event of matchingDeliveries) if (event?.id != null) await api.dbDelete?.('calendarEvents', event.id);
+
+      const updateResult = await sendCartClientUpdate({
+        recordType: sourceType === 'workOrder' ? 'repair' : 'sale',
+        recordId: sourceId,
+        statusKey: sourceType === 'workOrder' ? 'part_delivered' : 'product_in_shop',
+        notes: `Arrived: ${String(purchase?.title || 'ordered item')}`,
+      });
+      const deliveryStatus = String(updateResult?.deliveryStatus || '');
+      setDeliveryMessage(`${purchase?.title || 'Item'} marked delivered.${deliveryStatus === 'sent' ? ' Client email sent.' : deliveryStatus === 'queued' ? ' Client email queued.' : ' Invoice updated; client email was not sent.'}`);
+    } catch (error: any) {
+      setDeliveryMessage(error?.message || 'The delivery could not be completed.');
+    } finally {
+      setDeliveryBusyId(null);
+    }
+  }, [deliveryBusyId, purchaseOrders, sales, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);
@@ -3008,7 +3084,8 @@ const EODWindow: React.FC = () => {
         {viewMode === 'reports' ? (
           <div className="gb-eod-dashboard space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
             <div className="grid grid-cols-1 gap-3 lg:h-full lg:min-h-0 lg:grid-cols-12">
-              <div className="gb-eod-low-stock col-span-12 flex min-h-0 flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)] lg:col-span-4">
+              <div className="col-span-12 grid min-h-0 gap-3 lg:col-span-4 lg:grid-rows-2">
+              <div className="gb-eod-low-stock flex min-h-0 flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
                 <header className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800 px-3 py-3">
                   <div className="min-w-0">
                     <h3 className="text-lg font-semibold text-amber-300">Low Stock</h3>
@@ -3039,6 +3116,20 @@ const EODWindow: React.FC = () => {
                 <div className="mt-auto border-t border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
                   The business day rolls forward at the saved Batch Out time. Reporting history is not altered.
                 </div>
+              </div>
+              <div className="gb-eod-deliveries flex min-h-0 flex-col overflow-hidden rounded-lg border border-sky-500/40 bg-zinc-950 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+                <header className="flex items-start justify-between gap-2 border-b border-zinc-800 px-3 py-3">
+                  <div className="min-w-0"><h3 className="text-lg font-semibold text-sky-300">Deliveries</h3><div className="text-xs text-zinc-400">Purchased items waiting to be marked as arrived.</div></div>
+                  <span className="shrink-0 rounded border border-sky-500/40 bg-sky-950/40 px-2.5 py-1 text-xs font-semibold text-sky-200">{pendingDeliveries.length}</span>
+                </header>
+                {deliveryMessage ? <div className="border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-200">{deliveryMessage}</div> : null}
+                {pendingDeliveries.length ? <div className="min-h-0 flex-1 divide-y divide-zinc-800 overflow-y-auto">
+                  {pendingDeliveries.map((purchase: any) => <div key={purchase.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5">
+                    <div className="min-w-0"><strong className="block truncate text-sm text-white">{purchase.title || 'Ordered item'}</strong><span className="block truncate text-[11px] text-zinc-500">{purchase.customer || `${purchase.sourceType === 'workOrder' ? 'WO' : 'Sale'} #${purchase.sourceId}`}{purchase.estimatedDelivery ? ` | Expected ${purchase.estimatedDelivery}` : ''}</span></div>
+                    <button type="button" className="rounded border border-sky-400/50 bg-sky-500 px-2.5 py-1.5 text-xs font-bold text-black disabled:opacity-50" disabled={deliveryBusyId != null} onClick={() => { void markPurchaseDelivered(purchase); }}>{deliveryBusyId === Number(purchase.id) ? 'Saving...' : 'Mark Delivered'}</button>
+                  </div>)}
+                </div> : <div className="flex min-h-24 flex-1 items-center justify-center px-4 py-5 text-center text-sm text-zinc-500">No purchased client items are waiting for delivery.</div>}
+              </div>
               </div>
 
               <div className="col-span-12 min-h-0 overflow-hidden lg:col-span-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">

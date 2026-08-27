@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
@@ -99,6 +99,11 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   });
   // Device types (Titles) from DB
   const [deviceCategories, setDeviceCategories] = useState<string[]>([]);
+  const [deviceRecords, setDeviceRecords] = useState<Array<{ name: string; title: string }>>([]);
+  const deviceModelsForCategory = useMemo(() => Array.from(new Set(deviceRecords
+    .filter((device) => device.title.trim().toLowerCase() === deviceCategoryInput.trim().toLowerCase())
+    .map((device) => device.name.trim())
+    .filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true })), [deviceCategoryInput, deviceRecords]);
   // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
   // no external partSources list anymore; free-text with optional autofill
@@ -119,6 +124,10 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           ? Array.from(new Set(cats.map((c: any) => String(c?.title || '').trim()).filter(Boolean)))
           : [];
         setDeviceCategories(titles);
+        setDeviceRecords(Array.isArray(cats) ? cats.map((entry: any) => ({
+          name: String(entry?.name || '').trim(),
+          title: String(entry?.title || '').trim(),
+        })).filter((entry: any) => entry.name && entry.title) : []);
 
         // Pull from repairTypes master list AND from existing repair items' repairCategory values
         const [rt, repairItems] = await Promise.all([
@@ -147,14 +156,14 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const handleDeviceCategoryInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDeviceCategoryInput(e.target.value);
     setShowCategoryDropdown(true);
-    setFormData(prev => ({ ...prev, category: e.target.value }));
+    setFormData(prev => ({ ...prev, category: e.target.value, model: '' }));
   };
 
   // Select from dropdown
   const handleCategorySelect = (cat: string) => {
     setDeviceCategoryInput(cat);
     setShowCategoryDropdown(false);
-    setFormData(prev => ({ ...prev, category: cat }));
+    setFormData(prev => ({ ...prev, category: cat, model: '' }));
     inputRef.current?.blur();
   };
 
@@ -252,7 +261,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     }, 0);
   }
 
-  function submitPrimaryAction() {
+  function submitPrimaryAction(action: 'update' | 'create' | 'auto' = 'auto') {
     if (submitDisabled) return;
 
     const partCost = Number(formData.partCost);
@@ -267,12 +276,12 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       markupPct: markupPct || DEFAULT_MARKUP_PCT,
       orderSourceUrl: normalizeOrderUrl(formData.orderSourceUrl),
       id: mode === 'admin'
-        ? (formData.id || undefined)
+        ? (action === 'create' ? undefined : (formData.id || undefined))
         : (formData.id || Math.random().toString(36).slice(2, 10)),
     } as RepairItem;
 
     onSave(payload);
-    if (mode === 'admin' && !formData.id) {
+    if (mode === 'admin' && (action === 'create' || !formData.id)) {
       clearFormFields();
       focusRepairCategorySoon();
     }
@@ -305,7 +314,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const handleEnterToSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    submitPrimaryAction();
+    submitPrimaryAction('auto');
   };
 
   return (
@@ -377,7 +386,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   setHasDeviceCategory(e.target.checked);
                   if (!e.target.checked) {
                     setDeviceCategoryInput('');
-                    setFormData(prev => ({ ...prev, category: '' }));
+                    setFormData(prev => ({ ...prev, category: '', model: '' }));
                   }
                 }}
                 className="w-4 h-4 rounded accent-[#39FF14]"
@@ -385,7 +394,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               Specific to a device?
             </label>
             {hasDeviceCategory && (
-              <div className="relative">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="relative">
                 <input
                   id="category"
                   name="category"
@@ -413,6 +423,20 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                     ))}
                   </ul>
                 )}
+                </div>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-zinc-400">Exact Device</span>
+                  <select
+                    value={formData.model || ''}
+                    onChange={(event) => setFormData((previous) => ({ ...previous, model: event.target.value }))}
+                    disabled={!deviceCategoryInput.trim() || deviceModelsForCategory.length === 0}
+                    className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]"
+                  >
+                    <option value="">All devices in category</option>
+                    {deviceModelsForCategory.map((device) => <option key={device} value={device}>{device}</option>)}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-zinc-500">Choose a model for model-specific repairs, or leave category-wide.</span>
+                </label>
               </div>
             )}
           </div>
@@ -551,7 +575,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         <div className="rounded border border-zinc-700 bg-zinc-950/35 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setPartPickerOpen(true)} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white">Select Part</button>
-            <button type="button" onClick={() => setFormData((current) => ({ ...current, partCost: 0, internalCost: undefined, markupPct: DEFAULT_MARKUP_PCT, partSource: '', orderSourceUrl: '', taxExempt: false, model: '' }))} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm">Clear Part Fields</button>
+            <button type="button" onClick={() => setFormData((current) => ({ ...current, partCost: 0, internalCost: undefined, markupPct: DEFAULT_MARKUP_PCT, partSource: '', orderSourceUrl: '', taxExempt: false }))} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm">Clear Part Fields</button>
             {formData.orderSourceUrl ? (
               <button type="button" title={formData.orderSourceUrl} onClick={() => { const url = normalizeOrderUrl(formData.orderSourceUrl); if ((window as any).api?.openUrl) (window as any).api.openUrl(url); else window.open(url, '_blank', 'noopener,noreferrer'); }} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white">Order URL</button>
             ) : null}
@@ -565,36 +589,22 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
 
       {/* Footer buttons */}
       {mode === 'admin' && (
-        <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-zinc-700">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
-          >
-            Cancel
-          </button>
+        <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-zinc-700">
           <button
             type="button"
-            onClick={clearFormFields}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-sm focus:border-[#39FF14] focus:outline-none"
+            disabled={submitDisabled || !formData.id}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => submitPrimaryAction('update')}
           >
-            Clear
+            Update Repair
           </button>
-          {formData.id && typeof onDelete === 'function' && (
-            <button
-              type="button"
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-zinc-900"
-              onClick={() => onDelete(formData.id)}
-            >
-              Delete
-            </button>
-          )}
           <button
             type="button"
             disabled={submitDisabled}
-            className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={submitPrimaryAction}
+            className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-semibold rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => submitPrimaryAction('create')}
           >
-            Save
+            Add New Repair
           </button>
         </div>
       )}
@@ -621,7 +631,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             type="button"
             disabled={submitDisabled}
             className="px-4 py-2 bg-[#39FF14] hover:bg-[#32E610] text-black font-medium rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#39FF14] focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={submitPrimaryAction}
+            onClick={() => submitPrimaryAction('auto')}
           >
             Add to Work Order
           </button>

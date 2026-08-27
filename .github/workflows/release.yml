@@ -90,6 +90,7 @@ jobs:
           npm run test:inventory-part-persistence
           npm run test:calendar-journal-sync
           npm run test:calendar-tasks
+          npm run test:immediate-persistence
           npm run test:daily-look-shifts
           npm run test:desktop-navigation
           npm run test:main-record-types
@@ -155,7 +156,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          $setup = Join-Path 'release' "Windows-Installer-x64-$version.exe"
+          $setup = Join-Path 'release' "GB-POS-installerx64-$version.exe"
           if (-not (Test-Path $setup)) { throw "Setup installer not found: $setup" }
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -224,8 +225,8 @@ jobs:
           make_latest: 'true'
           body_path: ${{ env.RELEASE_NOTES_PATH }}
           files: |
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe
-            release/Windows-Installer-x64-${{ env.RELEASE_VERSION }}.exe.blockmap
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe
+            release/GB-POS-installerx64-${{ env.RELEASE_VERSION }}.exe.blockmap
             release/Android-APK-universal-${{ env.RELEASE_VERSION }}.apk
             release/GadgetBoy-POS-Instructions-${{ env.RELEASE_VERSION }}.pdf
             release/latest.yml

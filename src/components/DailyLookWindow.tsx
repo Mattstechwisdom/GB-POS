@@ -4,6 +4,8 @@ import { technicianDisplayName } from '../lib/admin';
 import { formatTime12FromHHmm } from '../lib/datetime';
 import { isSharedTaskAssignment, taskAssignmentLabel, taskIsCompleted, tasksForDailyLook } from '../lib/calendarTasks';
 import { technicianShiftsForDate } from '../lib/technicianSchedule';
+import { expandRecurringEvent, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '../lib/calendarRecurrence';
+import { replaceRecordById, taskCompletionPatch } from '../lib/immediatePersistence';
 
 type CalendarEvent = {
   id?: number;
@@ -26,6 +28,9 @@ type CalendarEvent = {
   saleId?: number | string;
   orderUrl?: string;
   trackingUrl?: string;
+  recurrenceRule?: CalendarRecurrenceRule | null;
+  recurrenceMaster?: CalendarEvent;
+  occurrenceDate?: string;
 };
 
 type CalendarNote = {
@@ -122,7 +127,8 @@ export default function DailyLookWindow() {
   }, []);
 
   const groups = useMemo(() => {
-    const dayEvents = events.filter((event) => event.category !== 'task' && event.category !== 'schedule' && event.date === date && (!technician || event.technician === technician));
+    const expandedForDay = events.flatMap((event) => event.recurrenceRule ? expandRecurringEvent(event, date, date) as CalendarEvent[] : [event]);
+    const dayEvents = expandedForDay.filter((event) => event.category !== 'task' && event.category !== 'schedule' && event.date === date && (!technician || event.technician === technician));
     const shifts: CalendarEvent[] = technicianShiftsForDate(techs, date, technician, events).map(shift => ({
       date,
       category: 'schedule',
@@ -138,19 +144,32 @@ export default function DailyLookWindow() {
     .filter((note) => String(note.date || '').slice(0, 10) === date)
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || ''))), [date, notes]);
 
-  const tasks = useMemo(() => tasksForDailyLook(events, date, technician), [date, events, technician]);
+  const tasks = useMemo(() => {
+    const expandedForDay = events.flatMap((event) => event.recurrenceRule ? expandRecurringEvent(event, date, date) as CalendarEvent[] : [event]);
+    return tasksForDailyLook([...events.filter((event) => !event.recurrenceRule), ...expandedForDay.filter((event) => Boolean(event.recurrenceRule))], date, technician);
+  }, [date, events, technician]);
 
   const setTaskCompleted = async (task: CalendarEvent, completed: boolean) => {
     if (task.id == null) return;
-    const now = new Date().toISOString();
-    const updated = await (window as any).api.dbUpdate('calendarEvents', task.id, {
-      ...task,
-      taskCompleted: completed,
-      taskCompletedAt: completed ? now : '',
-      taskCompletedBy: completed && !isSharedTaskAssignment(task.technician) ? String(task.technician || '') : '',
-      updatedAt: now,
-    });
-    if (updated) setEvents(list => list.map(item => String(item.id) === String(updated.id) ? updated : item));
+    const master = task.recurrenceMaster || task;
+    const occurrenceDate = task.occurrenceDate || task.date;
+    const previous = events.find(item => String(item.id) === String(master.id)) || master;
+    const optimistic = taskCompletionPatch(
+      { ...master, recurrenceRule: master.recurrenceRule ? normalizeRecurrenceRule(master.recurrenceRule) : null },
+      completed,
+      occurrenceDate,
+      completed && !isSharedTaskAssignment(task.technician) ? String(task.technician || '') : '',
+    ) as CalendarEvent;
+    setEvents(list => replaceRecordById(list, optimistic));
+    try {
+      const updated = await (window as any).api.dbUpdate('calendarEvents', master.id, optimistic);
+      if (!updated) throw new Error('The task update was not saved.');
+      setEvents(list => replaceRecordById(list, updated));
+    } catch (error) {
+      setEvents(list => replaceRecordById(list, previous));
+      console.error('save Daily Look task completion failed', error);
+      alert('The task could not be updated. Check your connection and try again.');
+    }
   };
 
   const openCalendarEntry = (event: CalendarEvent) => {

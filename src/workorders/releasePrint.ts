@@ -392,19 +392,15 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
   const recordId = Number(workOrder.id || workOrder.invoiceId || 0) || 0;
   if (recordId > 0) {
     try {
-      const type = workOrder.type || 'repair';
-      let lanIp = 'localhost';
-      try {
-        const ipRes = await fetch('http://localhost:7777/ip');
-        if (ipRes.ok) {
-          const json = await ipRes.json();
-          if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
-        }
-      } catch { /* QR server not running */ }
       const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
-      const qrUrl = workOrder.workOrderType === 'durantReport'
-        ? `${publicBase}/?durantTicket=${encodeURIComponent(String(recordId))}`
-        : `http://${lanIp}:7777/status/${type}/${recordId}`;
+      let qrUrl = '';
+      if (workOrder.workOrderType === 'durantReport') {
+        qrUrl = `${publicBase}/?durantTicket=${encodeURIComponent(String(recordId))}`;
+      } else {
+        const statusResult = await (window as any).api?.qrGetStatusUrl?.('repair', recordId);
+        qrUrl = String(statusResult?.url || '').trim();
+        if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'Work-order QR status URL is unavailable.');
+      }
       const QRCode = (await import('qrcode')).default;
       const dataUrl: string = await QRCode.toDataURL(qrUrl, {
         width: 176, margin: 1,

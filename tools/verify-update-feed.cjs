@@ -44,8 +44,8 @@ function newer(candidate, current) {
   const names = new Set((release.assets || []).map((asset) => asset.name));
   const required = [
     `Android-APK-universal-${version}.apk`,
-    `Windows-Installer-x64-${version}.exe`,
-    `Windows-Installer-x64-${version}.exe.blockmap`,
+    `GB-POS-installerx64-${version}.exe`,
+    `GB-POS-installerx64-${version}.exe.blockmap`,
     'latest.yml',
   ];
   const missing = required.filter((name) => !names.has(name));

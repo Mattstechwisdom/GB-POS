@@ -19,6 +19,7 @@ import { listTechnicians } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticketAccounting';
 import DurantProposalReview from './DurantProposalReview';
+import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -631,6 +632,41 @@ const NewWorkOrderWindow: React.FC = () => {
   const isEditingExistingRef = useRef<boolean>(isEditingExisting);
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
+
+  const persistJournalNote = useCallback(async (text: string) => {
+    const previous = woRef.current as WOState;
+    const stamp = new Date().toISOString();
+    const displayStamp = stamp.slice(0, 16).replace('T', ' ');
+    const entryText = `${displayStamp} — ${text}`;
+    const currentLog = Array.isArray(previous.internalNotesLog) ? previous.internalNotesLog : [];
+    const nextEntryId = currentLog.reduce((max, entry) => Math.max(max, Number(entry?.id || 0)), 0) + 1;
+    const next: WOState & { updatedAt: string } = {
+      ...previous,
+      internalNotes: (previous.internalNotes ? `${previous.internalNotes}\n` : '') + entryText,
+      internalNotesLog: [...currentLog, { id: nextEntryId, text: entryText, createdAt: stamp }],
+      updatedAt: stamp,
+    };
+    woRef.current = next;
+    setWo(next);
+
+    const id = Number(previous.id || 0);
+    if (!id) return;
+    try {
+      const api: any = (window as any).api || {};
+      const saved = typeof api.dbUpdate === 'function'
+        ? await api.dbUpdate('workOrders', id, next)
+        : await api.update?.('workOrders', next);
+      if (!saved) throw new Error('The work-order note was not returned after saving.');
+      woRef.current = saved;
+      setWo(saved);
+      setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
+      try { window.opener?.postMessage({ type: 'workorders:changed', id }, '*'); } catch {}
+    } catch (error) {
+      woRef.current = previous;
+      setWo(previous);
+      throw error;
+    }
+  }, []);
 
   // Bind the latest functions each render.
   onSaveRef.current = onSave;
@@ -1596,9 +1632,11 @@ const NewWorkOrderWindow: React.FC = () => {
         // Persist the work order. If it's brand-new (id=0) we create it here so the
         // receipt can include a real QR-code URL. If already saved, update it.
         let effectiveId = Number((wo as any).id || 0) || 0;
+        let workOrderPersisted = false;
         if (effectiveId > 0) {
           try {
             await api.update('workOrders', { ...nextWo });
+            workOrderPersisted = true;
           } catch (e) {
             console.error('Failed persisting checkout update', e);
           }
@@ -1610,11 +1648,33 @@ const NewWorkOrderWindow: React.FC = () => {
               : await api.dbAdd('workOrders', { ...nextWo });
             if (added?.id) {
               effectiveId = Number(added.id) || 0;
+              workOrderPersisted = true;
               // Sync state so autosave won't create a duplicate
               setWo(w => ({ ...w, id: effectiveId }));
             }
           } catch (e) {
             console.error('Failed creating work order on checkout', e);
+          }
+        }
+
+        const partsPaymentApplied = woPaymentAdds.some((payment: any) => Number(payment?.appliedParts || 0) > 0.009);
+        if (workOrderPersisted && effectiveId > 0 && shouldConsumeWorkOrderInventory({ partsPaymentApplied, markClosed: result.markClosed, status })) {
+          try {
+            const inventoryResult = await consumeInStockInventory(api, 'workOrder', effectiveId, updatedItems, {
+              allowShortfall: true,
+              checkoutDate,
+              repairContext: {
+                deviceCategory: wo.productCategory,
+                deviceName: wo.productDescription,
+                deviceModel: (wo as any).model,
+              },
+            });
+            if (inventoryResult.shortfalls.length) {
+              triggerWarningBanner('Inventory reached zero', 'One or more repair parts need restocking.');
+            }
+          } catch (inventoryError) {
+            console.error('Work-order inventory update failed', inventoryError);
+            triggerWarningBanner('Inventory update needs attention', 'The checkout was saved, but inventory could not be adjusted.');
           }
         }
 
@@ -1894,6 +1954,9 @@ const NewWorkOrderWindow: React.FC = () => {
               items={wo.items}
               onChange={handleItemsChange}
               onCommit={handleItemsCommit}
+              deviceCategory={String(wo.productCategory || '')}
+              deviceName={String(wo.productDescription || '')}
+              deviceModel={String((wo as any).model || '')}
               onAddProduct={handleAddProduct}
               addProductDisabled={!wo.customerId || !Number((wo as any).id || 0)}
               readonlyItems={readonlyAddonRows as any}
@@ -1958,14 +2021,7 @@ const NewWorkOrderWindow: React.FC = () => {
                 notes={wo.internalNotes || ''}
                 log={wo.internalNotesLog || []}
                 onChange={n => setWo(w => ({ ...w, internalNotes: n }))}
-                onAdd={(text) => {
-                  const stamp = new Date().toISOString().slice(0,16).replace('T',' ');
-                  setWo(w => ({
-                    ...w,
-                    internalNotes: (w.internalNotes ? w.internalNotes + '\n' : '') + `${stamp} — ${text}`,
-                    internalNotesLog: [...(w.internalNotesLog || []), { id: (w.internalNotesLog?.length || 0) + 1, text: `${stamp} — ${text}`, createdAt: stamp }]
-                  }));
-                }}
+                onAdd={persistJournalNote}
               />
             </div>
           </div>

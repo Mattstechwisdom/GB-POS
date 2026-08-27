@@ -4328,6 +4328,11 @@ function toCloudString(v: any): string {
   return String(v);
 }
 
+function calendarRequestStatus(value: any): 'pending' | 'approved' | 'declined' | null {
+  const status = String(value || '').trim().toLowerCase();
+  return status === 'pending' || status === 'approved' || status === 'declined' ? status : null;
+}
+
 function toCloudIso(v: any): string | null {
   if (!v) return null;
   const d = new Date(v);
@@ -4521,6 +4526,10 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       partName: row.part_name || '',
       source: row.source || '',
+      requestStatus: row.request_status || undefined,
+      shiftRequestOff: row.shift_request_off === true,
+      requestedAt: cloudDate(row.requested_at),
+      reviewedAt: cloudDate(row.reviewed_at),
       orderUrl: row.order_url || '',
       trackingUrl: row.tracking_url || '',
       partsStatus: row.parts_status || '',
@@ -4528,6 +4537,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       taskCompleted: row.task_completed === true,
       taskCompletedAt: cloudDate(row.task_completed_at),
       taskCompletedBy: row.task_completed_by || '',
+      recurrenceRule: row.recurrence_rule && typeof row.recurrence_rule === 'object' ? row.recurrence_rule : null,
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4579,6 +4589,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       notes: row.notes || '',
       condition: row.condition || '',
       category: row.category || '',
+      repairType: row.repair_type || '',
       partCategory: row.part_category || '',
       distributor: row.distributor || '',
       vendorRelationship: row.vendor_relationship || 'wholesale',
@@ -4825,6 +4836,10 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       part_name: toCloudString(item.partName),
       source: toCloudString(item.source),
+      request_status: calendarRequestStatus(item.requestStatus),
+      shift_request_off: typeof item.shiftRequestOff === 'boolean' ? item.shiftRequestOff : null,
+      requested_at: toCloudIso(item.requestedAt),
+      reviewed_at: toCloudIso(item.reviewedAt),
       order_url: toCloudString(item.orderUrl),
       tracking_url: toCloudString(item.trackingUrl),
       parts_status: toCloudString(item.partsStatus),
@@ -4832,6 +4847,7 @@ function toCloudRow(key: string, item: any): any | null {
       task_completed: toCloudBool(item.taskCompleted),
       task_completed_at: item.taskCompleted ? toCloudIso(item.taskCompletedAt) : null,
       task_completed_by: toCloudString(item.taskCompletedBy),
+      recurrence_rule: item.recurrenceRule && typeof item.recurrenceRule === 'object' ? toCloudObject(item.recurrenceRule) : null,
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -4909,6 +4925,7 @@ function toCloudRow(key: string, item: any): any | null {
       notes: toCloudString(item.notes),
       condition: toCloudString(item.condition),
       category: toCloudString(item.category),
+      repair_type: toCloudString(item.repairType),
       part_category: toCloudString(item.partCategory),
       distributor: toCloudString(item.distributor),
       vendor_relationship: toCloudString(item.vendorRelationship || 'wholesale'),
@@ -5533,8 +5550,8 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
   const ok = writeDb(nextDb);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('upsert', key, nextItem);
+    scheduleCollectionChanged(key);
     return nextItem;
   }
   return null;
@@ -5832,8 +5849,8 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('upsert', key, updatedItem);
+    scheduleCollectionChanged(key);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
@@ -5863,8 +5880,8 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
-    scheduleCollectionChanged(key);
     await syncCloudWriteOrQueue('delete', key, id);
+    scheduleCollectionChanged(key);
   }
   return ok;
 });
@@ -8255,7 +8272,7 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
     show: false,
-    title: windowTitle('Work Order Item'),
+    title: windowTitle('Devices / Repairs'),
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
@@ -8696,7 +8713,8 @@ async function readCollectionForBackup(key: string, db: any): Promise<any[]> {
 function isLegacyScheduleBackupEvent(e: any) {
   try {
     const t = (e?.type || e?.kind || e?.category || '').toString().toLowerCase();
-    if (t === 'schedule' && String(e?.source || '').toLowerCase() !== 'shift-override') return true;
+    const source = String(e?.source || '').toLowerCase();
+    if (t === 'schedule' && source !== 'shift-override' && source !== 'shift-request') return true;
     if (e?.legacy === true) return true;
     if (e?.derived === true) return true;
     if (typeof e?.technicianId !== 'undefined' || typeof e?.techId !== 'undefined') return true;

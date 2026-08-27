@@ -49,15 +49,9 @@ const ReleaseFormWindow: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        let lanIp = 'localhost';
-        try {
-          const ipRes = await fetch('http://localhost:7777/ip');
-          if (ipRes.ok) {
-            const json = await ipRes.json();
-            if (json?.ip && String(json.ip).trim()) lanIp = String(json.ip).trim();
-          }
-        } catch { /* QR server not running */ }
-        const qrUrl = `http://${lanIp}:7777/status/${type}/${recordId}`;
+        const statusResult = await (window as any).api?.qrGetStatusUrl?.(type, recordId);
+        const qrUrl = String(statusResult?.url || '').trim();
+        if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'QR status URL is unavailable.');
         const dataUrl: string = await QRCode.toDataURL(qrUrl, {
           width: 176, margin: 1,
           color: { dark: '#000000', light: '#ffffff' },

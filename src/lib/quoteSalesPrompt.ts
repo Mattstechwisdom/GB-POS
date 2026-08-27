@@ -115,3 +115,49 @@ export function buildQuoteSalesPrompt(item: any) {
   lines.push('', '== OUTPUT FORMAT ==', 'Exactly one paragraph, 5-7 sentences, no heading/title, no bullet points, no emojis.');
   return lines.join('\n');
 }
+
+type QuotePromptCopyEnvironment = {
+  clipboard?: { writeText: (text: string) => Promise<void> } | null;
+  document?: {
+    body: {
+      appendChild: (node: any) => unknown;
+      removeChild: (node: any) => unknown;
+    };
+    createElement: (tagName: string) => any;
+    execCommand: (command: string) => boolean;
+  } | null;
+};
+
+export async function copyQuotePromptText(
+  text: string,
+  environment: QuotePromptCopyEnvironment = {
+    clipboard: typeof navigator !== 'undefined' ? navigator.clipboard : null,
+    document: typeof document !== 'undefined' ? document : null,
+  },
+) {
+  if (environment.clipboard?.writeText) {
+    try {
+      await environment.clipboard.writeText(text);
+      return;
+    } catch {
+      // Some Electron and Android contexts expose this API but reject writes.
+    }
+  }
+
+  const copyDocument = environment.document;
+  if (!copyDocument) throw new Error('Clipboard access is unavailable.');
+
+  const textarea = copyDocument.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  copyDocument.body.appendChild(textarea);
+  try {
+    textarea.focus();
+    textarea.select();
+    if (!copyDocument.execCommand('copy')) throw new Error('Clipboard copy was rejected.');
+  } finally {
+    copyDocument.body.removeChild(textarea);
+  }
+}
