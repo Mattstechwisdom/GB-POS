@@ -89,6 +89,8 @@ Durant works against proposal records linked to authoritative Durant Report work
 
 Allowed proposal fields include findings, line items, supplier cost, markup percentage, client part price, invoice URL, labor/bench charges, and requested Full Transfer state. Supplier URL scanning reuses the existing part metadata pipeline to suggest the part name and supplier price. A scan failure preserves the URL and allows manual entry.
 
+Each Durant ticket also has a shared collaboration journal. Shared notes record author identity, author role, timestamp, and text. A chronological history combines shared notes with work-order updates intended for Durant, proposal edits/submissions, review decisions, Full Transfer acceptance, and invoice-link changes. GadgetBoy internal notes remain private and never enter Durant queries, proposal payloads, printouts, or history responses.
+
 Durant actions are limited to:
 
 - Save draft pricing/findings.
@@ -133,6 +135,7 @@ The GitHub Pages entry always shows the styled login screen before protected con
 - GadgetBoy users receive the existing POS shell appropriate to desktop or mobile viewport.
 - Durant users receive a focused responsive workspace containing only their Durant ticket list, ticket/proposal editor, and permitted print/review actions.
 - QR deep links preserve the target ticket through login and required password change.
+- The QR ticket view prioritizes attached client information, current approved work-order details, shared notes, chronological collaboration history, and staged invoice-link entry.
 
 The web build becomes an installable PWA with:
 
