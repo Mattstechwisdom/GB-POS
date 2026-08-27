@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.27 (2026-08-27)
+## v0.6.33 (2026-08-27)
 - Distributor Order Dates: selected-item checkout can record the actual historical order day while whole-cart checkout remains on today; delivery estimates stay independent and client updates name the entered order date.
 - Item Discounts: work-order and sale line-item menus support custom percentage or fixed discounts, with net totals and printouts calculated consistently.
 - Diagnostic Minimums: every work-order type can select a configured Diagnostic outside the line-item list; it behaves as a minimum labor charge so prior diagnostic payments correctly reduce pickup balance.
