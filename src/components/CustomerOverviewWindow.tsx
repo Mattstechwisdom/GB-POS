@@ -7,6 +7,8 @@ import DuplicateCustomerDialog from './DuplicateCustomerDialog';
 import { Customer } from '../lib/types';
 import { CustomerDuplicateMatch, findDuplicateCustomers } from '../lib/customerDuplicates';
 import { isCompleteCustomerEmail, isCompleteCustomerPhone, newCustomerContactErrors } from '../lib/customerContactValidation';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
 
 interface Props {
   customer?: Customer | null;
@@ -434,6 +436,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
   const [sales, setSales] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<{ type: 'workorder'|'sale'|'consultation'; id: number } | null>(null);
+  const historyMenu = useContextMenu<any>();
 
   const customerId = Number((customer as any)?.id || 0);
 
@@ -512,21 +515,37 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
   const paged = useMemo(() => rows.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE), [rows, pageSafe]);
 
-  // Delete selected row with confirmation
-  const handleDeleteSelected = useCallback(async () => {
-    if (!selected) return;
-    const typeLabel = selected.type === 'sale' ? 'sale' : selected.type === 'consultation' ? 'consultation' : 'work order';
-    const confirmed = window.confirm(`Delete this ${typeLabel} #${selected.id}? This cannot be undone.`);
+  const openHistoryRow = useCallback(async (row: any) => {
+    if (row.type === 'workorder') await (window as any).api.openNewWorkOrder({ workOrderId: row.id });
+    else await (window as any).api.openNewSale({ id: row.id });
+  }, []);
+
+  const deleteHistoryRow = useCallback(async (row: any) => {
+    if (!row) return;
+    const typeLabel = row.type === 'sale' ? 'sale' : row.type === 'consultation' ? 'consultation' : 'work order';
+    const confirmed = window.confirm(`Delete this ${typeLabel} #${row.id}? This cannot be undone.`);
     if (!confirmed) return;
     try {
-      const collection = selected.type === 'workorder' ? 'workOrders' : 'sales';
-      await (window as any).api.dbDelete(collection, selected.id);
+      const collection = row.type === 'workorder' ? 'workOrders' : 'sales';
+      await (window as any).api.dbDelete(collection, row.id);
       setSelected(null);
       await load();
     } catch (e) {
       console.error('Delete failed', e);
     }
-  }, [selected, load]);
+  }, [load]);
+
+  const historyMenuItems = useMemo<ContextMenuItem[]>(() => {
+    const row = historyMenu.state.data;
+    if (!row) return [];
+    const label = row.type === 'workorder' ? 'Work Order' : row.type === 'consultation' ? 'Consultation' : 'Sale';
+    return [
+      { type: 'header', label: `${label} #${row.id}` },
+      { label: 'Open / Edit', onClick: () => openHistoryRow(row) },
+      { type: 'separator' },
+      { label: row.type === 'workorder' ? 'Delete Work Order…' : row.type === 'consultation' ? 'Delete Consultation…' : 'Delete Sale…', danger: true, onClick: () => deleteHistoryRow(row) },
+    ];
+  }, [deleteHistoryRow, historyMenu.state.data, openHistoryRow]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -551,13 +570,8 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
                   key={r.key}
                   className={`${selected && selected.type==='workorder' && r.type==='workorder' && selected.id===r.id ? 'bg-zinc-700 ring-2 ring-[#39FF14]' : selected && selected.type==='sale' && r.type==='sale' && selected.id===r.id ? 'bg-zinc-700 ring-2 ring-[#39FF14]' : 'hover:bg-zinc-800'} cursor-pointer transition-colors`}
                   onClick={() => setSelected({ type: r.type, id: r.id })}
-                  onDoubleClick={async () => {
-                    if (r.type === 'workorder') {
-                      await (window as any).api.openNewWorkOrder({ workOrderId: r.id });
-                    } else {
-                      await (window as any).api.openNewSale({ id: r.id });
-                    }
-                  }}
+                  onDoubleClick={() => openHistoryRow(r)}
+                  onContextMenu={(event) => historyMenu.openFromEvent(event, r)}
                 >
                   <td className="px-2 py-1">{r.date}</td>
                   <td className="px-2 py-1">
@@ -574,18 +588,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
           </table>
         </div>
       </div>
-      {/* Pagination & Delete action */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            className="px-3 py-1 text-xs bg-red-700 hover:bg-red-800 border border-red-600 rounded text-white disabled:opacity-50"
-            disabled={!selected}
-            title={selected ? `Delete ${selected.type === 'sale' ? 'Sale' : selected.type === 'consultation' ? 'Consultation' : 'Work Order'} #${selected.id}` : 'Select a row to delete'}
-            onClick={handleDeleteSelected}
-          >
-            Delete
-          </button>
-        </div>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <button
             className="px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50"
@@ -607,6 +610,7 @@ const CombinedHistory: React.FC<{ customer?: Partial<Customer> | null; mode: 'wo
           >Next</button>
         </div>
       </div>
+      <ContextMenu open={historyMenu.state.open} x={historyMenu.state.x} y={historyMenu.state.y} items={historyMenuItems} onClose={historyMenu.close} id="customer-history-context-menu" zIndex={140} />
     </div>
   );
 };

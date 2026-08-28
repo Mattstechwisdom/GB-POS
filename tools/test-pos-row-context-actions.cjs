@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const read = (name) => fs.readFileSync(path.join(__dirname, '..', 'src', 'components', name), 'utf8');
+const overview = read('CustomerOverviewWindow.tsx');
+const workOrders = read('CustomerWorkOrders.tsx');
+const sales = read('CustomerSales.tsx');
+assert.match(overview, /Open \/ Edit/);
+assert.match(overview, /Delete Work Order…/);
+assert.match(overview, /Delete Sale…/);
+assert.match(overview, /Delete Consultation…/);
+assert.match(overview, /onContextMenu=/);
+assert.doesNotMatch(workOrders, />Delete<\/Button>/);
+assert.doesNotMatch(sales, />Delete<\/Button>/);
+console.log('POS row context action checks passed.');

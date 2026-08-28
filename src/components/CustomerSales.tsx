@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import Button from './Button';
 
 interface Props {
   customerId?: number;
@@ -113,20 +112,6 @@ const CustomerSales: React.FC<Props> = ({ customerId, customerName, customerPhon
               })}
             </tbody>
           </table>
-        </div>
-      </div>
-      <div className="flex justify-between items-center mt-2">
-        <div className="flex gap-2">
-          <Button
-            className={`${selectedId ? 'bg-red-600 hover:bg-red-500' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
-            disabled={!selectedId}
-            onClick={async () => {
-              if (!selectedId) return;
-              const ok = window.confirm(`Delete sale #GB${String(selectedId).padStart(7,'0')}? This cannot be undone.`);
-              if (!ok) return;
-              try { await (window as any).api.dbDelete('sales', selectedId); await load(); setSelectedId(null); } catch (e) { console.error('Delete sale failed', e); }
-            }}
-          >Delete</Button>
         </div>
       </div>
     </div>

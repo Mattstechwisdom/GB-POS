@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import Button from './Button';
 
 interface Props {
   customerId?: number;
@@ -8,7 +7,6 @@ interface Props {
 const CustomerWorkOrders: React.FC<Props> = ({ customerId }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<any | null>(null);
 
   // Ref so the load callback can check current selection without it being a dep,
   // which previously caused a fresh IPC fetch on every row click.
@@ -94,29 +92,6 @@ const CustomerWorkOrders: React.FC<Props> = ({ customerId }) => {
             })}
           </tbody>
         </table>
-        </div>
-      </div>
-      <div className="flex justify-between items-center mt-2">
-        <div className="flex gap-2">
-          <Button
-            className={`${selectedId ? 'bg-red-600 hover:bg-red-500' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
-            disabled={!selectedId}
-            onClick={async () => {
-              if (!selectedId) return;
-              const confirm = await new Promise<boolean>((resolve) => {
-                // Simple inline confirm modal
-                const ok = window.confirm(`Delete work order #GB${String(selectedId).padStart(7,'0')}? This cannot be undone.`);
-                resolve(ok);
-              });
-              if (!confirm) return;
-              try {
-                await (window as any).api.dbDelete('workOrders', selectedId);
-                await load();
-              } catch (e) {
-                console.error('Delete failed', e);
-              }
-            }}
-          >Delete</Button>
         </div>
       </div>
     </div>
