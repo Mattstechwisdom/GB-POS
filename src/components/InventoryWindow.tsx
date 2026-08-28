@@ -8,6 +8,7 @@ import { consumeWindowPayload } from '../lib/windowPayload';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
 import QRCode from 'qrcode';
 import { INVENTORY_LABEL_SIZES, inventoryItemNumber, inventoryLabelUrl, type InventoryLabelSizeId } from '../lib/inventoryLabels';
+import { inventoryAggregateStock, inventoryParentId, inventoryVariantAttributes, isInventoryParent } from '../lib/inventoryVariants';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -36,6 +37,9 @@ type InventoryItem = {
   stockCount?: number;
   lowStockThreshold?: number;
   purchaseRestockKeys?: string[];
+  isParentPart?: boolean;
+  parentProductId?: number;
+  variantAttributes?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -90,6 +94,8 @@ function blankItem(mode: InventoryMode): InventoryItem {
     trackStock: true,
     stockCount: 0,
     lowStockThreshold: 1,
+    isParentPart: false,
+    variantAttributes: {},
   };
 }
 
@@ -264,7 +270,14 @@ export default function InventoryWindow() {
           item.distributorSku,
         ].some((value) => String(value || '').toLowerCase().includes(q));
       })
-      .sort((a, b) => String(a.category || '').localeCompare(String(b.category || '')) || String(a.itemDescription || '').localeCompare(String(b.itemDescription || '')));
+      .sort((a, b) => {
+        const aGroup = inventoryParentId(a) || (isInventoryParent(a) ? Number(a.id || 0) : Number.MAX_SAFE_INTEGER);
+        const bGroup = inventoryParentId(b) || (isInventoryParent(b) ? Number(b.id || 0) : Number.MAX_SAFE_INTEGER);
+        return String(a.category || '').localeCompare(String(b.category || ''))
+          || aGroup - bGroup
+          || Number(isInventoryParent(b)) - Number(isInventoryParent(a))
+          || String(a.itemDescription || '').localeCompare(String(b.itemDescription || ''));
+      });
   }, [deviceFilter, items, lowOnly, mode, search]);
 
   const counts = useMemo(() => {
@@ -378,6 +391,46 @@ export default function InventoryWindow() {
     setCompatibleDeviceMenuOpen(false);
   };
 
+  const startParentPart = () => {
+    setMode('parts');
+    setSelectedId(undefined);
+    setEditing({ ...blankItem('parts'), isParentPart: true, trackStock: false, stockCount: undefined, lowStockThreshold: undefined });
+    setEditingOrderUrl(false);
+  };
+
+  const startVariant = (parent: InventoryItem) => {
+    setMode((parent.itemType || 'Product') === 'Part' ? 'parts' : 'products');
+    setSelectedId(undefined);
+    setEditing({
+      ...blankItem((parent.itemType || 'Product') === 'Part' ? 'parts' : 'products'),
+      itemType: parent.itemType,
+      itemDescription: parent.itemDescription,
+      category: parent.category,
+      partCategory: parent.partCategory,
+      repairType: parent.repairType,
+      associatedDevices: parent.associatedDevices || [],
+      deviceModel: parent.deviceModel,
+      parentProductId: parent.id,
+      isParentPart: false,
+      variantAttributes: {},
+    });
+  };
+
+  const duplicateVariant = () => {
+    if (!selectedId || isInventoryParent(editing)) return;
+    setSelectedId(undefined);
+    setEditing({
+      ...editing,
+      id: undefined,
+      distributorSku: '',
+      stockCount: 0,
+      purchaseRestockKeys: [],
+      createdAt: undefined,
+      updatedAt: undefined,
+      variantAttributes: { ...inventoryVariantAttributes(editing) },
+    });
+  };
+
   const ensureVendor = async (nameValue: string) => {
     const name = nameValue.trim();
     if (!name) return;
@@ -434,9 +487,12 @@ export default function InventoryWindow() {
         distributorSku: String(editing.distributorSku || '').trim(),
         reorderUrlTemplate: normalizeOrderUrl(editing.reorderUrlTemplate),
         reorderQty: Math.max(1, Math.round(Number(editing.reorderQty || 1))),
-        trackStock: !!editing.trackStock,
-        stockCount: editing.trackStock ? Math.max(0, Math.round(Number(editing.stockCount || 0))) : undefined,
-        lowStockThreshold: editing.trackStock ? Math.max(0, Math.round(Number(editing.lowStockThreshold || 0))) : undefined,
+        isParentPart: !!editing.isParentPart,
+        parentProductId: editing.isParentPart ? undefined : inventoryParentId(editing),
+        variantAttributes: editing.isParentPart ? {} : inventoryVariantAttributes(editing),
+        trackStock: editing.isParentPart ? false : !!editing.trackStock,
+        stockCount: !editing.isParentPart && editing.trackStock ? Math.max(0, Math.round(Number(editing.stockCount || 0))) : undefined,
+        lowStockThreshold: !editing.isParentPart && editing.trackStock ? Math.max(0, Math.round(Number(editing.lowStockThreshold || 0))) : undefined,
         updatedAt: now,
       };
 
@@ -480,6 +536,14 @@ export default function InventoryWindow() {
 
   const remove = async () => {
     if (!selectedId) return;
+    if (isInventoryParent(editing) && items.some((item) => inventoryParentId(item) === Number(selectedId))) {
+      alert('Remove or move its variants before deleting this parent part.');
+      return;
+    }
+    if (editing.parentProductId && Object.keys(inventoryVariantAttributes(editing)).length === 0) {
+      alert('Add at least one complete Variant Attribute, such as Color: Black.');
+      return;
+    }
     if (!confirm(mode === 'parts' ? 'Delete this repair part listing?' : 'Delete this product listing?')) return;
     setSaving(true);
     try {
@@ -627,6 +691,7 @@ export default function InventoryWindow() {
                 >
                   Low Stock
                 </button>
+                {mode === 'parts' ? <button type="button" onClick={startParentPart} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-3 py-2 text-sm font-semibold text-[#39FF14]">Create Parent Part</button> : null}
                 {filtersOpen ? (
                   <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded border border-zinc-700 bg-zinc-950 p-3 shadow-xl">
                     <label className="block">
@@ -663,18 +728,20 @@ export default function InventoryWindow() {
               ) : (
                 <div className="divide-y divide-zinc-800">
                   {visibleItems.map((item) => {
-                    const low = isInventoryLowStock(item);
+                    const parent = isInventoryParent(item);
+                    const low = !parent && isInventoryLowStock(item);
                     const selected = selectedId === item.id;
                     const devices = Array.isArray(item.associatedDevices) ? item.associatedDevices : [];
+                    const attributes = inventoryVariantAttributes(item);
                     return (
                       <div
                         key={item.id}
                         onClick={() => selectItem(item)}
-                        className={`w-full border-l-4 px-3 py-2 text-left transition ${selected ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : 'border-transparent'}`}
+                        className={`w-full border-l-4 px-3 py-2 text-left transition ${inventoryParentId(item) ? 'pl-7' : ''} ${selected ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}
                       >
                         <div className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_72px_58px_auto]">
                           <div className="min-w-0">
-                            <div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>
+                            <div className="flex min-w-0 items-center gap-2"><div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>{parent ? <span className="shrink-0 rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div>
                             <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-zinc-400">
                               <span>{item.category || 'Other'}</span>
                               {devices.length ? <span>- {devices.slice(0, 2).join(', ')}{devices.length > 2 ? ` +${devices.length - 2}` : ''}</span> : null}
@@ -682,6 +749,7 @@ export default function InventoryWindow() {
                               {mode === 'parts' ? <span>• {item.partCategory || 'Part'}</span> : null}
                               <span>• {item.condition || 'New'}</span>
                               {item.distributor ? <span>• {item.distributor}</span> : null}
+                              {Object.entries(attributes).map(([key, value]) => <span key={key}>• {key}: {value}</span>)}
                             </div>
                           </div>
                           <div className="hidden text-right sm:block">
@@ -691,10 +759,10 @@ export default function InventoryWindow() {
                           <div className="text-right">
                             <div className="text-[10px] uppercase tracking-wide text-zinc-500">Stock</div>
                             <div className={`font-mono text-sm font-semibold ${low ? 'text-red-300' : 'text-zinc-200'}`}>
-                              {item.trackStock ? (item.stockCount ?? 0) : '-'}
+                              {parent && item.id ? inventoryAggregateStock(items, item.id) : item.trackStock ? (item.stockCount ?? 0) : '-'}
                             </div>
                           </div>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); setLabelItem(item); }} className="col-span-2 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-2 py-1.5 text-[11px] font-semibold text-[#39FF14] hover:bg-[#39FF14]/20 sm:col-span-1">Print Label</button>
+                          {parent ? <button type="button" onClick={(event) => { event.stopPropagation(); startVariant(item); }} className="col-span-2 rounded border border-[#BC13FE]/70 bg-[#BC13FE]/10 px-2 py-1.5 text-[11px] font-semibold text-fuchsia-200 hover:bg-[#BC13FE]/20 sm:col-span-1">Add Variant</button> : <button type="button" onClick={(event) => { event.stopPropagation(); setLabelItem(item); }} className="col-span-2 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-2 py-1.5 text-[11px] font-semibold text-[#39FF14] hover:bg-[#39FF14]/20 sm:col-span-1">Print Label</button>}
                         </div>
                       </div>
                     );
@@ -707,8 +775,9 @@ export default function InventoryWindow() {
           <section className="gb-inventory-form-pane min-w-0 rounded border border-zinc-700 bg-zinc-950 p-4 lg:overflow-y-auto xl:p-5">
             <div className="mb-4 flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold">{selectedId ? `Edit ${mode === 'parts' ? 'Repair Part' : 'Product'}` : `Add ${mode === 'parts' ? 'Repair Part' : 'Product'}`}</h2>
+                <h2 className="text-lg font-semibold">{editing.isParentPart ? (selectedId ? 'Edit Parent Part' : 'Create Parent Part') : selectedId ? `Edit ${mode === 'parts' ? 'Repair Part' : 'Product'}` : `Add ${mode === 'parts' ? 'Repair Part' : 'Product'}`}</h2>
                 <div className="text-xs text-zinc-500">Saved here syncs through the Products collection.</div>
+                {editing.isParentPart ? <div className="mt-1 text-xs text-[#39FF14]">Parent parts organize variants and are never sold or deducted.</div> : null}
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
                 <div className="gb-inventory-mode-toggle grid w-full grid-cols-2 rounded border border-zinc-700 bg-zinc-900 p-1 sm:w-[260px]" role="group" aria-label="Inventory section">
@@ -733,6 +802,26 @@ export default function InventoryWindow() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {!editing.isParentPart ? <div className="rounded border border-[#BC13FE]/40 bg-[#BC13FE]/5 p-3 md:col-span-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-fuchsia-200">Move to Parent</span>
+                  <select value={editing.parentProductId || ''} onChange={(event) => setEditing((current) => ({ ...current, parentProductId: event.target.value ? Number(event.target.value) : undefined }))} className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#BC13FE]">
+                    <option value="">Standalone inventory item</option>
+                    {items.filter((item) => isInventoryParent(item) && item.itemType === editing.itemType).map((parent) => <option key={parent.id} value={parent.id}>{parent.itemDescription}</option>)}
+                  </select>
+                </label>
+                {editing.parentProductId ? <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold text-zinc-200">Variant Attributes</span><button type="button" onClick={() => setEditing((current) => ({ ...current, variantAttributes: { ...inventoryVariantAttributes(current), '': '' } }))} className="rounded border border-zinc-600 px-2 py-1 text-xs">Add Attribute</button></div>
+                  <div className="space-y-2">
+                    {Object.entries(editing.variantAttributes || {}).map(([name, value], index) => <div key={`${name}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                      <input aria-label={`Variant attribute ${index + 1} name`} value={name} placeholder="Color" onChange={(event) => setEditing((current) => { const entries = Object.entries(current.variantAttributes || {}); entries[index] = [event.target.value, entries[index]?.[1] || '']; return { ...current, variantAttributes: Object.fromEntries(entries) }; })} className="min-w-0 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm" />
+                      <input aria-label={`Variant attribute ${index + 1} value`} value={value} placeholder="Black" onChange={(event) => setEditing((current) => { const entries = Object.entries(current.variantAttributes || {}); entries[index] = [entries[index]?.[0] || '', event.target.value]; return { ...current, variantAttributes: Object.fromEntries(entries) }; })} className="min-w-0 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm" />
+                      <button type="button" aria-label={`Remove variant attribute ${index + 1}`} onClick={() => setEditing((current) => ({ ...current, variantAttributes: Object.fromEntries(Object.entries(current.variantAttributes || {}).filter((_, rowIndex) => rowIndex !== index)) }))} className="rounded border border-red-800 px-2 text-red-200">×</button>
+                    </div>)}
+                    {!Object.keys(editing.variantAttributes || {}).length ? <button type="button" onClick={() => setEditing((current) => ({ ...current, variantAttributes: { Color: '' } }))} className="w-full rounded border border-dashed border-zinc-600 px-3 py-2 text-left text-xs text-zinc-400">Add Color, Quality, Connector, Position, or another attribute…</button> : null}
+                  </div>
+                </div> : null}
+              </div> : null}
               <div className="block md:col-span-2">
                 <span className="mb-1 block text-xs text-zinc-400">Order URL {scrapingUrl && <span className="text-[#39FF14]">· Looking up details…</span>}</span>
                 {editing.reorderUrlTemplate && !editingOrderUrl ? (
@@ -986,6 +1075,7 @@ export default function InventoryWindow() {
                   <input
                     type="checkbox"
                     checked={!!editing.trackStock}
+                    disabled={!!editing.isParentPart}
                     onChange={(event) => setEditing((current) => ({ ...current, trackStock: event.target.checked }))}
                     className="accent-[#39FF14]"
                   />
@@ -998,7 +1088,7 @@ export default function InventoryWindow() {
                       type="number"
                       min="0"
                       value={editing.stockCount ?? ''}
-                      disabled={!editing.trackStock}
+                      disabled={!editing.trackStock || !!editing.isParentPart}
                       onChange={(event) => setEditing((current) => ({ ...current, stockCount: event.target.value === '' ? undefined : Number(event.target.value) }))}
                       className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none disabled:opacity-50 focus:border-[#39FF14]"
                     />
@@ -1009,13 +1099,13 @@ export default function InventoryWindow() {
                       type="number"
                       min="0"
                       value={editing.lowStockThreshold ?? ''}
-                      disabled={!editing.trackStock}
+                      disabled={!editing.trackStock || !!editing.isParentPart}
                       onChange={(event) => setEditing((current) => ({ ...current, lowStockThreshold: event.target.value === '' ? undefined : Number(event.target.value) }))}
                       className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none disabled:opacity-50 focus:border-[#39FF14]"
                     />
                   </label>
                 </div>
-                {selectedId ? (
+                {selectedId && !editing.isParentPart ? (
                   <div className="mt-3 flex gap-2">
                     <button type="button" onClick={() => adjustStock(editing, -1)} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">-1</button>
                     <button type="button" onClick={() => adjustStock(editing, 1)} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">+1</button>
@@ -1055,13 +1145,15 @@ export default function InventoryWindow() {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {selectedId ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-4 py-2 text-sm font-semibold text-[#39FF14]">Print Label</button> : null}
+              {selectedId && editing.isParentPart ? <button type="button" onClick={() => startVariant({ ...editing, id: selectedId })} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Add Variant</button> : null}
+              {selectedId && !editing.isParentPart ? <button type="button" onClick={duplicateVariant} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Duplicate Variant</button> : null}
+              {selectedId && !editing.isParentPart ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-4 py-2 text-sm font-semibold text-[#39FF14]">Print Label</button> : null}
               <button type="button" onClick={remove} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
               <button type="button" onClick={() => save('update')} disabled={!selectedId || saving} className="rounded border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
-                {saving ? 'Saving...' : `Update ${mode === 'parts' ? 'Part' : 'Product'}`}
+                {saving ? 'Saving...' : editing.isParentPart ? 'Update Parent Part' : `Update ${mode === 'parts' ? 'Part' : 'Product'}`}
               </button>
               <button type="button" onClick={() => save('create')} disabled={saving} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">
-                {saving ? 'Saving...' : `Add New ${mode === 'parts' ? 'Part' : 'Product'}`}
+                {saving ? 'Saving...' : editing.isParentPart ? 'Create Parent Part' : `Add New ${mode === 'parts' ? 'Part' : 'Product'}`}
               </button>
             </div>
           </section>
