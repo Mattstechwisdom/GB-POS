@@ -69,7 +69,8 @@ async function inspectWindow(win, type, orientation) {
   const checkoutPayload = type === 'checkout'
     ? `&checkout=${encodeURIComponent(JSON.stringify({ amountDue: 164.15, partsDue: 109.15, laborDue: 55, title: 'Work Order Checkout' }))}`
     : '';
-  await win.loadURL(`${BASE_URL}/mobile.html?mobileWindowPreview=${encodeURIComponent(type)}${checkoutPayload}`);
+  const inventoryPayload = type === 'inventory' ? '&inventoryPreview=1' : '';
+  await win.loadURL(`${BASE_URL}/mobile.html?mobileWindowPreview=${encodeURIComponent(type)}${checkoutPayload}${inventoryPayload}`);
   await new Promise((resolve) => setTimeout(resolve, 425));
   const layout = await win.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.mobile-modal-shell');
@@ -109,6 +110,11 @@ async function inspectWindow(win, type, orientation) {
   if (process.env.CAPTURE_RELEASE_PREVIEWS) {
     const previewDir = path.resolve(ROOT, process.env.CAPTURE_RELEASE_PREVIEWS); fs.mkdirSync(previewDir, { recursive: true });
     const image = await win.webContents.capturePage(); fs.writeFileSync(path.join(previewDir, `${type}-${orientation.name}.png`), image.toPNG());
+    if (type === 'inventory') {
+      await win.webContents.executeJavaScript(`(() => { const button = Array.from(document.querySelectorAll('button')).find((entry) => entry.textContent.trim() === 'Print Label'); button?.click(); return Boolean(button); })()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const labelImage = await win.webContents.capturePage(); fs.writeFileSync(path.join(previewDir, `inventory-label-${orientation.name}.png`), labelImage.toPNG());
+    }
   }
 
   if (type === 'quickSale') {

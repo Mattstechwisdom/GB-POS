@@ -560,6 +560,9 @@ const MobileApp: React.FC = () => {
 
 const MobileAppRuntime: React.FC = () => {
   const previewWindow = mobileWindowPreviewType();
+  const inventoryDeepLink = useMemo(() => {
+    try { return Number(new URLSearchParams(window.location.search).get('inventoryId')) || 0; } catch { return 0; }
+  }, []);
   const [clientUpdateToken, setClientUpdateToken] = useState(() => {
     try {
       return new URLSearchParams(window.location.search).get('clientUpdateToken') || '';
@@ -764,7 +767,7 @@ const MobileAppRuntime: React.FC = () => {
   const updateCheckKey = `${staffProfile.shop_id}:${staffProfile.id}:${session.user.id}`;
   return (
     <PaginationProvider pageSize={30}>
-      <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} />
+      <MobileHome profile={staffProfile} cloudWarning={cloudWarning} onSignOut={() => void supabase.auth.signOut()} initialWindow={inventoryDeepLink ? 'inventory' : ''} />
       <MobileUpdateCheck checkKey={updateCheckKey} delayMs={900} />
     </PaginationProvider>
   );

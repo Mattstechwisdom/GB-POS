@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.34 (2026-08-28)
+- Inventory QR Labels: every saved part or product can open a thermal-label preview containing its name, SKU/item number, and a scannable QR code.
+- Printer-Friendly Sizing: label previews support 2 × 1, 2.25 × 1.25, and 3 × 2 inch stock, then use the operating-system print dialog for thermal-printer selection.
+- Scan-to-Restock: authenticated QR scans open the exact inventory record with on-hand count, low-stock threshold, MOQ, and reorder controls.
+- EOD Purchasing: scanned items use the established supplier cart, default to MOQ, accept a manual quantity and supplier total, and prevent duplicate pending entries.
+- Responsive Layout: inventory rows and label previews were verified at phone, landscape, and desktop widths.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.33 (2026-08-27)
 - Distributor Order Dates: selected-item checkout can record the actual historical order day while whole-cart checkout remains on today; delivery estimates stay independent and client updates name the entered order date.
 - Item Discounts: work-order and sale line-item menus support custom percentage or fixed discounts, with net totals and printouts calculated consistently.

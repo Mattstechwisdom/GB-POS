@@ -6,6 +6,8 @@ import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } f
 import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
+import QRCode from 'qrcode';
+import { INVENTORY_LABEL_SIZES, inventoryItemNumber, inventoryLabelUrl, type InventoryLabelSizeId } from '../lib/inventoryLabels';
 
 type InventoryMode = 'parts' | 'products';
 
@@ -145,8 +147,30 @@ export default function InventoryWindow() {
   const [cartTotalCost, setCartTotalCost] = useState<number | undefined>(undefined);
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState('');
+  const [labelItem, setLabelItem] = useState<InventoryItem | null>(null);
+  const [labelSizeId, setLabelSizeId] = useState<InventoryLabelSizeId>('2.25x1.25');
+  const [labelQr, setLabelQr] = useState('');
   const scrapeSequenceRef = useRef(0);
   const lastScrapedUrlRef = useRef('');
+
+  useEffect(() => {
+    if (!labelItem?.id) { setLabelQr(''); return; }
+    let cancelled = false;
+    const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
+    QRCode.toDataURL(inventoryLabelUrl(labelItem.id, publicBase, `${new URL(publicBase).pathname}/`), { width: 360, margin: 1, errorCorrectionLevel: 'M' })
+      .then((value) => { if (!cancelled) setLabelQr(value); })
+      .catch((error) => console.error('Inventory label QR generation failed', error));
+    return () => { cancelled = true; };
+  }, [labelItem]);
+
+  const printInventoryLabel = () => {
+    const size = INVENTORY_LABEL_SIZES.find((candidate) => candidate.id === labelSizeId) || INVENTORY_LABEL_SIZES[1];
+    const style = document.createElement('style');
+    style.textContent = `@page { size: ${size.widthIn}in ${size.heightIn}in; margin: 0; }`;
+    document.head.appendChild(style);
+    window.print();
+    window.setTimeout(() => style.remove(), 500);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -632,13 +656,12 @@ export default function InventoryWindow() {
                     const selected = selectedId === item.id;
                     const devices = Array.isArray(item.associatedDevices) ? item.associatedDevices : [];
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
                         onClick={() => selectItem(item)}
                         className={`w-full border-l-4 px-3 py-2 text-left transition ${selected ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : 'border-transparent'}`}
                       >
-                        <div className="grid grid-cols-[minmax(0,1fr)_86px_76px] items-center gap-3">
+                        <div className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_72px_58px_auto]">
                           <div className="min-w-0">
                             <div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>
                             <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-zinc-400">
@@ -650,7 +673,7 @@ export default function InventoryWindow() {
                               {item.distributor ? <span>• {item.distributor}</span> : null}
                             </div>
                           </div>
-                          <div className="text-right">
+                          <div className="hidden text-right sm:block">
                             <div className="text-[10px] uppercase tracking-wide text-zinc-500">Price</div>
                             <div className="font-mono text-sm font-semibold text-zinc-100">{money(item.price)}</div>
                           </div>
@@ -660,8 +683,9 @@ export default function InventoryWindow() {
                               {item.trackStock ? (item.stockCount ?? 0) : '-'}
                             </div>
                           </div>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); setLabelItem(item); }} className="col-span-2 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-2 py-1.5 text-[11px] font-semibold text-[#39FF14] hover:bg-[#39FF14]/20 sm:col-span-1">Print Label</button>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -1020,6 +1044,7 @@ export default function InventoryWindow() {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {selectedId ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-4 py-2 text-sm font-semibold text-[#39FF14]">Print Label</button> : null}
               <button type="button" onClick={remove} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
               <button type="button" onClick={() => save('update')} disabled={!selectedId || saving} className="rounded border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
                 {saving ? 'Saving...' : `Update ${mode === 'parts' ? 'Part' : 'Product'}`}
@@ -1030,6 +1055,17 @@ export default function InventoryWindow() {
             </div>
           </section>
         </main>
+        {labelItem ? (() => {
+          const size = INVENTORY_LABEL_SIZES.find((candidate) => candidate.id === labelSizeId) || INVENTORY_LABEL_SIZES[1];
+          return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="Inventory label preview">
+            <div className="w-full max-w-xl rounded-xl border border-zinc-600 bg-zinc-900 p-4 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Inventory Label Preview</h2><p className="text-xs text-zinc-400">Choose the loaded label size. Select the thermal printer in the system print dialog.</p></div><button type="button" onClick={() => setLabelItem(null)} className="rounded border border-zinc-600 px-3 py-2">Close</button></div>
+              <label className="mb-4 block text-sm"><span className="mb-1 block text-xs text-zinc-400">Label paper size</span><select value={labelSizeId} onChange={(event) => setLabelSizeId(event.target.value as InventoryLabelSizeId)} className="w-full rounded border border-zinc-600 bg-zinc-950 px-3 py-2">{INVENTORY_LABEL_SIZES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+              <div className="overflow-auto rounded-lg bg-zinc-800 p-6"><div className="gb-inventory-label-print mx-auto grid bg-white p-[0.08in] text-black shadow-xl" style={{ width: `${size.widthIn}in`, height: `${size.heightIn}in`, gridTemplateColumns: 'minmax(0,1fr) auto', gap: '0.06in', overflow: 'hidden' }}><div className="min-w-0 self-center"><div className="line-clamp-3 text-[11pt] font-black leading-tight">{labelItem.itemDescription || 'Inventory Item'}</div><div className="mt-1 text-[7pt] font-semibold uppercase tracking-wide">SKU / Item #</div><div className="break-all font-mono text-[8pt] font-bold">{inventoryItemNumber(labelItem)}</div></div>{labelQr ? <img src={labelQr} alt="Inventory item QR code" className="h-full max-h-[0.92in] w-auto self-center" /> : <div className="self-center text-[8pt]">Creating QR…</div>}</div></div>
+              <button type="button" onClick={printInventoryLabel} disabled={!labelQr} className="mt-4 w-full rounded bg-[#39FF14] px-4 py-3 font-bold text-black disabled:opacity-40">Print Label</button>
+            </div>
+          </div>;
+        })() : null}
       </div>
     </div>
   );
