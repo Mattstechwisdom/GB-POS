@@ -7,4 +7,11 @@ assert.match(sql,/durant reads attached clients/); assert.match(sql,/durant read
 assert.match(sql,/approve_durant_proposal/); assert.match(sql,/status <> 'ready'/);
 assert.match(sql,/for update/); assert.match(sql,/for insert/); assert.match(sql,/durant_shared_notes/); assert.match(sql,/durant_history/);
 const app=read('src/durant/DurantApp.tsx'); assert.match(app,/Ready for GadgetBoy Review/); assert.match(app,/Shared Notes/); assert.match(app,/History/); assert.match(app,/invoiceUrl/);
+assert.match(app,/Search Client/, 'Durant must retain client search for clients attached to Durant tickets');
+assert.match(app,/durant-menu/, 'Durant must have its own restricted right-side menu');
+assert.match(app,/>Sync</, 'Durant menu must provide Sync');
+assert.match(app,/>Feedback</, 'Durant menu must provide Feedback');
+assert.match(app,/>Sign out</, 'Durant menu must provide Sign out');
+assert.doesNotMatch(app,/Quick Checkout/, 'Durant workspace must not expose Quick Checkout');
+assert.doesNotMatch(app,/Add Client/, 'Durant workspace must not expose Add Client');
 console.log('Durant role, approval boundary, notes, and history checks passed.');

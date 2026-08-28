@@ -11,6 +11,7 @@ import { usePagination } from '../lib/pagination';
 interface WorkOrderRow {
   id: number; status?: string; assignedTo?: string | null; checkInAt?: string; updatedAt?: string; activityAt?: string; checkoutDate?: string | null; repairCompletionDate?: string | null; customerId?: number;
   totals?: { total?: number; remaining?: number }; amountPaid?: number; productDescription?: string; productCategory?: string; problemInfo?: string;
+  diagnosticSelection?: { label?: string } | null;
   items?: any[];
 }
 
@@ -220,12 +221,13 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
       ].filter(Boolean).join(' ').trim();
       const customer = r.customerId ? ({ id: r.customerId, ...(customerIndex[r.customerId] || {}) } as any) : null;
       const items = Array.isArray((r as any).items) ? (r as any).items : [];
-      const repairs = items.length
+      const itemRepairs = items.length
         ? items
             .map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim())
             .filter(Boolean)
             .join(', ')
         : '';
+      const repairs = itemRepairs || r.diagnosticSelection?.label || '';
 
       const activity = getActivityDate(r);
       const activityIso = activity ? activity.toISOString().slice(0, 10) : '';

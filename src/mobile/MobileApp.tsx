@@ -136,7 +136,7 @@ function getItemSummary(record: any) {
     .map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim())
     .filter(Boolean)
     .join(', ');
-  return fromItems || record?.itemDescription || record?.productDescription || record?.productCategory || record?.category || '';
+  return fromItems || record?.diagnosticSelection?.label || record?.itemDescription || record?.productDescription || record?.productCategory || record?.category || '';
 }
 
 function computeTotals(record: any) {
