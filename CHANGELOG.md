@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.35 (2026-08-28)
+- Printout Recovery: restores consultation, work-order, sale, and other application printouts that could render as blank pages after inventory labels were introduced.
+- Isolated Label Printing: inventory-only visibility and thermal page sizing now activate only while Print Label is running and are removed after printing or cancellation.
+- Inventory Checkout Audit: verifies Quick Checkout, regular sales, and closed work orders all deduct linked tracked inventory through the same durable, idempotent consumption path.
+- Duplicate Protection: per-sale/per-work-order line markers continue preventing repeated deductions during immediate checkout and later startup reconciliation.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.34 (2026-08-28)
 - Inventory QR Labels: every saved part or product can open a thermal-label preview containing its name, SKU/item number, and a scannable QR code.
 - Printer-Friendly Sizing: label previews support 2 × 1, 2.25 × 1.25, and 3 × 2 inch stock, then use the operating-system print dialog for thermal-printer selection.

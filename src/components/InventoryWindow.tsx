@@ -168,8 +168,19 @@ export default function InventoryWindow() {
     const style = document.createElement('style');
     style.textContent = `@page { size: ${size.widthIn}in ${size.heightIn}in; margin: 0; }`;
     document.head.appendChild(style);
-    window.print();
-    window.setTimeout(() => style.remove(), 500);
+    const cleanup = () => {
+      document.body.classList.remove('gb-printing-inventory-label');
+      style.remove();
+    };
+    document.body.classList.add('gb-printing-inventory-label');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    try {
+      window.print();
+    } finally {
+      // Electron fires afterprint; this fallback also restores the app if a
+      // browser cancels printing without dispatching that event.
+      window.setTimeout(cleanup, 500);
+    }
   };
 
   const load = useCallback(async () => {

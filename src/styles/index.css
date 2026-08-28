@@ -2842,7 +2842,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   .gb-card-row b { width: 3.65rem; height: 5.35rem; font-size: 1.35rem; }
 }
 @media print {
-  body * { visibility: hidden !important; }
-  .gb-inventory-label-print, .gb-inventory-label-print * { visibility: visible !important; }
-  .gb-inventory-label-print { position: fixed !important; inset: 0 auto auto 0 !important; margin: 0 !important; box-shadow: none !important; }
+  body.gb-printing-inventory-label * { visibility: hidden !important; }
+  body.gb-printing-inventory-label .gb-inventory-label-print,
+  body.gb-printing-inventory-label .gb-inventory-label-print * { visibility: visible !important; }
+  body.gb-printing-inventory-label .gb-inventory-label-print { position: fixed !important; inset: 0 auto auto 0 !important; margin: 0 !important; box-shadow: none !important; }
 }

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const esbuild = require('esbuild');
+const fs = require('node:fs');
 
 const build = esbuild.buildSync({
   entryPoints: [path.join(__dirname, '..', 'src', 'lib', 'inventoryConsumption.ts')],
@@ -20,6 +21,13 @@ const {
 } = moduleShim.exports;
 
 async function main() {
+  const quickSaleSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'QuickSaleWindow.tsx'), 'utf8');
+  const regularSaleSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'sales', 'SaleWindow.tsx'), 'utf8');
+  const workOrderSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'NewWorkOrderWindow.tsx'), 'utf8');
+  assert.match(quickSaleSource, /consumeInStockInventory\(api, 'sale'/, 'Quick Checkout must deduct linked inventory after creating its paid sale.');
+  assert.match(regularSaleSource, /consumeInStockInventory\(/, 'Regular sale checkout must deduct linked inventory.');
+  assert.match(workOrderSource, /consumeInStockInventory\(api, 'workOrder'/, 'Closed work-order checkout must deduct linked inventory.');
+
   let products = [{ id: 7, itemDescription: 'Test Part', trackStock: true, stockCount: 5, inventoryConsumptionKeys: [] }];
   const api = {
     dbGet: async (key) => key === 'products' ? products.map((row) => ({ ...row })) : [],
