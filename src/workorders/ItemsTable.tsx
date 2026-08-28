@@ -6,6 +6,7 @@ import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, no
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 import { findInventoryPartForRepair } from '@/lib/inventoryPartMatching';
+import InventoryVariantPicker from '@/components/InventoryVariantPicker';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -28,6 +29,7 @@ export type WorkOrderItemRow = {
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   orderDate?: string;
   inventoryProductId?: number;
+  inventoryParentId?: number;
   deviceModel?: string;
   condition?: 'New' | 'Used' | 'Refurbished' | 'Other';
   distributorSku?: string;
@@ -66,6 +68,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
   const [discounting, setDiscounting] = useState<WorkOrderItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
   const [scrapingOrderUrl, setScrapingOrderUrl] = useState(false);
+  const [variantRequest, setVariantRequest] = useState<{ repair: any; products: any[]; parentId: number } | null>(null);
 
   const selectedRow = useMemo(() => {
     if (!selected) return null;
@@ -156,6 +159,35 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
     ];
   }, [ctxRow, items, onChange, selected, editing?.id, ro, onRemoveReadonlyItem]);
 
+  function appendRepair(selectedRepair: any, linkedInventory: any) {
+    const trackedOutOfStock = !!linkedInventory?.trackStock && Number(linkedInventory?.stockCount || 0) <= 0;
+    const row: WorkOrderItemRow = {
+      id: crypto.randomUUID(),
+      device: selectedRepair.category || selectedRepair.deviceCategoryName || selectedRepair.device || '',
+      repairCategory: selectedRepair.repairCategory || '',
+      repair: selectedRepair.title || selectedRepair.repair || selectedRepair.altDescription || '',
+      parts: Number(selectedRepair.partCost ?? linkedInventory?.price ?? 0) || 0,
+      labor: Number(selectedRepair.laborCost ?? 0) || 0,
+      status: 'pending',
+      note: selectedRepair.model || selectedRepair.modelNumber || '',
+      partSource: selectedRepair.partSource || linkedInventory?.distributor || '',
+      orderSourceUrl: selectedRepair.orderSourceUrl || selectedRepair.reorderUrlTemplate || linkedInventory?.reorderUrlTemplate || '',
+      internalCost: typeof selectedRepair.internalCost === 'number' ? selectedRepair.internalCost : (typeof linkedInventory?.internalCost === 'number' ? linkedInventory.internalCost : undefined),
+      markupPct: selectedRepair.markupPct ?? linkedInventory?.markupPct ?? 10,
+      distributor: selectedRepair.distributor || selectedRepair.partSource || linkedInventory?.distributor || '',
+      inventoryParentId: Number(selectedRepair.inventoryParentId || 0) || undefined,
+      inventoryProductId: Number(linkedInventory?.id || selectedRepair.inventoryProductId || 0) || undefined,
+      trackStock: linkedInventory?.trackStock === true || selectedRepair.trackStock === true,
+      requiresOrder: trackedOutOfStock,
+      taxExempt: selectedRepair.taxExempt === true,
+      supplierTaxRate: 8,
+      orderStatus: trackedOutOfStock ? 'needed' : 'in_stock',
+    };
+    onChange([...items, row].slice(0, MAX_ITEMS));
+    setSelected(row.id);
+    setEditing(null);
+  }
+
   async function newItem() {
     if (items.length >= MAX_ITEMS) return;
     const api: any = window.api;
@@ -172,41 +204,21 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
       }
       if (!selected) return; // cancelled
       let linkedInventory: any = null;
+      let products: any[] = [];
       if (api?.dbGet) {
-        const products = await api.dbGet('products').catch(() => []);
+        products = await api.dbGet('products').catch(() => []);
         if (Array.isArray(products)) {
           linkedInventory = selected.inventoryProductId
             ? products.find((product: any) => Number(product?.id) === Number(selected.inventoryProductId))
             : findInventoryPartForRepair(products, selected, { deviceCategory, deviceName, deviceModel });
         }
       }
-      const trackedOutOfStock = !!linkedInventory?.trackStock && Number(linkedInventory?.stockCount || 0) <= 0;
-      const row: WorkOrderItemRow = {
-        id: crypto.randomUUID(),
-        device: selected.category || selected.deviceCategoryName || selected.device || '',
-        repairCategory: selected.repairCategory || '',
-        // The catalog title is the billable repair name. altDescription is
-        // supporting catalog copy and must not replace it in the line item.
-        repair: selected.title || selected.repair || selected.altDescription || '',
-        parts: Number(selected.partCost ?? linkedInventory?.price ?? 0) || 0,
-        labor: Number(selected.laborCost ?? 0) || 0,
-        status: 'pending',
-        note: selected.model || selected.modelNumber || '',
-        partSource: selected.partSource || linkedInventory?.distributor || '',
-        orderSourceUrl: selected.orderSourceUrl || selected.reorderUrlTemplate || linkedInventory?.reorderUrlTemplate || '',
-        internalCost: typeof selected.internalCost === 'number' ? selected.internalCost : (typeof linkedInventory?.internalCost === 'number' ? linkedInventory.internalCost : undefined),
-        markupPct: selected.markupPct ?? linkedInventory?.markupPct ?? 10,
-        distributor: selected.distributor || selected.partSource || linkedInventory?.distributor || '',
-        inventoryProductId: Number(selected.inventoryProductId || linkedInventory?.id || 0) || undefined,
-        trackStock: linkedInventory?.trackStock === true || selected.trackStock === true,
-        requiresOrder: trackedOutOfStock,
-        taxExempt: selected.taxExempt === true,
-        supplierTaxRate: 8,
-        orderStatus: trackedOutOfStock ? 'needed' : 'in_stock',
-      };
-      onChange([...items, row].slice(0, MAX_ITEMS));
-      setSelected(row.id);
-      setEditing(null);
+      const parentId = Number(selected.inventoryParentId || 0);
+      if (parentId > 0 && Array.isArray(products)) {
+        setVariantRequest({ repair: selected, products, parentId });
+        return;
+      }
+      appendRepair(selected, linkedInventory);
       return;
     }
     // Fallback: open legacy picker window
@@ -286,6 +298,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
 
   return (
     <div className="gb-wo-items-card bg-zinc-900 border border-zinc-700 rounded p-2">
+      {variantRequest ? <InventoryVariantPicker parentId={variantRequest.parentId} products={variantRequest.products} onClose={() => setVariantRequest(null)} onSelect={(product) => { appendRepair(variantRequest.repair, product); setVariantRequest(null); }} /> : null}
       <div className="gb-wo-items-header flex items-center justify-between mb-1">
         <h4 className="text-sm font-semibold text-zinc-200">Items</h4>
         <div className="text-xs text-zinc-400">Add parts/services (max {MAX_ITEMS})</div>

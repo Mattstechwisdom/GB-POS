@@ -1,4 +1,5 @@
 import { findInventoryPartForRepair, InventoryPartMatchContext } from './inventoryPartMatching';
+import { inventoryParentId, isInventoryParent } from './inventoryVariants';
 
 type InventoryApi = {
   dbGet?: (key: string) => Promise<any[]>;
@@ -21,6 +22,24 @@ type ConsumptionResult = {
 
 let reconciliationPromise: Promise<ConsumptionResult> | null = null;
 let workOrderReconciliationPromise: Promise<ConsumptionResult> | null = null;
+
+export function resolveConsumedInventoryId(item: any, products: any[]): number | undefined {
+  const explicitId = Number(item?.inventoryProductId || 0);
+  if (!(explicitId > 0)) return undefined;
+  const product = (Array.isArray(products) ? products : []).find((row: any) => Number(row?.id) === explicitId);
+  if (!product || isInventoryParent(product)) return undefined;
+  const requiredParentId = Number(item?.inventoryParentId || 0);
+  if (requiredParentId > 0 && inventoryParentId(product) !== requiredParentId) return undefined;
+  return explicitId;
+}
+
+export function validateRequiredVariant(item: any, products: any[]): void {
+  const parentId = Number(item?.inventoryParentId || 0);
+  if (!(parentId > 0)) return;
+  if (!resolveConsumedInventoryId(item, products)) {
+    throw new Error('Choose the exact part used (such as color or type) before checkout.');
+  }
+}
 
 function units(item: any) {
   const value = Number(item?.qty ?? item?.quantity ?? 1);
@@ -73,10 +92,11 @@ async function consumeWithProducts(
   const dirtyProducts = new Map<number, any>();
 
   for (const [index, item] of (Array.isArray(items) ? items : []).entries()) {
+    validateRequiredVariant(item, products);
     const matchedPart = sourceType === 'workOrder' && !item?.inventoryProductId
       ? findInventoryPartForRepair(products, item, options.repairContext)
       : null;
-    const inventoryId = Number(item?.inventoryProductId || matchedPart?.id || 0);
+    const inventoryId = Number(resolveConsumedInventoryId(item, products) || (matchedPart && !isInventoryParent(matchedPart) ? matchedPart.id : 0));
     if (!(inventoryId > 0) || item?.requiresOrder === true) continue;
     const productIndex = products.findIndex((row: any) => Number(row?.id) === inventoryId);
     const product = productIndex >= 0 ? products[productIndex] : null;

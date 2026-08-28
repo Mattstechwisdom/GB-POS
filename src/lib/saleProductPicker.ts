@@ -1,4 +1,5 @@
 export function buildSaleProductPickerPayload(product: Record<string, any>) {
+  if (product?.isParentPart) return null;
   const itemDescription = String(product?.itemDescription || '').trim();
   if (!product?.id || !itemDescription) return null;
   const stockCount = Number(product.stockCount);

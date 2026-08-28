@@ -1058,7 +1058,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
         items: (() => {
           const list = Array.isArray((w as any).items) ? (w as any).items : [];
           const titles = list.map((it: any) => (it.repair || it.description || it.title || it.name || it.altDescription || '').toString().trim()).filter(Boolean);
-          return titles.join(', ');
+          return titles.join(', ') || (w as any).diagnosticSelection?.label || '';
         })(),
         problem: w.problemInfo || (w as any).problem || '',
         customer: (() => {

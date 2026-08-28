@@ -68,6 +68,8 @@
     "test:inventory-variant-sync": "node tools/test-inventory-variant-sync.cjs",
     "test:inventory-parent-ui": "node tools/test-inventory-parent-ui.cjs",
     "test:repair-service-hierarchy": "node tools/test-repair-service-hierarchy.cjs",
+    "test:checkout-inventory-variants": "node tools/test-checkout-inventory-variants.cjs",
+    "test:diagnostic-main-list": "node tools/test-diagnostic-main-list.cjs",
     "test:inventory-repair-matching": "node tools/test-inventory-repair-matching.cjs",
     "test:calendar-journal-sync": "node tools/test-calendar-journal-sync.cjs",
     "test:calendar-tasks": "node tools/test-calendar-tasks.cjs",

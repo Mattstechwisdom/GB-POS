@@ -17,6 +17,9 @@ export type InventoryPartSelection = {
   vendorTaxExempt?: boolean;
   stockCount?: number;
   trackStock?: boolean;
+  isParentPart?: boolean;
+  parentProductId?: number;
+  variantAttributes?: Record<string, string>;
 };
 
 type Props = {
@@ -36,7 +39,7 @@ export default function PartInventoryPicker({ onSelect, onClose, deviceModel = '
       try {
         const rows = await (window as any).api?.dbGet?.('products');
         if (!active) return;
-        setParts((Array.isArray(rows) ? rows : []).filter((row: any) => String(row?.itemType || 'Product') === 'Part'));
+        setParts((Array.isArray(rows) ? rows : []).filter((row: any) => String(row?.itemType || 'Product') === 'Part' && !row?.isParentPart));
       } finally {
         if (active) setLoading(false);
       }
