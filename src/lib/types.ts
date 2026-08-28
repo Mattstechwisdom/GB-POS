@@ -36,6 +36,8 @@ export interface WorkOrderItem {
   supplierTaxRate?: number;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   stockSource?: "repairCategories" | "products" | string;
+  inventoryProductId?: number;
+  inventoryParentId?: number;
   stockConsumed?: boolean;
   trackStock?: boolean;
   partSource?: string;
@@ -176,4 +178,10 @@ export interface RepairItem {
   stockCount?: number;
   lowStockThreshold?: number;
   inventoryProductId?: number;
+  inventoryParentId?: number;
+  parentProductId?: number;
+  isParentPart?: boolean;
+  variantAttributes?: Record<string, string>;
+  repairFamily?: string;
+  serviceKey?: string;
 }
