@@ -73,6 +73,22 @@ const INVENTORY_PREVIEW_PART: InventoryItem = {
   lowStockThreshold: 3,
 };
 
+const INVENTORY_PREVIEW_PARENT: InventoryItem = {
+  id: 99000,
+  itemDescription: 'iPhone 7 Screen',
+  itemType: 'Part',
+  category: 'Phone',
+  repairType: 'Screen Repair',
+  partCategory: 'Screen',
+  isParentPart: true,
+  trackStock: false,
+};
+
+const INVENTORY_PREVIEW_VARIANTS: InventoryItem[] = [
+  { ...INVENTORY_PREVIEW_PART, id: 99001, itemDescription: 'iPhone 7 Screen', category: 'Phone', repairType: 'Screen Repair', partCategory: 'Screen', parentProductId: 99000, variantAttributes: { Color: 'Black', Quality: 'Premium' }, distributorSku: 'IP7-SCR-BLK-P', stockCount: 5 },
+  { ...INVENTORY_PREVIEW_PART, id: 99002, itemDescription: 'iPhone 7 Screen', category: 'Phone', repairType: 'Screen Repair', partCategory: 'Screen', parentProductId: 99000, variantAttributes: { Color: 'White', Quality: 'Standard' }, distributorSku: 'IP7-SCR-WHT-S', stockCount: 2 },
+];
+
 function blankItem(mode: InventoryMode): InventoryItem {
   return {
     itemDescription: '',
@@ -194,7 +210,7 @@ export default function InventoryWindow() {
     try {
       if (isInventoryPreview) {
         skipNextModeResetRef.current = true;
-        setItems([INVENTORY_PREVIEW_PART]);
+        setItems([INVENTORY_PREVIEW_PARENT, ...INVENTORY_PREVIEW_VARIANTS]);
         setVendors([{ id: 99001, name: 'Console Parts Direct', inventoryMode: 'Part', relationship: 'wholesale', taxExempt: true } as VendorRecord]);
         setDeviceCategories([
           { id: 99001, title: 'Game Console', name: 'PlayStation 5' },
@@ -203,8 +219,8 @@ export default function InventoryWindow() {
         ]);
         setRepairCategories([{ id: 99001, category: 'Game Console', repairCategory: 'Port Repair', title: 'HDMI Port Replacement' }]);
         setRepairTypes([{ id: 99001, name: 'Port Repair' }]);
-        setSelectedId(INVENTORY_PREVIEW_PART.id);
-        setEditing({ ...blankItem('parts'), ...INVENTORY_PREVIEW_PART });
+        setSelectedId(INVENTORY_PREVIEW_PARENT.id);
+        setEditing({ ...blankItem('parts'), ...INVENTORY_PREVIEW_PARENT });
         setEditingOrderUrl(false);
         return;
       }

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.36 (2026-08-28)
+- Parent Parts: organize related physical SKUs beneath a non-stock parent while every child variant keeps its own attributes, SKU, cost, price, vendor, stock, low-stock level, and MOQ.
+- Exact Consumption: parent-linked repairs require the technician to choose the installed child variant; organizational parents cannot be sold or deducted and checkout remains idempotent.
+- Repair Families: reusable service keys and device-scoped assignments keep broad services organized while retaining device-specific pricing, labor, and linked part families.
+- Client History Actions: work orders, sales, and consultations expose Open/Edit and confirmed Delete through right-click or mobile press-and-hold, replacing bottom Delete controls.
+- Diagnostic Visibility: diagnostic-only work orders show the selected diagnostic in the main Items column without adding it to the work-order line-item editor.
+- Supabase Sync: additive hierarchy fields are deployed to the GB POS project and synchronized through desktop and mobile serializers.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.35 (2026-08-28)
 - Printout Recovery: restores consultation, work-order, sale, and other application printouts that could render as blank pages after inventory labels were introduced.
 - Isolated Label Printing: inventory-only visibility and thermal page sizing now activate only while Print Label is running and are removed after printing or cancellation.
