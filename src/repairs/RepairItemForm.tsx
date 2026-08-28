@@ -4,6 +4,7 @@ import MoneyInput from '../components/MoneyInput';
 import PercentInput from '../components/PercentInput';
 import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
 import { PART_MARKUP_PRESETS } from '../lib/partOrdering';
+import { normalizeServiceKey } from '../lib/repairServiceHierarchy';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -106,6 +107,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     .filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true })), [deviceCategoryInput, deviceRecords]);
   // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
+  const [inventoryParents, setInventoryParents] = useState<Array<{ id: number; itemDescription: string }>>([]);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
@@ -130,9 +132,10 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         })).filter((entry: any) => entry.name && entry.title) : []);
 
         // Pull from repairTypes master list AND from existing repair items' repairCategory values
-        const [rt, repairItems] = await Promise.all([
+        const [rt, repairItems, products] = await Promise.all([
           window.api.dbGet('repairTypes').catch(() => []),
           window.api.dbGet('repairCategories').catch(() => []),
+          window.api.dbGet('products').catch(() => []),
         ]);
         const fromTypes = Array.isArray(rt)
           ? rt.map((r: any) => String(r?.name || '').trim()).filter(Boolean)
@@ -142,6 +145,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           : [];
         const merged = sortRepairCategoryNames([...fromTypes, ...fromItems]);
         setRepairTypes(merged);
+        setInventoryParents(Array.isArray(products) ? products.filter((product: any) => product?.isParentPart && product?.id).map((product: any) => ({ id: Number(product.id), itemDescription: String(product.itemDescription || 'Parent Part') })) : []);
       }
     })();
   }, []);
@@ -275,6 +279,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
       markupPct: markupPct || DEFAULT_MARKUP_PCT,
       orderSourceUrl: normalizeOrderUrl(formData.orderSourceUrl),
+      repairFamily: String(formData.repairFamily || formData.repairCategory || '').trim(),
+      serviceKey: normalizeServiceKey(formData.serviceKey || formData.title || formData.repairCategory),
       id: mode === 'admin'
         ? (action === 'create' ? undefined : (formData.id || undefined))
         : (formData.id || Math.random().toString(36).slice(2, 10)),
@@ -375,6 +381,25 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               </ul>
             )}
           </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-300">Repair Family</label>
+            <input name="repairFamily" value={formData.repairFamily || ''} onChange={handleChange} placeholder="e.g. Port Repair" className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
+            <span className="mt-1 block text-[11px] text-zinc-500">Groups related services without duplicating a long repair list.</span>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-300">Reusable Service</label>
+            <input name="serviceKey" value={formData.serviceKey || ''} onChange={handleChange} placeholder="USB Port Repair" className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
+            <span className="mt-1 block text-[11px] text-zinc-500">A stable service key is created automatically when saved.</span>
+          </div>
+          <label className="md:col-span-2 block">
+            <span className="mb-1 block text-sm font-medium text-gray-300">Linked Part Family / Standalone Part</span>
+            <select value={formData.inventoryParentId || ''} onChange={(event) => setFormData((current) => ({ ...current, inventoryParentId: event.target.value ? Number(event.target.value) : undefined, inventoryProductId: event.target.value ? undefined : current.inventoryProductId }))} className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#BC13FE]">
+              <option value="">Use the exact standalone part selected below</option>
+              {inventoryParents.map((parent) => <option key={parent.id} value={parent.id}>{parent.itemDescription}</option>)}
+            </select>
+            <span className="mt-1 block text-[11px] text-zinc-500">A linked family prompts for the exact stocked color/type when the repair is added.</span>
+          </label>
 
           {/* 2. Device Category — optional, behind a checkbox */}
           <div className="md:col-span-2">
