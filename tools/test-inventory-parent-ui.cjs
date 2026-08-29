@@ -16,5 +16,7 @@ assert.match(source, /Remove or move its variants before deleting this parent pa
 assert.match(source, /expandedParentIds/);
 assert.match(source, /aria-label={`\$\{expanded \? 'Collapse' : 'Expand'\} variants for/);
 assert.match(source, /expandedParentIds\.has\(parentId\)/);
+assert.doesNotMatch(source, /key=\{`\$\{name\}-\$\{index\}`\}/, 'Attribute row keys must not change while the name input is being typed.');
+assert.match(source, /key=\{`variant-attribute-\$\{index\}`\}/, 'Attribute rows need a stable key so their inputs retain focus.');
 
 console.log('Inventory parent UI checks passed.');
