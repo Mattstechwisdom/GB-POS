@@ -160,6 +160,7 @@ export default function InventoryWindow() {
   const [compatibleDeviceSearch, setCompatibleDeviceSearch] = useState('');
   const [compatibleDeviceMenuOpen, setCompatibleDeviceMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
+  const [expandedParentIds, setExpandedParentIds] = useState<Set<number>>(() => new Set());
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -260,6 +261,7 @@ export default function InventoryWindow() {
     setSearch('');
     setDeviceFilter('');
     setFiltersOpen(false);
+    setExpandedParentIds(new Set());
   }, [mode]);
 
   const visibleItems = useMemo(() => {
@@ -295,6 +297,13 @@ export default function InventoryWindow() {
           || String(a.itemDescription || '').localeCompare(String(b.itemDescription || ''));
       });
   }, [deviceFilter, items, lowOnly, mode, search]);
+
+  const listedItems = useMemo(() => visibleItems.filter((item) => {
+    const parentId = inventoryParentId(item);
+    if (!parentId) return true;
+    if (search.trim() || deviceFilter || lowOnly) return true;
+    return expandedParentIds.has(parentId);
+  }), [deviceFilter, expandedParentIds, lowOnly, search, visibleItems]);
 
   const counts = useMemo(() => {
     const parts = items.filter((item) => (item.itemType || 'Product') === 'Part');
@@ -743,8 +752,10 @@ export default function InventoryWindow() {
                 <div className="p-4 text-sm text-zinc-500">No {modeLabel.toLowerCase()} found.</div>
               ) : (
                 <div className="divide-y divide-zinc-800">
-                  {visibleItems.map((item) => {
+                  {listedItems.map((item) => {
                     const parent = isInventoryParent(item);
+                    const parentId = Number(item.id || 0);
+                    const expanded = parent && expandedParentIds.has(parentId);
                     const low = !parent && isInventoryLowStock(item);
                     const selected = selectedId === item.id;
                     const devices = Array.isArray(item.associatedDevices) ? item.associatedDevices : [];
@@ -757,7 +768,10 @@ export default function InventoryWindow() {
                       >
                         <div className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_72px_58px_auto]">
                           <div className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-2"><div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>{parent ? <span className="shrink-0 rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              {parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={(event) => { event.stopPropagation(); setExpandedParentIds((current) => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700 text-xs text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]">{expanded ? '−' : '+'}</button> : null}
+                              <div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>{parent ? <span className="shrink-0 rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}
+                            </div>
                             <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-zinc-400">
                               <span>{item.category || 'Other'}</span>
                               {devices.length ? <span>- {devices.slice(0, 2).join(', ')}{devices.length > 2 ? ` +${devices.length - 2}` : ''}</span> : null}

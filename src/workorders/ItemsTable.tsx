@@ -5,7 +5,7 @@ import MoneyInput from '@/components/MoneyInput';
 import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
-import { findInventoryPartForRepair } from '@/lib/inventoryPartMatching';
+import { findInventoryPartForRepair, resolveInventoryVariantForRepair } from '@/lib/inventoryPartMatching';
 import InventoryVariantPicker from '@/components/InventoryVariantPicker';
 
 // Use the new WorkOrderItemRow type
@@ -215,7 +215,12 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
       }
       const parentId = Number(selected.inventoryParentId || 0);
       if (parentId > 0 && Array.isArray(products)) {
-        setVariantRequest({ repair: selected, products, parentId });
+        const resolution = resolveInventoryVariantForRepair(products, parentId, { deviceCategory, deviceName, deviceModel });
+        if (resolution.resolution === 'automatic' && resolution.variant) {
+          appendRepair(selected, resolution.variant);
+          return;
+        }
+        setVariantRequest({ repair: selected, products: resolution.candidates, parentId });
         return;
       }
       appendRepair(selected, linkedInventory);

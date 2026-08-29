@@ -13,5 +13,8 @@ assert.match(source, /isParentPart/);
 assert.match(source, /Parent parts organize variants and are never sold or deducted/);
 assert.match(source, /Move to Parent/);
 assert.match(source, /Remove or move its variants before deleting this parent part/);
+assert.match(source, /expandedParentIds/);
+assert.match(source, /aria-label={`\$\{expanded \? 'Collapse' : 'Expand'\} variants for/);
+assert.match(source, /expandedParentIds\.has\(parentId\)/);
 
 console.log('Inventory parent UI checks passed.');

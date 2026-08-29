@@ -1,7 +1,15 @@
+import { inventoryVariantsForParent } from './inventoryVariants';
+
 export type InventoryPartMatchContext = {
   deviceCategory?: unknown;
   deviceName?: unknown;
   deviceModel?: unknown;
+};
+
+export type InventoryVariantResolution = {
+  resolution: 'automatic' | 'approval';
+  variant?: any;
+  candidates: any[];
 };
 
 function normalized(value: unknown): string {
@@ -57,4 +65,29 @@ export function findInventoryPartForRepair(products: any[], repair: any, context
     });
 
   return candidates[0]?.part || null;
+}
+
+/**
+ * Chooses a parent-part child only when the work-order device identifies one
+ * unambiguous compatible variant. Ambiguous or missing compatibility metadata
+ * is returned for technician approval instead of guessing by stock or id.
+ */
+export function resolveInventoryVariantForRepair(
+  products: any[],
+  parentId: string | number,
+  context: InventoryPartMatchContext = {},
+): InventoryVariantResolution {
+  const variants = inventoryVariantsForParent(Array.isArray(products) ? products : [], parentId);
+  const devices = normalizedValues([context.deviceName, context.deviceModel]);
+  const compatible = variants.filter((variant) => {
+    const supported = normalizedValues([
+      ...(Array.isArray(variant?.associatedDevices) ? variant.associatedDevices : []),
+      variant?.deviceModel,
+    ]);
+    return devices.length > 0 && supported.some((device) => devices.includes(device));
+  });
+  if (compatible.length === 1) {
+    return { resolution: 'automatic', variant: compatible[0], candidates: compatible };
+  }
+  return { resolution: 'approval', candidates: compatible.length > 1 ? compatible : variants };
 }

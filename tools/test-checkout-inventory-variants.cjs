@@ -18,6 +18,8 @@ assert.equal(resolveConsumedInventoryId({ inventoryProductId: 100 }, products), 
 const itemsTable = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'ItemsTable.tsx'), 'utf8');
 assert.match(itemsTable, /InventoryVariantPicker/);
 assert.match(itemsTable, /inventoryParentId/);
+assert.match(itemsTable, /resolveInventoryVariantForRepair/);
+assert.match(itemsTable, /resolution === 'automatic'/);
 const salePickerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'saleProductPicker.ts'), 'utf8');
 assert.match(salePickerSource, /product\?\.isParentPart/);
 console.log('Checkout inventory variant checks passed.');
