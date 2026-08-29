@@ -86,6 +86,10 @@ jobs:
           npm run test:consultation-partners
           npm run test:distributor-url
           npm run test:inventory-consumption
+          npm run test:inventory-variants
+          npm run test:inventory-parent-ui
+          npm run test:inventory-repair-matching
+          npm run test:checkout-inventory-variants
           npm run test:inventory-reorder
           npm run test:inventory-part-persistence
           npm run test:calendar-journal-sync

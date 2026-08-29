@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.37 (2026-08-29)
+- Collapsed Part Families: parent inventory rows start collapsed and expand on demand, keeping large variant catalogs compact on desktop and mobile.
+- Device-Aware Part Selection: parent-linked repairs automatically choose a child part only when the work-order device has one exact compatible match.
+- Approval Before Guessing: multiple compatible parts or missing compatibility data open the exact-part picker instead of silently deducting an uncertain SKU.
+- Stable Variant Editing: variant attribute fields retain focus while names and values are typed instead of recreating the input after each character.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.36 (2026-08-28)
 - Parent Parts: organize related physical SKUs beneath a non-stock parent while every child variant keeps its own attributes, SKU, cost, price, vendor, stock, low-stock level, and MOQ.
 - Exact Consumption: parent-linked repairs require the technician to choose the installed child variant; organizational parents cannot be sold or deducted and checkout remains idempotent.

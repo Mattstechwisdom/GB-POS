@@ -21,6 +21,16 @@ Use more attributes whenever they distinguish stocked items, for example `Qualit
 
 This keeps one understandable service family while allowing PS5, laptop, controller, and phone assignments to carry their own labor, price, device scope, and part family.
 
+## Example: HDMI ports with one repair name
+
+1. Create one parent part named `HDMI Port`.
+2. Add a child variant for every physical HDMI-port SKU, such as `PS5 HDMI Port`, `PS5 Slim HDMI Port`, and `Xbox Series X HDMI Port`.
+3. On each child, select every exact device model that can use that SKU under **Compatible Devices**. Do not put a device on a child unless that physical part fits it.
+4. Create one reusable repair named `HDMI Port Repair` and link it to the `HDMI Port` parent family.
+5. When that repair is added, the work order supplies its device name. One compatible child is selected automatically. Multiple compatible children—or no reliable match—open the picker for technician approval.
+
+This lets the customer-facing repair remain `HDMI Port Repair` while inventory deducts the correct console-specific port.
+
 ## Using a part on a work order
 
 1. Add the repair normally.

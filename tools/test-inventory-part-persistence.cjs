@@ -27,7 +27,7 @@ assert.match(inventory, /Inventory save did not return a saved listing/, 'Invent
 assert.match(inventory, /save\('update'\)/, 'Inventory must expose an explicit update action.');
 assert.match(inventory, /save\('create'\)/, 'Inventory must expose an explicit create action.');
 assert.match(workOrderItems, /findInventoryPartForRepair\(products, selected, \{ deviceCategory, deviceName, deviceModel \}\)/, 'Work-order repairs must resolve their matching inventory part.');
-assert.match(workOrderItems, /inventoryProductId:\s*Number\(selected\.inventoryProductId \|\| linkedInventory\?\.id/, 'Matched repair parts must be linked to the work-order line item.');
+assert.match(workOrderItems, /inventoryProductId:\s*Number\(selectedRepair\.inventoryProductId \|\| linkedInventory\?\.id/, 'Explicit repair links must remain authoritative before a matched inventory part.');
 assert.match(workOrderWindow, /consumeInStockInventory\(api, 'workOrder', effectiveId, updatedItems/, 'Paid work-order parts must deduct linked inventory.');
 
 console.log('Inventory part persistence and form checks passed.');
