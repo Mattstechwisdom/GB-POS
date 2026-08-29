@@ -39,7 +39,9 @@ export default function PartInventoryPicker({ onSelect, onClose, deviceModel = '
       try {
         const rows = await (window as any).api?.dbGet?.('products');
         if (!active) return;
-        setParts((Array.isArray(rows) ? rows : []).filter((row: any) => String(row?.itemType || 'Product') === 'Part' && !row?.isParentPart));
+        setParts((Array.isArray(rows) ? rows : [])
+          .filter((row: any) => String(row?.itemType || 'Product') === 'Part')
+          .sort((left: any, right: any) => Number(!!right?.isParentPart) - Number(!!left?.isParentPart)));
       } finally {
         if (active) setLoading(false);
       }
@@ -58,8 +60,8 @@ export default function PartInventoryPicker({ onSelect, onClose, deviceModel = '
       <section className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950 text-zinc-100 shadow-2xl">
         <header className="flex items-center gap-3 border-b border-zinc-800 p-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold">Select Part</h2>
-            <p className="text-xs text-zinc-500">Choose a synced inventory part for this repair.</p>
+            <h2 className="text-lg font-semibold">Select Part or Part Family</h2>
+            <p className="text-xs text-zinc-500">Choose a parent family to ask for the exact variant on each work order, or choose one exact part.</p>
           </div>
           <button type="button" onClick={onClose} className="h-9 w-9 rounded border border-zinc-700 bg-zinc-900 text-lg" aria-label="Close part selection">X</button>
         </header>
@@ -72,12 +74,12 @@ export default function PartInventoryPicker({ onSelect, onClose, deviceModel = '
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {visible.map((part, index) => (
               <button key={part.id ?? `${part.itemDescription}-${index}`} type="button" onClick={() => onSelect(part)} className="min-w-0 rounded border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-[#39FF14]">
-                <div className="truncate font-semibold">{part.itemDescription || 'Unnamed part'}</div>
+                <div className="flex items-center gap-2"><span className="truncate font-semibold">{part.itemDescription || 'Unnamed part'}</span>{part.isParentPart ? <span className="shrink-0 rounded bg-[#BC13FE]/20 px-2 py-0.5 text-[10px] font-bold uppercase text-fuchsia-200">Parent family</span> : null}</div>
                 <div className="mt-1 truncate text-xs text-zinc-400">{[part.category, part.partCategory, part.condition].filter(Boolean).join(' | ')}</div>
                 {(part.associatedDevices?.length || part.deviceModel) ? <div className="mt-1 truncate text-[11px] text-zinc-500">Fits: {(part.associatedDevices?.length ? part.associatedDevices : [part.deviceModel]).filter(Boolean).join(', ')}</div> : null}
                 <div className="mt-2 flex items-center justify-between gap-2 text-sm">
                   <span className="truncate text-zinc-500">{part.distributor || 'No vendor'}</span>
-                  <span className="font-semibold text-[#39FF14]">${Number(part.price || 0).toFixed(2)}</span>
+                  <span className="font-semibold text-[#39FF14]">{part.isParentPart ? 'Choose variant later' : `$${Number(part.price || 0).toFixed(2)}`}</span>
                 </div>
               </button>
             ))}

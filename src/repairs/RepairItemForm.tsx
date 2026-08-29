@@ -5,6 +5,7 @@ import PercentInput from '../components/PercentInput';
 import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
 import { PART_MARKUP_PRESETS } from '../lib/partOrdering';
 import { normalizeServiceKey } from '../lib/repairServiceHierarchy';
+import { applyInventoryPartToRepair } from '../lib/repairPartLinking';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -294,26 +295,18 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   }
 
   function selectInventoryPart(part: InventoryPartSelection) {
-    setFormData((current) => ({
-      ...current,
-      category: current.category || part.category,
-      model: current.model || part.deviceModel || part.associatedDevices?.[0] || '',
-      partCost: Number(part.price || 0),
-      internalCost: typeof part.internalCost === 'number' ? part.internalCost : current.internalCost,
-      markupPct: part.markupPct ?? DEFAULT_MARKUP_PCT,
-      partSource: part.distributor || '',
-      orderSourceUrl: normalizeOrderUrl(part.reorderUrlTemplate),
-      taxExempt: part.vendorTaxExempt === true,
-      inventoryProductId: part.id,
-      trackStock: part.trackStock === true,
-      stockCount: part.stockCount,
+    setFormData((current) => applyInventoryPartToRepair(current, {
+      ...part,
+      reorderUrlTemplate: normalizeOrderUrl(part.reorderUrlTemplate),
     }));
     if (part.category) {
       setHasDeviceCategory(true);
       setDeviceCategoryInput(part.category);
     }
-    setMarkupPct(String(part.markupPct ?? DEFAULT_MARKUP_PCT));
-    setOrderUrlEditing(!part.reorderUrlTemplate);
+    if (!part.isParentPart) {
+      setMarkupPct(String(part.markupPct ?? DEFAULT_MARKUP_PCT));
+      setOrderUrlEditing(!part.reorderUrlTemplate);
+    }
     setPartPickerOpen(false);
   }
 
