@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import type { VendorRecord } from './VendorsWindow';
-import { derivePartVendorFromUrl, normalizePartInventoryTitle, scrapePartUrl } from '../lib/partOrdering';
+import { applyInventoryUrlAutofill, scrapePartUrl } from '../lib/partOrdering';
 import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
@@ -684,19 +684,14 @@ export default function InventoryWindow() {
     if (!url || lastScrapedUrlRef.current === url) return;
     const sequence = ++scrapeSequenceRef.current;
     lastScrapedUrlRef.current = url;
+    setEditing((current) => applyInventoryUrlAutofill(current, null, url));
     setScrapingUrl(true);
     try {
       const meta = await scrapePartUrl(url);
       if (sequence !== scrapeSequenceRef.current) return;
       if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
-      const title = normalizePartInventoryTitle(meta.title);
-      const vendor = meta.vendor || derivePartVendorFromUrl(url);
-      const description = String(meta.description || '').trim();
       setEditing((current) => {
-        const next = { ...current };
-        if (title && !String(current.itemDescription || '').trim()) next.itemDescription = title;
-        if (vendor && !String(current.distributor || '').trim()) next.distributor = vendor;
-        if (description && !String(current.notes || '').trim()) next.notes = description;
+        const next = applyInventoryUrlAutofill(current, meta, url);
         if (typeof meta.price === 'number' && current.internalCost == null) {
           next.internalCost = meta.price;
           const price = markedUpPrice(meta.price, current.markupPct ?? DEFAULT_MARKUP_PCT);

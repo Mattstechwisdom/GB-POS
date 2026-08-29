@@ -62,6 +62,17 @@ export function derivePartVendorFromUrl(value: unknown): string {
   }
 }
 
+export function applyInventoryUrlAutofill(current: any, meta: PartUrlMetadata | null | undefined, url: string) {
+  const next = { ...(current || {}) };
+  const vendor = String(meta?.vendor || derivePartVendorFromUrl(url) || '').trim();
+  const title = normalizePartInventoryTitle(meta?.title);
+  const description = String(meta?.description || '').trim();
+  if (vendor && !String(next.distributor || '').trim()) next.distributor = vendor;
+  if (title && !String(next.itemDescription || '').trim()) next.itemDescription = title;
+  if (description && !String(next.notes || '').trim()) next.notes = description;
+  return next;
+}
+
 export function markedUpPartPrice(cost: unknown, pct: unknown = DEFAULT_PART_MARKUP_PCT): number | undefined {
   const c = Number(cost);
   const p = Number(pct);

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.42 (2026-08-29)
+- Standalone Part URL Autofill: pasting a distributor product URL now fills an empty distributor field from the domain immediately, even when the remote page blocks metadata scraping, without overwriting a manually entered vendor.
+- Stable Technician Editing: opening Edit Technician no longer triggers an unchanged autosave that closes the window after two seconds; later background saves persist without dismissing the form, while the Save button still closes after success.
+- Monthly Commission Reconciliation: eligible product sales now form one month-level commission pool that is rounded once and divided across selected technicians with no more than one unavoidable cent of difference.
+- Clear Profit Language: the product-only margin card is now labeled Product Sales Gross Profit beneath Product Sales & Vendors, preventing it from being mistaken for total shop profit.
+- Supplier Tax Costing: non-exempt supplier tax and checkout costs are included in acquisition cost exactly once, including the compatibility fallback for older purchase records; customer sales tax remains excluded from profit.
+- Styled Spreadsheet: the end-of-month download is now an Excel-compatible formatted workbook with prominent totals, readable headings, alternating line items, and separated technician, product, consultation, and supplier-purchase sections.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.41 (2026-08-29)
 - Stable Technician Editing: opening Edit Technician no longer triggers an unchanged autosave that closes the window after two seconds; later background saves persist without dismissing the form, while the Save button still closes after success.
 - Monthly Commission Reconciliation: eligible product sales now form one month-level commission pool that is rounded once and divided across selected technicians with no more than one unavoidable cent of difference.
