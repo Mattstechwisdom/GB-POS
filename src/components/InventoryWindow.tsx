@@ -9,8 +9,10 @@ import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
 import QRCode from 'qrcode';
 import { INVENTORY_LABEL_SIZES, inventoryItemNumber, inventoryLabelUrl, type InventoryLabelSizeId } from '../lib/inventoryLabels';
 import { inventoryAggregateStock, inventoryParentId, inventoryVariantAttributes, isInventoryParent } from '../lib/inventoryVariants';
+import { buildInventoryDeviceGroups } from '../lib/inventoryDeviceGroups';
 
 type InventoryMode = 'parts' | 'products';
+type PartsView = 'all' | 'device';
 
 type InventoryItem = {
   id?: number;
@@ -161,6 +163,9 @@ export default function InventoryWindow() {
   const [compatibleDeviceMenuOpen, setCompatibleDeviceMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [expandedParentIds, setExpandedParentIds] = useState<Set<number>>(() => new Set());
+  const [partsView, setPartsView] = useState<PartsView>('all');
+  const [expandedDeviceGroups, setExpandedDeviceGroups] = useState<Set<string>>(() => new Set());
+  const [expandedDeviceCategories, setExpandedDeviceCategories] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -304,6 +309,8 @@ export default function InventoryWindow() {
     if (search.trim() || deviceFilter || lowOnly) return true;
     return expandedParentIds.has(parentId);
   }), [deviceFilter, expandedParentIds, lowOnly, search, visibleItems]);
+
+  const deviceGroups = useMemo(() => buildInventoryDeviceGroups(visibleItems), [visibleItems]);
 
   const counts = useMemo(() => {
     const parts = items.filter((item) => (item.itemType || 'Product') === 'Part');
@@ -693,6 +700,10 @@ export default function InventoryWindow() {
         <main className="gb-inventory-layout grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(400px,38%)_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[minmax(460px,36%)_minmax(0,1fr)]">
           <section className="gb-inventory-list-pane flex min-h-[320px] flex-col overflow-hidden rounded border border-zinc-700 bg-zinc-950">
             <div className="shrink-0 border-b border-zinc-800 p-3">
+              {mode === 'parts' ? <div className="mb-2 grid grid-cols-2 rounded border border-zinc-700 bg-zinc-900 p-1" role="group" aria-label="Parts inventory view">
+                <button type="button" aria-pressed={partsView === 'all'} onClick={() => setPartsView('all')} className={`rounded px-3 py-1.5 text-xs font-bold ${partsView === 'all' ? 'bg-[#BC13FE] text-white' : 'text-zinc-400'}`}>All Parts</button>
+                <button type="button" aria-pressed={partsView === 'device'} onClick={() => setPartsView('device')} className={`rounded px-3 py-1.5 text-xs font-bold ${partsView === 'device' ? 'bg-[#39FF14] text-black' : 'text-zinc-400'}`}>By Device</button>
+              </div> : null}
               <div className="relative flex flex-wrap gap-2">
                 <input
                   value={search}
@@ -751,7 +762,27 @@ export default function InventoryWindow() {
               ) : visibleItems.length === 0 ? (
                 <div className="p-4 text-sm text-zinc-500">No {modeLabel.toLowerCase()} found.</div>
               ) : (
-                <div className="divide-y divide-zinc-800">
+                mode === 'parts' && partsView === 'device' ? <div className="divide-y divide-zinc-800" aria-label="Parts grouped by compatible device">
+                  {deviceGroups.map((group) => {
+                    const deviceOpen = search.trim() ? true : expandedDeviceGroups.has(group.device);
+                    return <section key={group.device}>
+                      <button type="button" aria-expanded={deviceOpen} onClick={() => setExpandedDeviceGroups(current => { const next = new Set(current); if (deviceOpen) next.delete(group.device); else next.add(group.device); return next; })} className="flex w-full items-center justify-between gap-3 bg-zinc-900 px-3 py-3 text-left font-bold hover:bg-zinc-800"><span className="truncate">{group.device}</span><span className="flex items-center gap-2 text-xs text-zinc-400"><span>{group.categories.reduce((count, category) => count + category.items.length, 0)} parts</span><span aria-hidden="true">{deviceOpen ? '−' : '+'}</span></span></button>
+                      {deviceOpen ? <div className="border-t border-zinc-800 bg-zinc-950">{group.categories.map((category) => {
+                        const categoryKey = `${group.device}::${category.category}`;
+                        const categoryOpen = search.trim() ? true : expandedDeviceCategories.has(categoryKey);
+                        const categoryItemIds = new Set(category.items.map(item => Number(item.id || 0)));
+                        const rows = category.items.filter(item => {
+                          const parentId = inventoryParentId(item);
+                          return !parentId || !categoryItemIds.has(parentId) || search.trim() || expandedParentIds.has(parentId);
+                        });
+                        return <section key={categoryKey} className="border-b border-zinc-800 last:border-b-0">
+                          <button type="button" aria-expanded={categoryOpen} onClick={() => setExpandedDeviceCategories(current => { const next = new Set(current); if (categoryOpen) next.delete(categoryKey); else next.add(categoryKey); return next; })} className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm font-semibold text-fuchsia-200 hover:bg-zinc-900"><span>{category.category}</span><span className="text-xs text-zinc-500">{category.items.length} · {categoryOpen ? '−' : '+'}</span></button>
+                          {categoryOpen ? <div className="divide-y divide-zinc-800/70">{rows.map(item => { const parent = isInventoryParent(item); const parentId = Number(item.id || 0); const expanded = parent && expandedParentIds.has(parentId); const low = !parent && isInventoryLowStock(item); return <div key={`${group.device}-${category.category}-${item.id}`} onClick={() => selectItem(item)} className={`cursor-pointer border-l-4 px-4 py-2 ${inventoryParentId(item) ? 'pl-9' : ''} ${selectedId === item.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}><div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2">{parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={event => { event.stopPropagation(); setExpandedParentIds(current => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700">{expanded ? '−' : '+'}</button> : null}<strong className="truncate">{item.itemDescription || '(unnamed)'}</strong>{parent ? <span className="rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div><div className="mt-1 text-[11px] text-zinc-500">{item.condition || 'New'} · {item.distributorSku || 'No SKU'}</div></div><div className="shrink-0 text-right"><div className="text-xs font-bold">{parent ? inventoryAggregateStock(items, parentId) : item.trackStock ? item.stockCount ?? 0 : '—'} stock</div><div className="text-xs text-zinc-400">{money(item.price)}</div></div></div></div>; })}</div> : null}
+                        </section>;
+                      })}</div> : null}
+                    </section>;
+                  })}
+                </div> : <div className="divide-y divide-zinc-800">
                   {listedItems.map((item) => {
                     const parent = isInventoryParent(item);
                     const parentId = Number(item.id || 0);

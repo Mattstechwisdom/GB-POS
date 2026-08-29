@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.38 (2026-08-29)
+- Device-First Inventory: repair parts can be browsed by exact compatible device, part category, parent part, and variant without duplicating stock records.
+- Shared Compatibility: one physical part appears beneath every assigned compatible device while keeping a single authoritative count.
+- Durant Part Links: Durant Media can save a supplier part URL and a separate invoice URL on each proposed line item.
+- Styled Durant Review: GadgetBoy opens a responsive review panel with pricing cards, clickable links, findings, notes, history, and approval controls instead of raw proposal data.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.37 (2026-08-29)
 - Collapsed Part Families: parent inventory rows start collapsed and expand on demand, keeping large variant catalogs compact on desktop and mobile.
 - Device-Aware Part Selection: parent-linked repairs automatically choose a child part only when the work-order device has one exact compatible match.

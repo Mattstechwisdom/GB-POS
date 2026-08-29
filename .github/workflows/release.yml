@@ -88,6 +88,7 @@ jobs:
           npm run test:inventory-consumption
           npm run test:inventory-variants
           npm run test:inventory-parent-ui
+          npm run test:inventory-device-groups
           npm run test:inventory-repair-matching
           npm run test:checkout-inventory-variants
           npm run test:inventory-reorder
@@ -111,6 +112,7 @@ jobs:
           npm run test:ticket-accounting
           npm run test:line-item-discounts
           npm run test:durant-access
+          npm run test:durant-styled-review
           npm run test:web-pwa-release
           npm run test:feedback-gidget
 

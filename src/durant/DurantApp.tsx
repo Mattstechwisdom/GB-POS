@@ -106,7 +106,8 @@ export default function DurantApp({ session, shopId, onSignOut }: Props) {
                 <label>Our part cost<input type="number" min="0" step="0.01" value={Number(item.partCost ?? item.cost ?? 0)} onChange={event => updateLineItem(index, { partCost: Number(event.target.value) })} /></label>
                 <label>Markup %<input type="number" min="0" step="0.1" value={Number(item.markupPct ?? 0)} onChange={event => updateLineItem(index, { markupPct: Number(event.target.value) })} /></label>
                 <label>Client part price<input type="number" min="0" step="0.01" value={Number(item.parts ?? item.price ?? 0)} onChange={event => updateLineItem(index, { parts: Number(event.target.value) })} /></label>
-                <label className="durant-line-invoice">Invoice link<input type="url" placeholder="https://supplier.example/invoice" value={item.invoiceUrl || ''} onChange={event => updateLineItem(index, { invoiceUrl: event.target.value })} /></label>
+                <label className="durant-line-url">Part URL<input type="url" inputMode="url" placeholder="https://supplier.example/part" value={item.partUrl || ''} onChange={event => updateLineItem(index, { partUrl: event.target.value })} /></label>
+                <label className="durant-line-invoice">Invoice URL<input type="url" inputMode="url" placeholder="https://supplier.example/invoice" value={item.invoiceUrl || ''} onChange={event => updateLineItem(index, { invoiceUrl: event.target.value })} /></label>
               </article>) : <p className="durant-empty-items">This work order does not have line items yet.</p>}
             </section>
 
