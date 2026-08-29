@@ -369,7 +369,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       </div>
       
   {showNew && <TechnicianForm onClose={() => setShowNew(false)} onSaved={async () => { await refresh(); }} />}
-  {editing && <EditTechnicianModal tech={editing} onClose={() => setEditing(null)} onSave={async (patch) => { await updateTechnician({ id: editing.id, ...patch }); setEditing(null); await refresh(); }} />}
+  {editing && <EditTechnicianModal tech={editing} onClose={() => setEditing(null)} onAutosave={async (patch) => { await updateTechnician({ id: editing.id, ...patch }); await refresh(); }} onSave={async (patch) => { await updateTechnician({ id: editing.id, ...patch }); setEditing(null); await refresh(); }} />}
   {verifyTech && <TimeVerificationModal tech={verifyTech} onClose={() => setVerifyTech(null)} />}
   {passcodeTech && (
     <PasscodeModal
@@ -400,12 +400,12 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 };
 
 export default TechniciansWindow;
-const EditTechnicianModal: React.FC<{ tech: any; onClose: () => void; onSave: (patch: any) => Promise<void> }> = ({ tech, onClose, onSave }) => {
+const EditTechnicianModal: React.FC<{ tech: any; onClose: () => void; onAutosave: (patch: any) => Promise<void>; onSave: (patch: any) => Promise<void> }> = ({ tech, onClose, onAutosave, onSave }) => {
   const [local, setLocal] = useState<any>({ firstName: tech.firstName || '', lastName: tech.lastName || '', nickname: tech.nickname || '', phone: tech.phone || '', email: tech.email || '', profileIcon: tech.profileIcon || DEFAULT_TECHNICIAN_ICON_ID });
   // Autosave edits after 2s of inactivity
   useAutosave(local, async (val) => {
-    try { await onSave({ ...val }); } catch (e) { /* swallow */ }
-  }, { debounceMs: 2000, enabled: !!tech?.id, equals: Object.is });
+    try { await onAutosave({ ...val }); } catch (e) { /* swallow */ }
+  }, { debounceMs: 2000, enabled: !!tech?.id, equals: Object.is, skipInitialSave: true });
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
       <div className="bg-zinc-900 border border-zinc-700 rounded p-4 w-96">
