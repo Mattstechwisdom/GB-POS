@@ -7,6 +7,7 @@ import CustomerHoverCard from './CustomerHoverCard';
 import ItemsDescriptionHoverCard from './ItemsDescriptionHoverCard';
 import { useContextMenu } from '../lib/useContextMenu';
 import { usePagination } from '../lib/pagination';
+import { TechnicianAvatar } from '../lib/technicianIcons';
 
 interface WorkOrderRow {
   id: number; status?: string; assignedTo?: string | null; checkInAt?: string; updatedAt?: string; activityAt?: string; checkoutDate?: string | null; repairCompletionDate?: string | null; customerId?: number;
@@ -48,6 +49,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [techIndex, setTechIndex] = useState<Record<string,string>>({});
+  const [techProfiles, setTechProfiles] = useState<Record<string, any>>({});
   const [customerIndex, setCustomerIndex] = useState<Record<number, { name: string; phone?: string; phoneAlt?: string; email?: string }>>({});
   const [loading, setLoading] = useState(false);
   const tableRef = useRef<HTMLDivElement | null>(null);
@@ -102,8 +104,10 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
       try {
         const techs = await listTechnicians();
         const map: Record<string,string> = {};
-        techs.forEach((t: any) => { map[t.id] = (t.nickname && t.nickname.trim()) || t.firstName || t.id; });
+        const profiles: Record<string, any> = {};
+        techs.forEach((t: any) => { const label = (t.nickname && t.nickname.trim()) || t.firstName || t.id; map[t.id] = label; profiles[String(t.id)] = t; profiles[String(label).toLowerCase()] = t; });
         setTechIndex(map);
+        setTechProfiles(profiles);
       } catch (e) { console.error('tech load', e); }
     };
     refreshTechs();
@@ -395,7 +399,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
                 <td className="px-2 py-1" title={checkInIso ? `Checked in: ${checkInIso}` : undefined}>{activityIso}</td>
                 <td className="px-2 py-1 capitalize">{computedStatus}</td>
                 <td className="px-2 py-1 font-semibold">WO</td>
-                <td className="px-2 py-1">{techLabel}</td>
+                <td className="px-2 py-1"><span className="flex items-center gap-1.5"><TechnicianAvatar iconId={(techProfiles[String(r.assignedTo || '')] || techProfiles[String(techLabel || '').toLowerCase()])?.profileIcon} size={24} ariaLabel={techLabel || 'Unassigned'} /><span>{techLabel}</span></span></td>
                 <td className="px-2 py-1" title={clientName}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{clientName}</div>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AssignedTechnicianAvatar from '../components/AssignedTechnicianAvatar';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { printSaleReleaseForm, SaleOrderPrint } from './salePrint';
 import WorkOrderSidebar from '@/workorders/WorkOrderSidebar';
@@ -1589,12 +1590,12 @@ const SaleWindow: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">Assigned Technician</label>
-                  <input
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
+                  <div className="flex items-center gap-2"><AssignedTechnicianAvatar assignedTo={sale.assignedTo} /><input
+                    className="min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
                     value={sale.assignedTo || ''}
                     onChange={e => setSale(s => ({ ...s, assignedTo: e.target.value }))}
                     placeholder="Technician name"
-                  />
+                  /></div>
                 </div>
               </div>
 

@@ -3,9 +3,10 @@ import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, addTechnician, removeTechnician, updateTechnician } from '../lib/admin';
 import { formatPhone } from '../lib/format';
 import TechnicianAnalyticsWindow from './TechnicianAnalyticsWindow';
+import { DEFAULT_TECHNICIAN_ICON_ID, TechnicianAvatar, TechnicianIconPicker } from '../lib/technicianIcons';
 
 const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void }> = ({ onClose, onSaved }) => {
-  const [local, setLocal] = useState<any>({ firstName: '', lastName: '', nickname: '', phone: '', email: '', passcode: '' });
+  const [local, setLocal] = useState<any>({ firstName: '', lastName: '', nickname: '', phone: '', email: '', passcode: '', profileIcon: DEFAULT_TECHNICIAN_ICON_ID });
   const saving = async () => {
     try {
       const saved = await addTechnician(local);
@@ -41,6 +42,7 @@ const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void 
               }}
               className="col-span-2 bg-zinc-800 border border-zinc-700 rounded p-2"
             />
+            <TechnicianIconPicker value={local.profileIcon} onChange={profileIcon => setLocal({ ...local, profileIcon })} />
           </div>
           <div className="flex justify-end gap-2 mt-3">
             <button type="button" className="px-3 py-1 bg-zinc-800 rounded" onClick={onClose}>Cancel</button>
@@ -314,9 +316,12 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
               return (
                 <article className="gb-tech-card" key={tech.id}>
                   <div className="gb-tech-card-header">
-                    <div>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <TechnicianAvatar iconId={tech.profileIcon} size={44} ariaLabel={tech.nickname || fullName} />
+                      <div className="min-w-0">
                       <h4>{tech.nickname || fullName}</h4>
                       {tech.nickname ? <p>{fullName}</p> : null}
+                      </div>
                     </div>
                     <button type="button" className="gb-tech-edit" onClick={() => setEditing(tech)}>Edit</button>
                   </div>
@@ -396,7 +401,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
 export default TechniciansWindow;
 const EditTechnicianModal: React.FC<{ tech: any; onClose: () => void; onSave: (patch: any) => Promise<void> }> = ({ tech, onClose, onSave }) => {
-  const [local, setLocal] = useState<any>({ firstName: tech.firstName || '', lastName: tech.lastName || '', nickname: tech.nickname || '', phone: tech.phone || '', email: tech.email || '' });
+  const [local, setLocal] = useState<any>({ firstName: tech.firstName || '', lastName: tech.lastName || '', nickname: tech.nickname || '', phone: tech.phone || '', email: tech.email || '', profileIcon: tech.profileIcon || DEFAULT_TECHNICIAN_ICON_ID });
   // Autosave edits after 2s of inactivity
   useAutosave(local, async (val) => {
     try { await onSave({ ...val }); } catch (e) { /* swallow */ }
@@ -412,6 +417,7 @@ const EditTechnicianModal: React.FC<{ tech: any; onClose: () => void; onSave: (p
             <input placeholder="Nickname" value={local.nickname} onChange={e => setLocal({ ...local, nickname: e.target.value })} className="bg-zinc-800 border border-zinc-700 rounded p-2" />
             <input placeholder="Phone" value={local.phone} onChange={e => setLocal({ ...local, phone: e.target.value })} className="bg-zinc-800 border border-zinc-700 rounded p-2" />
             <input placeholder="Email" value={local.email} onChange={e => setLocal({ ...local, email: e.target.value })} className="col-span-2 bg-zinc-800 border border-zinc-700 rounded p-2" />
+            <TechnicianIconPicker value={local.profileIcon} onChange={profileIcon => setLocal({ ...local, profileIcon })} />
           </div>
           <div className="flex justify-end gap-2 mt-3">
             <button type="button" className="px-3 py-1 bg-zinc-800 rounded" onClick={onClose}>Cancel</button>

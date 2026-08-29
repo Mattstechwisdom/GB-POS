@@ -11,6 +11,7 @@ export interface Technician {
   cloudId?: string;
   legacyId?: string;
   isLoginProfile?: boolean;
+  profileIcon?: string;
   schedule?: {
     mon?: { start?: string; end?: string; off?: boolean };
     tue?: { start?: string; end?: string; off?: boolean };

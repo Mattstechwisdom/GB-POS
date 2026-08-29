@@ -16,6 +16,13 @@ for (const source of [desktopMain, mobileApi]) {
   assert.match(source, /technicians:\s*'staff_profiles'/, 'technicians must map to staff_profiles');
   assert.match(source, /technician_private_credentials/, 'technician passcodes must use the private credential table');
   assert.match(source, /key === 'technicians'/, 'technician rows need an explicit cloud conversion');
+  assert.match(source, /profileIcon:\s*row\.profile_icon/, 'technician icons must load from staff_profiles');
+  assert.match(source, /profile_icon:\s*toCloudString\(item\.profileIcon\)/, 'technician icons must save to staff_profiles');
+}
+
+for (const source of [desktopMain, mobileApi]) {
+  const technicianRead = source.slice(source.indexOf("if (key === 'technicians')", source.indexOf('function fromCloudRow')), source.indexOf("if (key === 'technicians')", source.indexOf('function fromCloudRow')) + 1800);
+  assert.match(technicianRead, /profileIcon:\s*row\.profile_icon/, 'the technician cloud-read branch must load profile icons');
 }
 
 assert.match(desktopMain, /key === 'technicians'[^\n]*toCloudTextId/, 'desktop technician IDs must remain text IDs');

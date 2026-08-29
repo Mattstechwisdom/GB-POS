@@ -6,6 +6,8 @@ import { isSharedTaskAssignment, taskAssignmentLabel, taskIsCompleted, tasksForD
 import { technicianShiftsForDate } from '../lib/technicianSchedule';
 import { expandRecurringEvent, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '../lib/calendarRecurrence';
 import { replaceRecordById, taskCompletionPatch } from '../lib/immediatePersistence';
+import { TechnicianAvatar } from '../lib/technicianIcons';
+import { countOpenTasksByTechnician, sharedDailyLookTasks, tasksForSelectedTechnician } from '../lib/dailyLookTechnicians';
 
 type CalendarEvent = {
   id?: number;
@@ -144,10 +146,14 @@ export default function DailyLookWindow() {
     .filter((note) => String(note.date || '').slice(0, 10) === date)
     .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || ''))), [date, notes]);
 
-  const tasks = useMemo(() => {
+  const allTasks = useMemo(() => {
     const expandedForDay = events.flatMap((event) => event.recurrenceRule ? expandRecurringEvent(event, date, date) as CalendarEvent[] : [event]);
-    return tasksForDailyLook([...events.filter((event) => !event.recurrenceRule), ...expandedForDay.filter((event) => Boolean(event.recurrenceRule))], date, technician);
-  }, [date, events, technician]);
+    return tasksForDailyLook([...events.filter((event) => !event.recurrenceRule), ...expandedForDay.filter((event) => Boolean(event.recurrenceRule))], date, '');
+  }, [date, events]);
+  const technicianNames = useMemo(() => techs.map(technicianDisplayName), [techs]);
+  const taskCounts = useMemo(() => countOpenTasksByTechnician(allTasks, technicianNames), [allTasks, technicianNames]);
+  const sharedTasks = useMemo(() => sharedDailyLookTasks(allTasks), [allTasks]);
+  const tasks = useMemo(() => technician ? tasksForSelectedTechnician(allTasks, technician) : allTasks.filter((task) => !isSharedTaskAssignment(task.technician)), [allTasks, technician]);
 
   const setTaskCompleted = async (task: CalendarEvent, completed: boolean) => {
     if (task.id == null) return;
@@ -200,18 +206,18 @@ export default function DailyLookWindow() {
           <h1 className="text-2xl font-semibold">Daily Look</h1>
           <p className="mt-1 text-sm text-zinc-400">Today&apos;s tasks, notes, shifts, consultations, orders, deliveries, events, and content work.</p>
         </div>
-        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto">
           <input className="min-w-0 rounded border border-zinc-700 bg-zinc-800 px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          <select className="min-w-0 rounded border border-zinc-700 bg-zinc-800 px-3 py-2" value={technician} onChange={(event) => setTechnician(event.target.value)}>
-            <option value="">All technicians</option>
-            {techs.map((item) => { const name = technicianDisplayName(item); return <option key={item.id || name} value={name}>{name}</option>; })}
-          </select>
         </div>
       </header>
       <div className="mx-auto mt-4 grid w-full max-w-6xl grid-cols-1 gap-3 lg:grid-cols-2">
         <section className="min-w-0 border border-violet-400/30 bg-violet-400/5 p-3 lg:col-span-2">
-          <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-violet-100">Tasks</h2><span className="text-xs text-violet-200/70">{tasks.filter(task => !taskIsCompleted(task)).length} open</span></div>
+          <div className="mb-3 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-violet-100">Technician Tasks</h2><span className="text-xs text-violet-200/70">{tasks.filter(task => !taskIsCompleted(task)).length} open</span></div>
+          <div className="mb-4 flex max-w-full gap-3 overflow-x-auto pb-2" role="list" aria-label="Technician task filters">
+            {techs.map((item) => { const name = technicianDisplayName(item); const selected = technician === name; return <button key={item.id || name} type="button" aria-pressed={selected} onClick={() => setTechnician(selected ? '' : name)} className={`relative flex min-w-[76px] flex-col items-center gap-1 rounded-lg border px-2 py-2 ${selected ? 'border-violet-300 bg-violet-500/20' : 'border-zinc-700 bg-zinc-900 hover:border-violet-500'}`}><span className="relative"><TechnicianAvatar iconId={item.profileIcon} size={46} ariaLabel={name} /><span className={`absolute -right-2 -top-2 flex min-h-6 min-w-6 items-center justify-center rounded-full border-2 border-zinc-900 px-1 text-xs font-black ${taskCounts[name] ? 'bg-[#BC13FE] text-white shadow-[0_0_10px_#BC13FE]' : 'bg-zinc-700 text-zinc-400'}`}>{taskCounts[name] || 0}</span></span><span className="max-w-[68px] truncate text-xs font-semibold">{name}</span></button>; })}
+          </div>
           {tasks.length ? <div className="grid gap-2 md:grid-cols-2">{tasks.map((task, index) => <div key={task.id ?? index} className="flex min-w-0 items-start gap-3 border-l-2 border-violet-400 bg-zinc-900 px-3 py-2"><input type="checkbox" aria-label={`Mark ${task.title || 'task'} complete`} className="mt-0.5 h-5 w-5 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><button type="button" className={`min-w-0 flex-1 text-left text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`} onClick={() => openCalendarEntry(task)}><strong className="block break-words">{task.title || 'Task'}</strong><small className="mt-1 block text-zinc-400">{task.date < date ? `Carried from ${task.date}` : taskAssignmentLabel(task.technician)}{task.notes ? ' - View notes' : ''}</small></button></div>)}</div> : <p className="text-sm text-zinc-500">No tasks for this day.</p>}
+          {sharedTasks.length ? <div className="mt-5"><div className="mb-2 text-xs font-bold uppercase tracking-wide text-fuchsia-200">All Technicians</div><div className="pl-1">{sharedTasks.map((task, index) => <div key={task.id ?? `shared-${index}`} style={{ marginTop: index ? '-4px' : 0 }} className="relative flex min-w-0 items-start gap-3 rounded border border-fuchsia-500/30 bg-zinc-950 px-3 py-2 shadow-lg"><input type="checkbox" aria-label={`Mark ${task.title || 'task'} complete`} className="mt-0.5 h-5 w-5 shrink-0 accent-fuchsia-400" checked={taskIsCompleted(task)} onChange={event => { void setTaskCompleted(task, event.target.checked); }} /><button type="button" className={`min-w-0 flex-1 text-left text-sm ${taskIsCompleted(task) ? 'text-zinc-500 line-through' : ''}`} onClick={() => openCalendarEntry(task)}><strong>{task.title || 'Task'}</strong>{task.notes ? <small className="ml-2 text-zinc-400">View notes</small> : null}</button></div>)}</div></div> : null}
         </section>
         <section className="min-w-0 border border-amber-400/30 bg-amber-400/5 p-3 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-sm font-semibold text-amber-100">Important Notes</h2><span className="text-xs text-amber-200/70">{dayNotes.length}</span></div>

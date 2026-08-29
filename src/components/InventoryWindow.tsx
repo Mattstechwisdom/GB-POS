@@ -10,6 +10,9 @@ import QRCode from 'qrcode';
 import { INVENTORY_LABEL_SIZES, inventoryItemNumber, inventoryLabelUrl, type InventoryLabelSizeId } from '../lib/inventoryLabels';
 import { inventoryAggregateStock, inventoryParentId, inventoryVariantAttributes, isInventoryParent } from '../lib/inventoryVariants';
 import { buildInventoryDeviceGroups } from '../lib/inventoryDeviceGroups';
+import ContextMenu, { type ContextMenuItem } from './ContextMenu';
+import { useContextMenu } from '../lib/useContextMenu';
+import { duplicateInventoryVariant, findExactDeviceMatch, inventoryRowActions } from '../lib/inventoryNavigation';
 
 type InventoryMode = 'parts' | 'products';
 type PartsView = 'all' | 'device';
@@ -178,6 +181,7 @@ export default function InventoryWindow() {
   const [labelItem, setLabelItem] = useState<InventoryItem | null>(null);
   const [labelSizeId, setLabelSizeId] = useState<InventoryLabelSizeId>('2.25x1.25');
   const [labelQr, setLabelQr] = useState('');
+  const inventoryContext = useContextMenu<InventoryItem>();
   const scrapeSequenceRef = useRef(0);
   const lastScrapedUrlRef = useRef('');
 
@@ -311,6 +315,8 @@ export default function InventoryWindow() {
   }), [deviceFilter, expandedParentIds, lowOnly, search, visibleItems]);
 
   const deviceGroups = useMemo(() => buildInventoryDeviceGroups(visibleItems), [visibleItems]);
+  const exactDeviceMatch = useMemo(() => findExactDeviceMatch(search, deviceGroups.map((group) => group.device)), [deviceGroups, search]);
+  const displayedDeviceGroups = useMemo(() => exactDeviceMatch ? deviceGroups.filter((group) => group.device === exactDeviceMatch) : deviceGroups, [deviceGroups, exactDeviceMatch]);
 
   const counts = useMemo(() => {
     const parts = items.filter((item) => (item.itemType || 'Product') === 'Part');
@@ -463,6 +469,12 @@ export default function InventoryWindow() {
     });
   };
 
+  const duplicateVariantItem = (item: InventoryItem) => {
+    setMode((item.itemType || 'Product') === 'Part' ? 'parts' : 'products');
+    setSelectedId(undefined);
+    setEditing({ ...blankItem((item.itemType || 'Product') === 'Part' ? 'parts' : 'products'), ...duplicateInventoryVariant(item), purchaseRestockKeys: [], variantAttributes: { ...inventoryVariantAttributes(item) } });
+  };
+
   const ensureVendor = async (nameValue: string) => {
     const name = nameValue.trim();
     if (!name) return;
@@ -566,22 +578,24 @@ export default function InventoryWindow() {
     }
   };
 
-  const remove = async () => {
-    if (!selectedId) return;
-    if (isInventoryParent(editing) && items.some((item) => inventoryParentId(item) === Number(selectedId))) {
+  const remove = async (target?: InventoryItem) => {
+    const targetItem = target || (selectedId ? { ...editing, id: selectedId } : undefined);
+    const targetId = targetItem?.id;
+    if (!targetItem || !targetId) return;
+    if (isInventoryParent(targetItem) && items.some((item) => inventoryParentId(item) === Number(targetId))) {
       alert('Remove or move its variants before deleting this parent part.');
       return;
     }
-    if (editing.parentProductId && Object.keys(inventoryVariantAttributes(editing)).length === 0) {
+    if (targetItem.parentProductId && Object.keys(inventoryVariantAttributes(targetItem)).length === 0) {
       alert('Add at least one complete Variant Attribute, such as Color: Black.');
       return;
     }
     if (!confirm(mode === 'parts' ? 'Delete this repair part listing?' : 'Delete this product listing?')) return;
     setSaving(true);
     try {
-      await api?.dbDelete?.('products', selectedId);
-      setItems((current) => current.filter((item) => item.id !== selectedId));
-      startNew();
+      await api?.dbDelete?.('products', targetId);
+      setItems((current) => current.filter((item) => item.id !== targetId));
+      if (selectedId === targetId) startNew();
     } catch (err) {
       console.error('Inventory delete failed', err);
       alert('Inventory item could not be deleted.');
@@ -589,6 +603,22 @@ export default function InventoryWindow() {
       setSaving(false);
     }
   };
+
+  const inventoryContextItems = useMemo<ContextMenuItem[]>(() => {
+    const item = inventoryContext.state.data;
+    if (!item) return [];
+    const parent = isInventoryParent(item);
+    const parentId = Number(item.id || 0);
+    const expanded = parent && expandedParentIds.has(parentId);
+    return inventoryRowActions(parent ? 'parent' : 'variant', expanded).map((action): ContextMenuItem => {
+      if (action === 'edit') return { label: parent ? 'Edit Parent Part' : 'Edit Variant', onClick: () => selectItem(item) };
+      if (action === 'add-variant') return { label: 'Add Variant', onClick: () => startVariant(item) };
+      if (action === 'expand' || action === 'collapse') return { label: action === 'expand' ? 'Expand Variants' : 'Collapse Variants', onClick: () => setExpandedParentIds((current) => { const next = new Set(current); if (action === 'expand') next.add(parentId); else next.delete(parentId); return next; }) };
+      if (action === 'duplicate') return { label: 'Duplicate Variant', onClick: () => duplicateVariantItem(item) };
+      if (action === 'print-label') return { label: 'Print Label', onClick: () => setLabelItem(item) };
+      return { label: parent ? 'Delete Parent Part' : 'Delete Variant', danger: true, onClick: () => { void remove(item); } };
+    });
+  }, [expandedParentIds, inventoryContext.state.data, items, selectedId]);
 
   const adjustStock = async (item: InventoryItem, delta: number) => {
     const nextCount = Math.max(0, Math.round(Number(item.stockCount || 0) + delta));
@@ -763,7 +793,7 @@ export default function InventoryWindow() {
                 <div className="p-4 text-sm text-zinc-500">No {modeLabel.toLowerCase()} found.</div>
               ) : (
                 mode === 'parts' && partsView === 'device' ? <div className="divide-y divide-zinc-800" aria-label="Parts grouped by compatible device">
-                  {deviceGroups.map((group) => {
+                  {displayedDeviceGroups.map((group) => {
                     const deviceOpen = search.trim() ? true : expandedDeviceGroups.has(group.device);
                     return <section key={group.device}>
                       <button type="button" aria-expanded={deviceOpen} onClick={() => setExpandedDeviceGroups(current => { const next = new Set(current); if (deviceOpen) next.delete(group.device); else next.add(group.device); return next; })} className="flex w-full items-center justify-between gap-3 bg-zinc-900 px-3 py-3 text-left font-bold hover:bg-zinc-800"><span className="truncate">{group.device}</span><span className="flex items-center gap-2 text-xs text-zinc-400"><span>{group.categories.reduce((count, category) => count + category.items.length, 0)} parts</span><span aria-hidden="true">{deviceOpen ? '−' : '+'}</span></span></button>
@@ -777,7 +807,7 @@ export default function InventoryWindow() {
                         });
                         return <section key={categoryKey} className="border-b border-zinc-800 last:border-b-0">
                           <button type="button" aria-expanded={categoryOpen} onClick={() => setExpandedDeviceCategories(current => { const next = new Set(current); if (categoryOpen) next.delete(categoryKey); else next.add(categoryKey); return next; })} className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm font-semibold text-fuchsia-200 hover:bg-zinc-900"><span>{category.category}</span><span className="text-xs text-zinc-500">{category.items.length} · {categoryOpen ? '−' : '+'}</span></button>
-                          {categoryOpen ? <div className="divide-y divide-zinc-800/70">{rows.map(item => { const parent = isInventoryParent(item); const parentId = Number(item.id || 0); const expanded = parent && expandedParentIds.has(parentId); const low = !parent && isInventoryLowStock(item); return <div key={`${group.device}-${category.category}-${item.id}`} onClick={() => selectItem(item)} className={`cursor-pointer border-l-4 px-4 py-2 ${inventoryParentId(item) ? 'pl-9' : ''} ${selectedId === item.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}><div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2">{parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={event => { event.stopPropagation(); setExpandedParentIds(current => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700">{expanded ? '−' : '+'}</button> : null}<strong className="truncate">{item.itemDescription || '(unnamed)'}</strong>{parent ? <span className="rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div><div className="mt-1 text-[11px] text-zinc-500">{item.condition || 'New'} · {item.distributorSku || 'No SKU'}</div></div><div className="shrink-0 text-right"><div className="text-xs font-bold">{parent ? inventoryAggregateStock(items, parentId) : item.trackStock ? item.stockCount ?? 0 : '—'} stock</div><div className="text-xs text-zinc-400">{money(item.price)}</div></div></div></div>; })}</div> : null}
+                          {categoryOpen ? <div className="divide-y divide-zinc-800/70">{rows.map(item => { const parent = isInventoryParent(item); const parentId = Number(item.id || 0); const expanded = parent && expandedParentIds.has(parentId); const low = !parent && isInventoryLowStock(item); return <div key={`${group.device}-${category.category}-${item.id}`} onClick={() => selectItem(item)} onContextMenu={(event) => inventoryContext.openFromEvent(event, item)} className={`cursor-pointer border-l-4 px-4 py-2 ${inventoryParentId(item) ? 'pl-9' : ''} ${selectedId === item.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}><div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2">{parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={event => { event.stopPropagation(); setExpandedParentIds(current => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700">{expanded ? '−' : '+'}</button> : null}<strong className="truncate">{item.itemDescription || '(unnamed)'}</strong>{parent ? <span className="rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div><div className="mt-1 text-[11px] text-zinc-500">{item.condition || 'New'} · {item.distributorSku || 'No SKU'}</div></div><div className="shrink-0 text-right"><div className="text-xs font-bold">{parent ? inventoryAggregateStock(items, parentId) : item.trackStock ? item.stockCount ?? 0 : '—'} stock</div><div className="text-xs text-zinc-400">{money(item.price)}</div></div></div></div>; })}</div> : null}
                         </section>;
                       })}</div> : null}
                     </section>;
@@ -795,6 +825,7 @@ export default function InventoryWindow() {
                       <div
                         key={item.id}
                         onClick={() => selectItem(item)}
+                        onContextMenu={(event) => inventoryContext.openFromEvent(event, item)}
                         className={`w-full border-l-4 px-3 py-2 text-left transition ${inventoryParentId(item) ? 'pl-7' : ''} ${selected ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}
                       >
                         <div className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_72px_58px_auto]">
@@ -1209,7 +1240,7 @@ export default function InventoryWindow() {
               {selectedId && editing.isParentPart ? <button type="button" onClick={() => startVariant({ ...editing, id: selectedId })} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Add Variant</button> : null}
               {selectedId && !editing.isParentPart ? <button type="button" onClick={duplicateVariant} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Duplicate Variant</button> : null}
               {selectedId && !editing.isParentPart ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-4 py-2 text-sm font-semibold text-[#39FF14]">Print Label</button> : null}
-              <button type="button" onClick={remove} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
+              <button type="button" onClick={() => { void remove(); }} disabled={!selectedId || saving} className="rounded border border-red-700 bg-red-950 px-3 py-2 text-sm text-red-100 disabled:opacity-40">Delete</button>
               <button type="button" onClick={() => save('update')} disabled={!selectedId || saving} className="rounded border border-blue-500 bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
                 {saving ? 'Saving...' : editing.isParentPart ? 'Update Parent Part' : `Update ${mode === 'parts' ? 'Part' : 'Product'}`}
               </button>
@@ -1230,6 +1261,7 @@ export default function InventoryWindow() {
             </div>
           </div>;
         })() : null}
+        <ContextMenu open={inventoryContext.state.open} x={inventoryContext.state.x} y={inventoryContext.state.y} items={inventoryContextItems} onClose={inventoryContext.close} id="inventory-row-context-menu" zIndex={90} />
       </div>
     </div>
   );

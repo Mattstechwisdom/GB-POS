@@ -9,6 +9,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { SHOP_CONSULTATION_LOCATION } from '../lib/consultationLocation';
 import { calculateConsultationPricing, CONSULTATION_BASE_RATE, CONSULTATION_EXTRA_RATE } from '../lib/consultationPricing';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { TechnicianAvatar } from '../lib/technicianIcons';
 import {
   calculatePartnerConsultationCharge,
   consultationPartnerAddress,
@@ -108,6 +109,7 @@ type Technician = {
   firstName?: string;
   lastName?: string;
   nickname?: string;
+  profileIcon?: string;
 };
 
 function customerDisplayName(c: Customer) {
@@ -898,8 +900,8 @@ export default function ConsultationBookingWindow() {
             {/* Technician */}
             <div>
               <label className="block text-xs text-zinc-400 mb-1">Technician</label>
-              <select
-                className="w-full bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+              <div className="flex items-center gap-2"><TechnicianAvatar iconId={techs.find(t => techLabel(t) === technician)?.profileIcon} size={34} ariaLabel={technician || 'Unassigned technician'} /><select
+                className="min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
                 value={technician}
                 onChange={e => setTechnician(e.target.value)}
               >
@@ -907,7 +909,7 @@ export default function ConsultationBookingWindow() {
                 {techs.map(t => (
                   <option key={t.id} value={techLabel(t)}>{techLabel(t)}</option>
                 ))}
-              </select>
+              </select></div>
             </div>
 
             {/* Start Time */}

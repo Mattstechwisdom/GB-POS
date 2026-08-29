@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.39 (2026-08-29)
+- Quick Checkout Completion: successful quick sales and repairs now close the Quick Checkout window automatically after persistence, inventory processing, and optional receipt printing finish.
+- Faster Inventory Navigation: parent parts and variants expose edit, add/duplicate, expand/collapse, label, and protected delete actions through desktop right-click and mobile press-and-hold; exact device searches prioritize the matching device group.
+- Technician Identity: technicians can choose from 25 synchronized profile icons across Default, Neon Retro, Matrix Glitch, and Gothic Dark themes, with live avatars beside ticket assignments and main-list technician names.
+- Daily Look Tasks: technician avatars now carry prominent open-task badges, filter individual assignments when selected, and keep All Technicians tasks in a separate compact stack.
+- Compatibility: technician icons use one nullable additive profile field and remain excluded from all customer printouts.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.38 (2026-08-29)
 - Device-First Inventory: repair parts can be browsed by exact compatible device, part category, parent part, and variant without duplicating stock records.
 - Shared Compatibility: one physical part appears beneath every assigned compatible device while keeping a single authoritative count.

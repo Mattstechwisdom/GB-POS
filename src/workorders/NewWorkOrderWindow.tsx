@@ -20,12 +20,13 @@ import type { SaleItemRow } from '../sales/SaleItemsTable';
 import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticketAccounting';
 import DurantProposalReview from './DurantProposalReview';
 import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
+import { TechnicianAvatar } from '../lib/technicianIcons';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
 type ValidationActionKey = 'save' | 'checkout' | 'close';
 
-type TechnicianOption = { id: string | number; nickname?: string; firstName?: string };
+type TechnicianOption = { id: string | number; nickname?: string; firstName?: string; profileIcon?: string };
 
 const REQUIRED_LABELS: Record<RequiredKey, string> = {
   assignedTo: 'Assigned technician',
@@ -181,6 +182,7 @@ const AssignedTechnicianField: React.FC<{
     const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
     return matchByLabel ? String(matchByLabel.id) : '';
   }, [techs, value]);
+  const selectedTech = techs.find((tech) => String(tech.id) === selectedTechId);
 
   return (
     <div className="gb-wo-assigned-field">
@@ -188,13 +190,15 @@ const AssignedTechnicianField: React.FC<{
         Assigned to
         {invalid && <span className="ml-1 text-red-500">*</span>}
       </label>
+      <div className="mt-1 flex items-center gap-2">
+      <TechnicianAvatar iconId={selectedTech?.profileIcon} size={34} ariaLabel={selectedTech?.nickname || selectedTech?.firstName || 'Unassigned technician'} />
       {techs.length === 0 ? (
         <select disabled className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-500">
           <option>No technicians</option>
         </select>
       ) : (
         <select
-          className={`w-full mt-1 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand bg-zinc-800 border ${invalid ? 'border-red-500' : 'border-zinc-700'}`}
+          className={`min-w-0 flex-1 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand bg-zinc-800 border ${invalid ? 'border-red-500' : 'border-zinc-700'}`}
           value={selectedTechId}
           onChange={e => {
             const id = e.target.value;
@@ -209,6 +213,7 @@ const AssignedTechnicianField: React.FC<{
           ))}
         </select>
       )}
+      </div>
     </div>
   );
 };

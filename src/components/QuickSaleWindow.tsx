@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { computeTotals, round2 } from '@/lib/calc';
 import SaleItemsTable, { SaleItemRow } from '@/sales/SaleItemsTable';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
+import { finishSuccessfulQuickCheckout } from '@/lib/quickCheckoutLifecycle';
 
 const TAX_RATE = 8;
 
@@ -275,9 +276,7 @@ const QuickSaleWindow: React.FC = () => {
 
       try { window.opener?.postMessage({ type: 'sales:changed', customerId: 0 }, '*'); } catch {}
       setItems([]);
-      if (result.closeParent) {
-        await closeSelf();
-      }
+      await finishSuccessfulQuickCheckout(closeSelf);
     } catch (e) {
       console.error('QuickSale checkout failed', e);
       alert('Checkout failed. See console.\n\nTip: if this window was opened outside the desktop app, it will not have checkout support.');
