@@ -15,6 +15,19 @@ export type ReportingLedgerEntry = {
 
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
+export function verifiedPurchaseTotal(purchase: any) {
+  const recordedTotal = Number(purchase?.totalCost);
+  if (Number.isFinite(recordedTotal) && recordedTotal >= 0) return roundMoney(recordedTotal);
+  const itemCost = Number(purchase?.itemCost);
+  const additionalCost = Number(purchase?.additionalCost);
+  const supplierTax = purchase?.taxExempt === true ? 0 : Number(purchase?.supplierTax);
+  return roundMoney(
+    (Number.isFinite(itemCost) ? itemCost : 0)
+    + (Number.isFinite(supplierTax) ? supplierTax : 0)
+    + (Number.isFinite(additionalCost) ? additionalCost : 0),
+  );
+}
+
 function positive(value: any) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;

@@ -12,7 +12,7 @@ const build = esbuild.buildSync({
 });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { buildReportingLedger, collectReportingPayments } = moduleShim.exports;
+const { buildReportingLedger, collectReportingPayments, verifiedPurchaseTotal } = moduleShim.exports;
 const reportingSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ReportingWindow.tsx'), 'utf8');
 const eodSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'EODWindow.tsx'), 'utf8');
 const electronSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
@@ -125,5 +125,12 @@ const manualHistoricalCorrection = buildReportingLedger([{
 }]);
 assert.equal(manualHistoricalCorrection.length, 1);
 assert.equal(manualHistoricalCorrection[0].date.toISOString(), '2026-07-30T16:00:00.000Z', 'A manually restored paid amount must not fabricate revenue on the current day.');
+
+assert.equal(verifiedPurchaseTotal({ itemCost: 100, supplierTax: 8, additionalCost: 5, taxExempt: false }), 113,
+  'Legacy non-exempt purchases must include supplier tax and checkout costs.');
+assert.equal(verifiedPurchaseTotal({ itemCost: 100, supplierTax: 8, additionalCost: 5, taxExempt: true }), 105,
+  'Tax-exempt purchases must not include stale supplier tax values.');
+assert.equal(verifiedPurchaseTotal({ totalCost: 113, itemCost: 100, supplierTax: 8, additionalCost: 5 }), 113,
+  'Recorded full cost must remain authoritative and must not be double-counted.');
 
 console.log('Reporting payment ledger checks passed.');

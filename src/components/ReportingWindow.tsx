@@ -3,10 +3,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '@/lib/admin';
 import { dispatchOpenModal } from '@/lib/modalBus';
 import { itemFullCost } from '@/lib/orderAccounting';
-import { buildReportingLedger, collectReportingPayments } from '@/lib/reportingAccounting';
+import { buildReportingLedger, collectReportingPayments, verifiedPurchaseTotal } from '@/lib/reportingAccounting';
+import { buildMonthEndWorkbookHtml } from '@/lib/monthEndWorkbook';
 import {
   DEFAULT_COMMISSION_SETTINGS,
-  allocateCommissionPool,
+  allocateMonthlySalesCommission,
   consultationCommission,
   normalizeCommissionSettings,
   salesCommissionPool,
@@ -189,14 +190,6 @@ function saleReportDate(sale: any) {
 
 function purchaseReportDate(purchase: any) {
   return purchase?.checkedOutAt || purchase?.updatedAt || purchase?.createdAt || '';
-}
-
-function verifiedPurchaseTotal(purchase: any) {
-  const recordedTotal = Number(purchase?.totalCost);
-  if (Number.isFinite(recordedTotal) && recordedTotal >= 0) return roundMoney(recordedTotal);
-  const itemCost = Number(purchase?.itemCost);
-  const additionalCost = Number(purchase?.additionalCost);
-  return roundMoney((Number.isFinite(itemCost) ? itemCost : 0) + (Number.isFinite(additionalCost) ? additionalCost : 0));
 }
 
 function saleItemsForReport(sale: any) {
@@ -415,10 +408,8 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         : (cost === null ? null : roundMoney(soldNet - cost));
       const margin = profit === null || soldNet <= 0 ? null : roundMoney((profit / soldNet) * 100);
       const commissionPool = salesCommissionPool(soldNet, commissionSettings);
-      const commissionShares = allocateCommissionPool(commissionPool, salesSplitCount);
       const perTechCommission = splitCommissionPool(commissionPool, salesSplitCount);
       physicalSalesBase = roundMoney(physicalSalesBase + soldNet);
-      physicalSalesCommissionPool = roundMoney(physicalSalesCommissionPool + commissionPool);
       if (cost === null) {
         if (!isConsignment) missingInternalCostCount += 1;
       } else {
@@ -429,13 +420,6 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         vendorPayoutTotal = roundMoney(vendorPayoutTotal + vendorPayout);
         vendorProfitTotal = roundMoney(vendorProfitTotal + (profit || 0));
       }
-
-      salesSplitTechs.forEach((tech, index) => {
-        const total = ensureTech(technicianKey(tech), technicianDisplay(tech));
-        const exactShare = commissionShares[index] || 0;
-        total.salesCommission = roundMoney(total.salesCommission + exactShare);
-        total.totalCommission = roundMoney(total.totalCommission + exactShare);
-      });
 
       productRows.push({
         Date: date,
@@ -458,6 +442,15 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
       });
     }
   }
+
+  const monthlyAllocation = allocateMonthlySalesCommission(physicalSalesBase, commissionSettings, salesSplitCount);
+  physicalSalesCommissionPool = monthlyAllocation.pool;
+  salesSplitTechs.forEach((tech, index) => {
+    const total = ensureTech(technicianKey(tech), technicianDisplay(tech));
+    const exactShare = monthlyAllocation.shares[index] || 0;
+    total.salesCommission = roundMoney(total.salesCommission + exactShare);
+    total.totalCommission = roundMoney(total.totalCommission + exactShare);
+  });
 
   const technicianRows = Array.from(techTotals.values())
     .map((row) => ({
@@ -501,13 +494,6 @@ function buildEndOfMonthReport(sales: any[], technicians: any[], vendors: any[],
         : '',
     },
   };
-}
-
-function csvSections(sections: Array<{ title: string; rows: Array<Record<string, any>> }>) {
-  return sections.map((section) => {
-    if (!section.rows.length) return `${section.title}\n(no rows)`;
-    return `${section.title}\n${formatCSV(section.rows)}`;
-  }).join('\n\n');
 }
 
 const ReportingWindow: React.FC = () => {
@@ -892,7 +878,7 @@ const ReportingWindow: React.FC = () => {
       'Sales Commission Base': money(report.summary.physicalSalesBase),
       'Sales Commission Pool': money(report.summary.physicalSalesCommissionPool),
       'Known Internal Cost': money(report.summary.knownInternalCost),
-      'Known Gross Profit': money(report.summary.knownProfit),
+      'Product Sales Gross Profit': money(report.summary.knownProfit),
       'Vendor Payouts Owed': money(report.summary.vendorPayoutTotal),
       'Profit From Vendor Sales': money(report.summary.vendorProfitTotal),
       'Verified Parts Supplier Spend': money(report.summary.supplierSpendParts),
@@ -912,18 +898,31 @@ const ReportingWindow: React.FC = () => {
         report.summary.missingConsultationHoursCount ? 'Some consultation rows need logged hours.' : '',
       ].filter(Boolean).join(' '),
     }];
-    const body = csvSections([
-      { title: 'End of Month Summary', rows: summaryRows },
-      { title: 'Product Sales Commission', rows: report.productRows },
-      { title: 'Consultation Commission', rows: report.consultationRows },
-      { title: 'Verified Supplier Purchases', rows: report.purchaseRows },
-      { title: 'Technician Totals', rows: report.technicianRows },
-    ]);
-    const blob = new Blob([body], { type: 'text/csv;charset=utf-8;' });
+    const body = buildMonthEndWorkbookHtml({
+      monthLabel: report.monthLabel,
+      summary: [
+        { label: 'Parts Cost', value: money(monthRepairFinancials.partsCost) },
+        { label: 'Parts Charged', value: money(monthRepairFinancials.partsCharged) },
+        { label: 'Labor Charged', value: money(monthRepairFinancials.laborCharged), tone: 'positive' },
+        { label: 'Monthly Sales Base', value: money(report.summary.physicalSalesBase) },
+        { label: 'Monthly Sales Pool', value: money(report.summary.physicalSalesCommissionPool), tone: 'accent' },
+        { label: 'Total Commission', value: money(report.summary.totalCommission), tone: 'accent' },
+        { label: 'Product Sales Gross Profit', value: money(report.summary.knownProfit), tone: 'positive' },
+        { label: 'Vendor Owed', value: money(report.summary.vendorPayoutTotal), tone: 'negative' },
+      ],
+      sections: [
+        { title: 'End of Month Summary', rows: summaryRows },
+        { title: 'Technician Commission Totals', rows: report.technicianRows },
+        { title: 'Product Sales Line Items', rows: report.productRows },
+        { title: 'Consultation Commission Line Items', rows: report.consultationRows },
+        { title: 'Verified Supplier Purchase Line Items', rows: report.purchaseRows },
+      ],
+    });
+    const blob = new Blob(['\ufeff', body], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `end-of-month-report-${monthEndMonth}.csv`;
+    a.download = `end-of-month-report-${monthEndMonth}.xls`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1239,7 +1238,7 @@ const ReportingWindow: React.FC = () => {
                   onClick={downloadEndOfMonthReport}
                   disabled={!endOfMonthReport.productRows.length && !endOfMonthReport.consultationRows.length && !endOfMonthReport.purchaseRows.length}
                 >
-                  Download Spreadsheet CSV
+                  Download Styled Spreadsheet
                 </button>
               </div>
             </div>
@@ -1262,9 +1261,9 @@ const ReportingWindow: React.FC = () => {
                 </div>
               </section>
               <section className="rounded border border-zinc-800 bg-zinc-900 p-3">
-                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Profit &amp; Vendors</div>
+                <div className="mb-3 text-xs font-semibold uppercase text-zinc-400">Product Sales &amp; Vendors</div>
                 <div className="grid grid-cols-3 gap-2">
-                  <MonthMetric label="Known Profit" value={money(endOfMonthReport.summary.knownProfit)} />
+                  <MonthMetric label="Product Sales Gross Profit" value={money(endOfMonthReport.summary.knownProfit)} />
                   <MonthMetric label="Vendor Owed" value={money(endOfMonthReport.summary.vendorPayoutTotal)} tone="text-red-300" />
                   <MonthMetric label="Vendor Profit" value={money(endOfMonthReport.summary.vendorProfitTotal)} tone="text-[#39FF14]" />
                 </div>
@@ -1280,7 +1279,8 @@ const ReportingWindow: React.FC = () => {
 
             <div className="bg-zinc-900 border border-zinc-800 rounded p-3 text-sm text-zinc-300 space-y-2">
               <div className="font-semibold text-zinc-100">Audit Rules</div>
-              <div>Repairs are excluded from commission. Eligible sales contribute {commissionSettings.salesCommissionPercent}% of the saved sale total after discounts to one pool, split evenly across the technicians selected in Reporting Settings.</div>
+              <div>Repairs are excluded from commission. Eligible sales contribute {commissionSettings.salesCommissionPercent}% of the monthly saved sales base after discounts to one pool. That final monthly pool is split once and evenly across the technicians selected in Reporting Settings.</div>
+              <div>Customer sales tax is excluded from profit. Supplier tax and checkout costs paid on non-exempt purchases are included in acquisition cost exactly once.</div>
               <div>Consultation commission is saved consultation hours multiplied by {money(commissionSettings.consultationTechHourlyRate)} and assigned only to the saved technician on that consultation.</div>
               <div>Internal cost is pulled only from saved line item cost values. Missing costs, missing hours, and missing technician assignments are flagged instead of estimated.</div>
               <div>Consignment payouts use the exact product vendor and saved vendor-share percentage. Wholesale parts distributors do not create vendor payouts.</div>

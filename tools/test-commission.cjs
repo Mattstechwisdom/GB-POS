@@ -17,6 +17,10 @@ const three = c.normalizeCommissionSettings({ salesCommissionPercent: 5, consult
 assert.equal(c.splitCommissionPool(60, c.selectedSalesCommissionTechnicians(techs, three).length), 20);
 assert.deepEqual(c.allocateCommissionPool(0.05, 2), [0.03, 0.02]);
 assert.equal(c.allocateCommissionPool(50, 3).reduce((sum, value) => sum + value, 0), 50);
+assert.deepEqual(c.allocateMonthlySalesCommission(4435.70, two), {
+  pool: 221.79,
+  shares: [110.90, 110.89],
+}, 'The full monthly pool must be rounded once and split with no more than one cent of unavoidable currency remainder.');
 assert.equal(c.consultationCommission(3, two), 75);
 assert.equal(c.consultationCommission(1, two), 25, 'One saved consultation hour earns $25 regardless of the customer rate.');
 assert.deepEqual(c.selectedSalesCommissionTechnicians(techs, c.normalizeCommissionSettings({})).map(t => t.id), ['matt', 'alex', 'sam']);
@@ -26,7 +30,7 @@ assert.match(reportingSource, /Array\.isArray\(sale\?\.items\).*return 0;/s);
 assert.match(reportingSource, /<option value="summary">Summary Report<\/option>[\s\S]*<option value="eod">End of Day Report<\/option>[\s\S]*<option value="monthEnd">End of the Month Report<\/option>/, 'All reporting destinations must remain in the Reports selector.');
 assert.match(reportingSource, />Reporting Settings<\/h2>[\s\S]*>Summary report defaults<[\s\S]*>Commission</, 'Reporting settings must include both display defaults and commission rules.');
 assert.match(reportingSource, /defaultSummaryRange: 'all'/, 'Summary Report should default to the complete saved reporting collection.');
-assert.match(reportingSource, />Repair Revenue<[\s\S]*>Commission<[\s\S]*>Profit &amp; Vendors<[\s\S]*>Verified Purchasing</, 'Month-end headline figures must stay grouped by purpose.');
+assert.match(reportingSource, />Repair Revenue<[\s\S]*>Commission<[\s\S]*>Product Sales &amp; Vendors<[\s\S]*>Verified Purchasing</, 'Month-end headline figures must stay grouped by purpose.');
 assert.match(eodSource, /\(driver\|distance\|travel\|fee\)/);
 assert.match(eodSource, /breakdown\.consultationHours[\s\S]*consultationCollectionRatio/, 'EOD commission must use saved consultation hours instead of inferring hours from customer charges.');
 assert.doesNotMatch(eodSource, /consultationCollected\s*\/\s*CONSULTATION_HOURLY_RATE/, 'Changing the customer rate must not change hourly technician commission.');

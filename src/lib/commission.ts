@@ -67,6 +67,15 @@ export function allocateCommissionPool(pool: number, technicianCount: number) {
   return Array.from({ length: technicianCount }, (_, index) => (baseCents + (index < remainder ? 1 : 0)) / 100);
 }
 
+export function allocateMonthlySalesCommission(
+  salesBase: number,
+  settings: CommissionSettings,
+  technicianCount = settings.salesCommissionTechnicianIds.length,
+) {
+  const pool = salesCommissionPool(salesBase, settings);
+  return { pool, shares: allocateCommissionPool(pool, technicianCount) };
+}
+
 export function consultationCommission(hours: number, settings: CommissionSettings) {
   return Math.round(Math.max(0, Number(hours) || 0) * settings.consultationTechHourlyRate * 100) / 100;
 }
