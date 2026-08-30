@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.44 (2026-08-29)
+- Streamlined Repair Editor: Devices/Repairs now separates linked inventory from pricing and removes duplicate stock-count, low-stock, and stock-tracking controls that belong in Inventory.
+- Inventory Price Autofill: selecting an exact part or variant fills its inventory cost, customer charge, vendor, and ordering details; selecting a parent family keeps a manually entered default part charge.
+- Variant-Specific Pricing: family-linked repairs use the selected variant's selling price, cost, and markup on the work order when configured, while preserving the repair's labor charge and deducting the exact chosen variant.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.43 (2026-08-29)
 - Repair Part Families: Devices/Repairs can now link a repair price directly to an inventory parent family instead of requiring one specific color, model, or component variant.
 - Exact Variant at Use: adding a family-linked repair to a work order automatically chooses the sole device-compatible variant or presents a prominent variant picker when multiple options remain, ensuring the exact installed part is deducted.

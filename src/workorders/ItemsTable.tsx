@@ -6,6 +6,7 @@ import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, no
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 import { findInventoryPartForRepair, resolveInventoryVariantForRepair } from '@/lib/inventoryPartMatching';
+import { resolveWorkOrderRepairPricing } from '@/lib/repairPartLinking';
 import InventoryVariantPicker from '@/components/InventoryVariantPicker';
 
 // Use the new WorkOrderItemRow type
@@ -161,19 +162,20 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
 
   function appendRepair(selectedRepair: any, linkedInventory: any) {
     const trackedOutOfStock = !!linkedInventory?.trackStock && Number(linkedInventory?.stockCount || 0) <= 0;
+    const pricing = resolveWorkOrderRepairPricing(selectedRepair, linkedInventory);
     const row: WorkOrderItemRow = {
       id: crypto.randomUUID(),
       device: selectedRepair.category || selectedRepair.deviceCategoryName || selectedRepair.device || '',
       repairCategory: selectedRepair.repairCategory || '',
       repair: selectedRepair.title || selectedRepair.repair || selectedRepair.altDescription || '',
-      parts: Number(selectedRepair.partCost ?? linkedInventory?.price ?? 0) || 0,
+      parts: pricing.parts,
       labor: Number(selectedRepair.laborCost ?? 0) || 0,
       status: 'pending',
       note: selectedRepair.model || selectedRepair.modelNumber || '',
       partSource: selectedRepair.partSource || linkedInventory?.distributor || '',
       orderSourceUrl: selectedRepair.orderSourceUrl || selectedRepair.reorderUrlTemplate || linkedInventory?.reorderUrlTemplate || '',
-      internalCost: typeof selectedRepair.internalCost === 'number' ? selectedRepair.internalCost : (typeof linkedInventory?.internalCost === 'number' ? linkedInventory.internalCost : undefined),
-      markupPct: selectedRepair.markupPct ?? linkedInventory?.markupPct ?? 10,
+      internalCost: pricing.internalCost,
+      markupPct: pricing.markupPct,
       distributor: selectedRepair.distributor || selectedRepair.partSource || linkedInventory?.distributor || '',
       inventoryParentId: Number(selectedRepair.inventoryParentId || 0) || undefined,
       inventoryProductId: Number(selectedRepair.inventoryProductId || linkedInventory?.id || 0) || undefined,

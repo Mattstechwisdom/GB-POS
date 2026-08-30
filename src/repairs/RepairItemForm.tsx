@@ -1,9 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { RepairItem } from '../lib/types';
 import MoneyInput from '../components/MoneyInput';
-import PercentInput from '../components/PercentInput';
 import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
-import { PART_MARKUP_PRESETS } from '../lib/partOrdering';
 import { normalizeServiceKey } from '../lib/repairServiceHierarchy';
 import { applyInventoryPartToRepair } from '../lib/repairPartLinking';
 
@@ -28,7 +26,6 @@ const DUMMY_DEVICE_CATEGORIES = [
   'Other'
 ];
 
-const MARKUP_PRESETS = PART_MARKUP_PRESETS;
 const DEFAULT_MARKUP_PCT = '10';
 
 function repairCategoryRank(value: unknown): number {
@@ -48,13 +45,6 @@ function sortRepairCategoryNames(names: string[]): string[] {
     if (rankDiff !== 0) return rankDiff;
     return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
   });
-}
-
-function markedUpPrice(cost: unknown, pct: unknown): number | undefined {
-  const c = Number(cost);
-  const p = Number(pct);
-  if (!Number.isFinite(c) || c < 0 || !Number.isFinite(p) || p < 0) return undefined;
-  return Math.round(c * (1 + p / 100) * 100) / 100;
 }
 
 function normalizeOrderUrl(value: unknown): string {
@@ -108,7 +98,6 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     .filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true })), [deviceCategoryInput, deviceRecords]);
   // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
-  const [inventoryParents, setInventoryParents] = useState<Array<{ id: number; itemDescription: string }>>([]);
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
@@ -133,10 +122,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         })).filter((entry: any) => entry.name && entry.title) : []);
 
         // Pull from repairTypes master list AND from existing repair items' repairCategory values
-        const [rt, repairItems, products] = await Promise.all([
+        const [rt, repairItems] = await Promise.all([
           window.api.dbGet('repairTypes').catch(() => []),
           window.api.dbGet('repairCategories').catch(() => []),
-          window.api.dbGet('products').catch(() => []),
         ]);
         const fromTypes = Array.isArray(rt)
           ? rt.map((r: any) => String(r?.name || '').trim()).filter(Boolean)
@@ -146,7 +134,6 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           : [];
         const merged = sortRepairCategoryNames([...fromTypes, ...fromItems]);
         setRepairTypes(merged);
-        setInventoryParents(Array.isArray(products) ? products.filter((product: any) => product?.isParentPart && product?.id).map((product: any) => ({ id: Number(product.id), itemDescription: String(product.itemDescription || 'Parent Part') })) : []);
       }
     })();
   }, []);
@@ -385,15 +372,6 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <input name="serviceKey" value={formData.serviceKey || ''} onChange={handleChange} placeholder="USB Port Repair" className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
             <span className="mt-1 block text-[11px] text-zinc-500">A stable service key is created automatically when saved.</span>
           </div>
-          <label className="md:col-span-2 block">
-            <span className="mb-1 block text-sm font-medium text-gray-300">Linked Part Family / Standalone Part</span>
-            <select value={formData.inventoryParentId || ''} onChange={(event) => setFormData((current) => ({ ...current, inventoryParentId: event.target.value ? Number(event.target.value) : undefined, inventoryProductId: event.target.value ? undefined : current.inventoryProductId }))} className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#BC13FE]">
-              <option value="">Use the exact standalone part selected below</option>
-              {inventoryParents.map((parent) => <option key={parent.id} value={parent.id}>{parent.itemDescription}</option>)}
-            </select>
-            <span className="mt-1 block text-[11px] text-zinc-500">A linked family prompts for the exact stocked color/type when the repair is added.</span>
-          </label>
-
           {/* 2. Device Category — optional, behind a checkbox */}
           <div className="md:col-span-2">
             <label className="flex items-center gap-2 text-sm font-medium text-gray-300 cursor-pointer select-none mb-2">
@@ -470,9 +448,35 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <label className="block text-sm font-medium text-gray-300 mb-1">Alt. description</label>
             <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} onKeyDown={handleEnterToSubmit} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
           </div>
-          <div className="gb-repair-cost-row md:col-span-2">
-            <div className="gb-repair-cost-field">
-              <label className="block text-sm font-medium text-gray-300 mb-1">Part sold</label>
+          <section className="md:col-span-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div><h3 className="text-sm font-semibold text-zinc-100">Linked Inventory</h3><p className="text-[11px] text-zinc-500">Inventory quantities and reorder settings are managed in Inventory.</p></div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setPartPickerOpen(true)} className="rounded bg-[#BC13FE] px-3 py-2 text-xs font-bold text-white">Select Inventory Part or Family</button>
+                {(formData.inventoryProductId || formData.inventoryParentId) ? <button type="button" onClick={() => setFormData((current) => ({ ...current, inventoryProductId: undefined, inventoryParentId: undefined, internalCost: undefined, partSource: '', orderSourceUrl: '', trackStock: false, stockCount: undefined, lowStockThreshold: undefined }))} className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs">Unlink</button> : null}
+              </div>
+            </div>
+            <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-300">
+              {formData.inventoryParentId ? `Parent family linked · exact variant selected when added to a work order` : formData.inventoryProductId ? `Exact inventory part linked${formData.partSource ? ` · ${formData.partSource}` : ''}` : 'No inventory part linked · pricing can be entered manually'}
+            </div>
+          </section>
+
+          <section className="md:col-span-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3">
+            <h3 className="mb-3 text-sm font-semibold text-zinc-100">Pricing</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-300">Inventory Cost</label>
+              <MoneyInput
+                className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-gray-100 outline-none focus:border-[#39FF14]"
+                value={typeof formData.internalCost === 'number' ? formData.internalCost : undefined}
+                onValueChange={(v) => setFormData(prev => ({ ...prev, internalCost: v == null ? undefined : Number(v || 0) }))}
+                onKeyDown={handleEnterToSubmit}
+                allowEmpty
+                placeholder={formData.inventoryParentId ? 'Set by chosen variant' : '0.00'}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-300">Part Charged</label>
               <MoneyInput
                 className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
                 value={Number(formData.partCost || 0)}
@@ -481,8 +485,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 placeholder="0.00"
               />
             </div>
-            <div className="gb-repair-cost-field">
-              <label className="block text-sm font-medium text-gray-300 mb-1">Labor costs</label>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-300">Labor Charged</label>
               <MoneyInput
                 className="w-full bg-yellow-200 text-black border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
                 value={Number(formData.laborCost || 0)}
@@ -491,115 +495,9 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 placeholder="0.00"
               />
             </div>
-          </div>
-          {(
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-300 mb-1">Internal Cost (reporting only)</label>
-              <MoneyInput
-                className="w-full bg-zinc-800 text-gray-100 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text appearance-none"
-                value={typeof formData.internalCost === 'number' ? formData.internalCost : undefined}
-                onValueChange={(v) => {
-                  const internalCost = v == null ? undefined : Number(v || 0);
-                  const partCost = internalCost == null ? formData.partCost : markedUpPrice(internalCost, markupPct || DEFAULT_MARKUP_PCT);
-                  setFormData(prev => ({ ...prev, internalCost, ...(partCost == null ? {} : { partCost }) }));
-                }}
-                onKeyDown={handleEnterToSubmit}
-                allowEmpty
-                placeholder="0.00"
-              />
-              <div className="text-xs text-zinc-400 mt-1">Not shown to customers; used for reporting only.</div>
-              {/* Markup % helper — computes Part Costs from Internal Cost */}
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span className="text-xs text-zinc-400 whitespace-nowrap">Markup %:</span>
-                <PercentInput
-                  className="w-20"
-                  value={markupPct}
-                  onChange={v => {
-                    const next = v || DEFAULT_MARKUP_PCT;
-                    setMarkupPct(next);
-                    const partCost = markedUpPrice(formData.internalCost, next);
-                    if (partCost != null) setFormData(prev => ({ ...prev, markupPct: next, partCost }));
-                    else setFormData(prev => ({ ...prev, markupPct: next }));
-                  }}
-                  presets={MARKUP_PRESETS}
-                />
-                <button
-                  type="button"
-                  disabled={!markupPct || !formData.internalCost}
-                  onClick={() => {
-                    const ic = Number(formData.internalCost || 0);
-                    const pct = Number(markupPct || 0);
-                    if (ic > 0 && pct > 0) {
-                      const newPartCost = Math.round(ic * (1 + pct / 100) * 100) / 100;
-                      setFormData(prev => ({ ...prev, partCost: newPartCost }));
-                    }
-                  }}
-                  className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                >
-                  → Set Part Cost
-                </button>
-                {typeof formData.internalCost === 'number' && formData.internalCost > 0 &&
-                 typeof formData.partCost === 'number' && formData.partCost > 0 && (
-                  <span className="text-xs text-zinc-400 whitespace-nowrap">
-                    (implied: {(((formData.partCost / formData.internalCost) - 1) * 100).toFixed(1)}%)
-                  </span>
-                )}
-              </div>
-
-              {/* Stock tracking (admin only) */}
-              {effectiveMode === 'admin' ? <div className="border border-zinc-700 rounded p-3 mt-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    id="repair-track-stock-cb"
-                    type="checkbox"
-                    checked={!!formData.trackStock}
-                    onChange={e => setFormData(prev => ({ ...prev, trackStock: e.target.checked }))}
-                    className="accent-[#39FF14]"
-                  />
-                  <label htmlFor="repair-track-stock-cb" className="text-sm font-medium cursor-pointer">Track part stock</label>
-                </div>
-                {formData.trackStock && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Stock count</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.stockCount ?? ''}
-                        onChange={e => setFormData(prev => ({ ...prev, stockCount: e.target.value === '' ? undefined : Number(e.target.value) }))}
-                        onKeyDown={handleEnterToSubmit}
-                        className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Low stock alert at</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.lowStockThreshold ?? ''}
-                        onChange={e => setFormData(prev => ({ ...prev, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
-                        onKeyDown={handleEnterToSubmit}
-                        className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-sm focus:border-[#39FF14] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div> : null}
             </div>
-          )}
-        </div>
-
-        <hr className="border-zinc-700 my-2" />
-        <div className="rounded border border-zinc-700 bg-zinc-950/35 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setPartPickerOpen(true)} className="rounded bg-[#BC13FE] px-4 py-2 text-sm font-semibold text-white">Select Part</button>
-            <button type="button" onClick={() => setFormData((current) => ({ ...current, partCost: 0, internalCost: undefined, markupPct: DEFAULT_MARKUP_PCT, partSource: '', orderSourceUrl: '', taxExempt: false }))} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm">Clear Part Fields</button>
-            {formData.orderSourceUrl ? (
-              <button type="button" title={formData.orderSourceUrl} onClick={() => { const url = normalizeOrderUrl(formData.orderSourceUrl); if ((window as any).api?.openUrl) (window as any).api.openUrl(url); else window.open(url, '_blank', 'noopener,noreferrer'); }} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white">Order URL</button>
-            ) : null}
-          </div>
-          <div className="mt-2 text-xs text-zinc-500">Catalog parts come from Inventory. Manual values remain on this repair or work order only.</div>
-          {formData.partSource ? <div className="mt-2 text-sm text-zinc-300">Vendor: <span className="font-semibold">{formData.partSource}</span></div> : null}
+            {formData.inventoryParentId ? <p className="mt-2 text-[11px] text-fuchsia-200">This is the default charge. A selected variant with its own selling price will replace it on the work order.</p> : null}
+          </section>
         </div>
       </div>
 

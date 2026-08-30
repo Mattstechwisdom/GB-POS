@@ -22,6 +22,11 @@ export function applyInventoryPartToRepair(current: any, part: RepairInventoryPa
       model: current.model || part.deviceModel || part.associatedDevices?.[0] || '',
       inventoryParentId: Number(part.id || 0) || undefined,
       inventoryProductId: undefined,
+      internalCost: undefined,
+      partSource: '',
+      orderSourceUrl: '',
+      trackStock: false,
+      stockCount: undefined,
     };
   }
   return {
@@ -38,5 +43,16 @@ export function applyInventoryPartToRepair(current: any, part: RepairInventoryPa
     inventoryProductId: Number(part.id || 0) || undefined,
     trackStock: part.trackStock === true,
     stockCount: part.stockCount,
+  };
+}
+
+export function resolveWorkOrderRepairPricing(repair: any, linkedInventory: any): { parts: number; internalCost?: number; markupPct: number | string } {
+  const usesFamilyVariant = Number(repair?.inventoryParentId || 0) > 0;
+  return {
+    parts: Number(usesFamilyVariant ? linkedInventory?.price ?? repair?.partCost ?? 0 : repair?.partCost ?? linkedInventory?.price ?? 0) || 0,
+    internalCost: usesFamilyVariant && typeof linkedInventory?.internalCost === 'number'
+      ? linkedInventory.internalCost
+      : typeof repair?.internalCost === 'number' ? repair.internalCost : linkedInventory?.internalCost,
+    markupPct: usesFamilyVariant ? linkedInventory?.markupPct ?? repair?.markupPct ?? 10 : repair?.markupPct ?? linkedInventory?.markupPct ?? 10,
   };
 }
