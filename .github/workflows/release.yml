@@ -98,6 +98,9 @@ jobs:
           npm run test:immediate-persistence
           npm run test:daily-look-shifts
           npm run test:desktop-navigation
+          npm run test:admin-multiwindow
+          npm run test:checkout-layout
+          npm run test:repair-compatibility
           npm run test:main-record-types
           npm run test:repair-device-filters
           npm run test:technician-sync

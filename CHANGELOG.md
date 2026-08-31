@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.45 (2026-08-31)
+- Independent Admin Windows: desktop Admin tools now open in separate non-modal windows, including multiple instances for multitasking; mobile and browser builds retain responsive in-app navigation.
+- Guided Inventory: Inventory now uses clear identity/source, compatibility, pricing, and stock/reorder steps with prominent links to existing or new repairs.
+- Shared Catalog Settings: the Admin menu now calls the catalog “Repairs,” while Inventory and Repairs share one settings surface for part types, repair types, and device categories with live cross-window refresh.
+- Inventory/Repair Communication: linked repairs derive compatible devices from the authoritative inventory part or parent family, and work-order repair selection ranks matches for the registered device first before exact variant deduction.
+- Distributor URL Autofill: supported part URLs now fill available name, distributor, SKU, cost, and marked-up price while preserving intentional existing values.
+- Checkout Refresh: the checkout popup has prominent payment-scope cards, payment tiles, option cards, a responsive tender panel, and a clear Complete Checkout action without removing existing features.
+- Quick Checkout Completion: successful Quick Checkout now closes its parent modal/window even when Electron correctly refuses a request to close the main POS window.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.44 (2026-08-29)
 - Streamlined Repair Editor: Devices/Repairs now separates linked inventory from pricing and removes duplicate stock-count, low-stock, and stock-tracking controls that belong in Inventory.
 - Inventory Price Autofill: selecting an exact part or variant fills its inventory cost, customer charge, vendor, and ordering details; selecting a parent family keeps a manually entered default part charge.
