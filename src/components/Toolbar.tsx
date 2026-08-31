@@ -127,7 +127,6 @@ const Toolbar: React.FC<{
               {[
                 { label: 'Repairs', action: () => openAdmin('repairCategories') },
                 { label: 'Inventory',       action: () => openAdmin('inventory') },
-                { label: 'Distributors/Vendors', action: () => openAdmin('vendors') },
                 { label: 'Reporting',       action: () => openAdmin('reporting') },
                 { label: 'Technicians',     action: () => openAdmin('technicians') },
                 { label: 'Data Tools',      action: () => openAdmin('dataTools') },

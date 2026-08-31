@@ -4,6 +4,7 @@ import MoneyInput from '../components/MoneyInput';
 import PartInventoryPicker, { type InventoryPartSelection } from '../components/PartInventoryPicker';
 import { normalizeServiceKey } from '../lib/repairServiceHierarchy';
 import { applyInventoryPartToRepair } from '../lib/repairPartLinking';
+import { applyRepairDefaults, normalizeRepairDefaults, type RepairDefaults } from '../lib/catalogDefaults';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -99,6 +100,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     .filter(Boolean))).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true })), [deviceCategoryInput, deviceRecords]);
   // Repair types from DB + existing repair items (merged, deduped)
   const [repairTypes, setRepairTypes] = useState<string[]>([]);
+  const [repairDefaults, setRepairDefaults] = useState<RepairDefaults>(() => normalizeRepairDefaults());
   // no external partSources list anymore; free-text with optional autofill
   // Search/filter logic
   const filteredCategories = deviceCategories.filter(cat =>
@@ -123,9 +125,10 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         })).filter((entry: any) => entry.name && entry.title) : []);
 
         // Pull from repairTypes master list AND from existing repair items' repairCategory values
-        const [rt, repairItems] = await Promise.all([
+        const [rt, repairItems, settingsRows] = await Promise.all([
           window.api.dbGet('repairTypes').catch(() => []),
           window.api.dbGet('repairCategories').catch(() => []),
+          window.api.dbGet('settings').catch(() => []),
         ]);
         const fromTypes = Array.isArray(rt)
           ? rt.map((r: any) => String(r?.name || '').trim()).filter(Boolean)
@@ -135,6 +138,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           : [];
         const merged = sortRepairCategoryNames([...fromTypes, ...fromItems]);
         setRepairTypes(merged);
+        setRepairDefaults(normalizeRepairDefaults(Array.isArray(settingsRows) ? settingsRows[0]?.repairDefaults : undefined));
       }
     })();
   }, []);
@@ -180,7 +184,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
     } else {
-      setFormData({
+      const blank = applyRepairDefaults<Partial<RepairItem>>({
         category: '',
         repairCategory: '',
         title: '',
@@ -194,19 +198,20 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         estDelivery: '',
         partSource: '',
         orderSourceUrl: '',
-        type: 'service',
+        type: 'service' as const,
         model: '',
         trackStock: false,
         stockCount: undefined,
         lowStockThreshold: undefined,
-      });
+      }, repairDefaults);
+      setFormData(blank);
       setMarkupPct(DEFAULT_MARKUP_PCT);
       setOrderUrlEditing(false);
       setDeviceCategoryInput('');
-      setRepairCategoryInput('');
+      setRepairCategoryInput(String(blank.repairCategory || ''));
       setHasDeviceCategory(false);
     }
-  }, [selectedItem]);
+  }, [selectedItem, repairDefaults]);
 
   useEffect(() => {
     if (!initialInventoryPart) return;

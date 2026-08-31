@@ -476,7 +476,7 @@ function titleForModal(type: string) {
     productForm: 'Product',
     backup: 'Local Backup',
     clearDb: 'Clear Database',
-    repairCategories: 'Devices / Repairs',
+    repairCategories: 'Repairs',
     deviceCategories: 'Device Categories',
     customBuildItem: 'Custom Build',
     technicians: 'Technicians',
@@ -1427,9 +1427,8 @@ function MobileDrawer(props: {
     ['diagnosticTools', 'Diagnostic Tools'],
   ] as const;
   const adminTools = [
-    ['repairCategories', 'Devices / Repairs'],
+    ['repairCategories', 'Repairs'],
     ['inventory', 'Inventory'],
-    ['vendors', 'Distributors / Vendors'],
     ['reporting', 'Reporting'],
     ['dataTools', 'Data Tools'],
   ] as const;

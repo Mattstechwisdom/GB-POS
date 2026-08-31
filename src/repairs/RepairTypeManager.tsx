@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import type { RepairItem } from '@/lib/types';
+import { deleteRepair, deleteRepairType } from '@/lib/repairDeletion';
 
 type RepairType = {
   id: number | string;
@@ -175,17 +176,22 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
 
   async function deleteById(id: number | string) {
     const selected = types.find(t => String(t.id) === String(id));
-    if (!selected?.definedId) return;
-    if (!window.confirm(`Delete "${selected.name}" from the saved type list? Repairs using it stay unchanged.`)) return;
+    if (!selected) return;
+    const assigned = repairRows.filter(row => serviceTypeKey(row.repairCategory) === serviceTypeKey(selected.name));
+    const removeRepairs = assigned.length > 0 && window.confirm(`Delete the repair type AND its ${assigned.length} assigned repair(s)?\n\nChoose Cancel to keep the repairs and remove only the saved type.`);
+    if (!removeRepairs && selected.definedId == null) { window.alert('This type comes from assigned repairs. Delete its assigned repairs to remove it.'); return; }
+    if (!window.confirm(removeRepairs ? `Permanently delete "${selected.name}" and all assigned repairs?` : `Remove "${selected.name}" from the saved type list?`)) return;
     const api = (window as any).api;
-    await api?.dbDelete?.('repairTypes', selected.definedId);
+    const result = await deleteRepairType(api, selected, assigned, removeRepairs ? 'type-and-repairs' : 'type-only');
+    if (!result.ok) { window.alert(result.error || 'Repair type could not be deleted.'); return; }
     if (String(selectedId) === String(id)) clearSelection();
     await reload();
   }
 
   async function deleteRepairRow(row: RepairRow) {
     if (row.id == null || !window.confirm(`Delete "${String((row as any).title || 'this repair')}"? This cannot be undone.`)) return;
-    await (window as any).api?.dbDelete?.('repairCategories', row.id);
+    const result = await deleteRepair((window as any).api, row.id);
+    if (!result.ok) { window.alert(result.error || 'Repair could not be deleted.'); return; }
     onRepairDeleted?.(row.id);
     await reload();
   }

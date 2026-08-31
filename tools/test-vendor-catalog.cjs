@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict'); const path = require('node:path'); const esbuild = require('esbuild');
+const root = path.resolve(__dirname, '..'); const result = esbuild.buildSync({ entryPoints:[path.join(root,'src/lib/vendorCatalog.ts')], bundle:true, platform:'node', format:'cjs', write:false });
+const mod={exports:{}}; new Function('module','exports','require',result.outputFiles[0].text)(mod,mod.exports,require);
+const { vendorKey, resolveCanonicalVendor, groupVendorLinks, renameVendorLinks }=mod.exports;
+assert.equal(vendorKey('  Mobile   Sentrix '), 'mobile sentrix');
+assert.equal(resolveCanonicalVendor('mobile sentrix',[{id:1,name:'Mobile Sentrix'}]).name,'Mobile Sentrix');
+const products=[{id:10,distributor:'Mobile Sentrix'},{id:11,distributor:'Other'}];
+const repairs=[{id:'r1',inventoryProductId:10},{id:'r2',partSource:'Mobile Sentrix'}];
+const grouped=groupVendorLinks({id:1,name:'mobile sentrix'},products,repairs); assert.deepEqual(grouped.parts.map(x=>x.id),[10]); assert.deepEqual(grouped.repairs.map(x=>x.id),['r1','r2']);
+const renamed=renameVendorLinks('Mobile Sentrix','MobileSentrix',products,repairs); assert.equal(renamed.products[0].distributor,'MobileSentrix'); assert.equal(renamed.repairs[1].partSource,'MobileSentrix');
+console.log('Vendor catalog checks passed.');

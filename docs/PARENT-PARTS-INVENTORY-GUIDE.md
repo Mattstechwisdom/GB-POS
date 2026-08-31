@@ -12,7 +12,7 @@ Use more attributes whenever they distinguish stocked items, for example `Qualit
 
 ## Pairing parts with repairs
 
-1. Open **Devices / Repairs** and edit or create the service assignment.
+1. Open **Repairs** and edit or create the service assignment.
 2. Set a broad **Repair Family**, such as `Screen Repair` or `Port Repair`.
 3. Set the reusable service, such as `Screen Replacement` or `USB Port Repair`.
 4. Choose the applicable device category and exact device when pricing or labor differs.

@@ -19,7 +19,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 ### Windows
 
 - The top toolbar contains Admin, Generate Quote, Quick Sale, Consultation, End of Day Report, Notifications, Calendar, and search.
-- Admin contains Devices / Repairs, Inventory, Distributors / Vendors, Reporting, Technicians, Data Tools, and Dev Menu.
+- Admin contains Repairs, Inventory, Reporting, Technicians, Data Tools, and Dev Menu. Distributor and vendor management is under Inventory Settings.
 - Daughter windows use their in-app close control when provided. Standard Windows controls remain available on true native windows.
 - Full screen can be toggled from the toolbar.
 
@@ -29,7 +29,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Priority actions appear first: Generate Quote, Consultation, Quick Sale, and End of Day Report.
 - Client Database contains Search Client and Add Client.
 - Technician Tools contains Technicians, Calendar, and Diagnostic Tools.
-- Admin contains Devices / Repairs, Inventory, Distributors / Vendors, Reporting, and Data Tools.
+- Admin contains Repairs, Inventory, Reporting, and Data Tools. Distributor and vendor management is under Inventory Settings.
 - Sync Now refreshes shared records. Update appears when a newer compatible APK is available.
 - Long-press an item where the desktop app would normally offer a right-click menu.
 - Phone-only actions can open the default dialer or messaging app with the client number already filled in.
@@ -118,7 +118,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 
 ### Work Order Items
 
-- Add Repair opens Repair Selection and uses the permanent Devices / Repairs catalog.
+- Add Repair opens Repair Selection and uses the permanent Repairs catalog.
 - Add Product uses the product inventory picker.
 - One-off custom entries can be entered for a work order without changing the permanent catalog.
 - Verify quantity, part charge, labor charge, tax treatment, discounts, and total before checkout.
@@ -205,7 +205,7 @@ This manual is the operating guide for GadgetBoy POS on Windows and Android. It 
 - Save Repair saves a reusable repair definition and includes the selected saved part when supported.
 - Use permanent save only for standardized entries worth reusing. One-off work-order details should remain on that ticket.
 
-## 9. Devices / Repairs
+## 9. Repairs
 
 - Devices define models used by reusable repair records.
 - Repair categories organize services. Diagnostic must appear first, Additional Fees second, and remaining categories alphabetically.
@@ -311,7 +311,7 @@ For automatic repair-part deduction, the Part must have stock tracking enabled, 
 
 1. Select Repair in Quick Checkout.
 2. Search the repair catalog and add each required repair line.
-3. Select a line to edit its temporary description, part charge, labor/price, supplier cost, ordering details, or quantity without changing Devices / Repairs.
+3. Select a line to edit its temporary description, part charge, labor/price, supplier cost, ordering details, or quantity without changing Repairs.
 4. Verify the line-item list and totals before Checkout.
 
 ### New Sale

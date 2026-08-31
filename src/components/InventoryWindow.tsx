@@ -3,6 +3,8 @@ import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import type { VendorRecord } from './VendorsWindow';
 import { applyInventoryUrlAutofill, scrapePartUrl } from '../lib/partOrdering';
+import { applyInventoryDefaults, normalizeInventoryDefaults, type InventoryDefaults } from '../lib/catalogDefaults';
+import { resolveCanonicalVendor } from '../lib/vendorCatalog';
 import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
@@ -158,6 +160,7 @@ export default function InventoryWindow() {
   const [repairCategories, setRepairCategories] = useState<any[]>([]);
   const [repairTypes, setRepairTypes] = useState<any[]>([]);
   const [inventoryPartTypes, setInventoryPartTypes] = useState<string[]>(PART_CATEGORY_OPTIONS);
+  const [inventoryDefaults, setInventoryDefaults] = useState<InventoryDefaults>(() => normalizeInventoryDefaults());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
@@ -253,6 +256,7 @@ export default function InventoryWindow() {
       setRepairTypes(Array.isArray(repairTypeRows) ? repairTypeRows : []);
       const settings = Array.isArray(settingsRows) ? settingsRows[0] : null;
       setInventoryPartTypes(Array.isArray(settings?.inventoryPartTypes) && settings.inventoryPartTypes.length ? settings.inventoryPartTypes : PART_CATEGORY_OPTIONS);
+      setInventoryDefaults(normalizeInventoryDefaults(settings?.inventoryDefaults));
     } finally {
       setLoading(false);
     }
@@ -273,12 +277,12 @@ export default function InventoryWindow() {
       return;
     }
     setSelectedId(undefined);
-    setEditing(blankItem(mode));
+    setEditing(applyInventoryDefaults(blankItem(mode), inventoryDefaults));
     setSearch('');
     setDeviceFilter('');
     setFiltersOpen(false);
     setExpandedParentIds(new Set());
-  }, [mode]);
+  }, [mode, inventoryDefaults]);
 
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -427,7 +431,7 @@ export default function InventoryWindow() {
 
   const startNew = () => {
     setSelectedId(undefined);
-    setEditing(blankItem(mode));
+    setEditing(applyInventoryDefaults(blankItem(mode), inventoryDefaults));
     setEditingOrderUrl(false);
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
@@ -697,19 +701,17 @@ export default function InventoryWindow() {
       const meta = await scrapePartUrl(url);
       if (sequence !== scrapeSequenceRef.current) return;
       if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number' && !meta?.vendor) return;
-      setEditing((current) => {
-        return applyInventoryUrlAutofill(current, meta, url);
-      });
+      setEditing((current) => { const filled = applyInventoryUrlAutofill(current, meta, url); const canonical = resolveCanonicalVendor(filled.distributor, vendors); return canonical ? { ...filled, distributor: canonical.name } : filled; });
     } catch (err) {
       console.error('Inventory URL autofill failed', err);
     } finally {
       if (sequence === scrapeSequenceRef.current) setScrapingUrl(false);
     }
-  }, []);
+  }, [vendors]);
 
   const modeLabel = mode === 'parts' ? 'Repair Parts' : 'Products';
   const categoryOptions = mode === 'parts' ? partDeviceCategoryOptions : productTypeOptions;
-  const conditionOptions = mode === 'parts' ? PART_CONDITIONS : PRODUCT_CONDITIONS;
+  const conditionOptions = mode === 'parts' ? inventoryDefaults.conditions : PRODUCT_CONDITIONS;
 
   return (
     <div className="h-screen bg-zinc-900 text-gray-100 overflow-hidden">

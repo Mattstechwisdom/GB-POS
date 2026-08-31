@@ -766,9 +766,8 @@ const AppInner: React.FC<{
                 <details className="desktop-drawer-section admin">
                   <summary>Admin <span>+</span></summary>
                   <div>
-                    <button type="button" onClick={() => openDrawerModal('repairCategories')}>Devices / Repairs</button>
+                    <button type="button" onClick={() => openDrawerModal('repairCategories')}>Repairs</button>
                     <button type="button" onClick={() => openDrawerModal('inventory')}>Inventory</button>
-                    <button type="button" onClick={() => openDrawerModal('vendors')}>Distributors / Vendors</button>
                     <button type="button" onClick={() => openDrawerModal('reporting')}>Reporting</button>
                     <button type="button" onClick={() => openDrawerModal('dataTools')}>Data Tools</button>
                     <button type="button" onClick={() => openDrawerModal('devMenu')}>Dev Menu</button>

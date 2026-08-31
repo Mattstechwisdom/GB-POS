@@ -6,6 +6,7 @@ import type { RepairItem } from '../lib/types';
 import DeviceForm from '@/repairs/DeviceForm';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
+import { deleteRepair } from '@/lib/repairDeletion';
 
 // No placeholder data for now
 
@@ -127,8 +128,10 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
 
   const handleDelete = async (itemId: string | number | undefined) => {
     if (!itemId) return;
-    setRepairItems(prev => prev.filter(i => i.id !== itemId));
-    if (window.api?.dbDelete) await window.api.dbDelete('repairCategories', itemId);
+    const result = await deleteRepair(window.api, itemId);
+    if (!result.ok) { window.alert(result.error || 'Repair could not be deleted.'); return; }
+    const rows = await window.api?.dbGet?.('repairCategories').catch(() => []);
+    setRepairItems(Array.isArray(rows) ? rows : repairItems.filter(i => i.id !== itemId));
     setSelectedItem(null);
   };
 

@@ -1,0 +1,8 @@
+const finite = (value: unknown, fallback: number, min = 0, max = 100000) => { const n = Number(value); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
+const unique = (values: unknown, fallback: string[]) => Array.from(new Set((Array.isArray(values) ? values : fallback).map(value => String(value || '').trim()).filter(Boolean)));
+export type InventoryDefaults = { markupPct: number; lowStockThreshold: number; reorderQty: number; conditions: string[] };
+export type RepairDefaults = { repairCategory: string; laborCost: number };
+export function normalizeInventoryDefaults(value: any = {}): InventoryDefaults { return { markupPct: finite(value.markupPct, 30, 0, 1000), lowStockThreshold: finite(value.lowStockThreshold, 2, 0), reorderQty: finite(value.reorderQty, 1, 1), conditions: unique(value.conditions, ['New', 'Used', 'Refurbished']) }; }
+export function normalizeRepairDefaults(value: any = {}): RepairDefaults { return { repairCategory: String(value.repairCategory || '').trim(), laborCost: finite(value.laborCost, 0, 0) }; }
+export function applyInventoryDefaults<T extends Record<string, any>>(draft: T, defaults: InventoryDefaults): T { return { ...draft, markupPct: draft.markupPct ?? defaults.markupPct, lowStockThreshold: draft.lowStockThreshold ?? defaults.lowStockThreshold, reorderQty: draft.reorderQty ?? defaults.reorderQty, condition: draft.condition || defaults.conditions[0] || '' }; }
+export function applyRepairDefaults<T extends Record<string, any>>(draft: T, defaults: RepairDefaults): T { return { ...draft, repairCategory: draft.repairCategory || defaults.repairCategory, laborCost: draft.laborCost ?? defaults.laborCost }; }
