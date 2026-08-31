@@ -1891,7 +1891,7 @@ app.on('browser-window-created', (_event: any, win: typeof BrowserWindow.prototy
 });
 
 // IPC handler for promise-based repair picker (returns selected repair)
-ipcMain.handle('pick-repair-item', async (event: any) => {
+ipcMain.handle('pick-repair-item', async (event: any, context?: { deviceCategory?: string; deviceName?: string; deviceModel?: string }) => {
   return new Promise((resolve) => {
     const parentFromSender = (() => {
       try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; }
@@ -1914,9 +1914,10 @@ ipcMain.handle('pick-repair-item', async (event: any) => {
     });
     showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+    const encodedContext = encodeURIComponent(JSON.stringify(context || {}));
     const url = isDev
-      ? `${DEV_SERVER_URL}/?workOrderRepairPicker=true`
-      : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?workOrderRepairPicker=true`;
+      ? `${DEV_SERVER_URL}/?workOrderRepairPicker=true&deviceContext=${encodedContext}`
+      : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?workOrderRepairPicker=true&deviceContext=${encodedContext}`;
     child.loadURL(url);
 
     // Listen for repair-selected event from picker window
@@ -3824,6 +3825,8 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   technicians: 'technicians:changed',
   deviceCategories: 'deviceCategories:changed',
   productCategories: 'productCategories:changed',
+  repairTypes: 'repairTypes:changed',
+  repairCategories: 'repairCategories:changed',
   products: 'products:changed',
   purchaseOrders: 'purchaseOrders:changed',
   partSources: 'partSources:changed',
@@ -5962,6 +5965,26 @@ ipcMain.handle('open-inventory', async (event: any) => {
   child.loadURL(url);
   return { ok: true };
 });
+
+function openAdminCollectionWindow(event: any, query: string, title: string, size: { width: number; height: number; minWidth: number; minHeight: number }) {
+  const parentFromSender = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })();
+  const child = new BrowserWindow({
+    ...size, resizable: true, parent: parentFromSender || BrowserWindow.getAllWindows()[0] || undefined, modal: false,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}), backgroundColor: '#18181b', autoHideMenuBar: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, '..', 'electron', 'preload.js') },
+    show: false, title: windowTitle(title),
+  });
+  showWindowFast(child, () => { centerWindow(child); }, { focus: false });
+  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const queryString = query.includes('=') ? query : `${query}=true`;
+  const url = isDev ? `${DEV_SERVER_URL}/?${queryString}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?${queryString}`;
+  void child.loadURL(url);
+  return { ok: true };
+}
+
+ipcMain.handle('open-vendors', async (event: any) => openAdminCollectionWindow(event, 'vendors', 'Distributors / Vendors', { width: 1040, height: 760, minWidth: 820, minHeight: 620 }));
+ipcMain.handle('open-technicians', async (event: any) => openAdminCollectionWindow(event, 'technicians', 'Technicians', { width: 1100, height: 800, minWidth: 880, minHeight: 650 }));
+ipcMain.handle('open-catalog-settings', async (event: any, tab?: 'inventory' | 'repairs') => openAdminCollectionWindow(event, `catalogSettings=true&settingsTab=${tab === 'repairs' ? 'repairs' : 'inventory'}`, 'Catalog Settings', { width: 1060, height: 780, minWidth: 820, minHeight: 620 }));
 
 // --- Dev Menu handlers ---
 ipcMain.handle('open-dev-menu', async () => {
@@ -8248,7 +8271,7 @@ ipcMain.handle('open-eod', async (_event: any) => {
   return { ok: true };
 });
 
-ipcMain.handle('open-repair-categories', async (_event: any) => {
+ipcMain.handle('open-repair-categories', async (_event: any, payload?: any) => {
   const parent = BrowserWindow.getAllWindows()[0] || undefined;
 
   // Size the window to the current display's work area so it never opens cut off.
@@ -8292,7 +8315,8 @@ ipcMain.handle('open-repair-categories', async (_event: any) => {
   });
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev) child.webContents.openDevTools({ mode: 'detach' });
-  const url = isDev ? `${DEV_SERVER_URL}/?repairCategories=true` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?repairCategories=true`;
+  const linkContext = payload ? `&linkContext=${encodeURIComponent(JSON.stringify(payload))}` : '';
+  const url = isDev ? `${DEV_SERVER_URL}/?repairCategories=true${linkContext}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?repairCategories=true${linkContext}`;
   child.loadURL(url);
   return { ok: true };
 });
@@ -8530,9 +8554,11 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
   return new Promise(resolve => {
     const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
     const child = new BrowserWindow({
-      width: 400,
-      height: 420,
-      resizable: false,
+      width: 560,
+      height: 720,
+      minWidth: 380,
+      minHeight: 560,
+      resizable: true,
       parent: parentWin as any,
       modal: true,
       ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),

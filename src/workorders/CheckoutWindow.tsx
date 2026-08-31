@@ -298,17 +298,15 @@ const CheckoutWindow: React.FC = () => {
   }
 
   return (
-    <div className="gb-checkout-window h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-200 font-sans select-none" onKeyDownCapture={onRootKeyDownCapture}>
-      <div className="gb-checkout-body h-full p-2 flex flex-col gap-2 text-[13px] leading-tight">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">{payload?.title ? String(payload.title) : 'Checkout'}</h2>
-          <div className="text-[11px] text-zinc-400">
-            Due <span className="text-neon-green font-semibold">${selectedDue.toFixed(2)}</span>
-          </div>
+    <div className="gb-checkout-window h-screen w-screen overflow-auto bg-gradient-to-b from-zinc-900 to-zinc-950 text-zinc-100 font-sans select-none" onKeyDownCapture={onRootKeyDownCapture}>
+      <div className="gb-checkout-body mx-auto flex min-h-full max-w-2xl flex-col gap-3 p-3 text-[13px] leading-tight sm:p-4">
+        <div className="gb-checkout-summary flex items-center justify-between rounded-2xl border border-[#39FF14]/35 bg-[#39FF14]/[0.06] p-4 shadow-[0_0_24px_rgba(57,255,20,0.08)]">
+          <div><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Payment</div><h2 className="mt-1 text-lg font-black">{payload?.title ? String(payload.title) : 'Checkout'}</h2></div>
+          <div className="text-right"><div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Amount due</div><div className="mt-1 text-2xl font-black text-neon-green">${selectedDue.toFixed(2)}</div></div>
         </div>
 
         {hasPayFor && (
-          <div className="bg-zinc-950/30 border border-zinc-800 rounded p-2">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 shadow-lg">
             <div className="flex items-center justify-between">
               <div className="text-[11px] uppercase tracking-wide text-zinc-500">Paying for</div>
               <div className="text-[11px] text-zinc-400">
@@ -316,16 +314,16 @@ const CheckoutWindow: React.FC = () => {
                 <span>Labor: <span className="text-zinc-200 font-semibold">${laborDue.toFixed(2)}</span></span>
               </div>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2 text-[12px]">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[12px]">
+              <label className={`gb-checkout-scope-card flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 font-bold transition ${payPartsChecked ? 'border-[#39FF14] bg-[#39FF14]/10 text-[#39FF14]' : 'border-zinc-700 bg-zinc-950/60 hover:border-zinc-500'}`}>
                 <input type="checkbox" checked={payPartsChecked} onChange={(e) => setPayParts(e.target.checked)} />
                 Parts
               </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <label className={`gb-checkout-scope-card flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 font-bold transition ${payLaborChecked ? 'border-[#39FF14] bg-[#39FF14]/10 text-[#39FF14]' : 'border-zinc-700 bg-zinc-950/60 hover:border-zinc-500'}`}>
                 <input type="checkbox" checked={payLaborChecked} onChange={(e) => setPayLabor(e.target.checked)} />
                 Labor
               </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <label className={`gb-checkout-scope-card flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 font-bold transition ${payBothChecked ? 'border-[#39FF14] bg-[#39FF14]/10 text-[#39FF14]' : 'border-zinc-700 bg-zinc-950/60 hover:border-zinc-500'}`}>
                 <input type="checkbox" checked={payBothChecked} onChange={(e) => setPayBoth(e.target.checked)} />
                 Both
               </label>
@@ -334,42 +332,45 @@ const CheckoutWindow: React.FC = () => {
           </div>
         )}
 
-        <div className="bg-zinc-950/30 border border-zinc-800 rounded p-2">
-          <div className="text-[9px] uppercase tracking-wide text-zinc-500">Payment</div>
-          <div className="mt-1 grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 shadow-lg">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Choose payment method</div>
+          <div className="mt-2 grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
             <button
               type="button"
               className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
+                'gb-checkout-payment-tile min-h-14 rounded-xl border px-3 py-2 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-[#39FF14] ' +
                 (paymentType === 'Cash'
                   ? 'bg-zinc-800 border-neon-green text-neon-green'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
               }
               onClick={() => setPaymentChoice('Cash')}
+              aria-pressed={paymentType === 'Cash'}
             >
               Cash
             </button>
             <button
               type="button"
               className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
+                'gb-checkout-payment-tile min-h-14 rounded-xl border px-3 py-2 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-[#39FF14] ' +
                 (paymentType === 'Card'
                   ? 'bg-zinc-800 border-neon-green text-neon-green'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
               }
               onClick={() => setPaymentChoice('Card')}
+              aria-pressed={paymentType === 'Card'}
             >
               Card
             </button>
             <button
               type="button"
               className={
-                'px-2 py-2 rounded border text-xs font-semibold ' +
+                'gb-checkout-payment-tile min-h-14 rounded-xl border px-3 py-2 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-[#39FF14] ' +
                 (paymentType === 'Cash + Card'
                   ? 'bg-zinc-800 border-neon-green text-neon-green'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:border-zinc-500')
               }
               onClick={() => setPaymentChoice('Cash + Card')}
+              aria-pressed={paymentType === 'Cash + Card'}
             >
               Split Pay
             </button>
@@ -379,7 +380,7 @@ const CheckoutWindow: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 shadow-lg">
           {isCashLike ? (
             <div className="col-span-2 grid grid-cols-2 gap-2">
               <div>
@@ -443,10 +444,10 @@ const CheckoutWindow: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-          <label className="flex items-center gap-2 cursor-pointer"><input className="scale-90" type="checkbox" checked={closeParent} onChange={e => setCloseParent(e.target.checked)} /> Close window</label>
-          <label className="flex items-center gap-2 cursor-pointer"><input className="scale-90" type="checkbox" checked={printReceipt} onChange={e => setPrintReceipt(e.target.checked)} /> Print receipt</label>
-          <label className="flex items-center gap-2 cursor-pointer col-span-2"><input className="scale-90" type="checkbox" checked={markClosed} onChange={e => setMarkClosed(e.target.checked)} /> Mark closed</label>
+        <div className="grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-3">
+          <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${closeParent ? 'border-purple-400/70 bg-purple-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={closeParent} onChange={e => setCloseParent(e.target.checked)} /> Close window</label>
+          <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${printReceipt ? 'border-blue-400/70 bg-blue-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={printReceipt} onChange={e => setPrintReceipt(e.target.checked)} /> Print receipt</label>
+          <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${markClosed ? 'border-amber-400/70 bg-amber-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={markClosed} onChange={e => setMarkClosed(e.target.checked)} /> Mark closed</label>
         </div>
 
         {cloverEnabled && paymentType === 'Card' && (
@@ -474,13 +475,13 @@ const CheckoutWindow: React.FC = () => {
           </div>
         )}
 
-        <div className="mt-auto flex justify-end gap-2">
-          <button className="px-3 py-1.5 rounded bg-zinc-700 text-[11px]" onClick={cancel}>Cancel</button>
+        <div className="gb-checkout-actions sticky bottom-0 mt-auto flex gap-2 border-t border-zinc-800 bg-zinc-950/95 py-3 backdrop-blur">
+          <button className="min-h-12 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 text-sm font-bold hover:border-zinc-500" onClick={cancel}>Cancel</button>
           <button
-            className={`px-3 py-1.5 rounded text-[11px] font-semibold ${canSave ? 'bg-neon-green text-zinc-900 hover:brightness-110' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
+            className={`min-h-12 flex-[1.6] rounded-xl px-4 text-sm font-black ${canSave ? 'bg-neon-green text-zinc-950 shadow-[0_0_20px_rgba(57,255,20,0.2)] hover:brightness-110' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
             disabled={!canSave}
             onClick={save}
-          >Save</button>
+          >Complete Checkout</button>
         </div>
       </div>
     </div>

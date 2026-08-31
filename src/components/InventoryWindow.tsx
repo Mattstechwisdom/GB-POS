@@ -157,6 +157,7 @@ export default function InventoryWindow() {
   const [deviceCategories, setDeviceCategories] = useState<any[]>([]);
   const [repairCategories, setRepairCategories] = useState<any[]>([]);
   const [repairTypes, setRepairTypes] = useState<any[]>([]);
+  const [inventoryPartTypes, setInventoryPartTypes] = useState<string[]>(PART_CATEGORY_OPTIONS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
@@ -237,18 +238,21 @@ export default function InventoryWindow() {
       await reconcilePaidSaleInventory(api).catch((error) => {
         console.error('Paid-sale inventory reconciliation failed', error);
       });
-      const [products, vendorRows, deviceRows, repairRows, repairTypeRows] = await Promise.all([
+      const [products, vendorRows, deviceRows, repairRows, repairTypeRows, settingsRows] = await Promise.all([
         api?.dbGet?.('products').catch(() => []),
         api?.dbGet?.('vendors').catch(() => []),
         api?.dbGet?.('deviceCategories').catch(() => []),
         api?.dbGet?.('repairCategories').catch(() => []),
         api?.dbGet?.('repairTypes').catch(() => []),
+        api?.dbGet?.('settings').catch(() => []),
       ]);
       setItems(Array.isArray(products) ? products : []);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setDeviceCategories(Array.isArray(deviceRows) ? deviceRows : []);
       setRepairCategories(Array.isArray(repairRows) ? repairRows : []);
       setRepairTypes(Array.isArray(repairTypeRows) ? repairTypeRows : []);
+      const settings = Array.isArray(settingsRows) ? settingsRows[0] : null;
+      setInventoryPartTypes(Array.isArray(settings?.inventoryPartTypes) && settings.inventoryPartTypes.length ? settings.inventoryPartTypes : PART_CATEGORY_OPTIONS);
     } finally {
       setLoading(false);
     }
@@ -257,7 +261,10 @@ export default function InventoryWindow() {
   useEffect(() => {
     load();
     const off = api?.onProductsChanged?.(() => load());
-    return () => { try { off && off(); } catch {} };
+    const offTypes = api?.onRepairTypesChanged?.(() => load());
+    const offRepairs = api?.onRepairCategoriesChanged?.(() => load());
+    const offSettings = api?.onSettingsChanged?.(() => load());
+    return () => { try { off && off(); offTypes && offTypes(); offRepairs && offRepairs(); offSettings && offSettings(); } catch {} };
   }, [api, load]);
 
   useEffect(() => {
@@ -689,15 +696,9 @@ export default function InventoryWindow() {
     try {
       const meta = await scrapePartUrl(url);
       if (sequence !== scrapeSequenceRef.current) return;
-      if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number') return;
+      if (!meta?.ok && !meta?.title && typeof meta?.price !== 'number' && !meta?.vendor) return;
       setEditing((current) => {
-        const next = applyInventoryUrlAutofill(current, meta, url);
-        if (typeof meta.price === 'number' && current.internalCost == null) {
-          next.internalCost = meta.price;
-          const price = markedUpPrice(meta.price, current.markupPct ?? DEFAULT_MARKUP_PCT);
-          if (price != null) next.price = price;
-        }
-        return next;
+        return applyInventoryUrlAutofill(current, meta, url);
       });
     } catch (err) {
       console.error('Inventory URL autofill failed', err);
@@ -719,6 +720,7 @@ export default function InventoryWindow() {
               <h1 className="text-xl font-bold tracking-wide">Inventory</h1>
               <div className="text-xs text-zinc-400">{counts.tracked} tracked items, {counts.low} low-stock alerts</div>
             </div>
+            <button type="button" onClick={() => api?.openCatalogSettings ? void api.openCatalogSettings('inventory') : undefined} className="rounded-lg border border-purple-400/70 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-200 hover:bg-purple-500/20">⚙ Inventory Settings</button>
           </div>
         </header>
 
@@ -885,10 +887,12 @@ export default function InventoryWindow() {
                     Parts ({counts.parts})
                   </button>
                 </div>
+                {mode === 'parts' && selectedId ? <div className="flex w-full gap-2 sm:w-auto"><button type="button" onClick={() => api?.openRepairCategories?.({ inventoryPart: { ...editing, id: selectedId }, linkMode: 'existing' })} className="flex-1 rounded-lg border border-purple-400/70 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-200">Link to Repair</button><button type="button" onClick={() => api?.openRepairCategories?.({ inventoryPart: { ...editing, id: selectedId }, linkMode: 'new' })} className="flex-1 rounded-lg bg-purple-500 px-3 py-2 text-xs font-bold text-white">New Linked Repair</button></div> : null}
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-xl border border-purple-400/30 bg-purple-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-xs font-black">1</span><strong>Identify and source the item</strong><span className="ml-2 text-xs text-zinc-500">Name, URL, vendor, and parent family</span></div>
               {!editing.isParentPart ? <div className="rounded border border-[#BC13FE]/40 bg-[#BC13FE]/5 p-3 md:col-span-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold text-fuchsia-200">Move to Parent</span>
@@ -988,6 +992,7 @@ export default function InventoryWindow() {
                 />
               </label>
 
+              <div className="md:col-span-2 mt-1 rounded-xl border border-blue-400/30 bg-blue-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black">2</span><strong>Categorize compatibility</strong><span className="ml-2 text-xs text-zinc-500">Device, repair type, part type, and compatible models</span></div>
               <div className="grid min-w-0 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
@@ -1089,7 +1094,7 @@ export default function InventoryWindow() {
                     className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                   />
                   <datalist id="inventory-part-types">
-                    {PART_CATEGORY_OPTIONS.map((value) => <option key={value} value={value} />)}
+                    {inventoryPartTypes.map((value) => <option key={value} value={value} />)}
                   </datalist>
                 </label>
               ) : (
@@ -1118,6 +1123,7 @@ export default function InventoryWindow() {
                 </label>
               ) : null}
 
+              <div className="md:col-span-2 mt-1 rounded-xl border border-amber-400/30 bg-amber-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs font-black text-black">3</span><strong>Set pricing</strong><span className="ml-2 text-xs text-zinc-500">Cost, markup, and selling price</span></div>
               <label className="block">
                   <span className="mb-1 block text-xs text-zinc-400">Cost{mode === 'parts' && String(editing.condition || '').toLowerCase() === 'used' ? ' (Optional for Used Parts)' : ''}</span>
                 <MoneyInput
@@ -1157,6 +1163,7 @@ export default function InventoryWindow() {
                 />
               </label>
 
+              <div className="md:col-span-2 mt-1 rounded-xl border border-[#39FF14]/30 bg-[#39FF14]/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#39FF14] text-xs font-black text-black">4</span><strong>Track and reorder</strong><span className="ml-2 text-xs text-zinc-500">Stock, alerts, SKU, MOQ, and notes</span></div>
               <div className="rounded border border-zinc-800 bg-zinc-900 p-3 md:col-span-2">
                 <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
                   <input

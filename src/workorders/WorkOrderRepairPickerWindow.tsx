@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import RepairItemList from '../repairs/RepairItemList';
 import RepairItemForm from '../repairs/RepairItemForm';
 import type { RepairItem } from '../lib/types';
+import { sortRepairsForDevice } from '../lib/repairCompatibility';
 
 export default function WorkOrderRepairPickerWindow() {
+  const deviceContext = (() => { try { return JSON.parse(new URLSearchParams(window.location.search).get('deviceContext') || '{}'); } catch { return {}; } })();
   const [repairItems, setRepairItems] = useState<RepairItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<RepairItem | null>(null);
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
@@ -13,7 +15,7 @@ export default function WorkOrderRepairPickerWindow() {
     (async () => {
       if (window.api?.dbGet) {
         const items = await window.api.dbGet('repairCategories');
-        if (Array.isArray(items)) setRepairItems(items);
+        if (Array.isArray(items)) setRepairItems(sortRepairsForDevice(items, deviceContext));
       }
     })();
   }, []);

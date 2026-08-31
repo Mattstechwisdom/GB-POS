@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('api', {
   storageGetInfo: (): Promise<any> => ipcRenderer.invoke('storage:getInfo'),
   storageEnsure: (): Promise<any> => ipcRenderer.invoke('storage:ensure'),
   runDiagnostics: (): Promise<any> => ipcRenderer.invoke('diagnostics:run'),
-  pickRepairItem: (): Promise<any> => ipcRenderer.invoke('pick-repair-item'),
+  pickRepairItem: (context?: { deviceCategory?: string; deviceName?: string; deviceModel?: string }): Promise<any> => ipcRenderer.invoke('pick-repair-item', context),
   getCustomers: (opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<any[]> => {
     if (opts) return ipcRenderer.invoke('db-get', 'customers', opts);
     return getCustomersCached();
@@ -70,13 +70,16 @@ contextBridge.exposeInMainWorld('api', {
   update: (key: string, item: any): Promise<any> => ipcRenderer.invoke('db-update', key, item),
   openNewWorkOrder: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-workorder', payload),
   openDeviceCategories: (): Promise<any> => ipcRenderer.invoke('open-device-categories'),
-  openRepairCategories: (): Promise<any> => ipcRenderer.invoke('open-repair-categories'),
+  openRepairCategories: (payload?: any): Promise<any> => ipcRenderer.invoke('open-repair-categories', payload),
   openCalendar: (): Promise<any> => ipcRenderer.invoke('open-calendar'),
   openClockIn: (): Promise<any> => ipcRenderer.invoke('open-clock-in'),
   openQuoteGenerator: (): Promise<any> => ipcRenderer.invoke('open-quote-generator'),
   openEod: (): Promise<any> => ipcRenderer.invoke('open-eod'),
   openProducts: (): Promise<any> => ipcRenderer.invoke('open-products'),
   openInventory: (): Promise<any> => ipcRenderer.invoke('open-inventory'),
+  openVendors: (): Promise<any> => ipcRenderer.invoke('open-vendors'),
+  openTechnicians: (): Promise<any> => ipcRenderer.invoke('open-technicians'),
+  openCatalogSettings: (tab?: 'inventory' | 'repairs'): Promise<any> => ipcRenderer.invoke('open-catalog-settings', tab),
   openWorkOrderRepairPicker: (): Promise<any> => ipcRenderer.invoke('open-workorder-repair-picker'),
   openCustomerOverview: (customerId: number): Promise<any> => ipcRenderer.invoke('open-customer-overview', customerId),
   openNewSale: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-sale', payload),
@@ -193,6 +196,12 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('products:changed', handler);
     return () => ipcRenderer.removeListener('products:changed', handler);
+  },
+  onRepairTypesChanged: (cb: () => void) => {
+    const handler = () => cb(); ipcRenderer.on('repairTypes:changed', handler); return () => ipcRenderer.removeListener('repairTypes:changed', handler);
+  },
+  onRepairCategoriesChanged: (cb: () => void) => {
+    const handler = () => cb(); ipcRenderer.on('repairCategories:changed', handler); return () => ipcRenderer.removeListener('repairCategories:changed', handler);
   },
   onPurchaseOrdersChanged: (cb: () => void) => {
     const handler = () => cb();

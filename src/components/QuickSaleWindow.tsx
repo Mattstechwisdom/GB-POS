@@ -99,12 +99,9 @@ const QuickSaleWindow: React.FC = () => {
     && items.every((item) => String(item.description || '').trim() && itemUnits(item) > 0 && Number(item.price) >= 0);
 
   async function closeSelf() {
-    try {
-      if (api?.closeSelfWindow) await api.closeSelfWindow({ focusMain: true });
-      else window.close();
-    } catch {
-      try { window.close(); } catch {}
-    }
+    if (api?.closeSelfWindow) return api.closeSelfWindow({ focusMain: true });
+    window.close();
+    return { ok: true };
   }
 
   function addRepair(repair: any) {
@@ -276,7 +273,7 @@ const QuickSaleWindow: React.FC = () => {
 
       try { window.opener?.postMessage({ type: 'sales:changed', customerId: 0 }, '*'); } catch {}
       setItems([]);
-      await finishSuccessfulQuickCheckout(closeSelf);
+      await finishSuccessfulQuickCheckout(closeSelf, () => window.close());
     } catch (e) {
       console.error('QuickSale checkout failed', e);
       alert('Checkout failed. See console.\n\nTip: if this window was opened outside the desktop app, it will not have checkout support.');

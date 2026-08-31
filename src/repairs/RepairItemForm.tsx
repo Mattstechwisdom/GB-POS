@@ -13,6 +13,7 @@ interface RepairItemFormProps {
   mode?: 'admin' | 'workorder' | 'workorderpicker';
   // When true (default), show the internal Edit Repair action at the top
   showCreateAction?: boolean;
+  initialInventoryPart?: InventoryPartSelection;
 }
 
 // Dummy device categories for now; replace with prop or API as needed
@@ -53,7 +54,7 @@ function normalizeOrderUrl(value: unknown): string {
   return /^(https?:)?\/\//i.test(raw) ? raw.replace(/^\/\//, 'https://') : `https://${raw}`;
 }
 
-export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelete, mode = 'admin', showCreateAction = true }: RepairItemFormProps) {
+export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelete, mode = 'admin', showCreateAction = true, initialInventoryPart }: RepairItemFormProps) {
   // treat 'workorderpicker' as 'workorder' for UI logic
   const effectiveMode = mode === 'workorderpicker' ? 'workorder' : mode;
   // Device Category search/dropdown state
@@ -206,6 +207,13 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setHasDeviceCategory(false);
     }
   }, [selectedItem]);
+
+  useEffect(() => {
+    if (!initialInventoryPart) return;
+    setFormData(current => applyInventoryPartToRepair(current, initialInventoryPart));
+    setHasDeviceCategory(true);
+    setDeviceCategoryInput(String(initialInventoryPart.category || ''));
+  }, [initialInventoryPart, selectedItem?.id]);
 
   // no date fields in this form; dates are managed in Work Order and Calendar
 
@@ -459,6 +467,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-300">
               {formData.inventoryParentId ? `Parent family linked · exact variant selected when added to a work order` : formData.inventoryProductId ? `Exact inventory part linked${formData.partSource ? ` · ${formData.partSource}` : ''}` : 'No inventory part linked · pricing can be entered manually'}
             </div>
+            {(formData as any).compatibleDevices?.length ? <div className="mt-2 rounded-lg border border-[#39FF14]/30 bg-[#39FF14]/5 p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-[#39FF14]">Compatibility synced from Inventory</div><div className="mt-2 flex flex-wrap gap-1.5">{(formData as any).compatibleDevices.map((device: string) => <span key={device} className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px]">✓ {device}</span>)}</div></div> : null}
           </section>
 
           <section className="md:col-span-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3">

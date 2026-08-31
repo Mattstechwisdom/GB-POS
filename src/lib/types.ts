@@ -173,6 +173,7 @@ export interface RepairItem {
   orderSourceUrl?: string;
   type: "product" | "service";
   model?: string;
+  compatibleDevices?: string[];
   // Inventory / stock tracking
   trackStock?: boolean;
   stockCount?: number;

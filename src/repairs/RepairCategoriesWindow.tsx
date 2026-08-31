@@ -33,6 +33,7 @@ interface RepairCategoriesWindowProps {
 }
 
 export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategoriesWindowProps) {
+  const linkContext = useMemo(() => { try { return JSON.parse(new URLSearchParams(window.location.search).get('linkContext') || 'null'); } catch { return null; } }, []);
   const [repairItems, setRepairItems] = useState<RepairItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<RepairItem | null>(null);
   const [filteredItems, setFilteredItems] = useState<RepairItem[]>([]);
@@ -68,8 +69,13 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
         setDeviceCategories(Array.isArray(devs) ? devs : []);
       } catch (e) {}
     });
-    return () => { if (off) off(); };
+    const offRepairs = (window as any).api?.onRepairCategoriesChanged?.(async () => {
+      const items = await (window as any).api.dbGet('repairCategories').catch(() => []); if (Array.isArray(items)) setRepairItems(items);
+    });
+    return () => { if (off) off(); if (offRepairs) offRepairs(); };
   }, []);
+
+  useEffect(() => { if (linkContext?.linkMode === 'new') { setPaneMode('repair'); setSelectedItem(null); } }, [linkContext]);
 
   const handleItemSelect = (item: RepairItem) => {
     setSelectedItem(item);
@@ -194,17 +200,10 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
                 </button>
                 <button
                   type="button"
-                  className={`px-4 py-2 rounded text-sm border ${paneMode === 'device' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
-                  onClick={() => setPaneMode('device')}
+                  className="ml-auto rounded border border-purple-400/70 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-200 hover:bg-purple-500/20"
+                  onClick={() => (window as any).api?.openCatalogSettings?.('repairs')}
                 >
-                  Devices
-                </button>
-                <button
-                  type="button"
-                  className={`px-4 py-2 rounded text-sm border ${paneMode === 'repairType' ? 'bg-[#39FF14] text-black border-[#39FF14]' : 'bg-zinc-800 border-zinc-600 text-gray-100 hover:bg-zinc-700'}`}
-                  onClick={() => setPaneMode('repairType')}
-                >
-                  Service Types
+                  ⚙ Repair Settings
                 </button>
               </div>
             )}
@@ -217,6 +216,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
               {paneMode === 'repair' ? (
                 <RepairItemForm 
                   selectedItem={selectedItem}
+                  initialInventoryPart={linkContext?.inventoryPart}
                   onSave={handleSave}
                   onCancel={handleCancel}
                   onDelete={mode === 'admin' ? handleDelete : undefined}

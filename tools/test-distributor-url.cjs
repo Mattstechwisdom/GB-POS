@@ -23,5 +23,24 @@ assert.equal(applyInventoryUrlAutofill({ distributor: '' }, { ok: false }, 'http
   'Standalone parts must derive the distributor even when remote page scraping is blocked.');
 assert.equal(applyInventoryUrlAutofill({ distributor: 'Manual Vendor' }, { vendor: 'Example Parts' }, 'https://example-parts.com/item').distributor, 'Manual Vendor',
   'URL autofill must not overwrite a distributor entered by the user.');
+const filled = applyInventoryUrlAutofill(
+  { itemDescription: '', distributorSku: '', internalCost: undefined, price: undefined, markupPct: 10 },
+  { ok: true, vendor: 'Parts Co', title: 'iPhone X OLED', price: 40, specs: [{ name: 'SKU', value: 'IPX-OLED' }] },
+  'https://parts.example/ipx',
+);
+assert.equal(filled.itemDescription, 'iPhone X OLED');
+assert.equal(filled.distributorSku, 'IPX-OLED');
+assert.equal(filled.internalCost, 40);
+assert.equal(filled.price, 44);
+const preserved = applyInventoryUrlAutofill(
+  { itemDescription: 'My title', distributorSku: 'MANUAL', internalCost: 35, price: 60, markupPct: 10 },
+  { ok: true, title: 'Remote title', price: 40, specs: [{ name: 'Item #', value: 'REMOTE' }] },
+  'https://parts.example/ipx',
+);
+assert.deepEqual(
+  { itemDescription: preserved.itemDescription, distributorSku: preserved.distributorSku, internalCost: preserved.internalCost, price: preserved.price },
+  { itemDescription: 'My title', distributorSku: 'MANUAL', internalCost: 35, price: 60 },
+  'URL autofill must preserve intentional inventory values',
+);
 
 console.log('Local distributor URL detection checks passed.');

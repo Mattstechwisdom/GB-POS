@@ -107,7 +107,13 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
     setTypes(merged);
   }
 
-  useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    void reload();
+    const api = (window as any).api;
+    const offTypes = api?.onRepairTypesChanged?.(() => void reload());
+    const offRepairs = api?.onRepairCategoriesChanged?.(() => void reload());
+    return () => { try { offTypes?.(); offRepairs?.(); } catch {} };
+  }, []);
 
   function selectType(t: RepairType) {
     setSelectedId(t.id);

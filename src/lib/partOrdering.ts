@@ -70,6 +70,12 @@ export function applyInventoryUrlAutofill(current: any, meta: PartUrlMetadata | 
   if (vendor && !String(next.distributor || '').trim()) next.distributor = vendor;
   if (title && !String(next.itemDescription || '').trim()) next.itemDescription = title;
   if (description && !String(next.notes || '').trim()) next.notes = description;
+  const sku = (meta?.specs || []).find(spec => /^(sku|item\s*(?:#|number)|part\s*(?:#|number)|mpn)$/i.test(String(spec?.name || '').trim()))?.value;
+  if (sku && !String(next.distributorSku || '').trim()) next.distributorSku = String(sku).trim();
+  if (typeof meta?.price === 'number' && Number.isFinite(meta.price) && (next.internalCost == null || next.internalCost === '')) {
+    next.internalCost = meta.price;
+    if (next.price == null || next.price === '') next.price = markedUpPartPrice(meta.price, next.markupPct ?? DEFAULT_PART_MARKUP_PCT);
+  }
   return next;
 }
 

@@ -57,11 +57,16 @@ declare global {
     openNewWorkOrder: (payload: any) => Promise<any>;
     openGameMenu?: () => Promise<any>;
     openDeviceCategories: () => Promise<any>;
-    openRepairCategories: () => Promise<any>;
+    openRepairCategories: (payload?: any) => Promise<any>;
     openCalendar: () => Promise<any>;
     openClockIn: () => Promise<any>;
     openProducts: () => Promise<any>;
     openInventory: () => Promise<any>;
+    openVendors: () => Promise<any>;
+    openTechnicians: () => Promise<any>;
+    openCatalogSettings: (tab?: 'inventory' | 'repairs') => Promise<any>;
+    onRepairTypesChanged?: (cb: () => void) => (() => void);
+    onRepairCategoriesChanged?: (cb: () => void) => (() => void);
     openWorkOrderRepairPicker: () => Promise<any>;
     openCustomerOverview: (customerId: number) => Promise<any>;
   openNewSale: (payload: any) => Promise<any>;

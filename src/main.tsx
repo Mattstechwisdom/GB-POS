@@ -34,6 +34,9 @@ const loadProductsWindow = () => import('./components/ProductsWindow');
 const ProductsWindow = lazy(loadProductsWindow);
 const loadInventoryWindow = () => import('./components/InventoryWindow');
 const InventoryWindow = lazy(loadInventoryWindow);
+const VendorsWindow = lazy(() => import('./components/VendorsWindow'));
+const TechniciansWindow = lazy(() => import('./components/TechniciansWindow'));
+const CatalogSettingsWindow = lazy(() => import('./components/CatalogSettingsWindow'));
 const ChartsWindow = lazy(() => import('./components/ChartsWindow'));
 const BackupWindow = lazy(() => import('./components/BackupWindow'));
 const ClearDatabaseWindow = lazy(() => import('./components/ClearDatabaseWindow'));
@@ -364,6 +367,9 @@ try {
 	const showCalendar = params.get('calendar');
 	const showProducts = params.get('products');
 	const showInventory = params.get('inventory');
+	const showVendors = params.get('vendors');
+	const showTechnicians = params.get('technicians');
+	const showCatalogSettings = params.get('catalogSettings');
 	const showCharts = params.get('charts');
 	const showReporting = params.get('reporting');
 	const showReportEmail = params.get('reportEmail');
@@ -454,6 +460,12 @@ try {
 		renderWithSuspense(root, <ProductsWindow />);
 	} else if (showInventory) {
 		renderWithSuspense(root, <InventoryWindow />);
+	} else if (showVendors) {
+		renderWithSuspense(root, <VendorsWindow />);
+	} else if (showTechnicians) {
+		renderWithSuspense(root, <TechniciansWindow onClose={() => window.close()} />);
+	} else if (showCatalogSettings) {
+		renderWithSuspense(root, <CatalogSettingsWindow />);
 	} else if (showNewSale) {
 		renderWithSuspense(root, <SaleWindow />);
 	} else if (showQuickSale) {

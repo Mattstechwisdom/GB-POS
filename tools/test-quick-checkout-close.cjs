@@ -20,6 +20,13 @@ const { finishSuccessfulQuickCheckout } = loaded.exports;
   await finishSuccessfulQuickCheckout(async () => { events.push('closed'); });
   assert.deepEqual(events, ['closed'], 'a completed Quick Checkout must close its window once');
 
+  const blockedEvents = [];
+  await finishSuccessfulQuickCheckout(
+    async () => ({ ok: false, blocked: true }),
+    () => { blockedEvents.push('fallback'); },
+  );
+  assert.deepEqual(blockedEvents, ['fallback'], 'an in-app Quick Checkout must close its modal when native close refuses the main window');
+
   await assert.rejects(
     finishSuccessfulQuickCheckout(async () => { throw new Error('close failed'); }),
     /close failed/,

@@ -50,6 +50,7 @@ const ProductFormWindow = React.lazy(() => import('../sales/ProductFormWindow'))
 const BackupWindow = React.lazy(() => import('../components/BackupWindow'));
 const ClearDatabaseWindow = React.lazy(() => import('../components/ClearDatabaseWindow'));
 const RepairCategoriesWindow = React.lazy(() => import('../repairs/RepairCategoriesWindow'));
+const CatalogSettingsWindow = React.lazy(() => import('../components/CatalogSettingsWindow'));
 const DeviceCategoriesWindow = React.lazy(() => import('../components/DeviceCategoriesWindow'));
 const FeedbackWindow = React.lazy(() => import('../components/FeedbackWindow'));
 const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuildItemWindow'));
@@ -375,6 +376,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'backup': return <BackupWindow />;
     case 'clearDb': return <ClearDatabaseWindow />;
     case 'repairCategories': return <RepairCategoriesWindow mode="admin" />;
+    case 'catalogSettings': return <CatalogSettingsWindow />;
     case 'deviceCategories': return <DeviceCategoriesWindow />;
     case 'customBuildItem': return <CustomBuildItemWindow />;
     case 'technicians': return <TechniciansWindow onClose={onClose} />;
@@ -948,6 +950,7 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
       openEod: 'eod',
       openProducts: 'products',
       openInventory: 'inventory',
+      openCatalogSettings: 'catalogSettings',
       openWorkOrderRepairPicker: 'workOrderRepairPicker',
       openCustomerOverview: 'customerOverview',
       openQuickSale: 'quickSale',

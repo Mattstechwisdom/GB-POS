@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import TechniciansWindow from './TechniciansWindow';
 import { getUnreadCount, syncNotificationsFromCalendar, syncNotificationsFromRecords } from '@/lib/notifications';
 import { dispatchOpenModal } from '@/lib/modalBus';
+import { openAdminTool, type AdminToolKey } from '@/lib/adminWindowNavigation';
 
 const Toolbar: React.FC<{
   mode: 'workorders' | 'sales' | 'all';
@@ -37,7 +37,6 @@ const Toolbar: React.FC<{
     })();
     return () => { alive = false; };
   }, [])
-  const [showTechs, setShowTechs] = useState(false);
   const [unread, setUnread] = useState<number>(0);
 
   useEffect(() => {
@@ -84,6 +83,10 @@ const Toolbar: React.FC<{
     };
   }, []);
 
+  const openAdmin = (tool: AdminToolKey) => {
+    void openAdminTool(tool, (window as any).api, key => dispatchOpenModal(key));
+  };
+
   const [showAdmin, setShowAdmin] = useState(false);
   const adminRef = useRef<HTMLDivElement>(null);
 
@@ -122,13 +125,13 @@ const Toolbar: React.FC<{
           {showAdmin && (
             <div className="absolute left-0 top-full mt-1 w-52 bg-zinc-900 border border-zinc-700 rounded shadow-xl z-50">
               {[
-                { label: 'Devices/Repairs', action: () => dispatchOpenModal('repairCategories') },
-                { label: 'Inventory',       action: () => dispatchOpenModal('inventory') },
-                { label: 'Distributors/Vendors', action: () => dispatchOpenModal('vendors') },
-                { label: 'Reporting',       action: () => dispatchOpenModal('reporting') },
-                { label: 'Technicians',     action: () => setShowTechs(true) },
-                { label: 'Data Tools',      action: () => dispatchOpenModal('dataTools') },
-                { label: 'Dev Menu',        action: () => dispatchOpenModal('devMenu') },
+                { label: 'Repairs', action: () => openAdmin('repairCategories') },
+                { label: 'Inventory',       action: () => openAdmin('inventory') },
+                { label: 'Distributors/Vendors', action: () => openAdmin('vendors') },
+                { label: 'Reporting',       action: () => openAdmin('reporting') },
+                { label: 'Technicians',     action: () => openAdmin('technicians') },
+                { label: 'Data Tools',      action: () => openAdmin('dataTools') },
+                { label: 'Dev Menu',        action: () => openAdmin('devMenu') },
               ].map(item => (
                 <button key={item.label} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-800" onClick={() => { setShowAdmin(false); item.action(); }}>{item.label}</button>
               ))}
@@ -232,7 +235,6 @@ const Toolbar: React.FC<{
        >✕ Clear</button>
      )}
    </div>
-   {showTechs && <TechniciansWindow onClose={() => setShowTechs(false)} />}
     </>
   );
 };

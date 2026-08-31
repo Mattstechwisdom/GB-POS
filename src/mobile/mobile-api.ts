@@ -58,6 +58,8 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
   notifications: 'notifications:changed',
   notificationSettings: 'notificationSettings:changed',
   settings: 'settings:changed',
+  repairTypes: 'repairTypes:changed',
+  repairCategories: 'repairCategories:changed',
 };
 
 const API_TO_MODAL: Record<string, string> = {
@@ -70,6 +72,7 @@ const API_TO_MODAL: Record<string, string> = {
   openEod: 'eod',
   openProducts: 'products',
   openInventory: 'inventory',
+  openCatalogSettings: 'catalogSettings',
   openWorkOrderRepairPicker: 'workOrderRepairPicker',
   openCustomerOverview: 'customerOverview',
   openQuickSale: 'quickSale',
@@ -1990,6 +1993,8 @@ function makeApi() {
     onProductsChanged: 'products:changed',
     onPurchaseOrdersChanged: 'purchaseOrders:changed',
     onSettingsChanged: 'settings:changed',
+    onRepairTypesChanged: 'repairTypes:changed',
+    onRepairCategoriesChanged: 'repairCategories:changed',
     onSalesChanged: 'sales:changed',
     onQuotesChanged: 'quotes:changed',
     onPartSourcesChanged: 'partSources:changed',

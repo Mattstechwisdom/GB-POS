@@ -15,11 +15,13 @@ export type RepairInventoryPart = {
 };
 
 export function applyInventoryPartToRepair(current: any, part: RepairInventoryPart): any {
+  const compatibleDevices = Array.from(new Set([part.deviceModel, ...(part.associatedDevices || [])].map(value => String(value || '').trim()).filter(Boolean)));
   if (part.isParentPart) {
     return {
       ...current,
       category: current.category || part.category || '',
       model: current.model || part.deviceModel || part.associatedDevices?.[0] || '',
+      compatibleDevices,
       inventoryParentId: Number(part.id || 0) || undefined,
       inventoryProductId: undefined,
       internalCost: undefined,
@@ -33,6 +35,7 @@ export function applyInventoryPartToRepair(current: any, part: RepairInventoryPa
     ...current,
     category: current.category || part.category || '',
     model: current.model || part.deviceModel || part.associatedDevices?.[0] || '',
+    compatibleDevices,
     partCost: Number(part.price || 0),
     internalCost: typeof part.internalCost === 'number' ? part.internalCost : current.internalCost,
     markupPct: part.markupPct ?? '10',
