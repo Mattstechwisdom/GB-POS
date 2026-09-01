@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { listTechnicians } from '@/lib/admin';
 import { dispatchOpenModal } from '@/lib/modalBus';
 import { itemFullCost } from '@/lib/orderAccounting';
-import { buildReportingLedger, collectReportingPayments, verifiedPurchaseTotal } from '@/lib/reportingAccounting';
+import { buildReportingLedger, collectReportingPayments, reportingRecordKind, verifiedPurchaseTotal } from '@/lib/reportingAccounting';
 import { buildMonthEndWorkbookHtml } from '@/lib/monthEndWorkbook';
 import {
   DEFAULT_COMMISSION_SETTINGS,
@@ -180,7 +180,7 @@ function startOfInputDate(value: string) {
 }
 
 function reportingRecordKey(record: any) {
-  const kind = record?.kind === 'sale' ? 'sale' : 'repair';
+  const kind = reportingRecordKind(record);
   return `${kind}:${String(record?.id ?? record?.ticketNumber ?? record?.invoiceNumber ?? 'unknown')}`;
 }
 
@@ -564,7 +564,7 @@ const ReportingWindow: React.FC = () => {
         const parts = items.reduce((sum: number, it: any) => sum + (Number(it.qty || 1) * Number(it.price || 0)), 0);
         return {
           ...s,
-          kind: 'sale' as const,
+          kind: reportingRecordKind({ ...s, kind: 'sale', items }),
           id: s.id,
           checkInAt: s.checkInAt || s.createdAt,
           assignedTo: s.assignedTo,

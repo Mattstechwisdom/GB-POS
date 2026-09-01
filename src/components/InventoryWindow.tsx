@@ -994,7 +994,7 @@ export default function InventoryWindow() {
                 />
               </label>
 
-              <div className="md:col-span-2 mt-1 rounded-xl border border-blue-400/30 bg-blue-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black">2</span><strong>Categorize compatibility</strong><span className="ml-2 text-xs text-zinc-500">Device, repair type, part type, and compatible models</span></div>
+              <div className="md:col-span-2 mt-1 rounded-xl border border-blue-400/30 bg-blue-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black">2</span><strong>Categorize compatibility</strong><span className="ml-2 text-xs text-zinc-500">Device, compatible models, and physical part type</span></div>
               <div className="grid min-w-0 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-xs text-zinc-400">{mode === 'parts' ? 'Device Category' : 'Product Type'}</span>
@@ -1009,7 +1009,7 @@ export default function InventoryWindow() {
                 </label>
                 {mode === 'parts' ? (
                   <label className="block">
-                    <span className="mb-1 block text-xs text-zinc-400">Repair Type</span>
+                    <span className="mb-1 block text-xs text-zinc-400">Linked Repair Service (optional)</span>
                     <input
                       list="inventory-repair-types"
                       value={editing.repairType || ''}
@@ -1020,7 +1020,7 @@ export default function InventoryWindow() {
                     <datalist id="inventory-repair-types">
                       {repairTypeOptions.map((value) => <option key={value} value={value} />)}
                     </datalist>
-                    <span className="mt-1 block text-[11px] text-zinc-500">The work order uses this with Compatible Devices to select and deduct the correct part.</span>
+                    <span className="mt-1 block text-[11px] text-zinc-500">This helps automatic work-order matching; it does not categorize the physical part.</span>
                   </label>
                 ) : null}
               </div>

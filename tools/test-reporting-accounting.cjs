@@ -12,7 +12,7 @@ const build = esbuild.buildSync({
 });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { buildReportingLedger, collectReportingPayments, verifiedPurchaseTotal } = moduleShim.exports;
+const { buildReportingLedger, collectReportingPayments, reportingRecordKind, verifiedPurchaseTotal } = moduleShim.exports;
 const reportingSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'ReportingWindow.tsx'), 'utf8');
 const eodSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'EODWindow.tsx'), 'utf8');
 const electronSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
@@ -78,6 +78,19 @@ assert.equal(saleEntry.partsCharged, 50);
 assert.equal(saleEntry.taxCollected, 4);
 assert.equal(saleEntry.internalCost, 30, 'Half-collected sale must recognize half of total product cost.');
 assert.equal(saleEntry.profitExcludingTax, 20);
+
+const quickRepair = {
+  id: 202,
+  kind: 'sale',
+  quickCheckoutType: 'repair',
+  partCosts: 150,
+  amountPaid: 150,
+  payments: [{ applied: 150, at: '2026-08-17T19:30:00.000Z' }],
+  items: [{ description: '1TB SSD Install', category: 'Repair', qty: 1, price: 150, internalCost: 70 }],
+};
+assert.equal(reportingRecordKind(quickRepair), 'repair', 'Quick repair checkouts must never become product-sale commission lines.');
+assert.equal(buildReportingLedger([quickRepair])[0].kind, 'repair');
+assert.match(reportingSource, /kind: reportingRecordKind\(\{ \.\.\.s, kind: 'sale', items \}\)/, 'Reporting must classify repair checkouts before building the monthly product ledger.');
 
 const zeroCostUsedPart = buildReportingLedger([{
   id: 103,

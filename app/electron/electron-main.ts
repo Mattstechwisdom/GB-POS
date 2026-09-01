@@ -4636,6 +4636,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       inventoryParentId: cloudNumber(row.inventory_parent_legacy_id),
       repairFamily: row.repair_family || '',
       serviceKey: row.service_key || '',
+      compatibleDevices: Array.isArray(row.compatible_devices) ? row.compatible_devices.map(String) : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
       cloudId: row.id,
@@ -4982,6 +4983,7 @@ function toCloudRow(key: string, item: any): any | null {
       inventory_parent_legacy_id: toCloudIntId(item.inventoryParentId),
       repair_family: toCloudString(item.repairFamily),
       service_key: toCloudString(item.serviceKey),
+      compatible_devices: Array.isArray(item.compatibleDevices) ? item.compatibleDevices.map((value: any) => String(value || '').trim()).filter(Boolean) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
     };
@@ -5285,8 +5287,11 @@ async function cloudDbDelete(key: string, legacyId: any) {
   let q = client.from(table).delete().eq('shop_id', cloudSession.shopId);
   if (key === 'preferences') q = q.eq('key', String(legacyId));
   else q = q.eq('legacy_id', id);
-  const res = await q;
+  const res = key === 'repairCategories' ? await q.select('legacy_id') : await q;
   if (res.error) throw new Error(`Cloud ${key} delete failed: ${res.error.message}`);
+  if (key === 'repairCategories' && (!Array.isArray(res.data) || res.data.length === 0)) {
+    throw new Error(`Cloud ${key} delete failed: no matching saved record was removed.`);
+  }
   return { ok: true };
 }
 

@@ -18,7 +18,7 @@ const appSource = read('src/App.tsx');
 const mobileAppSource = read('src/mobile/MobileApp.tsx');
 
 expect(windowSource.includes('gb-repair-catalog-form-pane') && windowSource.includes('overflow-hidden'), 'The right repair editor pane must remain fixed while the catalog list scrolls.');
-expect(formSource.includes('Exact Device') && formSource.includes('deviceModelsForCategory'), 'Specific repairs must expose an exact device-model selector filtered by category.');
+expect(formSource.includes('Compatible Devices') && formSource.includes('deviceModelsForCategory') && formSource.includes('compatibleDevices'), 'Specific repairs must expose a multi-device selector filtered by category.');
 expect(formSource.includes("model: ''") && formSource.includes('Update Repair') && formSource.includes('Add New Repair'), 'Repair actions must support explicit update and create behavior.');
 expect(!formSource.includes("{formData.id && typeof onDelete === 'function'"), 'The admin repair editor must not show a Delete button.');
 expect(listSource.includes('onPointerDown') && listSource.includes('mobileContextTimerRef'), 'Repair rows must support touch-and-hold context actions.');

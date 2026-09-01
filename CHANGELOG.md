@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.48 (2026-09-01)
+- Multi-Device Repairs: repair catalog entries can now target one or several exact devices with the same searchable compatibility picker used by Inventory, while an empty selection keeps the repair category-wide.
+- Clear Catalog Roles: Part Type remains the physical inventory category, Linked Repair Service is clearly identified as optional work-order matching, and the internal reusable-service key is generated automatically instead of requiring manual entry.
+- Verified Repair Deletion: desktop and browser deletes now require Supabase to return the removed repair row, so a permission or identifier mismatch is shown as an error instead of falsely reporting success.
+- Historical Ticket Safety: deleting or editing a catalog repair leaves the independent line-item snapshots, costs, charges, and reporting on existing work orders and sales unchanged.
+- Correct Monthly Classification: Quick Repair transactions, including repair-category items such as SSD installs, are treated as repair revenue and no longer appear in product-sales commission, product profit, or product line-item sections.
+
 ## v0.6.47 (2026-08-31)
 - Vendor List Separation: Distributors/Vendors now shows only retail products in Products mode, while Parts mode shows inventory parts and their linked repairs with mode-correct counts and safeguards.
 - Reliable Repair Actions: saved and recovered repair types can be deleted through clear confirmation flows, individual repair deletions refresh persisted lists, and repair menus stay visible above app windows.

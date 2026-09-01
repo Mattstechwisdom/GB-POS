@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const esbuild = require('esbuild');
 const root = path.resolve(__dirname, '..');
+const fs = require('node:fs');
 const build = esbuild.buildSync({ entryPoints: [path.join(root, 'src/lib/repairCompatibility.ts')], bundle: true, platform: 'node', format: 'cjs', write: false });
 const loaded = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(loaded, loaded.exports, require);
@@ -12,4 +13,14 @@ const iphone = { title: 'Screen Repair', category: 'Phone', compatibleDevices: [
 assert.equal(repairMatchesDevice(ps5, { deviceName: 'PlayStation 5 Slim' }), true);
 assert.equal(repairMatchesDevice(ps5, { deviceName: 'iPhone 7' }), false);
 assert.deepEqual(sortRepairsForDevice([iphone, ps5], { deviceName: 'PlayStation 5' }).map(row => row.title), ['HDMI Repair', 'Screen Repair']);
+const form = fs.readFileSync(path.join(root, 'src/repairs/RepairItemForm.tsx'), 'utf8');
+const desktopApi = fs.readFileSync(path.join(root, 'app/electron/electron-main.ts'), 'utf8');
+const mobileApi = fs.readFileSync(path.join(root, 'src/mobile/mobile-api.ts'), 'utf8');
+assert.match(form, /Compatible Devices/);
+assert.match(form, /compatibleDevices/);
+assert.doesNotMatch(form, />Reusable Service</);
+for (const source of [desktopApi, mobileApi]) {
+  assert.match(source, /compatibleDevices: Array\.isArray\(row\.compatible_devices\)/);
+  assert.match(source, /compatible_devices: Array\.isArray\(item\.compatibleDevices\)/);
+}
 console.log('Repair compatibility ranking checks passed.');

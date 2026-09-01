@@ -61,6 +61,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   // Device Category search/dropdown state
   const [deviceCategoryInput, setDeviceCategoryInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [compatibleDeviceSearch, setCompatibleDeviceSearch] = useState('');
+  const [compatibleDeviceMenuOpen, setCompatibleDeviceMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Repair Category search/dropdown state
   const [repairCategoryInput, setRepairCategoryInput] = useState('');
@@ -87,6 +89,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     orderSourceUrl: '',
     type: 'service',
     model: '',
+    compatibleDevices: [],
     trackStock: false,
     stockCount: undefined,
     lowStockThreshold: undefined,
@@ -153,14 +156,14 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const handleDeviceCategoryInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDeviceCategoryInput(e.target.value);
     setShowCategoryDropdown(true);
-    setFormData(prev => ({ ...prev, category: e.target.value, model: '' }));
+    setFormData(prev => ({ ...prev, category: e.target.value, model: '', compatibleDevices: [] }));
   };
 
   // Select from dropdown
   const handleCategorySelect = (cat: string) => {
     setDeviceCategoryInput(cat);
     setShowCategoryDropdown(false);
-    setFormData(prev => ({ ...prev, category: cat, model: '' }));
+    setFormData(prev => ({ ...prev, category: cat, model: '', compatibleDevices: [] }));
     inputRef.current?.blur();
   };
 
@@ -183,6 +186,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setDeviceCategoryInput(selectedItem.category || '');
       setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
+      setCompatibleDeviceSearch('');
     } else {
       const blank = applyRepairDefaults<Partial<RepairItem>>({
         category: '',
@@ -200,6 +204,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         orderSourceUrl: '',
         type: 'service' as const,
         model: '',
+        compatibleDevices: [],
         trackStock: false,
         stockCount: undefined,
         lowStockThreshold: undefined,
@@ -210,6 +215,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setDeviceCategoryInput('');
       setRepairCategoryInput(String(blank.repairCategory || ''));
       setHasDeviceCategory(false);
+      setCompatibleDeviceSearch('');
     }
   }, [selectedItem, repairDefaults]);
 
@@ -239,6 +245,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       orderSourceUrl: '',
       type: 'service',
       model: '',
+      compatibleDevices: [],
       trackStock: false,
       stockCount: undefined,
       lowStockThreshold: undefined,
@@ -247,6 +254,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setDeviceCategoryInput('');
     setRepairCategoryInput('');
     setHasDeviceCategory(false);
+    setCompatibleDeviceSearch('');
     setShowCategoryDropdown(false);
     setShowRepairCategoryDropdown(false);
     setMarkupPct(DEFAULT_MARKUP_PCT);
@@ -380,10 +388,8 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
             <input name="repairFamily" value={formData.repairFamily || ''} onChange={handleChange} placeholder="e.g. Port Repair" className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
             <span className="mt-1 block text-[11px] text-zinc-500">Groups related services without duplicating a long repair list.</span>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-300">Reusable Service</label>
-            <input name="serviceKey" value={formData.serviceKey || ''} onChange={handleChange} placeholder="USB Port Repair" className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
-            <span className="mt-1 block text-[11px] text-zinc-500">A stable service key is created automatically when saved.</span>
+          <div className="rounded border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+            The service matching key is generated automatically from the repair name.
           </div>
           {/* 2. Device Category — optional, behind a checkbox */}
           <div className="md:col-span-2">
@@ -395,7 +401,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                   setHasDeviceCategory(e.target.checked);
                   if (!e.target.checked) {
                     setDeviceCategoryInput('');
-                    setFormData(prev => ({ ...prev, category: '', model: '' }));
+                    setFormData(prev => ({ ...prev, category: '', model: '', compatibleDevices: [] }));
                   }
                 }}
                 className="w-4 h-4 rounded accent-[#39FF14]"
@@ -434,17 +440,31 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
                 )}
                 </div>
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-400">Exact Device</span>
-                  <select
-                    value={formData.model || ''}
-                    onChange={(event) => setFormData((previous) => ({ ...previous, model: event.target.value }))}
-                    disabled={!deviceCategoryInput.trim() || deviceModelsForCategory.length === 0}
-                    className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]"
-                  >
-                    <option value="">All devices in category</option>
-                    {deviceModelsForCategory.map((device) => <option key={device} value={device}>{device}</option>)}
-                  </select>
-                  <span className="mt-1 block text-[11px] text-zinc-500">Choose a model for model-specific repairs, or leave category-wide.</span>
+                  <span className="mb-1 block text-xs font-medium text-zinc-400">Compatible Devices</span>
+                  <div className="relative">
+                    <input type="search" value={compatibleDeviceSearch}
+                      onChange={(event) => { setCompatibleDeviceSearch(event.target.value); setCompatibleDeviceMenuOpen(true); }}
+                      onFocus={() => setCompatibleDeviceMenuOpen(true)}
+                      onBlur={() => window.setTimeout(() => setCompatibleDeviceMenuOpen(false), 120)}
+                      disabled={!deviceCategoryInput.trim() || deviceModelsForCategory.length === 0}
+                      placeholder="Search and select devices"
+                      className="w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-[#39FF14]" />
+                    {compatibleDeviceMenuOpen && deviceModelsForCategory.length > 0 ? <div className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-600 bg-zinc-950 p-1 shadow-xl">
+                      {deviceModelsForCategory.filter((device) => device.toLowerCase().includes(compatibleDeviceSearch.trim().toLowerCase())).map((device) => {
+                        const selected = (formData.compatibleDevices || []).includes(device);
+                        return <button type="button" key={device} onMouseDown={(event) => event.preventDefault()} onClick={() => setFormData((previous) => {
+                          const current = previous.compatibleDevices || [];
+                          const compatibleDevices = current.includes(device) ? current.filter((value) => value !== device) : [...current, device];
+                          return { ...previous, compatibleDevices, model: compatibleDevices.length === 1 ? compatibleDevices[0] : '' };
+                        })} className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${selected ? 'bg-[#BC13FE]/20 text-white' : 'text-zinc-300 hover:bg-zinc-800'}`}><span>{device}</span><span>{selected ? '✓' : ''}</span></button>;
+                      })}
+                    </div> : null}
+                  </div>
+                  {(formData.compatibleDevices || []).length ? <div className="mt-2 flex flex-wrap gap-1.5">{(formData.compatibleDevices || []).map((device) => <button type="button" key={device} onClick={() => setFormData((previous) => {
+                    const compatibleDevices = (previous.compatibleDevices || []).filter((value) => value !== device);
+                    return { ...previous, compatibleDevices, model: compatibleDevices.length === 1 ? compatibleDevices[0] : '' };
+                  })} className="rounded border border-[#BC13FE]/60 bg-[#BC13FE]/15 px-2 py-1 text-xs">{device} ×</button>)}</div> : null}
+                  <span className="mt-1 block text-[11px] text-zinc-500">Select one or more exact devices, or leave empty to make this repair available to the whole category.</span>
                 </label>
               </div>
             )}

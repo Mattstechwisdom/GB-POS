@@ -13,6 +13,13 @@ export type ReportingLedgerEntry = {
   missingInternalCost: number;
 };
 
+export function reportingRecordKind(record: any): 'repair' | 'sale' {
+  if (record?.kind !== 'sale') return 'repair';
+  if (String(record?.quickCheckoutType || '').trim().toLowerCase() === 'repair') return 'repair';
+  const items = Array.isArray(record?.items) ? record.items : [];
+  return items.some((item: any) => String(item?.category || '').trim().toLowerCase() === 'repair') ? 'repair' : 'sale';
+}
+
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
 export function verifiedPurchaseTotal(purchase: any) {
@@ -159,7 +166,7 @@ function internalCostState(record: any, kind: 'repair' | 'sale') {
 export function buildReportingLedger(records: any[]): ReportingLedgerEntry[] {
   const ledger: ReportingLedgerEntry[] = [];
   for (const record of records || []) {
-    const kind: 'repair' | 'sale' = record?.kind === 'sale' ? 'sale' : 'repair';
+    const kind = reportingRecordKind(record);
     const buckets = invoiceBuckets(record, kind);
     if (!(buckets.total > 0)) continue;
     const costState = internalCostState(record, kind);

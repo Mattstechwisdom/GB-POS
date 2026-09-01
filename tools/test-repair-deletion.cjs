@@ -22,6 +22,12 @@ const { deleteRepair, deleteRepairType, canDeleteRepairType, repairContextMenuZI
   assert.equal(canDeleteRepairType({}), true, 'Recovered repair types must offer deletion so assigned repairs can be removed.');
   assert.ok(repairContextMenuZIndex(true) > 100000, 'Repair context menus must render above modal repair windows.');
   assert.ok(repairContextMenuZIndex(false) >= 50, 'Standalone repair windows retain a visible context-menu layer.');
+  const desktopApi = fs.readFileSync(path.join(root, 'app/electron/electron-main.ts'), 'utf8');
+  const mobileApi = fs.readFileSync(path.join(root, 'src/mobile/mobile-api.ts'), 'utf8');
+  for (const source of [desktopApi, mobileApi]) {
+    assert.match(source, /delete\(\).*?select\('legacy_id'\)/s, 'cloud deletes must request the deleted identifier');
+    assert.match(source, /no matching saved record was removed/, 'zero-row cloud deletes must be reported as failures');
+  }
   const main = fs.readFileSync(path.join(root, 'src/repairs/RepairCategoriesWindow.tsx'), 'utf8');
   const settings = fs.readFileSync(path.join(root, 'src/repairs/RepairTypeManager.tsx'), 'utf8');
   assert.match(main, /deleteRepair\(/);
