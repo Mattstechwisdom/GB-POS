@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.46 (2026-08-31)
+- Reliable Repair Deletion: right-click deletion in Repairs and Repair Settings now verifies persistent storage before refreshing, while Repair Type deletion clearly supports keeping or removing assigned repairs, including recovered types.
+- Organized Admin Navigation: the catalog is consistently named Repairs, and Distributors/Vendors has moved out of Admin into Inventory Settings on desktop, mobile, and browser layouts.
+- Expanded Catalog Settings: Inventory now includes Part Types, Distributors/Vendors, and configurable entry defaults; Repairs includes Repair Types, Devices, and repair defaults.
+- Canonical Vendor Directory: compact expandable vendor rows show linked parts and repairs, prevent deleting in-use vendors, propagate renamed vendor spellings, and support merging accidental duplicates.
+- Distributor URL Consistency: product links continue to fill available part cost and now resolve detected distributor names against the canonical vendor directory.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.45 (2026-08-31)
 - Independent Admin Windows: desktop Admin tools now open in separate non-modal windows, including multiple instances for multitasking; mobile and browser builds retain responsive in-app navigation.
 - Guided Inventory: Inventory now uses clear identity/source, compatibility, pricing, and stock/reorder steps with prominent links to existing or new repairs.

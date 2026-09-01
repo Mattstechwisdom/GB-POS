@@ -209,7 +209,7 @@ async function inspectWindow(win, type, orientation) {
     await new Promise((resolve) => setTimeout(resolve, 75));
     const completed = await win.webContents.executeJavaScript(`(() => {
       const root = document.querySelector('.gb-checkout-window');
-      const save = Array.from(root?.querySelectorAll('button') || []).find((button) => button.textContent.trim() === 'Save');
+      const save = Array.from(root?.querySelectorAll('button') || []).find((button) => ['Save', 'Complete Checkout'].includes(button.textContent.trim()));
       save?.click();
       return Boolean(save && !save.disabled);
     })()`);

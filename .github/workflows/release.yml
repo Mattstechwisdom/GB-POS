@@ -99,6 +99,10 @@ jobs:
           npm run test:daily-look-shifts
           npm run test:desktop-navigation
           npm run test:admin-multiwindow
+          npm run test:repair-deletion
+          npm run test:catalog-settings-navigation
+          npm run test:vendor-catalog
+          npm run test:catalog-defaults
           npm run test:checkout-layout
           npm run test:repair-compatibility
           npm run test:main-record-types
