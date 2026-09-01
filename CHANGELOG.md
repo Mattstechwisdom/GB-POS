@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.49 (2026-09-01)
+- Cloud-Authoritative Repair Deletion: desktop Repairs now sends deletion directly to Supabase before cleaning its local cache, so cloud-loaded catalog entries can be removed even when they were never copied into the desktop JSON database.
+- Specific Power-Supply Fix: the saved “Playstation 5 Power Supply Swap” record and other cloud-only repairs no longer freeze or return “could not be removed from storage” solely because the local cache lacks their ID.
+- Safe History Preservation: deleting a repair still removes only the catalog choice; existing work-order and sale line-item snapshots remain unchanged.
+
 ## v0.6.48 (2026-09-01)
 - Multi-Device Repairs: repair catalog entries can now target one or several exact devices with the same searchable compatibility picker used by Inventory, while an empty selection keeps the repair category-wide.
 - Clear Catalog Roles: Part Type remains the physical inventory category, Linked Repair Service is clearly identified as optional work-order matching, and the internal reusable-service key is generated automatically instead of requiring manual entry.

@@ -28,6 +28,8 @@ const { deleteRepair, deleteRepairType, canDeleteRepairType, repairContextMenuZI
     assert.match(source, /delete\(\).*?select\('legacy_id'\)/s, 'cloud deletes must request the deleted identifier');
     assert.match(source, /no matching saved record was removed/, 'zero-row cloud deletes must be reported as failures');
   }
+  assert.match(desktopApi, /key === 'repairCategories' && shouldUseCloudDb\(key\)[\s\S]*await cloudDbDelete\(key, id\)[\s\S]*scheduleCollectionChanged\(key\)[\s\S]*return true/, 'Desktop repair deletion must reach Supabase even when the row is absent from the local JSON cache.');
+  assert.ok(desktopApi.indexOf("key === 'repairCategories' && shouldUseCloudDb(key)") < desktopApi.indexOf('if (idx === -1) return false;', desktopApi.indexOf("ipcMain.handle('db-delete'")), 'Cloud repair deletion must run before the local-cache missing-row return.');
   const main = fs.readFileSync(path.join(root, 'src/repairs/RepairCategoriesWindow.tsx'), 'utf8');
   const settings = fs.readFileSync(path.join(root, 'src/repairs/RepairTypeManager.tsx'), 'utf8');
   assert.match(main, /deleteRepair\(/);

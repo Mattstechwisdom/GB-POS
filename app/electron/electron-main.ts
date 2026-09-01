@@ -5898,6 +5898,24 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
       });
     }
   }
+  // Repair catalog rows are cloud-authoritative and may have been loaded from
+  // Supabase without being present in the desktop JSON cache. Delete them from
+  // Supabase first, then clean up any cached copy. This also surfaces RLS/ID
+  // errors instead of silently queueing a delete that appears to succeed.
+  if (key === 'repairCategories' && shouldUseCloudDb(key)) {
+    try {
+      await cloudDbDelete(key, id);
+    } catch (error: any) {
+      const missingCloudRow = /no matching saved record was removed/i.test(String(error?.message || ''));
+      if (!(missingCloudRow && idx !== -1)) throw error;
+    }
+    if (idx !== -1) {
+      const nextDb: any = { ...prevDb, [key]: list.filter((_, i) => i !== idx) };
+      if (!writeDb(nextDb)) return false;
+    }
+    scheduleCollectionChanged(key);
+    return true;
+  }
   if (idx === -1) return false;
   const nextList = list.filter((_, i) => i !== idx);
   const nextDb: any = { ...prevDb, [key]: nextList };
