@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { resolveContextMenuZIndex } from '../lib/contextMenuLayer';
 
 export type ContextMenuItem =
 	| { type?: 'item'; label: string; onClick?: () => void | Promise<void>; disabled?: boolean; danger?: boolean; hint?: string }
@@ -20,7 +21,8 @@ export default function ContextMenu(props: {
 	id?: string;
 	zIndex?: number;
 }) {
-	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu', zIndex = 50 } = props;
+	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu', zIndex } = props;
+	const effectiveZIndex = resolveContextMenuZIndex(zIndex);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -68,12 +70,12 @@ export default function ContextMenu(props: {
 
 	return createPortal(
 		<>
-			<div className="fixed inset-0" style={{ zIndex: zIndex - 1 }} onMouseDown={onClose} />
+			<div className="fixed inset-0" style={{ zIndex: effectiveZIndex - 1 }} onMouseDown={onClose} />
 			<div
 				id={id}
 				ref={menuRef}
 				className="fixed bg-zinc-900 border border-zinc-700 rounded shadow-xl py-1"
-				style={{ left: displayPos.left, top: displayPos.top, minWidth, zIndex }}
+				style={{ left: displayPos.left, top: displayPos.top, minWidth, zIndex: effectiveZIndex }}
 				role="menu"
 			>
 				{items.map((it, idx) => {
