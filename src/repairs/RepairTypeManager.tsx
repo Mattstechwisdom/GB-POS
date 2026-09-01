@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import type { RepairItem } from '@/lib/types';
-import { deleteRepair, deleteRepairType } from '@/lib/repairDeletion';
+import { canDeleteRepairType, deleteRepair, deleteRepairType, repairContextMenuZIndex } from '@/lib/repairDeletion';
 
 type RepairType = {
   id: number | string;
@@ -59,6 +59,7 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
 
   const ctx = useContextMenu<RepairType>();
   const repairCtx = useContextMenu<RepairRow>();
+  const contextMenuZIndex = repairContextMenuZIndex(typeof document !== 'undefined' && !!document.querySelector('[data-modal-shell="1"]'));
 
   async function reload() {
     const api = (window as any).api;
@@ -223,8 +224,8 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
         {
           label: 'Delete...',
           danger: true,
-          disabled: !ctx.state.data.definedId,
-          onClick: () => { if (ctx.state.data) deleteById(ctx.state.data.id); },
+          disabled: !canDeleteRepairType(ctx.state.data),
+          onClick: () => ctx.state.data ? deleteById(ctx.state.data.id) : undefined,
         },
       ]
     : [];
@@ -322,6 +323,7 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
         y={ctx.state.y}
         items={ctxItems}
         onClose={ctx.close}
+        zIndex={contextMenuZIndex}
       />
       <ContextMenu
         id="repair-type-item-ctx"
@@ -335,6 +337,7 @@ export default function RepairTypeManager({ onRepairEdit, onRepairDeleted }: Rep
           { label: 'Delete Repair…', danger: true, onClick: () => { if (repairCtx.state.data) void deleteRepairRow(repairCtx.state.data); } },
         ] : []}
         onClose={repairCtx.close}
+        zIndex={contextMenuZIndex}
       />
     </div>
   );

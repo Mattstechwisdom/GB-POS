@@ -1,6 +1,14 @@
 type DbApi = { dbDelete?: (key: string, id: any) => Promise<any> };
 export type RepairDeleteResult = { ok: boolean; error?: string; deletedRepairs?: number; deletedType?: boolean };
 
+export function canDeleteRepairType(_type: { definedId?: any }): boolean {
+  return true;
+}
+
+export function repairContextMenuZIndex(isModalShell: boolean): number {
+  return isModalShell ? 100600 : 50;
+}
+
 export async function deleteRepair(api: DbApi | undefined, id: any): Promise<RepairDeleteResult> {
   if (id === null || typeof id === 'undefined' || !api?.dbDelete) return { ok: false, error: 'This repair is missing a saved ID.' };
   try {

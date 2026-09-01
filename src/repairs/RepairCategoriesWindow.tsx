@@ -6,7 +6,7 @@ import type { RepairItem } from '../lib/types';
 import DeviceForm from '@/repairs/DeviceForm';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
-import { deleteRepair } from '@/lib/repairDeletion';
+import { deleteRepair, repairContextMenuZIndex } from '@/lib/repairDeletion';
 
 // No placeholder data for now
 
@@ -289,6 +289,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
         y={ctx.state.y}
         items={ctxItems}
         onClose={ctx.close}
+        zIndex={repairContextMenuZIndex(isModalShell)}
       />
     </ErrorBoundary>
   );
