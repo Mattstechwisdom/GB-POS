@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.47 (2026-08-31)
+- Vendor List Separation: Distributors/Vendors now shows only retail products in Products mode, while Parts mode shows inventory parts and their linked repairs with mode-correct counts and safeguards.
+- Reliable Repair Actions: saved and recovered repair types can be deleted through clear confirmation flows, individual repair deletions refresh persisted lists, and repair menus stay visible above app windows.
+- App-Wide Context Menus: the shared right-click menu now enforces a modal-safe layer across inventory, products, repairs, devices, customers, tickets, calendar entries, EOD, and work-order/sale line items.
+- Mobile Action Parity: existing press-and-hold behavior remains protected for touch devices without interfering with taps, scrolling, or form controls.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.46 (2026-08-31)
 - Reliable Repair Deletion: right-click deletion in Repairs and Repair Settings now verifies persistent storage before refreshing, while Repair Type deletion clearly supports keeping or removing assigned repairs, including recovered types.
 - Organized Admin Navigation: the catalog is consistently named Repairs, and Distributors/Vendors has moved out of Admin into Inventory Settings on desktop, mobile, and browser layouts.
