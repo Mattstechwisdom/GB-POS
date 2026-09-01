@@ -37,7 +37,26 @@ export function discountedWorkOrderItemAmounts(input: { parts: number; labor: nu
   return { parts, labor, discount, gross, net: roundCurrency(parts + labor) };
 }
 
-export function ticketLaborCharge(items: Array<{ labor?: number }>, diagnostic?: Pick<DiagnosticSelection, 'amount'> | null): number {
-  const labor = roundCurrency((Array.isArray(items) ? items : []).reduce((sum, item) => sum + Math.max(0, Number(item?.labor) || 0), 0));
-  return roundCurrency(Math.max(labor, Math.max(0, Number(diagnostic?.amount) || 0)));
+type TicketLaborItem = {
+  labor?: number;
+  repair?: string;
+  repairCategory?: string;
+};
+
+function isAdditiveLaborFee(item: TicketLaborItem): boolean {
+  const description = `${item?.repairCategory || ''} ${item?.repair || ''}`.trim();
+  if (/diagnostic/i.test(description)) return false;
+  return /\b(fees?|surcharges?|expedit(?:e|ed|ing)?|rush)\b/i.test(description);
+}
+
+export function ticketLaborCharge(items: TicketLaborItem[], diagnostic?: Pick<DiagnosticSelection, 'amount'> | null): number {
+  const laborItems = Array.isArray(items) ? items : [];
+  const additiveFees = roundCurrency(laborItems.reduce((sum, item) => (
+    sum + (isAdditiveLaborFee(item) ? Math.max(0, Number(item?.labor) || 0) : 0)
+  ), 0));
+  const repairLabor = roundCurrency(laborItems.reduce((sum, item) => (
+    sum + (isAdditiveLaborFee(item) ? 0 : Math.max(0, Number(item?.labor) || 0))
+  ), 0));
+  const diagnosticMinimum = Math.max(0, Number(diagnostic?.amount) || 0);
+  return roundCurrency(Math.max(repairLabor, diagnosticMinimum) + additiveFees);
 }

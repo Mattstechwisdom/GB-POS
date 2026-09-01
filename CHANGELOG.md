@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.50 (2026-09-01)
+- Correct Diagnostic Totals: a selected diagnostic remains the minimum/credit toward standard repair labor without replacing separate service fees.
+- Additive Expedited Fees: expedited service, rush, fee, and surcharge line items now add on top of the diagnostic or completed repair labor in work-order totals, checkout, and saved ticket values.
+- Accounting Regression Coverage: automated cases protect diagnostic-only, repair-with-diagnostic, expedited-with-diagnostic, and repair-plus-expedited totals.
+
 ## v0.6.49 (2026-09-01)
 - Cloud-Authoritative Repair Deletion: desktop Repairs now sends deletion directly to Supabase before cleaning its local cache, so cloud-loaded catalog entries can be removed even when they were never copied into the desktop JSON database.
 - Specific Power-Supply Fix: the saved “Playstation 5 Power Supply Swap” record and other cloud-only repairs no longer freeze or return “could not be removed from storage” solely because the local cache lacks their ID.

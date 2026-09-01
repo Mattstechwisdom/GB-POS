@@ -43,7 +43,7 @@ function workOrderItemQuantity(item: Partial<WorkOrderItemRow>) {
 }
 
 function calculateWorkOrderItemAmounts(items: WorkOrderItemRow[], discount: number, taxRate: number, amountPaid: number, diagnostic?: WorkOrderFull['diagnosticSelection']) {
-  const discounted = items.map(item => discountedWorkOrderItemAmounts(item));
+  const discounted = items.map(item => ({ ...item, ...discountedWorkOrderItemAmounts(item) }));
   const partCosts = round2(discounted.reduce((sum, item) => sum + item.parts, 0));
   const laborCost = ticketLaborCharge(discounted, diagnostic);
   return {

@@ -23,6 +23,19 @@ assert.equal(lineDiscountAmount({ units: 1, unitPrice: 100, discountType: 'perce
 assert.equal(ticketLaborCharge([{ labor: 100 }], { amount: 50 }), 100);
 assert.equal(ticketLaborCharge([], { amount: 50 }), 50);
 assert.equal(ticketLaborCharge([{ labor: 20 }, { labor: 15 }], null), 35);
+assert.equal(
+  ticketLaborCharge([{ labor: 25, repair: 'Expedited Service Fee', repairCategory: 'Service Fees' }], { amount: 50 }),
+  75,
+  'Expedited service fees must be added on top of the diagnostic minimum.',
+);
+assert.equal(
+  ticketLaborCharge([
+    { labor: 100, repair: 'HDMI Port Repair', repairCategory: 'Repair' },
+    { labor: 25, repair: 'Expedited Service Fee', repairCategory: 'Service Fees' },
+  ], { amount: 50 }),
+  125,
+  'Add-on fees must remain additive after repair labor has consumed the diagnostic credit.',
+);
 assert.deepEqual(
   discountedWorkOrderItemAmounts({ parts: 40, labor: 60, quantity: 1, discountType: 'percent', discountValue: 10 }),
   { parts: 36, labor: 54, discount: 10, gross: 100, net: 90 },
