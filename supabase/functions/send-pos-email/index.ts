@@ -195,6 +195,33 @@ async function sendClientUpdate(historyId: string, shopId: string) {
   }
 }
 
+async function retryPendingClientUpdates(shopId: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: pending, error } = await admin
+    .from("client_update_history")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("delivery_status", "pending")
+    .not("recipient_email", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) throw error;
+
+  let sent = 0;
+  let failed = 0;
+  for (const row of pending || []) {
+    try {
+      const result = await sendClientUpdate(String(row.id), shopId);
+      if (!result.busy) sent += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { ok: true, processed: (pending || []).length, sent, failed };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") return json(405, { ok: false, error: "Method not allowed." });
@@ -213,6 +240,11 @@ Deno.serve(async (req: Request) => {
       const historyId = safeString((body as any).historyId, 80);
       if (!historyId) return json(400, { ok: false, error: "Missing client update history id." });
       const result = await sendClientUpdate(historyId, shopId);
+      return json(200, result);
+    }
+    if (action === "retry-client-updates") {
+      if (!config.configured) return json(503, { ok: false, error: "Supabase email is not configured. Add the Gmail App Password to Edge Function secrets." });
+      const result = await retryPendingClientUpdates(shopId);
       return json(200, result);
     }
     if (action !== "send") return json(400, { ok: false, error: "Unsupported email action." });

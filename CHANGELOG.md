@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.51 (2026-09-01)
+- Restored Client Email Delivery: the replacement Gmail App Password is stored as a protected Supabase Edge Function secret and verified against Gmail SMTP without sending a test message.
+- Recoverable Update Queue: Client Update History now includes a prominent Retry queued emails action that processes pending emails for the signed-in shop.
+- Duplicate-Safe Retries: the cloud sender atomically claims each pending history entry before delivery, preventing simultaneous retries from sending the same update twice.
+
 ## v0.6.50 (2026-09-01)
 - Correct Diagnostic Totals: a selected diagnostic remains the minimum/credit toward standard repair labor without replacing separate service fees.
 - Additive Expedited Fees: expedited service, rush, fee, and surcharge line items now add on top of the diagnostic or completed repair labor in work-order totals, checkout, and saved ticket values.

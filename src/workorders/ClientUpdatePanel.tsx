@@ -267,6 +267,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [historyError, setHistoryError] = useState('');
   const [historyRows, setHistoryRows] = useState<UpdateHistoryRow[]>([]);
   const [historyShopId, setHistoryShopId] = useState('');
+  const [historyRetrying, setHistoryRetrying] = useState(false);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('email');
 
   const isMobileApp = useMemo(() => {
@@ -440,6 +441,33 @@ const ClientUpdatePanel: React.FC<Props> = ({
     queued: historyRows.filter((entry) => entry.delivery_status === 'pending' || entry.delivery_status === 'sending').length,
     failed: historyRows.filter((entry) => entry.delivery_status === 'failed').length,
   }), [historyRows]);
+
+  const retryQueuedEmails = useCallback(async () => {
+    let shopId = historyShopId || String(record?.shopId || record?.shop_id || '');
+    setHistoryRetrying(true);
+    setHistoryError('');
+    try {
+      if (!shopId) {
+        const session = await supabase.auth.getSession();
+        const userId = session.data.session?.user?.id || '';
+        if (userId) {
+          const profile = await supabase.from('staff_profiles').select('shop_id').eq('user_id', userId).eq('is_active', true).maybeSingle();
+          if (!profile.error) shopId = String(profile.data?.shop_id || '');
+        }
+      }
+      if (!shopId) throw new Error('The shop session is not ready. Sign in again.');
+      const { data, error: retryError } = await supabase.functions.invoke('send-pos-email', {
+        body: { action: 'retry-client-updates', shopId },
+      });
+      if (retryError || !data?.ok) throw new Error(String((retryError as any)?.context?.body?.error || data?.error || retryError?.message || 'Queued emails could not be retried.'));
+      if (Number(data.failed || 0) > 0) setHistoryError(`${data.sent || 0} queued email(s) sent; ${data.failed} still need attention.`);
+      await loadHistory();
+    } catch (e: any) {
+      setHistoryError(e?.message || String(e));
+    } finally {
+      setHistoryRetrying(false);
+    }
+  }, [historyShopId, loadHistory, record?.shopId, record?.shop_id]);
 
   const openTextMessage = useCallback((phone: string, message: string) => {
     const digits = String(phone || '').replace(/[^\d+]/g, '');
@@ -703,6 +731,9 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
               <div className="gb-client-update-history-toolbar">
                 <span>Newest updates first</span>
+                <button type="button" onClick={() => void retryQueuedEmails()} disabled={historyLoading || historyRetrying || historySummary.queued === 0}>
+                  {historyRetrying ? 'Retrying...' : 'Retry queued emails'}
+                </button>
                 <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
                   {historyLoading ? 'Refreshing...' : 'Refresh'}
                 </button>

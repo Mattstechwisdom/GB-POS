@@ -36,6 +36,10 @@ expect(mobileApp.includes('<ClientUpdatePanel'), 'The hosted mobile app must ope
 expect(updateFunction.includes('Sign in before sending a client update.'), 'The client-updates function must require authentication.');
 expect(updateFunction.includes('send-client-update'), 'The client-updates function must hand email delivery to send-pos-email.');
 expect(updateFunction.includes('client_update_history'), 'The client-updates function must archive every update.');
+expect(panel.includes('Retry queued emails'), 'Client Update History must expose a retry action for queued email deliveries.');
+expect(panel.includes("action: 'retry-client-updates'"), 'The retry action must invoke the protected email outbox processor.');
+expect(read('supabase/functions/send-pos-email/index.ts').includes('retry-client-updates'), 'The email function must support retrying the authenticated shop outbox.');
+expect(read('supabase/functions/send-pos-email/index.ts').includes(".eq(\"delivery_status\", \"pending\")"), 'The outbox retry must only claim pending email rows.');
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');
 expect(consultationPage.includes('/functions/v1/qr-status'), 'The consultation page must load through Supabase.');
 expect(salePrint.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales forms must use the Supabase-backed sale QR route.');
