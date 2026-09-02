@@ -38,6 +38,8 @@ expect(updateFunction.includes('send-client-update'), 'The client-updates functi
 expect(updateFunction.includes('client_update_history'), 'The client-updates function must archive every update.');
 expect(panel.includes('Retry queued emails'), 'Client Update History must expose a retry action for queued email deliveries.');
 expect(panel.includes("action: 'retry-client-updates'"), 'The retry action must invoke the protected email outbox processor.');
+expect(panel.includes(".eq('status', 'active')"), 'Queued-email retry must resolve the signed-in staff profile using the real active status field.');
+expect(!panel.includes(".eq('is_active', true)"), 'Queued-email retry must not query the nonexistent staff_profiles.is_active field.');
 expect(read('supabase/functions/send-pos-email/index.ts').includes('retry-client-updates'), 'The email function must support retrying the authenticated shop outbox.');
 expect(read('supabase/functions/send-pos-email/index.ts').includes(".eq(\"delivery_status\", \"pending\")"), 'The outbox retry must only claim pending email rows.');
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');

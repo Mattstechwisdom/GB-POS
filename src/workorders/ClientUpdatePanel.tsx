@@ -401,7 +401,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
             .from('staff_profiles')
             .select('shop_id')
             .eq('user_id', userId)
-            .eq('is_active', true)
+            .eq('status', 'active')
             .maybeSingle();
           if (!profile.error) scopedShopId = String(profile.data?.shop_id || '');
         }
@@ -451,7 +451,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         const session = await supabase.auth.getSession();
         const userId = session.data.session?.user?.id || '';
         if (userId) {
-          const profile = await supabase.from('staff_profiles').select('shop_id').eq('user_id', userId).eq('is_active', true).maybeSingle();
+          const profile = await supabase.from('staff_profiles').select('shop_id').eq('user_id', userId).eq('status', 'active').maybeSingle();
           if (!profile.error) shopId = String(profile.data?.shop_id || '');
         }
       }

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.52 (2026-09-01)
+- Reliable Queue Retry Session: Client Update History now resolves the signed-in shop through the actual active staff-profile status field instead of querying a nonexistent field.
+- No False Sign-In Prompt: authenticated desktop and web users can retry queued client emails without being incorrectly told that the shop session is not ready.
+- Regression Coverage: the client-update checks now protect the correct active-profile lookup on both history loading and queue retry.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.51 (2026-09-01)
 - Restored Client Email Delivery: the replacement Gmail App Password is stored as a protected Supabase Edge Function secret and verified against Gmail SMTP without sending a test message.
 - Recoverable Update Queue: Client Update History now includes a prominent Retry queued emails action that processes pending emails for the signed-in shop.
