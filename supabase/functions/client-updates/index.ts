@@ -299,7 +299,10 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: {
         apikey: publishableKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
+        // Forward the already-validated staff JWT. Supabase's function gateway
+        // rejects modern non-JWT service-role secrets before the downstream
+        // function can authorize the request.
+        Authorization: authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ action: "send-client-update", shopId: profile.shop_id, historyId: history.id }),

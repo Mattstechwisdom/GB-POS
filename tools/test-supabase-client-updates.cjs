@@ -35,6 +35,8 @@ expect(mobileApp.includes("get('clientUpdateToken')"), 'The hosted mobile app mu
 expect(mobileApp.includes('<ClientUpdatePanel'), 'The hosted mobile app must open the Update Client panel for QR links.');
 expect(updateFunction.includes('Sign in before sending a client update.'), 'The client-updates function must require authentication.');
 expect(updateFunction.includes('send-client-update'), 'The client-updates function must hand email delivery to send-pos-email.');
+expect(updateFunction.includes('Authorization: authorization'), 'The automatic email handoff must forward the signed-in staff token through the JWT-protected function gateway.');
+expect(!updateFunction.includes('Authorization: `Bearer ${serviceRoleKey}`'), 'The automatic email handoff must not use the service-role secret as a gateway JWT.');
 expect(updateFunction.includes('client_update_history'), 'The client-updates function must archive every update.');
 expect(panel.includes('Retry queued emails'), 'Client Update History must expose a retry action for queued email deliveries.');
 expect(panel.includes("action: 'retry-client-updates'"), 'The retry action must invoke the protected email outbox processor.');

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.53 (2026-09-02)
+- Immediate QR Update Email Delivery: the authenticated `client-updates` function now forwards the signed-in staff token to the protected mail function, eliminating the gateway 401 that left every normal email queued until manual retry.
+- Queue Cleanup: all remaining pending or sending client-update emails were checked and cleared; delivered history remains intact.
+- Regression Coverage: automated checks now prevent the automatic mail handoff from reverting to an incompatible service-role credential.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.52 (2026-09-01)
 - Reliable Queue Retry Session: Client Update History now resolves the signed-in shop through the actual active staff-profile status field instead of querying a nonexistent field.
 - No False Sign-In Prompt: authenticated desktop and web users can retry queued client emails without being incorrectly told that the shop session is not ready.
