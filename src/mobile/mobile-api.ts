@@ -145,9 +145,12 @@ function ensureMobileBatchOut() {
 }
 
 function normalizeCloudId(row: any): number | string | null {
-  const legacy = Number(row?.legacy_id);
-  if (Number.isFinite(legacy)) return legacy;
-  return row?.legacy_id || row?.id || null;
+  const rawLegacy = row?.legacy_id;
+  if (rawLegacy !== null && typeof rawLegacy !== 'undefined' && String(rawLegacy).trim()) {
+    const numericLegacy = Number(rawLegacy);
+    return Number.isFinite(numericLegacy) ? numericLegacy : String(rawLegacy);
+  }
+  return row?.id || null;
 }
 
 function cloudDate(v: any): string | undefined {

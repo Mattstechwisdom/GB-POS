@@ -4259,8 +4259,11 @@ ipcMain.handle('cloud:collectionChanged', async (_e: any, key: string) => {
 });
 
 function normalizeCloudId(row: any): number | string | null {
-  const legacy = Number(row?.legacy_id);
-  if (Number.isFinite(legacy)) return legacy;
+  const rawLegacy = row?.legacy_id;
+  if (rawLegacy !== null && typeof rawLegacy !== 'undefined' && String(rawLegacy).trim()) {
+    const numericLegacy = Number(rawLegacy);
+    return Number.isFinite(numericLegacy) ? numericLegacy : String(rawLegacy);
+  }
   return row?.id || null;
 }
 
