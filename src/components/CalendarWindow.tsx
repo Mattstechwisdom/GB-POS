@@ -12,6 +12,7 @@ import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import { expandRecurringEvent, monthlyWeekdayPatternForDate, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '@/lib/calendarRecurrence';
 import { replaceRecordById, taskCompletionPatch } from '@/lib/immediatePersistence';
+import { publicAsset } from '@/lib/publicAsset';
 
 function openConsultationAddressInMaps(address: string) {
   const destination = String(address || '').trim();
@@ -1971,26 +1972,36 @@ const CalendarWindow: React.FC = () => {
             const key = fmtDate(day);
             const isCurrentMonth = day.getMonth() === current.getMonth();
             return (
-              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} rounded-lg border border-zinc-700 h-full min-h-0 overflow-hidden`}>
-                {isCurrentMonth || isMobileCalendar ? (
-                  <Cell
-                    day={day}
-                    events={eventsByDay[key] || []}
-                    notes={notesByDay[key] || []}
-                    notesVisible={filters.notes}
-                    tasksVisible={filters.tasks}
-                    colors={calendarColors}
-                    icons={calendarIcons}
-                    technicianColors={technicianColors}
-                    onPick={onPick}
-                    onOpenBudget={openBudgetEditor}
-                    onOpenGroup={setViewingGroup}
-                    onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
-                    onOpenNotes={openNotes}
-                    onOpenTasks={openTasks}
-                    onOpenShifts={(day) => openShiftDay(fmtDate(day))}
-                    isToday={key === todayStr}
+              <div key={idx} className={`${isCurrentMonth ? 'bg-zinc-900' : 'bg-zinc-900/60'} relative rounded-lg border border-zinc-700 h-full min-h-0 overflow-hidden`}>
+                {key.slice(5) === '09-11' ? (
+                  <img
+                    src={publicAsset('calendar/911-memorial.png')}
+                    alt=""
+                    aria-hidden="true"
+                    className="gb-calendar-september-11-art pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
                   />
+                ) : null}
+                {isCurrentMonth || isMobileCalendar ? (
+                  <div className="relative z-10 h-full min-h-0">
+                    <Cell
+                      day={day}
+                      events={eventsByDay[key] || []}
+                      notes={notesByDay[key] || []}
+                      notesVisible={filters.notes}
+                      tasksVisible={filters.tasks}
+                      colors={calendarColors}
+                      icons={calendarIcons}
+                      technicianColors={technicianColors}
+                      onPick={onPick}
+                      onOpenBudget={openBudgetEditor}
+                      onOpenGroup={setViewingGroup}
+                      onContextGroup={(event, group) => calendarContext.openFromEvent(event, group)}
+                      onOpenNotes={openNotes}
+                      onOpenTasks={openTasks}
+                      onOpenShifts={(day) => openShiftDay(fmtDate(day))}
+                      isToday={key === todayStr}
+                    />
+                  </div>
                 ) : null}
               </div>
             );

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.55 (2026-09-02)
+- September 11 Calendar Artwork: the supplied memorial image now appears as a slightly translucent background only inside the September 11 month-calendar cell.
+- Readable and Responsive: the image is clipped to the date square, ignores pointer input, and stays beneath date controls and calendar entries on desktop and mobile.
+- Deployment-Safe Asset: the artwork uses the shared public-asset resolver so it loads correctly in desktop packages and the browser interface.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.54 (2026-09-02)
 - Distinct Ticket Catalogs: work orders now use a streamlined Repairs-style picker, while sales use a separate Inventory-style picker with the familiar search and filters.
 - Cleaner Ticket Editing: catalog organization stays in Admin; ticket line editors focus on fulfillment, quantity, checkout pricing, availability, and notes while clearly identifying linked catalog records.
