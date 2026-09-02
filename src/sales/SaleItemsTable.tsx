@@ -417,15 +417,33 @@ const SaleItemsTable: React.FC<Props> = ({
 
       {editing && (
         <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-full min-h-0 self-stretch overflow-hidden' : 'mt-2'}`}>
+          {(() => {
+            const inventoryLinked = !!editing.inventoryProductId;
+            return <>
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
             <button type="button" className="gb-mobile-editor-back rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-xs text-zinc-200" onClick={() => { setEditingError(''); setEditing(null); }}>Back to items</button>
           </div>
 
+          {inventoryLinked && !isConsultationItem(editing) ? (
+            <div className="mt-2 rounded-lg border border-cyan-500/30 bg-cyan-950/20 px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300">Inventory-linked item</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-100">{editing.description || 'Inventory product'}</div>
+              <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-300">
+                {editing.category ? <span className="rounded-full bg-zinc-900 px-2 py-0.5">{editing.category}</span> : null}
+                {editing.condition ? <span className="rounded-full bg-zinc-900 px-2 py-0.5">{editing.condition}</span> : null}
+                {editing.distributor ? <span className="rounded-full bg-zinc-900 px-2 py-0.5">{editing.distributor}</span> : null}
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-400">Catalog details are managed in Admin → Inventory. Quantity, checkout price, availability, and notes remain ticket-specific.</div>
+            </div>
+          ) : null}
+
           <div className="gb-sale-item-editor-fields">
           <label className="block text-xs text-zinc-400 mt-2">{isConsultationItem(editing) ? 'Consultation' : 'Item'}</label>
-          <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
+          {inventoryLinked && !isConsultationItem(editing)
+            ? <div className="mt-1 rounded bg-zinc-900 px-2 py-1 text-sm text-zinc-200">{editing.description}</div>
+            : <input className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />}
           <div className="gb-sale-item-primary-fields flex gap-2 mt-2">
             <div className="w-1/3">
               <label className="block text-xs text-zinc-400">{isConsultationItem(editing) ? 'Hours' : 'Qty'}</label>
@@ -458,7 +476,7 @@ const SaleItemsTable: React.FC<Props> = ({
 
           {!isConsultationItem(editing) ? <>
           <div className="gb-sale-item-stock-fields flex gap-2 mt-2">
-            <div className="w-1/2">
+            {!inventoryLinked ? <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Category</label>
               <select
                 className="w-full bg-zinc-900 rounded px-2 py-1"
@@ -480,8 +498,8 @@ const SaleItemsTable: React.FC<Props> = ({
                 <option value="Consultation">Consultation</option>
                 <option value="Other">Other</option>
               </select>
-            </div>
-            <div className="w-1/2">
+            </div> : null}
+            <div className={inventoryLinked ? 'w-full' : 'w-1/2'}>
               <label className="block text-xs text-zinc-400">In stock</label>
               <div className="mt-1 flex items-center gap-2">
                 <input
@@ -495,7 +513,7 @@ const SaleItemsTable: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="gb-sale-item-cost-fields flex gap-2 mt-2">
+          {!inventoryLinked ? <div className="gb-sale-item-cost-fields flex gap-2 mt-2">
             <div className="w-1/2">
               <label className="block text-xs text-zinc-400">Condition</label>
               <select className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.condition || 'New'} onChange={e => setEditing({ ...editing, condition: e.target.value as any })}>
@@ -519,8 +537,8 @@ const SaleItemsTable: React.FC<Props> = ({
               />
               {editing.requiresOrder ? <div className="mt-1 text-[10px] text-zinc-500">Item price only. Shipping and supplier tax are added during EOD checkout.</div> : null}
             </div>
-          </div>
-          <div className="gb-sale-item-order-fields grid grid-cols-2 gap-2 mt-2">
+          </div> : null}
+          {!inventoryLinked ? <div className="gb-sale-item-order-fields grid grid-cols-2 gap-2 mt-2">
             <div>
               <label className="block text-xs text-zinc-400">Device Model</label>
               <input className="w-full bg-zinc-900 rounded px-2 py-1" value={editing.deviceModel || ''} onChange={e => setEditing({ ...editing, deviceModel: e.target.value })} />
@@ -560,7 +578,12 @@ const SaleItemsTable: React.FC<Props> = ({
               <label className="block text-xs text-zinc-400">Item Notes</label>
               <textarea className="w-full min-h-[64px] bg-zinc-900 rounded px-2 py-1" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
             </div>
-          </div>
+          </div> : (
+            <div className="mt-2">
+              <label className="block text-xs text-zinc-400">Item Notes</label>
+              <textarea className="mt-1 w-full min-h-[64px] bg-zinc-900 rounded px-2 py-1" value={editing.notes || ''} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+            </div>
+          )}
           </> : null}
           {isConsultationItem(editing) ? (
             <div className="mt-2 space-y-2">
@@ -632,6 +655,8 @@ const SaleItemsTable: React.FC<Props> = ({
               Save
             </button>
           </div>
+            </>;
+          })()}
         </div>
       )}
       {splitLayout && !editing ? (

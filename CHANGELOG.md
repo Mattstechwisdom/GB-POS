@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.54 (2026-09-02)
+- Distinct Ticket Catalogs: work orders now use a streamlined Repairs-style picker, while sales use a separate Inventory-style picker with the familiar search and filters.
+- Cleaner Ticket Editing: catalog organization stays in Admin; ticket line editors focus on fulfillment, quantity, checkout pricing, availability, and notes while clearly identifying linked catalog records.
+- Stable Repair Links: desktop and browser sync now preserve repair legacy IDs, preventing parent-part linking from creating a second repair or unlinking the correct repair when an older duplicate is removed.
+- Variant-Safe Work Orders: repairs linked to a parent part family continue to request the exact inventory variant without creating a new repair catalog entry.
+- Regression Coverage: automated checks protect repair identity, deletion, parent-part selection, and the distinct work-order and sale picker layouts.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.53 (2026-09-02)
 - Immediate QR Update Email Delivery: the authenticated `client-updates` function now forwards the signed-in staff token to the protected mail function, eliminating the gateway 401 that left every normal email queued until manual retry.
 - Queue Cleanup: all remaining pending or sending client-update emails were checked and cleared; delivered history remains intact.

@@ -410,12 +410,29 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
 
       {editing && (
         <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
+          {(() => {
+            const catalogLinked = !!(editing.inventoryProductId || editing.inventoryParentId);
+            return <>
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
           </div>
 
+          {catalogLinked ? (
+            <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">Catalog-linked details</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-100">{editing.repair || 'Catalog repair'}</div>
+              <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-300">
+                {editing.device ? <span className="rounded-full bg-zinc-900 px-2 py-0.5">{editing.device}</span> : null}
+                {editing.repairCategory ? <span className="rounded-full bg-zinc-900 px-2 py-0.5">{editing.repairCategory}</span> : null}
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">{editing.inventoryProductId ? 'Exact inventory part' : 'Parent part family'}</span>
+              </div>
+              <div className="mt-1 text-[10px] text-zinc-400">Catalog organization is managed in Admin → Repairs. This ticket keeps only fulfillment, pricing, and notes editable.</div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-2 mt-2">
+            {!catalogLinked ? <>
             <div>
               <label className="block text-xs text-zinc-400">Device</label>
               <input
@@ -462,6 +479,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
                 <option value="New">New</option><option value="Used">Used</option><option value="Refurbished">Refurbished</option><option value="Other">Other</option>
               </select>
             </div>
+            </> : null}
             <div>
               <label className="block text-xs text-zinc-400">Quantity</label>
               <input type="number" min="1" step="1" className="w-full mt-1 bg-zinc-900 rounded px-2 py-1" value={editing.quantity || 1} onChange={e => setEditing({ ...editing, quantity: Math.max(1, Math.round(Number(e.target.value || 1))) })} />
@@ -602,6 +620,8 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
               Save
             </button>
           </div>
+            </>;
+          })()}
         </div>
       )}
 
