@@ -9,8 +9,36 @@ export type PartUrlMetadata = {
   images?: string[];
   specs?: Array<{ name: string; value: string }>;
   conditionOptions?: Array<{ condition: string; price?: number }>;
+  priceCandidates?: PriceCandidate[];
   error?: string;
 };
+
+export type PriceCandidate = {
+  value: number;
+  currency: string;
+  sourceKind: 'structured' | 'current' | 'sale' | 'list' | 'member' | 'visible';
+  selectorFingerprint: string;
+  confidence: number;
+  evidence: string;
+};
+
+export function extractPriceCandidatesFromHtml(html: string): PriceCandidate[] {
+  const output: PriceCandidate[] = [];
+  const add = (raw: unknown, sourceKind: PriceCandidate['sourceKind'], selectorFingerprint: string, confidence: number, evidence: string) => {
+    const value = parseMoney(raw);
+    if (value == null || value <= 0 || output.some((candidate) => candidate.value === value && candidate.selectorFingerprint === selectorFingerprint)) return;
+    output.push({ value, currency: 'USD', sourceKind, selectorFingerprint, confidence, evidence });
+  };
+  for (const match of html.matchAll(/(?:class|id)=["'][^"']*(sale-price|current-price|our-price|list-price|regular-price|member-price|price)[^"']*["'][^>]*>([\s\S]{0,160}?)<\//gi)) {
+    const fingerprint = `.${String(match[1]).toLowerCase()}`;
+    const raw = String(match[2]).replace(/<[^>]+>/g, ' ');
+    const kind: PriceCandidate['sourceKind'] = /sale|current|our/.test(fingerprint) ? 'current' : /list|regular/.test(fingerprint) ? 'list' : /member/.test(fingerprint) ? 'member' : 'visible';
+    add(raw, kind, fingerprint, kind === 'current' ? .92 : kind === 'list' ? .45 : .65, `${kind} price element`);
+  }
+  const structured = html.match(/itemprop=["']price["'][^>]*(?:content=["']([^"']+)|>\s*\$?\s*([\d,.]+))/i);
+  if (structured) add(structured[1] || structured[2], 'structured', '[itemprop=price]', .88, 'Structured product price');
+  return output;
+}
 
 export const DEFAULT_PART_MARKUP_PCT = 10;
 
@@ -308,7 +336,9 @@ export function extractPartMetadataFromHtml(html: string, url: string): PartUrlM
   );
 
   const offer = Array.isArray(product?.offers) ? product.offers[0] : product?.offers;
+  const priceCandidates = extractPriceCandidatesFromHtml(html);
   const price =
+    priceCandidates.sort((a, b) => b.confidence - a.confidence)[0]?.value ||
     parseMoney(offer?.price) ||
     parseMoney(findMetaContent(html, ['product:price:amount', 'og:price:amount', 'twitter:data1'])) ||
     extractItempropPrice(html) ||
@@ -335,6 +365,7 @@ export function extractPartMetadataFromHtml(html: string, url: string): PartUrlM
     description: description || undefined,
     images,
     specs,
+    priceCandidates,
   };
 }
 
