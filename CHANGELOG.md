@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.56 (2026-09-03)
+- Customer Identity Consistency: customer phone numbers, email addresses, and names now use shared normalization and match-classification rules instead of drifting between workflows.
+- Safer Duplicate Handling: exact contact matches are distinguished from name-only suggestions and conflicting contact records, preventing unsafe automatic merges.
+- Canonical Client Selection: duplicate resolution now favors the customer already linked to the most transactions, then the most complete and oldest record.
+- Transaction Name Recovery: shared label resolution preserves saved client names, resolves linked customer names, and uses a client-number fallback only when no name is available.
+- Regression Coverage: automated checks protect US phone normalization, extensions, conflict detection, canonical selection, and transaction customer labels.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.55 (2026-09-02)
 - September 11 Calendar Artwork: the supplied memorial image now appears as a slightly translucent background only inside the September 11 month-calendar cell.
 - Readable and Responsive: the image is clipped to the date square, ignores pointer input, and stays beneath date controls and calendar entries on desktop and mobile.
