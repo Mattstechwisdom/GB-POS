@@ -21,7 +21,7 @@ export function classifyAcknowledgment(record: Record<string, any>, payment: Rec
   if (!(Number(payment?.applied ?? payment?.amount ?? 0) > 0)) return null;
   const type = value(record, 'recordType').toLowerCase();
   if (type === 'repair') {
-    const diagnosticAmount = Number(record?.diagnosticSelection?.price ?? record?.diagnosticFee ?? 0);
+    const diagnosticAmount = Number(record?.diagnosticSelection?.amount ?? record?.diagnosticSelection?.price ?? record?.diagnosticFee ?? 0);
     if (diagnosticAmount > 0 && !record?.hasDiagnosticAcknowledgment) return 'diagnostic-intake';
     if ((record?.orderedPart || record?.partOrdered || record?.awaitingPart) && !record?.hasDiagnosticAcknowledgment) return 'part-awaiting-delivery';
   }

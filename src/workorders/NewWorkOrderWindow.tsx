@@ -21,6 +21,7 @@ import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticket
 import DurantProposalReview from './DurantProposalReview';
 import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
 import { TechnicianAvatar } from '../lib/technicianIcons';
+import { queueInitialPaymentAcknowledgment } from '../lib/automaticEmailQueue';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -1660,6 +1661,21 @@ const NewWorkOrderWindow: React.FC = () => {
           } catch (e) {
             console.error('Failed creating work order on checkout', e);
           }
+        }
+
+        if (workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0) {
+          try {
+            const customerRows = wo.customerId && api?.findCustomers ? await api.findCustomers({ id: wo.customerId }) : [];
+            const customer = Array.isArray(customerRows) ? customerRows[0] : null;
+            const statusResult = api?.qrGetStatusUrl ? await api.qrGetStatusUrl('repair', effectiveId).catch(() => null) : null;
+            await queueInitialPaymentAcknowledgment({
+              recordType: 'repair',
+              record: { ...nextWo, id: effectiveId, orderedPart: Boolean((nextWo as any).partsOrderDate || (nextWo as any).partsOrderUrl || updatedItems.some((item: any) => item?.inStock === false)) },
+              payment: { applied: appliedToWorkOrder },
+              customer,
+              statusUrl: statusResult?.url,
+            });
+          } catch (emailError) { console.warn('Automatic work-order email was not queued.', emailError); }
         }
 
         const partsPaymentApplied = woPaymentAdds.some((payment: any) => Number(payment?.appliedParts || 0) > 0.009);

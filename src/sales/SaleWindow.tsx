@@ -11,6 +11,7 @@ import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 import { discountedLineTotal } from '@/lib/ticketAccounting';
 import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
+import { queueInitialPaymentAcknowledgment } from '@/lib/automaticEmailQueue';
 
 type SalePayload = {
   customerId?: number;
@@ -1254,6 +1255,15 @@ const SaleWindow: React.FC = () => {
           try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+        }
+        if (saved && currentId && additionalPaid > 0) {
+          try {
+            const customerRows = recordToPersist.customerId && (window as any).api?.findCustomers
+              ? await (window as any).api.findCustomers({ id: recordToPersist.customerId }) : [];
+            const customer = Array.isArray(customerRows) ? customerRows[0] : null;
+            const savedRecord = { ...recordToPersist, ...saved, id: currentId, completed: String(status).toLowerCase() === 'closed', requiresOrder: recordToPersist.inStock === false };
+            await queueInitialPaymentAcknowledgment({ recordType: 'sale', record: savedRecord, payment: { applied: additionalPaid }, customer });
+          } catch (emailError) { console.warn('Automatic sale email was not queued.', emailError); }
         }
         if (currentId && additionalPaid > 0) {
           try {
