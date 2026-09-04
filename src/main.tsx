@@ -54,6 +54,7 @@ const ReportEmailWindow = lazy(() => import('./components/ReportEmailWindow'));
 const CustomBuildItemWindow = lazy(() => import('./workorders/CustomBuildItemWindow'));
 const DataPathGate = lazy(() => import('./components/DataPathGate'));
 const GameMenuWindow = lazy(() => import('./components/GameMenuWindow'));
+const RepairTutorialWindow = lazy(() => import('./repairs/RepairTutorialWindow'));
 
 declare global {
 	interface Window {
@@ -387,12 +388,15 @@ try {
 	const showNotificationSettings = params.get('notificationSettings');
 	const showCustomBuildItem = params.get('customBuildItem');
 	const showGameMenu = params.get('gameMenu');
+	const showRepairTutorial = params.get('repairTutorial');
 	
 	const rootEl = document.getElementById('root');
 	if (!rootEl) throw new Error('Missing #root element');
 	const root = createRoot(rootEl);
 	
-	if (showGameMenu) {
+	if (showRepairTutorial) {
+		renderWithSuspense(root, <RepairTutorialWindow onClose={() => window.close()} />);
+	} else if (showGameMenu) {
 		renderWithSuspense(root, <GameMenuWindow />);
 	} else if (showDeviceCategories) {
 		renderWithSuspense(root, <DeviceCategoriesWindow />);

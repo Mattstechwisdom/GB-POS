@@ -119,6 +119,7 @@ declare global {
     exportPdf: (html: string, filenameBase?: string) => Promise<any>;
     openInteractiveHtml: (html: string, title?: string) => Promise<any>;
     openUrl: (url: string) => Promise<any>;
+    openRepairTutorial: (payload: { normalizedUrl: string; mediaType: 'youtube' | 'direct-video' | 'webpage'; youtubeId?: string }) => Promise<any>;
     scrapePartUrl?: (url: string) => Promise<{ ok: boolean; url?: string; title?: string; price?: number; currency?: string; vendor?: string; description?: string; images?: string[]; specs?: Array<{ name: string; value: string }>; error?: string }>;
     qrGetStatusUrl: (type: 'repair' | 'sale' | 'consult', id: number) => Promise<{ ok: boolean; url?: string; error?: string }>;
     qrResolveStatusToken: (token: string) => Promise<{ ok: boolean; token?: any; type?: 'repair' | 'sale' | 'consult'; record?: any; customer?: any; error?: string }>;

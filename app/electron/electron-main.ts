@@ -8353,6 +8353,35 @@ ipcMain.handle('open-repair-categories', async (_event: any, payload?: any) => {
   return { ok: true };
 });
 
+ipcMain.handle('open-repair-tutorial', async (event: any, payload: any) => {
+  const rawUrl = String(payload?.normalizedUrl || '');
+  if (!/^https:\/\//i.test(rawUrl)) return { ok: false, error: 'A valid HTTPS tutorial URL is required.' };
+  const parent = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getAllWindows()[0] || undefined;
+  const child = new BrowserWindow({
+    width: 920,
+    height: 680,
+    minWidth: 560,
+    minHeight: 420,
+    parent,
+    modal: false,
+    resizable: true,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#09090b',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Repair Tutorial'),
+  });
+  showWindowFast(child, () => centerWindow(child));
+  const query = `repairTutorial=${encodeURIComponent(rawUrl)}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?${query}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?${query}`;
+  await child.loadURL(url);
+  return { ok: true };
+});
+
 // IPC handler for opening the WorkOrderRepairPicker window
 ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
   const child = new BrowserWindow({

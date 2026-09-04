@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'src', 'lib', 'repairTutorial.ts');
 const output = path.join(root, 'tmp', 'test-repair-tutorial.cjs');
 fs.mkdirSync(path.dirname(output), { recursive: true });
-esbuild.buildSync({ entryPoints: [source], outfile: output, bundle: true, platform: 'node', format: 'cjs' });
+esbuild.buildSync({ absWorkingDir: root, entryPoints: ['./src/lib/repairTutorial.ts'], outfile: output, bundle: true, platform: 'node', format: 'cjs' });
 const { classifyRepairTutorialUrl } = require(output);
 
 assert.deepEqual(classifyRepairTutorialUrl('https://youtu.be/dQw4w9WgXcQ'), {

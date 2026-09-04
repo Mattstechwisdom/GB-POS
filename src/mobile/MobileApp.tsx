@@ -57,6 +57,7 @@ const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuild
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
 const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
 const GameMenuWindow = React.lazy(() => import('../components/GameMenuWindow'));
+const RepairTutorialWindow = React.lazy(() => import('../repairs/RepairTutorialWindow'));
 
 type StaffProfile = {
   id: string;
@@ -329,6 +330,7 @@ function useSheetDrag(onClose: () => void) {
 
 function MobileModalContent({ type, onClose }: { type: string; onClose: () => void }) {
   switch (type) {
+    case 'repairTutorial': return <RepairTutorialWindow onClose={onClose} />;
     case 'clientUpdate': return (
       <ClientUpdatePanel
         embedded
@@ -972,6 +974,7 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
       openDeviceCategories: 'deviceCategories',
       openClearDatabase: 'clearDb',
       openCustomBuildItem: 'customBuildItem',
+      openRepairTutorial: 'repairTutorial',
     } as Record<string, string>;
     const originals = new Map<string, any>();
     Object.entries(methods).forEach(([method, type]) => {

@@ -51,3 +51,14 @@ export function repairTutorialControlState(value: unknown):
   if (!tutorial) return { kind: 'input', label: 'Tutorial URL' };
   return { kind: 'button', label: 'Repair Tutorial', mediaType: tutorial.mediaType, url: tutorial.normalizedUrl };
 }
+
+export function tutorialEmbedUrl(source: Pick<RepairTutorialSource, 'mediaType' | 'youtubeId'>): string {
+  if (source.mediaType !== 'youtube' || !source.youtubeId || !YOUTUBE_ID.test(source.youtubeId)) return '';
+  return `https://www.youtube-nocookie.com/embed/${source.youtubeId}?enablejsapi=1&rel=0&playsinline=1`;
+}
+
+export function shiftedTutorialTime(current: number, delta: number, duration: number): number {
+  const safeCurrent = Number.isFinite(current) ? current : 0;
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : Number.MAX_SAFE_INTEGER;
+  return Math.max(0, Math.min(safeDuration, safeCurrent + delta));
+}

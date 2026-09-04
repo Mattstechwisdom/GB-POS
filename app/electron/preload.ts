@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('api', {
   openNewWorkOrder: (payload: any): Promise<any> => ipcRenderer.invoke('open-new-workorder', payload),
   openDeviceCategories: (): Promise<any> => ipcRenderer.invoke('open-device-categories'),
   openRepairCategories: (payload?: any): Promise<any> => ipcRenderer.invoke('open-repair-categories', payload),
+  openRepairTutorial: (payload: any): Promise<any> => ipcRenderer.invoke('open-repair-tutorial', payload),
   openCalendar: (): Promise<any> => ipcRenderer.invoke('open-calendar'),
   openClockIn: (): Promise<any> => ipcRenderer.invoke('open-clock-in'),
   openQuoteGenerator: (): Promise<any> => ipcRenderer.invoke('open-quote-generator'),

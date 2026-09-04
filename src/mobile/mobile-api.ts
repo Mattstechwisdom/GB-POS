@@ -1842,6 +1842,10 @@ function makeApi() {
       window.open(url, '_blank', 'noopener,noreferrer');
       return { ok: true };
     },
+    openRepairTutorial: async (payload: any) => {
+      dispatchOpenModal('repairTutorial', payload);
+      return { ok: true };
+    },
     scrapePartUrl: async (rawUrl: string) => {
       const url = normalizePartOrderUrl(rawUrl);
       if (!url) return { ok: false, error: 'Missing URL.' };

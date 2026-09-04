@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'src', 'lib', 'repairTutorial.ts');
 const output = path.join(root, 'tmp', 'test-repair-tutorial-ui.cjs');
 fs.mkdirSync(path.dirname(output), { recursive: true });
-esbuild.buildSync({ entryPoints: [source], outfile: output, bundle: true, platform: 'node', format: 'cjs' });
+esbuild.buildSync({ absWorkingDir: root, entryPoints: ['./src/lib/repairTutorial.ts'], outfile: output, bundle: true, platform: 'node', format: 'cjs' });
 const { repairTutorialControlState } = require(output);
 const form = fs.readFileSync(path.join(root, 'src', 'repairs', 'RepairItemForm.tsx'), 'utf8');
 
