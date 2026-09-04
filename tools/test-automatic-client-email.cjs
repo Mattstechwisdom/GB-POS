@@ -11,11 +11,16 @@ const { acknowledgmentAmount, classifyAcknowledgment, consultationDigest, consul
 
 assert.equal(classifyAcknowledgment({ recordType: 'repair', diagnosticSelection: { price: 49 } }, { applied: 49, appliedLabor: 49, priorLaborPaid: 0 }), 'diagnostic-intake');
 assert.equal(classifyAcknowledgment({ recordType: 'repair', diagnosticSelection: { price: 49 } }, { applied: 70, appliedLabor: 70, priorLaborPaid: 49 }), null, 'later labor must not be mislabeled as a diagnostic payment');
+assert.equal(classifyAcknowledgment({ recordType: 'repair', diagnosticSelection: { price: 49 } }, { applied: 70, appliedLabor: 70, priorLaborPaid: 49, isFinalPayment: true }), 'repair-completed', 'the final labor payment at pickup must send a completion thank-you');
+assert.equal(classifyAcknowledgment({ recordType: 'repair' }, { applied: 100, appliedLabor: 100, priorLaborPaid: 0, isFinalPayment: true }), 'repair-completed', 'a fully paid repair without a diagnostic must send a completion thank-you');
+assert.equal(classifyAcknowledgment({ recordType: 'repair', diagnosticSelection: { price: 50 } }, { applied: 50, appliedLabor: 50, priorLaborPaid: 0, isFinalPayment: true }), 'diagnostic-intake', 'a diagnostic-only checkout must remain a drop-off acknowledgment');
 assert.equal(classifyAcknowledgment({ recordType: 'repair', items: [{ repairCategory: 'Diagnostic', repair: 'PS5 Diagnostic', labor: 50 }] }, { applied: 50, appliedLabor: 50, priorLaborPaid: 0 }), 'diagnostic-intake', 'a diagnostic catalog line must trigger the intake acknowledgment');
 assert.equal(classifyAcknowledgment({ recordType: 'repair', orderedPart: true, diagnosticSelection: { price: 49 } }, { applied: 30, appliedParts: 30, appliedLabor: 0, priorLaborPaid: 0 }), 'part-awaiting-delivery');
+assert.equal(classifyAcknowledgment({ recordType: 'repair', orderedPart: true, diagnosticSelection: { price: 49 } }, { applied: 90, appliedParts: 20, appliedLabor: 70, priorLaborPaid: 49, isFinalPayment: true }), 'repair-completed', 'a final pickup payment that includes labor must take precedence over the earlier ordered-part state');
 assert.equal(classifyAcknowledgment({ recordType: 'repair', orderedPart: true }, { applied: 30, appliedParts: 0, appliedLabor: 30, priorLaborPaid: 0 }), null, 'labor-only payments must not be labeled as part deposits');
 assert.equal(acknowledgmentAmount({ diagnosticSelection: { amount: 50 } }, { applied: 80, appliedLabor: 80, priorLaborPaid: 20 }, 'diagnostic-intake'), 30, 'the email must show only the diagnostic portion of a mixed labor payment');
 assert.equal(acknowledgmentAmount({}, { applied: 30, appliedParts: 30 }, 'part-awaiting-delivery'), 30);
+assert.equal(acknowledgmentAmount({}, { applied: 70, appliedLabor: 70 }, 'repair-completed'), 70);
 assert.equal(classifyAcknowledgment({ recordType: 'sale', completed: true, inStock: true }, { applied: 100 }), 'in-stock-sale');
 assert.equal(classifyAcknowledgment({ recordType: 'sale', completed: true, inStock: false }, { applied: 100 }), null);
 assert.equal(classifyAcknowledgment({ recordType: 'sale', completed: true, inStock: true }, { applied: 0 }), null);
@@ -29,6 +34,7 @@ const common = { firstName: '<Sam>', recordNumber: 42, device: 'Apple iPhone 15'
 const expected = {
   'diagnostic-intake': 'We’ve received your Apple iPhone 15 — Work Order #42',
   'part-awaiting-delivery': 'Your repair part has been ordered — Work Order #42',
+  'repair-completed': 'Your Apple iPhone 15 repair is complete — Work Order #42',
   'in-stock-sale': 'Thank you for your purchase — Sale #42',
   'consultation-scheduled': 'Your GadgetBoy consultation is scheduled — September 5, 2026 at 10:00 AM',
   'consultation-updated': 'Updated GadgetBoy consultation details — September 5, 2026 at 10:00 AM',
@@ -44,4 +50,6 @@ for (const [kind, subject] of Object.entries(expected)) {
   assert.match(rendered.text, /GadgetBoy/);
 }
 assert.match(renderAutomaticClientEmail('diagnostic-intake', common).html, /View Repair Status/);
+assert.match(renderAutomaticClientEmail('repair-completed', common).text, /final labor payment of \$49\.00/i);
+assert.match(renderAutomaticClientEmail('repair-completed', common).text, /thank you for choosing GadgetBoy/i);
 console.log('Automatic client email classification and templates passed.');

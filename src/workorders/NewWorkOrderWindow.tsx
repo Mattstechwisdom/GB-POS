@@ -1672,10 +1672,11 @@ const NewWorkOrderWindow: React.FC = () => {
             const priorLaborPaid = round2(Math.max(0, grossLaborBeforePayment - Number(checkoutPayload.laborDue || 0)));
             const appliedParts = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedParts || 0)), 0));
             const appliedLabor = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedLabor || 0)), 0));
+            const isFinalPayment = Number(updatedTotals?.remaining || 0) <= 0.009;
             await queueInitialPaymentAcknowledgment({
               recordType: 'repair',
               record: { ...nextWo, id: effectiveId, orderedPart: Boolean((nextWo as any).partsOrderDate || (nextWo as any).partsOrderUrl || updatedItems.some((item: any) => item?.inStock === false)) },
-              payment: { applied: appliedToWorkOrder, appliedParts, appliedLabor, priorLaborPaid },
+              payment: { applied: appliedToWorkOrder, appliedParts, appliedLabor, priorLaborPaid, isFinalPayment },
               customer,
               statusUrl: statusResult?.url,
             });

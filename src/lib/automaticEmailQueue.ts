@@ -66,7 +66,7 @@ export async function queueInitialPaymentAcknowledgment(input: {
       amount: acknowledgmentAmount(record, input.payment, kind),
       problem: record.problemInfo || 'Not provided',
       part: items.find((item: any) => item?.inStock === false)?.description || items[0]?.description || 'Repair part',
-      itemSummary: items.map((item: any) => item.description).filter(Boolean).join(', ') || record.itemDescription || 'Purchase',
+      itemSummary: items.map((item: any) => item.description || item.repair).filter(Boolean).join(', ') || record.itemDescription || 'Purchase',
       statusUrl: input.statusUrl,
     });
     return await queueAutomaticClientEmail({
@@ -76,7 +76,7 @@ export async function queueInitialPaymentAcknowledgment(input: {
       eventDigest: 'initial-payment-v1',
       recipientEmail: customer.email || record.customerEmail || '',
       emailDeclined: Boolean(customer.emailDeclined || customer.declinedEmail),
-      statusLabel: kind === 'diagnostic-intake' ? 'Diagnostic intake acknowledgment' : kind === 'part-awaiting-delivery' ? 'Ordered part payment acknowledgment' : 'Completed sale thank-you',
+      statusLabel: kind === 'diagnostic-intake' ? 'Diagnostic intake acknowledgment' : kind === 'part-awaiting-delivery' ? 'Ordered part payment acknowledgment' : kind === 'repair-completed' ? 'Completed repair thank-you' : 'Completed sale thank-you',
       ...rendered,
     });
   } catch (error) {

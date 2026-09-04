@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.59 (2026-09-04)
+
+- Added a separate branded repair-completion thank-you email when the final labor payment clears the work-order balance at pickup.
+- Kept diagnostic/drop-off, ordered-part, and completed-repair acknowledgments as distinct idempotent events.
+- Final pickup acknowledgments take precedence when the last payment includes both parts and labor.
+
 ## v0.6.58 (2026-09-04)
 
 - Fixed repair checkout acknowledgments so only an unpaid diagnostic fee triggers the device drop-off email.

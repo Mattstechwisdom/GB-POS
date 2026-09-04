@@ -7,7 +7,7 @@ const sale = fs.readFileSync(path.join(root, 'src', 'sales', 'SaleWindow.tsx'), 
 const queue = fs.readFileSync(path.join(root, 'src', 'lib', 'automaticEmailQueue.ts'), 'utf8');
 assert.match(wo, /workOrderPersisted[\s\S]*queueInitialPaymentAcknowledgment/);
 assert.match(wo, /appliedToWorkOrder\s*>\s*0/);
-assert.match(wo, /payment:\s*\{\s*applied:\s*appliedToWorkOrder,\s*appliedParts,\s*appliedLabor,\s*priorLaborPaid\s*\}/, 'Work-order checkout must pass payment buckets and prior labor to the acknowledgment classifier.');
+assert.match(wo, /payment:\s*\{\s*applied:\s*appliedToWorkOrder,\s*appliedParts,\s*appliedLabor,\s*priorLaborPaid,\s*isFinalPayment\s*\}/, 'Work-order checkout must pass payment buckets, prior labor, and final-payment state to the acknowledgment classifier.');
 assert.match(sale, /saved[\s\S]*queueInitialPaymentAcknowledgment/);
 assert.match(sale, /additionalPaid\s*>\s*0/);
 assert.match(queue, /classifyAcknowledgment/);

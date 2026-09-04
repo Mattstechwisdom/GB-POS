@@ -1,4 +1,4 @@
-export type AutomaticClientEmailKind = 'diagnostic-intake' | 'part-awaiting-delivery' | 'in-stock-sale' | 'consultation-scheduled' | 'consultation-updated';
+export type AutomaticClientEmailKind = 'diagnostic-intake' | 'part-awaiting-delivery' | 'repair-completed' | 'in-stock-sale' | 'consultation-scheduled' | 'consultation-updated';
 
 type Details = Record<string, unknown> & { changes?: string[] };
 
@@ -26,6 +26,7 @@ export function classifyAcknowledgment(record: Record<string, any>, payment: Rec
     const appliedLabor = Math.max(0, Number(payment?.appliedLabor || 0));
     const appliedParts = Math.max(0, Number(payment?.appliedParts || 0));
     if (diagnosticAmount > priorLaborPaid && appliedLabor > 0) return 'diagnostic-intake';
+    if (payment?.isFinalPayment === true && appliedLabor > 0) return 'repair-completed';
     if ((record?.orderedPart || record?.partOrdered || record?.awaitingPart) && appliedParts > 0) return 'part-awaiting-delivery';
   }
   if (type === 'sale' && record?.completed && record?.inStock !== false && !record?.requiresOrder) return 'in-stock-sale';
@@ -48,6 +49,7 @@ export function acknowledgmentAmount(record: Record<string, any>, payment: Recor
     return Math.min(outstanding, Math.max(0, Number(payment?.appliedLabor || 0)));
   }
   if (kind === 'part-awaiting-delivery') return Math.max(0, Number(payment?.appliedParts || 0));
+  if (kind === 'repair-completed') return Math.max(0, Number(payment?.appliedLabor || 0));
   return Math.max(0, Number(payment?.applied ?? payment?.amount ?? 0));
 }
 
@@ -89,6 +91,11 @@ export function renderAutomaticClientEmail(kind: AutomaticClientEmailKind, detai
     intro = `Thank you for your payment of ${amount} toward the part needed for your ${device}.`;
     rows.push(['Device', device], ['Part', value(details, 'part', 'Repair part')], ['Work order', `#${number}`], ['Current status', 'Awaiting part delivery']);
     followup = 'We’ll send you another update when the part arrives or if the order status changes. Once it arrives, we’ll continue with the repair and keep you informed.';
+  } else if (kind === 'repair-completed') {
+    subject = `Your ${device} repair is complete — Work Order #${number}`;
+    intro = `Thank you for choosing GadgetBoy. We’ve completed your ${device} repair and recorded your final labor payment of ${amount}.`;
+    rows.push(['Device', device], ['Repair', value(details, 'itemSummary', 'Completed repair')], ['Work order', `#${number}`], ['Status', 'Completed and picked up']);
+    followup = 'We appreciate your business and hope your device is working exactly as it should. If you have any questions about this repair or need help with another device, please reply to this email or visit us again.';
   } else if (kind === 'in-stock-sale') {
     subject = `Thank you for your purchase — Sale #${number}`;
     intro = 'Thank you for your purchase from GadgetBoy.';

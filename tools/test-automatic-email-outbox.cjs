@@ -2,7 +2,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const migration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260904034259_automatic_client_email_outbox.sql'), 'utf8');
+const migration = fs.readdirSync(path.join(root, 'supabase', 'migrations'))
+  .filter(name => name.endsWith('.sql'))
+  .map(name => fs.readFileSync(path.join(root, 'supabase', 'migrations', name), 'utf8'))
+  .join('\n');
 for (const pattern of [
   /add column if not exists event_type/i,
   /add column if not exists event_digest/i,
@@ -16,5 +19,6 @@ for (const pattern of [
   /revoke all on function[\s\S]*from public/i,
   /grant execute on function[\s\S]*to authenticated/i,
 ]) assert.match(migration, pattern);
+assert.match(migration, /repair-completed/i, 'The outbox RPC must accept the repair completion event.');
 assert.doesNotMatch(migration, /p_shop_id/i, 'The caller must not choose a shop id.');
 console.log('Automatic email outbox migration contract passed.');
