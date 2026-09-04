@@ -171,6 +171,9 @@ export interface RepairItem {
   estDelivery?: string;    // ISO
   partSource?: string;
   orderSourceUrl?: string;
+  tutorialUrl?: string;
+  tutorialMediaType?: 'youtube' | 'direct-video' | 'webpage';
+  tutorialUpdatedAt?: string;
   type: "product" | "service";
   model?: string;
   compatibleDevices?: string[];

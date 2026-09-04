@@ -5,6 +5,7 @@ import PartInventoryPicker, { type InventoryPartSelection } from '../components/
 import { normalizeServiceKey } from '../lib/repairServiceHierarchy';
 import { applyInventoryPartToRepair } from '../lib/repairPartLinking';
 import { applyRepairDefaults, normalizeRepairDefaults, type RepairDefaults } from '../lib/catalogDefaults';
+import { classifyRepairTutorialUrl } from '../lib/repairTutorial';
 
 interface RepairItemFormProps {
   selectedItem: RepairItem | null;
@@ -87,6 +88,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     estDelivery: '',
     partSource: '',
     orderSourceUrl: '',
+    tutorialUrl: '',
     type: 'service',
     model: '',
     compatibleDevices: [],
@@ -202,6 +204,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
         estDelivery: '',
         partSource: '',
         orderSourceUrl: '',
+        tutorialUrl: '',
         type: 'service' as const,
         model: '',
         compatibleDevices: [],
@@ -243,6 +246,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       estDelivery: '',
       partSource: '',
       orderSourceUrl: '',
+      tutorialUrl: '',
       type: 'service',
       model: '',
       compatibleDevices: [],
@@ -288,6 +292,14 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       internalCost: formData.internalCost === undefined || formData.internalCost === null ? undefined : Number(formData.internalCost),
       markupPct: markupPct || DEFAULT_MARKUP_PCT,
       orderSourceUrl: normalizeOrderUrl(formData.orderSourceUrl),
+      ...(() => {
+        const tutorial = classifyRepairTutorialUrl(formData.tutorialUrl);
+        return {
+          tutorialUrl: tutorial?.normalizedUrl || '',
+          tutorialMediaType: tutorial?.mediaType,
+          tutorialUpdatedAt: tutorial ? new Date().toISOString() : undefined,
+        };
+      })(),
       repairFamily: String(formData.repairFamily || formData.repairCategory || '').trim(),
       serviceKey: normalizeServiceKey(formData.serviceKey || formData.title || formData.repairCategory),
       id: mode === 'admin'

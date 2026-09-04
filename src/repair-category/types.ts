@@ -13,6 +13,9 @@ export type RepairItem = {
   internalCost?: number;
   partSource?: string;
   orderSourceUrl?: string;
+  tutorialUrl?: string;
+  tutorialMediaType?: 'youtube' | 'direct-video' | 'webpage';
+  tutorialUpdatedAt?: string;
   orderDate?: string;
   estDeliveryDate?: string;
   deviceCategoryId?: string;

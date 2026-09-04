@@ -17,5 +17,8 @@ export interface RepairItem {
   internalCost?: number;
   partSource?: string;
   orderSourceUrl?: string;
+  tutorialUrl?: string;
+  tutorialMediaType?: 'youtube' | 'direct-video' | 'webpage';
+  tutorialUpdatedAt?: string;
   deviceCategory?: DeviceCategory | null;
 }
