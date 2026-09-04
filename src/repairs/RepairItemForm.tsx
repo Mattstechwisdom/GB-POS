@@ -73,6 +73,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
   const [hasDeviceCategory, setHasDeviceCategory] = useState(false);
   const [markupPct, setMarkupPct] = useState<string>(DEFAULT_MARKUP_PCT);
   const [orderUrlEditing, setOrderUrlEditing] = useState(false);
+  const [tutorialUrlEditing, setTutorialUrlEditing] = useState(false);
   const [partPickerOpen, setPartPickerOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<RepairItem>>({
     category: '',
@@ -185,6 +186,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       });
       setMarkupPct(String((selectedItem as any).markupPct ?? DEFAULT_MARKUP_PCT));
       setOrderUrlEditing(!selectedItem.orderSourceUrl);
+      setTutorialUrlEditing(!selectedItem.tutorialUrl);
       setDeviceCategoryInput(selectedItem.category || '');
       setRepairCategoryInput(selectedItem.repairCategory || '');
       setHasDeviceCategory(!!(selectedItem.category || '').trim());
@@ -215,6 +217,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
       setFormData(blank);
       setMarkupPct(DEFAULT_MARKUP_PCT);
       setOrderUrlEditing(false);
+      setTutorialUrlEditing(true);
       setDeviceCategoryInput('');
       setRepairCategoryInput(String(blank.repairCategory || ''));
       setHasDeviceCategory(false);
@@ -263,6 +266,7 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     setShowRepairCategoryDropdown(false);
     setMarkupPct(DEFAULT_MARKUP_PCT);
     setOrderUrlEditing(false);
+    setTutorialUrlEditing(true);
   };
 
   const submitDisabled =
@@ -335,6 +339,15 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
     e.preventDefault();
     submitPrimaryAction('auto');
   };
+
+  function openTutorial() {
+    const tutorial = classifyRepairTutorialUrl(formData.tutorialUrl);
+    if (!tutorial) return;
+    const api = (window as any).api;
+    if (api?.openRepairTutorial) void api.openRepairTutorial(tutorial);
+    else if (api?.openUrl) void api.openUrl(tutorial.normalizedUrl);
+    else window.open(tutorial.normalizedUrl, '_blank', 'noopener,noreferrer');
+  }
 
   return (
     <div className="gb-repair-item-form flex flex-col h-full">
@@ -492,6 +505,27 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-300 mb-1">Alt. description</label>
             <input type="text" value={formData.altDescription || ''} name="altDescription" onChange={handleChange} onKeyDown={handleEnterToSubmit} className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm focus:border-[#39FF14] focus:outline-none cursor-text" />
+          </div>
+          <div className="md:col-span-2">
+            {formData.tutorialUrl && !tutorialUrlEditing ? (
+              <div className="rounded-lg border border-[#39FF14]/35 bg-[#39FF14]/5 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={openTutorial} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-bold text-black hover:bg-[#32E610]">Repair Tutorial</button>
+                  <button type="button" onClick={() => setTutorialUrlEditing(true)} className="rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-xs hover:border-zinc-400">Change URL</button>
+                  <button type="button" onClick={() => { setFormData((current) => ({ ...current, tutorialUrl: '', tutorialMediaType: undefined, tutorialUpdatedAt: undefined })); setTutorialUrlEditing(true); }} className="rounded border border-red-500/50 bg-red-950/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/60">Remove URL</button>
+                </div>
+                <div className="mt-2 truncate text-xs text-zinc-400" title={formData.tutorialUrl}>{formData.tutorialUrl}</div>
+              </div>
+            ) : (
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-300">Tutorial URL</span>
+                <div className="flex gap-2">
+                  <input type="url" name="tutorialUrl" value={formData.tutorialUrl || ''} onChange={handleChange} placeholder="YouTube or direct video URL" className="min-w-0 flex-1 rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-[#39FF14]" />
+                  {classifyRepairTutorialUrl(formData.tutorialUrl) ? <button type="button" onClick={() => setTutorialUrlEditing(false)} className="rounded border border-[#39FF14]/60 bg-[#39FF14]/10 px-3 py-2 text-xs font-semibold text-[#39FF14]">Save URL</button> : null}
+                </div>
+                {formData.tutorialUrl && !classifyRepairTutorialUrl(formData.tutorialUrl) ? <span className="mt-1 block text-xs text-red-300">Enter a valid HTTPS tutorial URL.</span> : <span className="mt-1 block text-[11px] text-zinc-500">YouTube and direct video links play inside the POS when supported.</span>}
+              </label>
+            )}
           </div>
           <section className="md:col-span-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

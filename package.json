@@ -86,6 +86,7 @@
     "test:repair-service-hierarchy": "node tools/test-repair-service-hierarchy.cjs",
     "test:repair-tutorial": "node tools/test-repair-tutorial.cjs",
     "test:repair-tutorial-sync": "node tools/test-repair-tutorial-sync.cjs",
+    "test:repair-tutorial-ui": "node tools/test-repair-tutorial-ui.cjs",
     "test:checkout-inventory-variants": "node tools/test-checkout-inventory-variants.cjs",
     "test:diagnostic-main-list": "node tools/test-diagnostic-main-list.cjs",
     "test:pos-row-context-actions": "node tools/test-pos-row-context-actions.cjs",

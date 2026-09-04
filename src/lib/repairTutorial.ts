@@ -43,3 +43,11 @@ export function classifyRepairTutorialUrl(value: unknown): RepairTutorialSource 
     mediaType: DIRECT_VIDEO_PATH.test(url.pathname) ? 'direct-video' : 'webpage',
   };
 }
+
+export function repairTutorialControlState(value: unknown):
+  | { kind: 'input'; label: 'Tutorial URL' }
+  | { kind: 'button'; label: 'Repair Tutorial'; mediaType: RepairTutorialMediaType; url: string } {
+  const tutorial = classifyRepairTutorialUrl(value);
+  if (!tutorial) return { kind: 'input', label: 'Tutorial URL' };
+  return { kind: 'button', label: 'Repair Tutorial', mediaType: tutorial.mediaType, url: tutorial.normalizedUrl };
+}
