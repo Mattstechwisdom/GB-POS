@@ -65,6 +65,7 @@
     "test:commission": "node tools/test-commission.cjs",
     "test:month-end-workbook": "node tools/test-month-end-workbook.cjs",
     "test:customer-contact": "node tools/test-customer-contact-validation.cjs",
+    "test:customer-identity": "node tools/test-customer-identity.cjs",
     "test:consultation-location": "node tools/test-consultation-location.cjs",
     "test:consultation-pricing": "node tools/test-consultation-pricing.cjs",
     "test:consultation-partners": "node tools/test-consultation-partners.cjs",
