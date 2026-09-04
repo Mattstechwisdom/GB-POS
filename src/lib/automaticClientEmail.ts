@@ -21,12 +21,34 @@ export function classifyAcknowledgment(record: Record<string, any>, payment: Rec
   if (!(Number(payment?.applied ?? payment?.amount ?? 0) > 0)) return null;
   const type = value(record, 'recordType').toLowerCase();
   if (type === 'repair') {
-    const diagnosticAmount = Number(record?.diagnosticSelection?.amount ?? record?.diagnosticSelection?.price ?? record?.diagnosticFee ?? 0);
-    if (diagnosticAmount > 0 && !record?.hasDiagnosticAcknowledgment) return 'diagnostic-intake';
-    if ((record?.orderedPart || record?.partOrdered || record?.awaitingPart) && !record?.hasDiagnosticAcknowledgment) return 'part-awaiting-delivery';
+    const diagnosticAmount = repairDiagnosticAmount(record);
+    const priorLaborPaid = Math.max(0, Number(payment?.priorLaborPaid || 0));
+    const appliedLabor = Math.max(0, Number(payment?.appliedLabor || 0));
+    const appliedParts = Math.max(0, Number(payment?.appliedParts || 0));
+    if (diagnosticAmount > priorLaborPaid && appliedLabor > 0) return 'diagnostic-intake';
+    if ((record?.orderedPart || record?.partOrdered || record?.awaitingPart) && appliedParts > 0) return 'part-awaiting-delivery';
   }
   if (type === 'sale' && record?.completed && record?.inStock !== false && !record?.requiresOrder) return 'in-stock-sale';
   return null;
+}
+
+function repairDiagnosticAmount(record: Record<string, any>) {
+  const selected = Number(record?.diagnosticSelection?.amount ?? record?.diagnosticSelection?.price ?? record?.diagnosticFee ?? 0);
+  if (selected > 0) return selected;
+  const items = Array.isArray(record?.items) ? record.items : [];
+  return items.reduce((total: number, item: Record<string, any>) => {
+    const description = `${item?.repairCategory || ''} ${item?.repair || item?.description || ''}`;
+    return /diagnostic/i.test(description) ? total + Math.max(0, Number(item?.labor ?? item?.amount ?? 0)) : total;
+  }, 0);
+}
+
+export function acknowledgmentAmount(record: Record<string, any>, payment: Record<string, any>, kind: AutomaticClientEmailKind) {
+  if (kind === 'diagnostic-intake') {
+    const outstanding = Math.max(0, repairDiagnosticAmount(record) - Math.max(0, Number(payment?.priorLaborPaid || 0)));
+    return Math.min(outstanding, Math.max(0, Number(payment?.appliedLabor || 0)));
+  }
+  if (kind === 'part-awaiting-delivery') return Math.max(0, Number(payment?.appliedParts || 0));
+  return Math.max(0, Number(payment?.applied ?? payment?.amount ?? 0));
 }
 
 function normalizedConsultation(record: Record<string, unknown>) {

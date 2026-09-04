@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { AutomaticClientEmailKind } from './automaticClientEmail';
-import { classifyAcknowledgment, consultationChanges, consultationDigest, renderAutomaticClientEmail } from './automaticClientEmail';
+import { acknowledgmentAmount, classifyAcknowledgment, consultationChanges, consultationDigest, renderAutomaticClientEmail } from './automaticClientEmail';
 
 export type AutomaticEmailQueueInput = {
   recordType: 'repair' | 'sale' | 'consult';
@@ -63,7 +63,7 @@ export async function queueInitialPaymentAcknowledgment(input: {
       firstName: customer.firstName || String(record.customerName || '').trim().split(/\s+/)[0] || 'there',
       recordNumber: legacyRecordId,
       device,
-      amount: Number(input.payment.applied ?? input.payment.amount ?? 0),
+      amount: acknowledgmentAmount(record, input.payment, kind),
       problem: record.problemInfo || 'Not provided',
       part: items.find((item: any) => item?.inStock === false)?.description || items[0]?.description || 'Repair part',
       itemSummary: items.map((item: any) => item.description).filter(Boolean).join(', ') || record.itemDescription || 'Purchase',

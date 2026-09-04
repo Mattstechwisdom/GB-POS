@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.58 (2026-09-04)
+
+- Fixed repair checkout acknowledgments so only an unpaid diagnostic fee triggers the device drop-off email.
+- Diagnostic catalog line items now qualify for the drop-off acknowledgment, including console diagnostics such as PS5 check-ins.
+- Later labor payments no longer appear as diagnostic fees, and ordered-part acknowledgments require an actual parts payment.
+- Mixed payments show only the amount applied to the diagnostic fee in the acknowledgment.
+
 ## v0.6.57 (2026-09-04)
 - Repair Tutorials: repair catalog entries can save synchronized YouTube, direct-video, or webpage tutorial links and open them from a dedicated desktop or responsive mobile player with playback controls and browser fallback.
 - Branded Automatic Emails: diagnostic intake, ordered-part payment, completed in-stock sale, consultation scheduling, and meaningful consultation changes now create styled client messages with safe-sender and reply guidance.

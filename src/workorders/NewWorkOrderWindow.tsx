@@ -1668,10 +1668,14 @@ const NewWorkOrderWindow: React.FC = () => {
             const customerRows = wo.customerId && api?.findCustomers ? await api.findCustomers({ id: wo.customerId }) : [];
             const customer = Array.isArray(customerRows) ? customerRows[0] : null;
             const statusResult = api?.qrGetStatusUrl ? await api.qrGetStatusUrl('repair', effectiveId).catch(() => null) : null;
+            const grossLaborBeforePayment = round2(Math.max(0, Number(wo.laborCost || 0) - Number(wo.discount || 0)));
+            const priorLaborPaid = round2(Math.max(0, grossLaborBeforePayment - Number(checkoutPayload.laborDue || 0)));
+            const appliedParts = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedParts || 0)), 0));
+            const appliedLabor = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedLabor || 0)), 0));
             await queueInitialPaymentAcknowledgment({
               recordType: 'repair',
               record: { ...nextWo, id: effectiveId, orderedPart: Boolean((nextWo as any).partsOrderDate || (nextWo as any).partsOrderUrl || updatedItems.some((item: any) => item?.inStock === false)) },
-              payment: { applied: appliedToWorkOrder },
+              payment: { applied: appliedToWorkOrder, appliedParts, appliedLabor, priorLaborPaid },
               customer,
               statusUrl: statusResult?.url,
             });
