@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.57 (2026-09-04)
+- Repair Tutorials: repair catalog entries can save synchronized YouTube, direct-video, or webpage tutorial links and open them from a dedicated desktop or responsive mobile player with playback controls and browser fallback.
+- Branded Automatic Emails: diagnostic intake, ordered-part payment, completed in-stock sale, consultation scheduling, and meaningful consultation changes now create styled client messages with safe-sender and reply guidance.
+- Duplicate-Safe Delivery: initial acknowledgments and consultation versions use a shop-scoped database outbox identity, visible history/preview states, and the existing retry-safe sender without rolling back completed payments or bookings.
+- Supplier Cost Review: Inventory now offers Check All Prices, Check Selected, and per-item Check Price actions with categorized results, editable proposed costs, confidence warnings, source links, and explicit Approve/Skip controls.
+- Audited Cost Changes: approval updates only internal acquisition cost and records the previous, detected, and approved values with supplier-learning feedback for later review or reversal.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.56 (2026-09-03)
 - Customer Identity Consistency: customer phone numbers, email addresses, and names now use shared normalization and match-classification rules instead of drifting between workflows.
 - Safer Duplicate Handling: exact contact matches are distinguished from name-only suggestions and conflicting contact records, preventing unsafe automatic merges.
