@@ -15,12 +15,14 @@ import { buildInventoryDeviceGroups } from '../lib/inventoryDeviceGroups';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
 import { duplicateInventoryVariant, findExactDeviceMatch, inventoryRowActions } from '../lib/inventoryNavigation';
+import InventoryPriceReviewWindow from './InventoryPriceReviewWindow';
 
 type InventoryMode = 'parts' | 'products';
 type PartsView = 'all' | 'device';
 
 type InventoryItem = {
   id?: number;
+  cloudId?: string;
   itemDescription: string;
   itemType?: 'Product' | 'Part';
   category?: string;
@@ -169,6 +171,8 @@ export default function InventoryWindow() {
   const [compatibleDeviceSearch, setCompatibleDeviceSearch] = useState('');
   const [compatibleDeviceMenuOpen, setCompatibleDeviceMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
+  const [priceCheckIds, setPriceCheckIds] = useState<Set<number>>(() => new Set());
+  const [priceReviewItems, setPriceReviewItems] = useState<InventoryItem[] | null>(null);
   const [expandedParentIds, setExpandedParentIds] = useState<Set<number>>(() => new Set());
   const [partsView, setPartsView] = useState<PartsView>('all');
   const [expandedDeviceGroups, setExpandedDeviceGroups] = useState<Set<string>>(() => new Set());
@@ -715,6 +719,7 @@ export default function InventoryWindow() {
 
   return (
     <div className="h-screen bg-zinc-900 text-gray-100 overflow-hidden">
+      {priceReviewItems ? <InventoryPriceReviewWindow items={priceReviewItems} onClose={() => setPriceReviewItems(null)} onApproved={() => void load()} /> : null}
       <div className="flex h-full flex-col">
         <header className="shrink-0 border-b border-zinc-700 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -722,7 +727,7 @@ export default function InventoryWindow() {
               <h1 className="text-xl font-bold tracking-wide">Inventory</h1>
               <div className="text-xs text-zinc-400">{counts.tracked} tracked items, {counts.low} low-stock alerts</div>
             </div>
-            <button type="button" onClick={() => api?.openCatalogSettings ? void api.openCatalogSettings('inventory') : undefined} className="rounded-lg border border-purple-400/70 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-200 hover:bg-purple-500/20">⚙ Inventory Settings</button>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPriceReviewItems(items.filter(item => !isInventoryParent(item) && Boolean(String(item.reorderUrlTemplate || '').trim())))} className="rounded-lg bg-[#39FF14] px-4 py-2 text-sm font-black text-black">Check All Prices</button><button type="button" disabled={!priceCheckIds.size} onClick={() => setPriceReviewItems(items.filter(item => item.id && priceCheckIds.has(item.id)))} className="rounded-lg border border-[#39FF14] px-4 py-2 text-sm font-bold text-[#39FF14] disabled:opacity-40">Check Selected</button><button type="button" onClick={() => api?.openCatalogSettings ? void api.openCatalogSettings('inventory') : undefined} className="rounded-lg border border-purple-400/70 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-200 hover:bg-purple-500/20">⚙ Inventory Settings</button></div>
           </div>
         </header>
 
@@ -830,6 +835,7 @@ export default function InventoryWindow() {
                         <div className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_72px_58px_auto]">
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-center gap-2">
+                              {!parent && item.id ? <input type="checkbox" aria-label={`Select ${item.itemDescription || 'inventory item'} for price check`} checked={priceCheckIds.has(item.id)} onClick={event => event.stopPropagation()} onChange={event => setPriceCheckIds(current => { const next = new Set(current); if (event.target.checked) next.add(Number(item.id)); else next.delete(Number(item.id)); return next; })} /> : null}
                               {parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={(event) => { event.stopPropagation(); setExpandedParentIds((current) => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700 text-xs text-zinc-300 hover:border-[#39FF14] hover:text-[#39FF14]">{expanded ? '−' : '+'}</button> : null}
                               <div className="truncate font-semibold text-zinc-100">{item.itemDescription || '(unnamed)'}</div>{parent ? <span className="shrink-0 rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}
                             </div>
@@ -889,6 +895,7 @@ export default function InventoryWindow() {
                     Parts ({counts.parts})
                   </button>
                 </div>
+                {selectedId && !editing.isParentPart ? <button type="button" disabled={!String(editing.reorderUrlTemplate || '').trim()} onClick={() => setPriceReviewItems([{ ...editing, id: selectedId }])} className="w-full rounded-lg border border-blue-400/70 px-3 py-2 text-xs font-bold text-blue-200 disabled:opacity-40">Check Price</button> : null}
                 {mode === 'parts' && selectedId ? <div className="flex w-full gap-2 sm:w-auto"><button type="button" onClick={() => api?.openRepairCategories?.({ inventoryPart: { ...editing, id: selectedId }, linkMode: 'existing' })} className="flex-1 rounded-lg border border-purple-400/70 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-200">Link to Repair</button><button type="button" onClick={() => api?.openRepairCategories?.({ inventoryPart: { ...editing, id: selectedId }, linkMode: 'new' })} className="flex-1 rounded-lg bg-purple-500 px-3 py-2 text-xs font-bold text-white">New Linked Repair</button></div> : null}
               </div>
             </div>
