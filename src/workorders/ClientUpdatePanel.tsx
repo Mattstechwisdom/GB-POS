@@ -17,7 +17,10 @@ type UpdateHistoryRow = {
   message?: string | null;
   estimated_date?: string | null;
   recipient_email?: string | null;
-  delivery_status: 'pending' | 'sending' | 'sent' | 'failed' | 'not_requested';
+  delivery_status: 'pending' | 'sending' | 'sent' | 'failed' | 'not_requested' | 'not_sent';
+  automatic?: boolean;
+  email_subject?: string | null;
+  email_text?: string | null;
   delivery_error?: string | null;
   created_at: string;
 };
@@ -408,7 +411,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       }
       let query = supabase
         .from('client_update_history')
-        .select('id,status_key,status_label,message,estimated_date,recipient_email,delivery_status,delivery_error,created_at')
+        .select('id,status_key,status_label,message,estimated_date,recipient_email,delivery_status,delivery_error,created_at,automatic,email_subject,email_text')
         .eq('record_type', type)
         .eq('legacy_record_id', legacyRecordId);
       if (scopedShopId) query = query.eq('shop_id', scopedShopId);
@@ -752,7 +755,9 @@ const ClientUpdatePanel: React.FC<Props> = ({
                       <span className={`delivery-${entry.delivery_status}`}>{deliveryLabel(entry)}</span>
                     </div>
                     <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
+                    {entry.automatic ? <div className="gb-client-update-history-recipient">Automatic</div> : null}
                     {entry.recipient_email ? <div className="gb-client-update-history-recipient">To: {entry.recipient_email}</div> : null}
+                    {entry.email_text ? <details><summary>Preview email</summary><pre className="whitespace-pre-wrap text-xs text-zinc-300">{entry.email_text}</pre></details> : null}
                     {entry.estimated_date ? <div className="gb-client-update-history-date">Estimated date: {entry.estimated_date}</div> : null}
                     {entry.message ? <p>{entry.message}</p> : null}
                     {entry.delivery_error ? <div className="gb-client-update-history-error">{entry.delivery_error}</div> : null}

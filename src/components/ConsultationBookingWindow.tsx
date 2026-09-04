@@ -18,6 +18,7 @@ import {
   sortConsultationPartners,
   type ConsultationPartner,
 } from '../lib/consultationPartners';
+import { queueConsultationEmail } from '../lib/automaticEmailQueue';
 
 const CONSULTATION_DISTANCE_FEE = 20;
 const CONSULTATION_DISTANCE_THRESHOLD = 15; // miles
@@ -716,6 +717,10 @@ export default function ConsultationBookingWindow() {
         saleId: createdSale?.id,
         source: 'consultation',
       });
+
+      if (createdEvent?.id) {
+        await queueConsultationEmail({ kind: 'consultation-scheduled', record: createdEvent, customer });
+      }
 
       setDone({ saleId: createdSale?.id, eventId: createdEvent?.id, customerName });
     } catch (e: any) {
