@@ -1,6 +1,7 @@
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { discountedLineTotal, lineDiscountAmount } from '../lib/ticketAccounting';
+import { printPageProtectionCss } from '../lib/reliability';
 
 export type SaleLine = { description: string; qty: number; price: number; discountType?: 'percent' | 'amount'; discountValue?: number };
 
@@ -100,7 +101,8 @@ export function buildSaleHtml(
     .totals .row { display:flex; gap:12px; align-items:center; }
     .totals .label { width:60%; color:#444; }
     .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
-    .final-block { page-break-inside: avoid; margin-top:12px; }
+    .final-block { break-inside: avoid-page; page-break-inside: avoid; margin-top:12px; }
+    ${printPageProtectionCss()}
   </style>
 </head>
 <body>

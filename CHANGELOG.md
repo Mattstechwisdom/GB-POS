@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.60 (2026-09-08)
+
+- Fixed client searches missing locally queued or recently synchronized customer records.
+- Prevented repeated checkout actions and cross-window checkout responses from creating duplicate work orders.
+- Made normal saves and deletes return immediately after durable local persistence while Supabase synchronization continues from the retry queue.
+- Prevented context-menu deletion overlays from leaving form fields inaccessible.
+- Corrected print margins and page-break rules so terms and signature sections do not spill onto an unnecessary page.
+
 ## v0.6.59 (2026-09-04)
 
 - Added a separate branded repair-completion thank-you email when the final labor payment clears the work-order balance at pickup.

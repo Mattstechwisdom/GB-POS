@@ -1,5 +1,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createSingleFlight } from '../lib/reliability';
 import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
@@ -401,6 +402,14 @@ const NewWorkOrderWindow: React.FC = () => {
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
   const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const checkoutSingleFlightRef = useRef<(() => Promise<void>) | null>(null);
+  if (!checkoutSingleFlightRef.current) {
+    checkoutSingleFlightRef.current = createSingleFlight(async () => {
+      setCheckoutBusy(true);
+      try { await handleCheckoutRef.current(); } finally { setCheckoutBusy(false); }
+    });
+  }
   const [addonSale, setAddonSale] = useState<any | null>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
@@ -1795,7 +1804,7 @@ const NewWorkOrderWindow: React.FC = () => {
   });
 
   const handleCheckout = useCallback(() => {
-    void handleCheckoutRef.current();
+    void checkoutSingleFlightRef.current?.();
   }, []);
 
   // (removed legacy printCustomerReceipt stub in favor of shared HTML builder)
@@ -2077,7 +2086,7 @@ const NewWorkOrderWindow: React.FC = () => {
               </div>
             ) : null}
           </div>
-          <PaymentPanel workOrder={paymentWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
+          <PaymentPanel workOrder={paymentWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} checkoutBusy={checkoutBusy} />
         </div>
       </div>
 

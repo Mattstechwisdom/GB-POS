@@ -388,6 +388,23 @@ const App: React.FC = () => {
   }, [cloudReady, staffProfile?.shop_id]);
 
   useEffect(() => {
+    const shopId = staffProfile?.shop_id;
+    const api = (window as any).api;
+    if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
+    const tables: Array<[string, string]> = [
+      ['customers', 'customers'],
+      ['work_orders', 'workOrders'],
+      ['sales', 'sales'],
+    ];
+    const channel = tables.reduce((current, [table, collection]) => current.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `shop_id=eq.${shopId}` },
+      () => { void api.cloudCollectionChanged(collection); },
+    ), supabase.channel(`gbpos-desktop-records-${shopId}`)).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [cloudReady, staffProfile?.shop_id]);
+
+  useEffect(() => {
     if (!cloudReady || !staffProfile?.shop_id) return;
     void (async () => {
       await reconcilePaidSaleInventory((window as any).api);

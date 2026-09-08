@@ -5211,16 +5211,18 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   return rows;
 }
 
-function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
+function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
   try {
-    if (!Array.isArray(rows)) return;
+    if (!Array.isArray(rows)) return [];
     const db: any = readDb();
     if (key === 'technicians') {
       writeDb({ ...db, technicians: rows.slice() });
-      return;
+      return rows.slice();
     }
-    if (rows.length === 0) return;
     const existing = Array.isArray(db[key]) ? db[key] : [];
+    const pending = readCloudSyncQueue().filter((op) => op.key === key);
+    const pendingDeletes = new Set(pending.filter((op) => op.op === 'delete').map((op) => String(op.legacyId)));
+    const pendingUpserts = new Set(pending.filter((op) => op.op === 'upsert').map((op) => String(op.legacyId)));
     const byId = new Map<string, any>();
     for (const item of existing) {
       const id = item?.id;
@@ -5230,7 +5232,12 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
     for (const row of rows) {
       const id = row?.id;
       if (id === null || typeof id === 'undefined') continue;
-      byId.set(String(id), row);
+      const idKey = String(id);
+      if (pendingDeletes.has(idKey)) continue;
+      const previous = byId.get(idKey);
+      const previousTime = Date.parse(String(previous?.updatedAt || '')) || 0;
+      const rowTime = Date.parse(String(row?.updatedAt || '')) || 0;
+      if (!previous || (!pendingUpserts.has(idKey) && rowTime >= previousTime)) byId.set(idKey, row);
     }
     const nextList = Array.from(byId.values());
     const nextDb: any = { ...db, [key]: nextList };
@@ -5241,8 +5248,10 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
       if (Number.isFinite(maxId)) nextDb.invoiceSeq = maxId;
     }
     writeDb(nextDb);
+    return nextList;
   } catch {
     // Local cloud-read cache is best effort.
+    return Array.isArray(rows) ? rows : [];
   }
 }
 
@@ -5365,29 +5374,16 @@ function scheduleCloudSyncQueueDrain(delayMs = 1500) {
   }
 }
 
-async function syncCloudWriteOrQueue(op: 'upsert' | 'delete', key: string, itemOrId: any) {
-  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return { synced: false, queued: false };
+function queueCloudWriteForBackgroundSync(op: 'upsert' | 'delete', key: string, itemOrId: any) {
+  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return;
   const legacyId = op === 'delete' ? itemOrId : legacyIdForCloudItem(key, itemOrId);
-  if (legacyId === null || typeof legacyId === 'undefined') return { synced: false, queued: false };
-  try {
-    if (!shouldUseCloudDb(key)) throw new Error('Cloud session is not ready.');
-    if (op === 'delete') await cloudDbDelete(key, legacyId);
-    else await cloudDbUpsert(key, itemOrId);
-    scheduleCloudSyncQueueDrain(100);
-    return { synced: true, queued: false };
-  } catch (e: any) {
-    queueCloudSyncOperation({
-      id: cloudSyncOperationId(),
-      op,
-      key,
-      item: op === 'upsert' ? itemOrId : undefined,
-      legacyId,
-      createdAt: new Date().toISOString(),
-      attempts: 0,
-      lastError: e?.message || String(e),
-    });
-    return { synced: false, queued: true };
-  }
+  if (legacyId === null || typeof legacyId === 'undefined') return;
+  queueCloudSyncOperation({
+    id: cloudSyncOperationId(), op, key,
+    item: op === 'upsert' ? itemOrId : undefined,
+    legacyId, createdAt: new Date().toISOString(), attempts: 0,
+  });
+  scheduleCloudSyncQueueDrain(100);
 }
 
 ipcMain.handle('db-reset-all', async () => {
@@ -5475,8 +5471,8 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
     try {
       const cloudRows = await cloudDbGet(key, opts);
       if (Array.isArray(cloudRows)) {
-        mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return cloudRows;
+        const mergedRows = mergeCloudRowsIntoLocalCache(key, cloudRows);
+        return opts ? cloudRows : mergedRows;
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
@@ -5583,7 +5579,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
   const ok = writeDb(nextDb);
   if (ok) {
-    await syncCloudWriteOrQueue('upsert', key, nextItem);
+    queueCloudWriteForBackgroundSync('upsert', key, nextItem);
     scheduleCollectionChanged(key);
     return nextItem;
   }
@@ -5595,8 +5591,7 @@ ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
     try {
       const cloudRows = await cloudDbGet(key);
       if (Array.isArray(cloudRows)) {
-        mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return cloudRows.filter((it: any) => matchesDbQuery(it, q));
+        return mergeCloudRowsIntoLocalCache(key, cloudRows).filter((it: any) => matchesDbQuery(it, q));
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-find fallback:', key, e?.message || e); } catch {}
@@ -5882,7 +5877,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
-    await syncCloudWriteOrQueue('upsert', key, updatedItem);
+    queueCloudWriteForBackgroundSync('upsert', key, updatedItem);
     scheduleCollectionChanged(key);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
@@ -5931,7 +5926,7 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
-    await syncCloudWriteOrQueue('delete', key, id);
+    queueCloudWriteForBackgroundSync('delete', key, id);
     scheduleCollectionChanged(key);
   }
   return ok;
@@ -8642,10 +8637,12 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
     child.loadURL(url);
 
     const saveHandler = (_e: any, result: any) => {
+      if (_e?.sender !== child.webContents) return;
       resolve(result);
       cleanup();
     };
-    const cancelHandler = () => {
+    const cancelHandler = (_e: any) => {
+      if (_e?.sender !== child.webContents) return;
       resolve(null);
       cleanup();
     };
