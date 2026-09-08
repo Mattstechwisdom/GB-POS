@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.60 (2026-09-08)
+## v0.6.61 (2026-09-08)
 
 - Fixed client searches missing locally queued or recently synchronized customer records.
 - Prevented repeated checkout actions and cross-window checkout responses from creating duplicate work orders.

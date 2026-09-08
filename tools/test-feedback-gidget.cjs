@@ -31,7 +31,7 @@ expect(preload.includes("ipcRenderer.on('gidget:localToken'"), 'Electron generat
 
 const main = read('app/electron/electron-main.ts');
 expect(main.includes("key === 'feedbackEntries' || key === 'technicians' ? toCloudTextId(legacyId)"), 'Desktop must delete UUID feedback IDs from Supabase as text instead of coercing them to numbers.');
-expect(main.includes("await syncCloudWriteOrQueue('delete', key, id)"), 'Desktop deletion must finish or queue its cloud delete before a feedback refresh can restore the row.');
+expect(main.includes("queueCloudWriteForBackgroundSync('delete', key, id)"), 'Desktop deletion must durably queue its cloud delete before a feedback refresh can restore the row.');
 expect(main.includes('registerGidgetLocalIpc({ ipcMain, app })'), 'Electron must register Gidget IPC.');
 expect(main.includes('attachments: Array.isArray(row.attachments)'), 'Desktop must load synced feedback screenshots.');
 expect(main.includes('attachments: Array.isArray(item.attachments)'), 'Desktop must save feedback screenshots to Supabase.');
