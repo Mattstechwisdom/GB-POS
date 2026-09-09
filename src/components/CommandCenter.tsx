@@ -6,8 +6,8 @@ type Props = {
   keyword: string;
   onOpenInvoices: (mode?: 'all' | 'workorders' | 'sales') => void;
   onOpenModal: (type: string, payload?: any) => void;
-  onOpenNotifications: () => void;
   onOpenFilters: () => void;
+  attentionRequest?: number;
 };
 
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
@@ -19,7 +19,7 @@ const relativeAge = (value: string) => {
 };
 
 export default function CommandCenter(props: Props) {
-  const [data, setData] = useState({ customers: [] as any[], workOrders: [] as any[], sales: [] as any[], calendarEvents: [] as any[], purchaseOrders: [] as any[] });
+  const [data, setData] = useState({ customers: [] as any[], technicians: [] as any[], workOrders: [] as any[], sales: [] as any[], calendarEvents: [] as any[], purchaseOrders: [] as any[] });
   const [loading, setLoading] = useState(true);
   const [panel, setPanel] = useState<{ title: string; records?: CommandCenterRecord[]; kind?: 'today' } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ today: false, pickup: false });
@@ -28,21 +28,22 @@ export default function CommandCenter(props: Props) {
     const api: any = (window as any).api;
     if (!api) return setLoading(false);
     try {
-      const [customers, workOrders, sales, calendarEvents, purchaseOrders] = await Promise.all([
+      const [customers, technicians, workOrders, sales, calendarEvents, purchaseOrders] = await Promise.all([
         (api.getCustomers?.() ?? api.dbGet('customers')).catch(() => []),
+        api.dbGet('technicians').catch(() => []),
         (api.getWorkOrders?.({ limit: 2000, sortBy: 'activityAt', sortDir: 'desc' }) ?? api.dbGet('workOrders')).catch(() => []),
         api.dbGet('sales').catch(() => []),
         api.dbGet('calendarEvents').catch(() => []),
         api.dbGet('purchaseOrders').catch(() => []),
       ]);
-      setData({ customers: customers || [], workOrders: workOrders || [], sales: sales || [], calendarEvents: calendarEvents || [], purchaseOrders: purchaseOrders || [] });
+      setData({ customers: customers || [], technicians: technicians || [], workOrders: workOrders || [], sales: sales || [], calendarEvents: calendarEvents || [], purchaseOrders: purchaseOrders || [] });
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     void load();
     const api: any = (window as any).api;
-    const offs = [api?.onWorkOrdersChanged?.(load), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
+    const offs = [api?.onWorkOrdersChanged?.(load), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onTechniciansChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load]);
 
@@ -55,6 +56,10 @@ export default function CommandCenter(props: Props) {
   };
   const showRecords = (title: string, records: CommandCenterRecord[]) => setPanel({ title, records });
   const toggle = (key: string) => setCollapsed(current => ({ ...current, [key]: !current[key] }));
+  useEffect(() => {
+    if (!props.attentionRequest) return;
+    setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned' || row.technician === 'Unknown technician') });
+  }, [model, props.attentionRequest]);
 
   return <div className="command-center">
     <div className="command-center-heading"><div><h1>Command Center</h1><span>{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span></div><div><button onClick={props.onOpenFilters}>Filters</button><button onClick={() => void load()}>Refresh</button></div></div>
@@ -72,7 +77,6 @@ export default function CommandCenter(props: Props) {
       <section className="command-center-section"><header><strong>Today</strong><div><button onClick={() => props.onOpenModal('calendar')}>Open Full Calendar</button><button className="command-center-section-toggle" onClick={() => toggle('today')} aria-expanded={!collapsed.today}>{collapsed.today ? '›' : '⌄'}</button></div></header>{!collapsed.today ? <div className="command-center-today">{[['Tasks', model.today.tasks.length], ['Events', model.today.events.length], ['Consultations', model.today.consultations.length], ['Deliveries', model.today.deliveries.length]].map(([label, count]) => <button key={String(label)} onClick={() => props.onOpenModal('calendar')}><span>{label}</span><strong>{count}</strong></button>)}</div> : null}</section>
       <section className="command-center-section"><header><strong>Ready for Pickup</strong><div><button onClick={() => showRecords('Ready for Pickup', model.readyForPickup)}>View All</button><button className="command-center-section-toggle" onClick={() => toggle('pickup')} aria-expanded={!collapsed.pickup}>{collapsed.pickup ? '›' : '⌄'}</button></div></header>{!collapsed.pickup ? model.readyForPickup.slice(0, 5).map(record => <button className="command-center-row" key={record.id} onClick={() => void openRecord(record)}><i className="good" /><span><strong>{record.title}</strong><small>{record.customerName} · {record.remaining ? `${money(record.remaining)} due` : 'Paid'}</small></span><em>Open</em></button>) : null}</section>
     </div>
-    <div className="command-center-record-nav"><button onClick={() => props.onOpenInvoices('all')}>All Invoices</button><button onClick={() => props.onOpenInvoices('workorders')}>Work Orders</button><button onClick={() => props.onOpenInvoices('sales')}>Sales & Consultations</button><button className="attention" onClick={() => setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned') })}>Needs Attention</button></div>
     {panel ? <div className="command-center-panel-layer" onMouseDown={event => { if (event.target === event.currentTarget) setPanel(null); }}><section className="command-center-panel"><header><h2>{panel.title}</h2><div><button title="Open in separate window" onClick={() => window.open(window.location.href, '_blank', 'width=1100,height=800')}>↗</button><button aria-label="Close" onClick={() => setPanel(null)}>×</button></div></header><div className="command-center-panel-table"><table><thead><tr><th>Record</th><th>Client / Device</th><th>Status</th><th>Technician</th><th>Balance</th><th>Activity</th></tr></thead><tbody>{(panel.records || []).map(record => <tr key={`${record.kind}-${record.id}`} onDoubleClick={() => void openRecord(record)}><td>{record.kind === 'workorder' ? `WO #${record.id}` : `Invoice #${record.id}`}</td><td><strong>{record.customerName}</strong><small>{record.title}</small></td><td>{record.stage || record.status}</td><td>{record.technician}</td><td>{money(record.remaining)}</td><td>{relativeAge(record.activityAt)}</td></tr>)}</tbody></table></div>{!(panel.records || []).length ? <p className="command-center-empty">No matching records.</p> : null}</section></div> : null}
   </div>;
 }

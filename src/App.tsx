@@ -10,7 +10,6 @@ import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
 import GidgetChat from './components/GidgetChat';
-import DesktopNotificationDrawer from './components/DesktopNotificationDrawer';
 import CommandCenter from './components/CommandCenter';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
@@ -567,7 +566,7 @@ const AppInner: React.FC<{
   const [desktopDrawerClosing, setDesktopDrawerClosing] = useState(false);
   const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopDrawerPreviewOpen);
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
-  const [desktopNotificationsOpen, setDesktopNotificationsOpen] = useState(false);
+  const [desktopAttentionRequest, setDesktopAttentionRequest] = useState(0);
   const [desktopView, setDesktopView] = useState<'command' | 'invoices'>('command');
   const desktopFiltersRef = useRef<HTMLDivElement>(null);
   const desktopDrawerCloseTimerRef = useRef<number | null>(null);
@@ -826,15 +825,6 @@ const AppInner: React.FC<{
               </aside>
             </div>
           ) : null}
-          <DesktopNotificationDrawer
-            open={desktopNotificationsOpen}
-            onOpen={() => {
-              closeDesktopDrawer(true);
-              setDesktopFiltersOpen(false);
-              setDesktopNotificationsOpen(true);
-            }}
-            onClose={() => setDesktopNotificationsOpen(false)}
-          />
         </>
       ) : null}
       <div className={`flex flex-1${desktopNavigationEnabled ? ' desktop-preview-workspace' : ''}`}>
@@ -873,14 +863,13 @@ const AppInner: React.FC<{
             onKeywordChange={setKeyword}
             drawerMode={desktopNavigationEnabled}
             onOpenMenu={() => {
-              setDesktopNotificationsOpen(false);
               setDesktopFiltersOpen(false);
               showDesktopDrawer(true);
             }}
             onOpenNotifications={() => {
               closeDesktopDrawer(true);
               setDesktopFiltersOpen(false);
-              setDesktopNotificationsOpen(true);
+              openModal('notifications');
             }}
             onSearchClient={() => openModal('customerSearch')}
             onAddClient={() => openModal('customerOverview', 0)}
@@ -889,17 +878,9 @@ const AppInner: React.FC<{
             <div className="desktop-preview-tabs" aria-label="Record type">
               <button type="button" className={desktopView === 'command' ? 'active' : ''} onClick={() => setDesktopView('command')}>Command Center</button>
               <button type="button" className={desktopView === 'invoices' && mode === 'all' ? 'active' : ''} onClick={() => { setDesktopView('invoices'); setMode('all'); }}>All Invoices</button>
+              <span className="desktop-preview-tabs-spacer" />
+              <button type="button" className="attention" onClick={() => { setDesktopView('command'); setDesktopAttentionRequest(value => value + 1); }}>Needs Attention</button>
               <div className="desktop-preview-filter-control" ref={desktopFiltersRef}>
-                <button
-                  type="button"
-                  className={`filters${desktopFiltersOpen ? ' active-filter-menu' : ''}`}
-                  aria-expanded={desktopFiltersOpen}
-                  aria-haspopup="dialog"
-                  onClick={() => {
-                    setDesktopNotificationsOpen(false);
-                    setDesktopFiltersOpen(open => !open);
-                  }}
-                >Filters</button>
                 {desktopFiltersOpen ? (
                   <div className="desktop-preview-filter-menu" role="dialog" aria-label="List filters">
                     <header>
@@ -934,9 +915,9 @@ const AppInner: React.FC<{
           <div className="flex-1 min-h-0 overflow-auto">
             {desktopNavigationEnabled && desktopView === 'command' ? <CommandCenter
               keyword={keyword}
+              attentionRequest={desktopAttentionRequest}
               onOpenInvoices={(nextMode = 'all') => { setMode(nextMode); setDesktopView('invoices'); }}
               onOpenModal={openModal}
-              onOpenNotifications={() => { setDesktopFiltersOpen(false); setDesktopNotificationsOpen(true); }}
               onOpenFilters={() => setDesktopFiltersOpen(open => !open)}
             /> : null}
             {(!desktopNavigationEnabled || desktopView === 'invoices') ? <>

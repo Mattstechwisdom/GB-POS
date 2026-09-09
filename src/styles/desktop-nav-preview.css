@@ -467,6 +467,7 @@
 .desktop-preview-filter-control {
   position: relative;
 }
+.desktop-preview-tabs-spacer{flex:1}.desktop-preview-tabs>.attention{border-color:#ef4444!important;background:#450a0a!important;color:#fecaca!important}
 
 .desktop-preview-tabs .filters {
   border-color: #3b82f6;

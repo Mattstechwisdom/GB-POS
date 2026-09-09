@@ -31,6 +31,8 @@ export interface CommandCenterModel {
   today: { tasks: any[]; events: any[]; consultations: CommandCenterRecord[]; deliveries: any[] };
 }
 
+type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; purchaseOrders?: any[]; now?: Date };
+
 const text = (value: any) => String(value ?? '').trim();
 const number = (value: any) => Number(value || 0) || 0;
 const lower = (value: any) => text(value).toLowerCase();
@@ -55,12 +57,17 @@ function lineTitle(record: any) {
   return titles.join(', ') || text(record?.productDescription || record?.summary || record?.problemInfo || record?.problem) || 'Untitled record';
 }
 
+function isFinishedWorkOrder(workOrder: any) {
+  const status = lower(workOrder?.status);
+  return !!workOrder?.checkoutDate || /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status);
+}
+
 function stageFor(workOrder: any, remaining: number) {
   const raw = lower(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status);
   const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
   const waitingPart = /awaiting.*part|waiting.*part|part.*ordered/.test(raw) || lines.some((line: any) => /ordered|awaiting|in transit/.test(lower(line?.orderStatus || line?.partStatus)));
   const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
-  if (/closed|complete.*paid/.test(raw) && remaining <= 0) return 'Completed';
+  if (isFinishedWorkOrder(workOrder) || (/complete.*paid/.test(raw) && remaining <= 0)) return 'Completed';
   if (/ready.*pickup|pickup/.test(raw)) return 'Pickup';
   if (/testing/.test(raw)) return 'Testing';
   if (/repair/.test(raw) && !waitingPart) return 'Repair';
@@ -70,9 +77,29 @@ function stageFor(workOrder: any, remaining: number) {
   return 'Checked in';
 }
 
-export function buildCommandCenterModel(input: { customers?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; purchaseOrders?: any[]; now?: Date }): CommandCenterModel {
+function technicianIndex(technicians: any[]) {
+  const index = new Map<string, string>();
+  technicians.forEach(technician => {
+    const name = text(technician?.nickname || technician?.firstName || technician?.first_name || technician?.email?.split?.('@')?.[0]);
+    if (!name) return;
+    [technician?.id, technician?.legacyId, technician?.legacy_id, technician?.cloudId, technician?.cloud_id, name].forEach(value => {
+      const key = lower(value);
+      if (key) index.set(key, name);
+    });
+  });
+  return index;
+}
+
+function technicianName(value: any, index: Map<string, string>) {
+  const assigned = text(value);
+  if (!assigned) return 'Unassigned';
+  return index.get(assigned.toLowerCase()) || 'Unknown technician';
+}
+
+export function buildCommandCenterModel(input: CommandCenterInput): CommandCenterModel {
   const now = input.now || new Date();
   const customers = new Map((input.customers || []).map(customer => [text(customer?.id), customer]));
+  const technicians = technicianIndex(input.technicians || []);
   const workOrders = (input.workOrders || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
     const paid = number(record?.amountPaid ?? record?.totals?.paid);
@@ -81,7 +108,7 @@ export function buildCommandCenterModel(input: { customers?: any[]; workOrders?:
     const customerName = customerNameFor(record, customers);
     const title = lineTitle(record);
     const activityAt = text(record?.activityAt || record?.updatedAt || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, status: text(record?.status || stage), technician: text(record?.assignedTo) || 'Unassigned', total, remaining, activityAt, stage, partEta: text(record?.partEta || record?.expectedDeliveryDate), searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, status: text(record?.status || stage), technician: technicianName(record?.assignedTo, technicians), total, remaining, activityAt, stage, partEta: text(record?.partEta || record?.expectedDeliveryDate), searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const sales = (input.sales || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
@@ -90,7 +117,7 @@ export function buildCommandCenterModel(input: { customers?: any[]; workOrders?:
     const title = lineTitle(record);
     const kind: CommandCenterKind = lower(record?.type || record?.saleType).includes('consult') ? 'consultation' : 'sale';
     const activityAt = text(record?.activityAt || record?.checkoutDate || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, status: text(record?.status), technician: text(record?.assignedTo) || 'Unassigned', total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, status: text(record?.status), technician: technicianName(record?.assignedTo, technicians), total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const stages: Record<string, CommandCenterRecord[]> = Object.fromEntries(['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed'].map(stage => [stage, []]));
   workOrders.forEach(record => stages[record.stage || 'Checked in']?.push(record));

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.64 (2026-09-09)
+
+- Matched the production desktop Command Center navigation and layout to the approved responsive preview.
+- Removed the redundant persistent notification rail while keeping the notification bell connected to the full Notifications window.
+- Corrected active and Checked In repair counts by excluding closed, checked-out, cancelled, voided, refunded, deleted, and archived work orders regardless of stale balances.
+- Resolved assigned technician legacy, local, and cloud identifiers to technician display names; unresolved identifiers now appear as Unknown technician in Needs Attention.
+- Kept inventory variants nested directly beneath their parent item instead of duplicating them as standalone rows.
+
 ## v0.6.63 (2026-09-09)
 
 - Replaced the desktop landing list with a live Command Center derived from current customers, work orders, sales, consultations, calendar entries, payments, and purchasing records.
