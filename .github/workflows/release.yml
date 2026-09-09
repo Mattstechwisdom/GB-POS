@@ -215,6 +215,11 @@ jobs:
               $previousSigner = (& $apksigner verify --print-certs $previousApk.FullName | Select-String 'certificate SHA-256 digest:' | Select-Object -First 1 | ForEach-Object { ($_ -split ': ')[-1].Trim() })
               if ($previousSigner -ne $newSigner) { throw 'Android signing certificate changed; publishing this APK would force users to uninstall.' }
             }
+          } else {
+            # A brand-new release may not have an APK attached yet. The local
+            # signature validation above still applies; do not leak gh's
+            # expected "no assets match" status into the end of this step.
+            $global:LASTEXITCODE = 0
           }
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item -Force $apkSource "release/Android-APK-universal-$version.apk"
