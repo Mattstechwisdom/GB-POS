@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.67 (2026-09-09)
+
+- Replaced the legacy mobile landing page with the responsive Shop Command Center used on desktop.
+- Kept All Invoices available as a dedicated mobile-friendly record view with Work Order and Sales filters.
+- Prevented background data synchronization from repeatedly flashing the “Loading shop data” message.
+- Reflowed Command Center stages and record panels for phones without sideways scrolling.
+
 ## v0.6.66 (2026-09-09)
 
 - Added synchronized POS settings for automatically closing diagnostic-only legacy tickets after 20 days and all remaining open legacy tickets after 30 days, with editable timelines, a preview, and a manual run button.

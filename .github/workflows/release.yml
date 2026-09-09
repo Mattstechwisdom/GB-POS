@@ -77,6 +77,7 @@ jobs:
           npm run test:client-update-api
           npm run test:mobile-long-press
           npm run test:mobile-navigation
+          npm run test:mobile-command-center
           npm run test:order-accounting
           npm run test:workorder-item-sync
           npm run test:reliability-patch
