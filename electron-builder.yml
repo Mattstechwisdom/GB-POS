@@ -30,8 +30,8 @@ nsis:
   include: build/installer-options.nsh
   oneClick: false
   perMachine: false
-  allowElevation: false
-  packElevateHelper: false
+  allowElevation: true
+  packElevateHelper: true
   runAfterFinish: true
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: true

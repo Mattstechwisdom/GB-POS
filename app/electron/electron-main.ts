@@ -1423,7 +1423,7 @@ function updateUiHtml(initialState: any): string {
         primaryBtn.textContent = 'Close';
         primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
         downloadBtn.style.display = 'none';
-        secondaryBtn.textContent = 'Releases';
+        secondaryBtn.textContent = 'Open Download Page';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
       }
     };
@@ -1543,7 +1543,9 @@ async function installDownloadedUpdate() {
   await prepareForUpdateInstall();
   setTimeout(() => {
     try {
-      autoUpdater.quitAndInstall(true, true);
+      // Use assisted NSIS so Windows can request elevation when an existing
+      // installation or locked file cannot be replaced at user level.
+      autoUpdater.quitAndInstall(false, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({

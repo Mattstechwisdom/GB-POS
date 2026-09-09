@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildCommandCenterModel, searchCommandCenterRecords, type CommandCenterRecord } from '@/lib/commandCenter';
+import { reconcileLegacyWorkOrders } from '@/lib/workOrderCleanup';
 import '@/styles/command-center.css';
 
 type Props = {
@@ -28,14 +29,16 @@ export default function CommandCenter(props: Props) {
     const api: any = (window as any).api;
     if (!api) return setLoading(false);
     try {
-      const [customers, technicians, workOrders, sales, calendarEvents, purchaseOrders] = await Promise.all([
+      const [customers, technicians, workOrders, sales, calendarEvents, purchaseOrders, settingsRows] = await Promise.all([
         (api.getCustomers?.() ?? api.dbGet('customers')).catch(() => []),
         api.dbGet('technicians').catch(() => []),
         (api.getWorkOrders?.({ limit: 2000, sortBy: 'activityAt', sortDir: 'desc' }) ?? api.dbGet('workOrders')).catch(() => []),
         api.dbGet('sales').catch(() => []),
         api.dbGet('calendarEvents').catch(() => []),
         api.dbGet('purchaseOrders').catch(() => []),
+        api.dbGet('settings').catch(() => []),
       ]);
+      await reconcileLegacyWorkOrders(api, { workOrders: workOrders || [], settings: settingsRows?.[0]?.ticketCleanupSettings });
       setData({ customers: customers || [], technicians: technicians || [], workOrders: workOrders || [], sales: sales || [], calendarEvents: calendarEvents || [], purchaseOrders: purchaseOrders || [] });
     } finally { setLoading(false); }
   }, []);

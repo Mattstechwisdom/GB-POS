@@ -11,11 +11,11 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 assert.match(builder, /requestedExecutionLevel:\s*asInvoker/);
 assert.doesNotMatch(builder, /requestedExecutionLevel:\s*(?:highestAvailable|requireAdministrator)/);
 assert.match(builder, /perMachine:\s*false/);
-assert.match(builder, /allowElevation:\s*false/);
-assert.match(builder, /packElevateHelper:\s*false/);
+assert.match(builder, /allowElevation:\s*true/);
+assert.match(builder, /packElevateHelper:\s*true/);
 assert.match(builder, /allowToChangeInstallationDirectory:\s*false/);
-assert.match(main, /autoUpdater\.quitAndInstall\(true,\s*true\)/);
-assert.doesNotMatch(main, /autoUpdater\.quitAndInstall\(false/);
+assert.match(main, /autoUpdater\.quitAndInstall\(false,\s*true\)/);
+assert.match(main, /Open Download Page/);
 assert.equal(packageJson.devDependencies['electron-builder'], '24.13.1', 'Windows installer builds must avoid the NSIS 24.13.2+ uninstall regression.');
 assert.match(main, /await prepareForUpdateInstall\(\)/, 'The updater must finish shutdown preparation before handing off to NSIS.');
 assert.match(main, /await drainDbWrites\(\)/, 'Update shutdown must flush local database writes.');

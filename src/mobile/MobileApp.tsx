@@ -17,6 +17,7 @@ import GidgetChat from '../components/GidgetChat';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
 import { reconcilePaidSaleInventory, reconcilePaidWorkOrderInventory } from '../lib/inventoryConsumption';
+import { reconcileLegacyWorkOrders } from '../lib/workOrderCleanup';
 import DurantApp from '../durant/DurantApp';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
@@ -694,6 +695,7 @@ const MobileAppRuntime: React.FC = () => {
     void (async () => {
       await reconcilePaidSaleInventory(window.api as any);
       await reconcilePaidWorkOrderInventory(window.api as any);
+      await reconcileLegacyWorkOrders(window.api as any);
     })().catch((error) => {
       console.error('Mobile startup inventory reconciliation failed', error);
     });

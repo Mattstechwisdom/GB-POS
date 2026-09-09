@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.66 (2026-09-09)
+
+- Added synchronized POS settings for automatically closing diagnostic-only legacy tickets after 20 days and all remaining open legacy tickets after 30 days, with editable timelines, a preview, and a manual run button.
+- Preserved payments, balances, client history, notes, and checkout information during cleanup; only the ticket status and cleanup audit marker are changed.
+- Restored readable mobile calendar cells using the established wide calendar layout instead of compressing seven columns into the phone width.
+- Improved technician identity resolution across local, legacy, and cloud IDs so unresolved assignments display as Unassigned or Unknown technician rather than raw identifiers.
+- Changed Windows updates to the assisted NSIS flow with elevation support, allowing Windows to replace protected or locked old files and providing a direct download-page recovery action.
+
 ## v0.6.65 (2026-09-09)
 
 - Matched the production desktop Command Center navigation and layout to the approved responsive preview.

@@ -857,9 +857,10 @@
     height: 100dvh;
   }
   .gb-daughter-modal-layer[data-modal-type="calendar"] .gb-calendar-month-grid {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    overflow: hidden;
-    gap: 2px;
+    grid-template-columns: repeat(7, minmax(92px, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
   }
   .desktop-preview-client-row {
     padding-inline: 10px;
