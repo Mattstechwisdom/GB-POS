@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.63 (2026-09-09)
+
+- Replaced the desktop landing list with a live Command Center derived from current customers, work orders, sales, consultations, calendar entries, payments, and purchasing records.
+- Added actionable Active Work Orders, Awaiting Parts, Ready for Pickup, Collected Today, repair-stage, repair-queue, calendar, and attention drill-downs without introducing sample customer data.
+- Kept repairs waiting on future part delivery out of the active daily repair route until their ETA is due, while surfacing delivered or overdue work.
+- Added live grouped main search results without replacing the Command Center and retained the existing All Invoices, Work Orders, and Sales & Consultations tables and record-opening behavior.
+- Added responsive desktop, tablet, and phone-width layouts with collapsible operational sections and full-width daughter panels on compact screens.
+- Preserved existing Quote Generator, Inventory, Repairs, Reporting, Technician, consultation, client, checkout, Admin, work-order, and sale components and their production handlers.
+- Updated the desktop toolbar with matching notification, calendar, and fullscreen controls plus EOD and Client Dropoff access.
+
 ## v0.6.62 (2026-09-08)
 
 - Added working Supabase-backed QR codes to normal printed sales tickets and delayed automatic printing until QR generation completes.

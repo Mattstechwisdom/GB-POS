@@ -320,7 +320,7 @@
 
 .desktop-preview-client-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   width: min(100%, 720px);
 }
@@ -341,15 +341,65 @@
 }
 
 .desktop-preview-client-actions .add {
-  border: 1px solid #39ff14;
-  background: #39ff14;
-  color: #09090b;
+  border: 1px solid #fb7185;
+  background: #e11d48;
+  color: #fff1f2;
 }
 
 .desktop-preview-client-actions .checkout {
   border: 1px solid #bc13fe;
-  background: #7e22ce;
+  background: #581c87;
   color: #fff;
+}
+
+.desktop-preview-client-actions .dropoff {
+  border: 1px solid #f59e0b;
+  background: #b45309;
+  color: #fff7ed;
+}
+
+.desktop-command-eod {
+  min-height: 40px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: #f59e0b;
+  padding: 0 14px;
+  color: #18181b;
+  font-weight: 850;
+}
+
+.desktop-command-icon {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid #52525b;
+  border-radius: 6px;
+  background: #27272a;
+  color: #e4e4e7;
+  padding: 0;
+}
+
+.gb-daughter-modal-layer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: rgba(9, 9, 11, 0.86);
+  backdrop-filter: blur(8px);
+}
+
+.gb-daughter-modal-panel {
+  width: min(1120px, 100%);
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  background: #18181b;
+  box-shadow: 0 24px 75px rgba(0, 0, 0, 0.7);
+}
+
+.gb-daughter-modal-panel > * {
+  min-height: 0;
 }
 
 .desktop-preview-menu-button {
@@ -732,13 +782,24 @@
 }
 
 @media (max-width: 560px) {
+  .gb-daughter-modal-layer {
+    padding: 0;
+  }
+
+  .gb-daughter-modal-panel {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
   .desktop-preview-client-row {
     padding-inline: 10px;
   }
 
   .desktop-preview-client-actions {
     width: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .desktop-preview-client-actions button {
