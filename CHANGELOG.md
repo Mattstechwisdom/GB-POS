@@ -1,8 +1,12 @@
 # Changelog
 
-## v0.6.64 (2026-09-09)
+## v0.6.65 (2026-09-09)
 
 - Matched the production desktop Command Center navigation and layout to the approved responsive preview.
+- Added production window size profiles so calendars, catalog tools, quote generation, reporting, and compact utilities use the space their content needs without smushed controls.
+- Reflowed All Invoices, Work Orders, and Sales into labeled cards on phones, eliminating sideways table scrolling while preserving every field and record action.
+- Made embedded calendar layouts fill the available desktop space and fit seven readable date columns on mobile without horizontal overflow.
+- Standardized mobile daughter-window controls with readable wrapping and touch-friendly sizing.
 - Removed the redundant persistent notification rail while keeping the notification bell connected to the full Notifications window.
 - Corrected active and Checked In repair counts by excluding closed, checked-out, cancelled, voided, refunded, deleted, and archived work orders regardless of stale balances.
 - Resolved assigned technician legacy, local, and cloud identifiers to technician display names; unresolved identifiers now appear as Unknown technician in Needs Attention.

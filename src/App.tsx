@@ -102,6 +102,13 @@ interface ModalEntry { id: string; type: string; }
 function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
   const contentOwnsClose = entry.type === 'customerSearch' || entry.type === 'customerOverview' || entry.type === 'addClient';
   const daughterWindow = !['newWorkOrder', 'newSale', 'consultation', 'repairCategories', 'inventory', 'reporting', 'dataTools', 'devMenu'].includes(entry.type);
+  const windowProfile = entry.type === 'calendar'
+    ? 'calendar'
+    : ['quoteGenerator', 'eod', 'products', 'vendors', 'workOrderRepairPicker', 'backup', 'technicians'].includes(entry.type)
+      ? 'dense'
+      : ['notifications', 'notificationSettings', 'clockIn', 'journal', 'reportEmail', 'charts', 'releaseForm', 'customerReceipt', 'feedback'].includes(entry.type)
+        ? 'compact'
+        : 'standard';
   const popOut = async () => {
     const api: any = (window as any).api;
     const method = Object.entries(API_TO_MODAL).find(([, type]) => type === entry.type)?.[0];
@@ -126,6 +133,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
       className={daughterWindow ? 'gb-daughter-modal-layer fixed inset-0 overflow-y-auto overflow-x-hidden p-3 pt-12 sm:p-6 sm:pt-12' : 'fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12'}
       style={{ zIndex }}
       data-modal-shell="1"
+      data-modal-type={entry.type}
     >
       {/* Floating actions + close button */}
       <div
@@ -159,7 +167,7 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
           </button>
         )}
       </div>
-      <div className={daughterWindow ? 'gb-daughter-modal-panel' : undefined}><React.Suspense fallback={
+      <div className={daughterWindow ? `gb-daughter-modal-panel gb-window-profile-${windowProfile}` : undefined}><React.Suspense fallback={
         <div className="flex min-h-[100dvh] items-center justify-center text-zinc-500">Loading…</div>
       }>
         <ModalContent type={entry.type} onClose={onClose} />
@@ -1327,7 +1335,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
   }, [ctxRow, computeWOTotals]);
 
   return (
-    <div className="p-2 overflow-x-auto">
+    <div className="gb-responsive-record-list p-2 overflow-x-auto">
       <table className="w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
@@ -1365,31 +1373,31 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
                   } catch (e) { console.error('Open editor failed', e); }
                 }}
               >
-                <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
-                <td className="px-2 py-1 capitalize">{r.status}</td>
-                <td className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
+                <td data-label="Invoice" className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
+                <td data-label="Date" className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
+                <td data-label="Status" className="px-2 py-1 capitalize">{r.status}</td>
+                <td data-label="Type" className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
                   <span className="xl:hidden">{mainRecordTypeLabel(r.displayType, true)}</span>
                   <span className="hidden xl:inline">{mainRecordTypeLabel(r.displayType)}</span>
                 </td>
-                <td className="px-2 py-1">{r.tech}</td>
-                <td className="px-2 py-1" title={r.customer}>
+                <td data-label="Technician" className="px-2 py-1">{r.tech}</td>
+                <td data-label="Client" className="px-2 py-1" title={r.customer}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.items || ''}>
+                <td data-label="Items" className="px-2 py-1" title={r.items || ''}>
                   <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
                     <div className="truncate">{r.items || ''}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.desc}>
+                <td data-label="Description" className="px-2 py-1" title={r.desc}>
                   <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
                     <div className="truncate">{r.desc}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
+                <td data-label="Total" className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
+                <td data-label="Remaining" className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>
             );
           })}
