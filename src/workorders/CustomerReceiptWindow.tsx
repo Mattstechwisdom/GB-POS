@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
@@ -71,8 +72,52 @@ const CustomerReceiptWindow: React.FC = () => {
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrReady, setQrReady] = useState(false);
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
+  const qrImgRef = useRef<HTMLImageElement | null>(null);
+
+  const shouldRenderSaleQr = isSaleReceipt && !Boolean((data as any).consultationType);
+
+  useEffect(() => {
+    setQrDataUrl('');
+    setQrReady(false);
+    if (!shouldRenderSaleQr) {
+      setQrReady(true);
+      return;
+    }
+
+    const recordId = Number((data as any).id || (data as any).invoiceId || 0) || 0;
+    if (!recordId) {
+      setQrReady(true);
+      return;
+    }
+
+    let alive = true;
+    (async () => {
+      try {
+        const statusResult: any = await Promise.race([
+          (window as any).api?.qrGetStatusUrl?.('sale', recordId),
+          new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
+        ]);
+        const qrUrl = String(statusResult?.url || '').trim();
+        if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'QR status URL is unavailable.');
+        const dataUrl = await QRCode.toDataURL(qrUrl, {
+          width: 176,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        if (alive && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
+      } catch {
+        // The receipt remains printable if cloud access is temporarily unavailable.
+      } finally {
+        if (alive) setQrReady(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [shouldRenderSaleQr, (data as any).id, (data as any).invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let alive = true;
@@ -155,7 +200,7 @@ const CustomerReceiptWindow: React.FC = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!flags.autoPrint || flags.silent) return;
+    if (!flags.autoPrint || flags.silent || !qrReady) return;
 
     if (didAutoPrintRef.current) return;
 
@@ -184,16 +229,16 @@ const CustomerReceiptWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrReady, qrDataUrl]);
 
   useEffect(() => {
-    if (!flags.autoPrint || !flags.silent) return;
+    if (!flags.autoPrint || !flags.silent || !qrReady) return;
 
     let cancelled = false;
     let fallbackTimer: number | undefined;
 
     const waitForImage = async () => {
-      const images = [logoImgRef.current].filter(Boolean) as HTMLImageElement[];
+      const images = [logoImgRef.current, qrImgRef.current].filter(Boolean) as HTMLImageElement[];
       await Promise.all(images.map((img) => {
         if (img.complete) return Promise.resolve();
         return new Promise<void>((resolve) => {
@@ -240,7 +285,7 @@ const CustomerReceiptWindow: React.FC = () => {
       cancelled = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [flags.autoPrint, flags.silent, logoSrc]);
+  }, [flags.autoPrint, flags.silent, logoSrc, qrReady, qrDataUrl]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
@@ -405,7 +450,7 @@ const CustomerReceiptWindow: React.FC = () => {
         }
       .page { width: 210mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
       .page-inner { display: flex; flex-direction: column; min-height: 0; }
-        .brand { display:grid; grid-template-columns:minmax(0,1fr) minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
+        .brand { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
         .brand-left { display:flex; min-width:0; align-items:center; gap:12px; }
         .brand-center { display:grid; justify-items:center; gap:2px; margin-left:auto; margin-right:14px; }
         .brand-right { min-width:15rem; text-align:right; font-size: 10pt; line-height:1.25; }
@@ -501,6 +546,14 @@ const CustomerReceiptWindow: React.FC = () => {
               <div style={{ fontSize: '10pt', color: '#222' }}>(803) 708-0101 • gadgetboysc@gmail.com</div>
               <div className="slogan">The Solution Lives Here!</div>
             </div>
+          </div>
+          <div className="brand-center">
+            {shouldRenderSaleQr && qrDataUrl ? (
+              <>
+                <img ref={qrImgRef} src={qrDataUrl} alt="Sale update QR" style={{ width: 76, height: 76, display: 'block' }} />
+                <div style={{ fontSize: '7pt', color: '#555', textAlign: 'center', letterSpacing: '0.35px' }}>TECH SCAN</div>
+              </>
+            ) : null}
           </div>
           <div className="brand-right">
             {(data as any).workOrderType === 'durantReport' ? <><div style={{ fontWeight: 900, fontSize: '13pt' }}>Durant Report</div><div style={{ fontWeight: 800 }}>{(data as any).durantFullTransfer ? 'Full Transfer — diagnostic payment applies toward Durant bench fee' : 'Device remains with GadgetBoy'}</div></> : null}

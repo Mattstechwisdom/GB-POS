@@ -29,6 +29,7 @@ try {
 
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
+let stopQrStatusServerForUpdate: () => Promise<void> = async () => {};
 
 function isTrustedRendererPermissionRequest(requestingUrl: string) {
   try {
@@ -1539,6 +1540,7 @@ async function startUpdateDownload() {
 async function installDownloadedUpdate() {
   if (!autoUpdater) return;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
+  await prepareForUpdateInstall();
   setTimeout(() => {
     try {
       autoUpdater.quitAndInstall(true, true);
@@ -1550,6 +1552,30 @@ async function installDownloadedUpdate() {
       });
     }
   }, 450);
+}
+
+async function prepareForUpdateInstall() {
+  // Finish writes before NSIS starts replacing application files.
+  try { await drainDbWrites(); } catch {}
+  try {
+    await Promise.race([
+      drainCloudSyncQueue(),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  } catch {}
+
+  // Release background resources that can keep Electron or installed files open.
+  try { disposeCloverConnector(); } catch {}
+  try { await stopQrStatusServerForUpdate(); } catch {}
+
+  // Daughter windows can retain their own renderer processes. Close those now;
+  // quitAndInstall will close the main and updater windows during handoff.
+  try {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win === mainWindow || win === updateUiWindow || win.isDestroyed()) continue;
+      try { win.destroy(); } catch {}
+    }
+  } catch {}
 }
 
 async function promptToDownloadUpdate(info: any) {
@@ -6838,6 +6864,18 @@ const httpMod = require('http');
 
 const QR_PORT = 7777;
 let qrHttpServer: any = null;
+stopQrStatusServerForUpdate = async () => {
+  if (!qrHttpServer) return;
+  const server = qrHttpServer;
+  qrHttpServer = null;
+  try { server.closeAllConnections?.(); } catch {}
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      try { server.close(() => resolve()); } catch { resolve(); }
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, 750)),
+  ]);
+};
 
 function getLanIp(): string {
   try {
@@ -6933,6 +6971,17 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
   const client = getCloudClient();
   if (!client || !cloudSession?.shopId || !id) return null;
 
+  // A freshly checked-out ticket may still be waiting in the background sync
+  // queue. Persist this exact record first so a newly printed QR never points
+  // at a token whose sale/work order is not available on the receiving device.
+  const recordKey = cloudRecordKeyForQrType(type);
+  const localRecords = (readDb() as any)?.[recordKey];
+  const localRecord = Array.isArray(localRecords)
+    ? localRecords.find((record: any) => Number(record?.id || 0) === id)
+    : null;
+  if (!localRecord) throw new Error('The saved record could not be found for this QR code.');
+  await cloudDbUpsert(recordKey, localRecord);
+
   const existing = await client
     .from('qr_status_tokens')
     .select('token')
@@ -6944,7 +6993,7 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) return cloudQrUrl(type, existing.data.token);
 
-  const recordTable = CLOUD_TABLE_BY_KEY[cloudRecordKeyForQrType(type)];
+  const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
   let recordCloudId: string | null = null;
   try {
     const record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();

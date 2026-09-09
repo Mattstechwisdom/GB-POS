@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.62 (2026-09-08)
+
+- Added working Supabase-backed QR codes to normal printed sales tickets and delayed automatic printing until QR generation completes.
+- Synchronized the underlying ticket before issuing a QR token so freshly created codes resolve correctly across devices.
+- Expanded Custom Build part entries with quantity, internal cost, supplier, SKU, order URL, order status, order date, estimated delivery, and tracking URL fields while keeping labor entries concise and non-taxable.
+- Preserved all Custom Build ordering metadata through editing, duplication, local persistence, and Supabase synchronization.
+- Hardened Windows update installation by flushing pending data, releasing background services, and closing daughter windows before the NSIS handoff.
+- Pinned the internal Windows installer builder away from the known NSIS uninstall regression; the GadgetBoy POS application version remains on the 0.6.x release line.
+
 ## v0.6.61 (2026-09-08)
 
 - Fixed client searches missing locally queued or recently synchronized customer records.

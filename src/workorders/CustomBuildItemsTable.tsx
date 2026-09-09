@@ -15,7 +15,75 @@ export type WorkOrderItemRow = {
   note?: string;
   discountType?: 'percent' | 'amount';
   discountValue?: number;
+  quantity?: number;
+  unitPrice?: number;
+  internalCost?: number;
+  partSource?: string;
+  distributorSku?: string;
+  orderSourceUrl?: string;
+  requiresOrder?: boolean;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
+  orderDate?: string;
+  estimatedDeliveryDate?: string;
+  trackingUrl?: string;
 };
+
+function roundedMoney(value: any): number {
+  return Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
+}
+
+export function customBuildResultToRow(result: CustomBuildItemResult, id: string, existing?: WorkOrderItemRow): WorkOrderItemRow {
+  const isPart = result.itemType === 'part';
+  const quantity = isPart ? Math.max(1, Number(result.quantity) || 1) : 1;
+  const unitPrice = roundedMoney(result.price);
+  const orderStatus = isPart ? (result.orderStatus || 'in_stock') : undefined;
+  return {
+    ...(existing || {}),
+    id,
+    device: 'Custom PC Build',
+    repair: String(result.description || '').trim(),
+    parts: isPart ? unitPrice : 0,
+    labor: isPart ? 0 : unitPrice,
+    quantity,
+    unitPrice,
+    ...(isPart ? {
+      internalCost: roundedMoney(result.internalCost),
+      partSource: String(result.partSource || '').trim(),
+      distributorSku: String(result.distributorSku || '').trim(),
+      orderSourceUrl: String(result.orderSourceUrl || '').trim(),
+      requiresOrder: orderStatus === 'needed' || orderStatus === 'ordered',
+      orderStatus,
+      orderDate: String(result.orderDate || ''),
+      estimatedDeliveryDate: String(result.estimatedDeliveryDate || ''),
+      trackingUrl: String(result.trackingUrl || '').trim(),
+    } : { requiresOrder: false }),
+    status: existing?.status || 'pending',
+  };
+}
+
+export function customBuildRowToPayload(row: WorkOrderItemRow): CustomBuildItemResult {
+  const isPart = Number(row.parts || 0) > 0;
+  const quantity = isPart ? Math.max(1, Number(row.quantity) || 1) : 1;
+  const price = Number.isFinite(Number(row.unitPrice))
+    ? roundedMoney(row.unitPrice)
+    : roundedMoney((isPart ? row.parts : row.labor) / quantity);
+  return {
+    description: row.repair,
+    itemType: isPart ? 'part' : 'labor',
+    quantity,
+    price,
+    ...(isPart ? {
+      internalCost: roundedMoney(row.internalCost),
+      partSource: String(row.partSource || ''),
+      distributorSku: String(row.distributorSku || ''),
+      orderSourceUrl: String(row.orderSourceUrl || ''),
+      orderStatus: row.orderStatus || (row.requiresOrder ? 'needed' : 'in_stock'),
+      orderDate: String(row.orderDate || ''),
+      estimatedDeliveryDate: String(row.estimatedDeliveryDate || ''),
+      trackingUrl: String(row.trackingUrl || ''),
+    } : {}),
+  };
+}
 
 interface Props {
   items: WorkOrderItemRow[];
@@ -60,11 +128,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
     const payload = {
       title,
       item: existing
-        ? {
-            description: existing.repair,
-            price: existing.parts > 0 ? existing.parts : existing.labor,
-            isParts: (existing.parts || 0) > 0,
-          }
+        ? customBuildRowToPayload(existing)
         : null,
     };
 
@@ -76,14 +140,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
     const res = await openEditor('Add Line Item', null);
     if (!res) return;
 
-    const row: WorkOrderItemRow = {
-      id: newId(),
-      device: 'Custom PC Build',
-      repair: res.description,
-      parts: res.isParts ? Number(res.price || 0) : 0,
-      labor: res.isParts ? 0 : Number(res.price || 0),
-      status: 'pending',
-    };
+    const row = customBuildResultToRow(res, newId());
 
     onChange([...(items || []), row]);
     setSelected(row.id);
@@ -93,12 +150,7 @@ const CustomBuildItemsTable: React.FC<Props> = ({ items, onChange, onAddProduct,
     const res = await openEditor('Edit Line Item', row);
     if (!res) return;
 
-    const next: WorkOrderItemRow = {
-      ...row,
-      repair: res.description,
-      parts: res.isParts ? Number(res.price || 0) : 0,
-      labor: res.isParts ? 0 : Number(res.price || 0),
-    };
+    const next = customBuildResultToRow(res, row.id, row);
 
     onChange(items.map((it) => (it.id === row.id ? next : it)));
   }
