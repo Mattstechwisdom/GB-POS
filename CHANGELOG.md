@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.70 (2026-09-10)
+
+- Restored the one-click Windows Auto Update and Relaunch flow so downloaded updates install silently and reopen GadgetBoy POS without stepping through the installer.
+- Retained pre-update database flushing, cloud synchronization, background-service shutdown, locked-process cleanup, optional Windows elevation, and the manual download recovery path.
+
 ## v0.6.69 (2026-09-09)
 
 - Immediately removes a closed or deleted record from the currently open Command Center daughter list as well as the live dashboard counts and queues.

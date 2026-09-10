@@ -1543,9 +1543,9 @@ async function installDownloadedUpdate() {
   await prepareForUpdateInstall();
   setTimeout(() => {
     try {
-      // Use assisted NSIS so Windows can request elevation when an existing
-      // installation or locked file cannot be replaced at user level.
-      autoUpdater.quitAndInstall(false, true);
+      // Run NSIS silently for the one-click update-and-relaunch experience.
+      // The packaged elevation helper remains available if Windows needs it.
+      autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
       showUpdateUi({
