@@ -125,3 +125,7 @@ export function searchCommandCenterRecords(model: CommandCenterModel, query: str
   if (!terms.length) return [];
   return model.records.filter(record => terms.every(term => record.searchText.includes(term))).slice(0, 30);
 }
+
+export function removeCommandCenterRecord<T extends Pick<CommandCenterRecord, 'id' | 'kind'>>(records: T[] = [], target: Pick<CommandCenterRecord, 'id' | 'kind'>) {
+  return records.filter(record => !(String(record.id) === String(target.id) && record.kind === target.kind));
+}

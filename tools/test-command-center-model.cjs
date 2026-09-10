@@ -5,7 +5,7 @@ const esbuild = require('esbuild');
 const build = esbuild.buildSync({ entryPoints: [path.join(__dirname, '..', 'src', 'lib', 'commandCenter.ts')], bundle: true, platform: 'node', format: 'cjs', write: false });
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
-const { buildCommandCenterModel } = moduleShim.exports;
+const { buildCommandCenterModel, removeCommandCenterRecord } = moduleShim.exports;
 
 const model = buildCommandCenterModel({
   now: new Date('2026-09-09T12:00:00'),
@@ -24,5 +24,16 @@ assert.equal(model.stages['Checked in'].length, 1, 'only genuinely open unclassi
 assert.equal(model.workOrders.find((row) => row.id === 13).technician, 'Matthew');
 assert.equal(model.workOrders.find((row) => row.id === 11).technician, 'Matthew');
 assert.equal(model.workOrders.find((row) => row.id === 14).technician, 'Unknown technician');
+
+const openPanelRows = [
+  { id: 13, kind: 'workorder' },
+  { id: 13, kind: 'sale' },
+  { id: 14, kind: 'workorder' },
+];
+assert.deepEqual(
+  removeCommandCenterRecord(openPanelRows, { id: 13, kind: 'workorder' }),
+  [openPanelRows[1], openPanelRows[2]],
+  'closing a work order must remove that exact row from the currently open Command Center list',
+);
 
 console.log('Command Center model regression checks passed.');

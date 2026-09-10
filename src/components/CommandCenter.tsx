@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { buildCommandCenterModel, searchCommandCenterRecords, type CommandCenterRecord } from '@/lib/commandCenter';
+import { buildCommandCenterModel, removeCommandCenterRecord, searchCommandCenterRecords, type CommandCenterRecord } from '@/lib/commandCenter';
 import { reconcileLegacyWorkOrders } from '@/lib/workOrderCleanup';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
@@ -107,13 +107,14 @@ export default function CommandCenter(props: Props) {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
           if (!source || !window.confirm(`Close work order ${invoice}? No payment will be added.`)) return;
           await api?.dbUpdate?.('workOrders', menuRecord.id, { ...source, status: 'closed', updatedAt: new Date().toISOString() });
+          setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current);
           await load();
         } } as ContextMenuItem,
         { label: 'Print Customer Receipt', onClick: async () => { await api?.openCustomerReceipt?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,
         { label: 'Print Release Form', onClick: async () => { await api?.openReleaseForm?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,
       ] : []),
       { type: 'separator' },
-      { label: 'Delete…', danger: true, onClick: async () => { if (window.confirm(`Delete ${invoice}? This cannot be undone.`)) { await api?.dbDelete?.(isWorkOrder ? 'workOrders' : 'sales', menuRecord.id); await load(); } } },
+      { label: 'Delete…', danger: true, onClick: async () => { if (window.confirm(`Delete ${invoice}? This cannot be undone.`)) { await api?.dbDelete?.(isWorkOrder ? 'workOrders' : 'sales', menuRecord.id); setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current); await load(); } } },
     ];
   }, [data.workOrders, load, menuRecord]);
   const toggle = (key: string) => setCollapsed(current => ({ ...current, [key]: !current[key] }));

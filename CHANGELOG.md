@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.69 (2026-09-09)
+
+- Immediately removes a closed or deleted record from the currently open Command Center daughter list as well as the live dashboard counts and queues.
+- Keeps desktop right-click and mobile/tablet long-press record actions synchronized with the visible list without requiring the window to be closed and reopened.
+
 ## v0.6.68 (2026-09-09)
 
 - Closed confirmed legacy work orders older than 30 days in the live shop without adding payments or deleting client, invoice, or repair history.
