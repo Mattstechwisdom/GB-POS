@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildCommandCenterModel, removeCommandCenterRecord, searchCommandCenterRecords, type CommandCenterRecord } from '@/lib/commandCenter';
 import { reconcileLegacyWorkOrders } from '@/lib/workOrderCleanup';
 import { shouldOpenAttentionPanel } from '@/lib/commandCenterPresentation';
+import { attentionReasonsForWorkOrder, pickupLifecycleFor } from '@/lib/workOrderLifecycle';
+import { supabase } from '@/lib/supabase';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
 import { useContextMenu } from '@/lib/useContextMenu';
@@ -25,6 +27,10 @@ const relativeAge = (value: string) => {
 export default function CommandCenter(props: Props) {
   const [data, setData] = useState({ customers: [] as any[], technicians: [] as any[], workOrders: [] as any[], sales: [] as any[], calendarEvents: [] as any[], purchaseOrders: [] as any[] });
   const [loading, setLoading] = useState(true);
+  const [clientResponses,setClientResponses]=useState<any[]>([]);
+  const [selectedResponse,setSelectedResponse]=useState<any|null>(null);
+  const [staffReply,setStaffReply]=useState('');
+  const [replyBusy,setReplyBusy]=useState(false);
   const [panel, setPanel] = useState<{ title: string; records?: CommandCenterRecord[]; kind?: 'today' } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ today: false, pickup: false });
   const recordMenu = useContextMenu<CommandCenterRecord>();
@@ -36,7 +42,7 @@ export default function CommandCenter(props: Props) {
     const api: any = (window as any).api;
     if (!api) return setLoading(false);
     try {
-      const [customers, technicians, workOrders, sales, calendarEvents, purchaseOrders, settingsRows] = await Promise.all([
+      const [customers, technicians, workOrders, sales, calendarEvents, purchaseOrders, settingsRows, responseResult] = await Promise.all([
         (api.getCustomers?.() ?? api.dbGet('customers')).catch(() => []),
         api.dbGet('technicians').catch(() => []),
         (api.getWorkOrders?.({ limit: 2000, sortBy: 'activityAt', sortDir: 'desc' }) ?? api.dbGet('workOrders')).catch(() => []),
@@ -44,11 +50,20 @@ export default function CommandCenter(props: Props) {
         api.dbGet('calendarEvents').catch(() => []),
         api.dbGet('purchaseOrders').catch(() => []),
         api.dbGet('settings').catch(() => []),
+        supabase.from('client_responses').select('*').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
       ]);
       const cleanup = await reconcileLegacyWorkOrders(api, { workOrders: workOrders || [], settings: settingsRows?.[0]?.ticketCleanupSettings });
       const updatedById = new Map(cleanup.updatedRecords.map(record => [String(record.id), record]));
       const reconciledWorkOrders = (workOrders || []).map((record: any) => updatedById.get(String(record.id)) || record);
       setData({ customers: customers || [], technicians: technicians || [], workOrders: reconciledWorkOrders, sales: sales || [], calendarEvents: calendarEvents || [], purchaseOrders: purchaseOrders || [] });
+      if(!responseResult.error) setClientResponses(responseResult.data||[]);
+      for(const workOrder of reconciledWorkOrders){
+        if(!pickupLifecycleFor(workOrder).reminderDue) continue;
+        try{
+          const {data:reminder}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(workOrder.id),statusKey:'pickup_reminder',deliveryMode:'email'}});
+          if(reminder?.ok) await api.dbUpdate('workOrders',workOrder.id,{...workOrder,pickupReminderSentAt:new Date().toISOString()});
+        }catch(error){console.warn('Automatic pickup reminder is still pending',error)}
+      }
     } finally { setLoading(false); }
   }, []);
 
@@ -58,8 +73,12 @@ export default function CommandCenter(props: Props) {
     const offs = [api?.onWorkOrdersChanged?.(load), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onTechniciansChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load]);
+  useEffect(()=>{const channel=supabase.channel('command-center-client-responses').on('postgres_changes',{event:'*',schema:'public',table:'client_responses'},()=>void load()).subscribe();return()=>{void supabase.removeChannel(channel)}},[load]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
+  const responseRecord=(reply:any)=>model.workOrders.find(row=>String(row.id)===String(reply.legacy_record_id));
+  const resolveResponse=async(reply:any)=>{await supabase.from('client_responses').update({resolved_at:new Date().toISOString(),unread:false}).eq('id',reply.id);setClientResponses(rows=>rows.filter(row=>row.id!==reply.id));setSelectedResponse(null);};
+  const sendReply=async()=>{if(!selectedResponse||!staffReply.trim())return;setReplyBusy(true);try{const {data:sent,error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(selectedResponse.legacy_record_id),statusKey:'manual_update',notes:staffReply.trim(),deliveryMode:'email'}});if(error||!sent?.ok)throw error||new Error(sent?.error||'Reply failed');await supabase.from('client_responses').insert({shop_id:selectedResponse.shop_id,work_order_id:selectedResponse.work_order_id,legacy_record_id:selectedResponse.legacy_record_id,customer_id:selectedResponse.customer_id,response_type:'staff_reply',message:staffReply.trim(),unread:false,resolved_at:new Date().toISOString(),delivery_status:sent.deliveryStatus||'sent'});setStaffReply('');await resolveResponse(selectedResponse);}catch(error:any){window.alert(error?.message||'Reply could not be sent.');}finally{setReplyBusy(false)}};
   const searchResults = useMemo(() => searchCommandCenterRecords(model, props.keyword), [model, props.keyword]);
   const openRecord = async (record: CommandCenterRecord) => {
     const api: any = (window as any).api;
@@ -110,8 +129,10 @@ export default function CommandCenter(props: Props) {
         { label: 'Close Work Order', onClick: async () => {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
           if (!source || !window.confirm(`Close work order ${invoice}? No payment will be added.`)) return;
-          await api?.dbUpdate?.('workOrders', menuRecord.id, { ...source, status: 'closed', updatedAt: new Date().toISOString() });
+          const closed = { ...source, status: 'closed', updatedAt: new Date().toISOString() };
+          setData(current => ({ ...current, workOrders: current.workOrders.map((record:any) => String(record.id) === String(menuRecord.id) ? closed : record) }));
           setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current);
+          await api?.dbUpdate?.('workOrders', menuRecord.id, closed);
           await load();
         } } as ContextMenuItem,
         { label: 'Print Customer Receipt', onClick: async () => { await api?.openCustomerReceipt?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,
@@ -126,8 +147,8 @@ export default function CommandCenter(props: Props) {
     const currentRequest = Number(props.attentionRequest || 0);
     const shouldOpen = shouldOpenAttentionPanel(lastAttentionRequest.current, currentRequest);
     lastAttentionRequest.current = currentRequest;
-    if (shouldOpen) setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned' || row.technician === 'Unknown technician') });
-  }, [model, props.attentionRequest]);
+    if (shouldOpen) setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned' || row.technician === 'Unknown technician' || attentionReasonsForWorkOrder(row.source).length>0) });
+  }, [model, props.attentionRequest,clientResponses]);
 
   return <div className="command-center">
     <div className="command-center-heading"><div><h1>Command Center</h1><span>{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span></div><div><button onClick={() => void load()}>Refresh</button></div></div>
@@ -141,11 +162,13 @@ export default function CommandCenter(props: Props) {
     </div>
     <div className="command-center-stages">{['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup'].map(stage => <button key={stage} onClick={() => showRecords(`${stage} Repairs`, model.stages[stage] || [])}><span>{stage}</span><strong>{model.stages[stage]?.length || 0}</strong></button>)}</div>
     <div className="command-center-grid">
-      <section className="command-center-section queue"><header><strong>Today’s Repair Queue</strong><div><button onClick={() => showRecords('Today’s Repair Queue', model.repairQueue)}>Open Full Queue</button><button className="command-center-section-toggle" onClick={() => toggle('queue')} aria-expanded={!collapsed.queue}>{collapsed.queue ? '›' : '⌄'}</button></div></header>{!collapsed.queue ? model.repairQueue.slice(0, 6).map(record => <button className="command-center-row" key={record.id} onClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><i className={record.stage === 'Checked in' ? 'urgent' : record.stage === 'Pickup' ? 'good' : ''} /><CommandCenterRecordHoverCard record={record} className="command-center-row-copy"><strong>{record.deviceLabel}</strong><small>{record.customerName} · {record.problem}</small><small className="command-center-row-meta">WO #{record.id} · {relativeAge(record.activityAt)}</small></CommandCenterRecordHoverCard><em>{record.stage}</em></button>) : null}{!collapsed.queue && !model.repairQueue.length ? <p className="command-center-empty">No actionable repairs right now.</p> : null}</section>
+      <section className="command-center-section queue"><header><strong>Today’s Repair Queue</strong><div><button onClick={() => showRecords('Today’s Repair Queue', model.repairQueue)}>Open Full Queue</button><button className="command-center-section-toggle" onClick={() => toggle('queue')} aria-expanded={!collapsed.queue}>{collapsed.queue ? '›' : '⌄'}</button></div></header>{!collapsed.queue ? model.repairQueue.slice(0, 6).map(record => <button className={record.expedited ? 'command-center-row expedited' : 'command-center-row'} key={record.id} onClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><i className={record.expedited ? 'expedited' : record.stage === 'Checked in' ? 'urgent' : record.stage === 'Pickup' ? 'good' : ''} /><CommandCenterRecordHoverCard record={record} className="command-center-row-copy"><strong>{record.deviceLabel}{record.expedited ? <b className="command-center-expedited-badge">Expedited</b> : null}</strong><small>{record.customerName} · {record.problem}</small><small className="command-center-row-meta">WO #{record.id} · {relativeAge(record.activityAt)}</small></CommandCenterRecordHoverCard><em>{record.stage}</em></button>) : null}{!collapsed.queue && !model.repairQueue.length ? <p className="command-center-empty">No actionable repairs right now.</p> : null}</section>
+      <section className="command-center-section client-replies"><header><strong>Client Replies</strong><div><button onClick={()=>setPanel({title:'Client Replies',records:clientResponses.map(responseRecord).filter(Boolean) as CommandCenterRecord[]})}>View All ({clientResponses.length})</button><button className="command-center-section-toggle" onClick={()=>toggle('replies')}>{collapsed.replies?'›':'⌄'}</button></div></header>{!collapsed.replies?clientResponses.slice(0,5).map(reply=>{const record=responseRecord(reply);return <button className="command-center-row" key={reply.id} onClick={()=>setSelectedResponse(reply)}><i className={reply.response_type==='question'?'urgent':'good'}/><span><strong>{record?.customerName||`WO #${reply.legacy_record_id}`} · {String(reply.response_type).toUpperCase()}</strong><small>{record?.deviceLabel||'Device'} · WO #{reply.legacy_record_id}</small><small>{reply.message||'No message included'}</small></span><em>{reply.unread?'New':'Open'}</em></button>}):null}</section>
       <section className="command-center-section"><header><strong>Today</strong><div><button onClick={() => props.onOpenModal('calendar')}>Open Full Calendar</button><button className="command-center-section-toggle" onClick={() => toggle('today')} aria-expanded={!collapsed.today}>{collapsed.today ? '›' : '⌄'}</button></div></header>{!collapsed.today ? <div className="command-center-today">{[['Tasks', model.today.tasks.length], ['Events', model.today.events.length], ['Consultations', model.today.consultations.length], ['Deliveries', model.today.deliveries.length]].map(([label, count]) => <button key={String(label)} onClick={() => props.onOpenModal('calendar')}><span>{label}</span><strong>{count}</strong></button>)}</div> : null}</section>
       <section className="command-center-section"><header><strong>Ready for Pickup</strong><div><button onClick={() => showRecords('Ready for Pickup', model.readyForPickup)}>View All</button><button className="command-center-section-toggle" onClick={() => toggle('pickup')} aria-expanded={!collapsed.pickup}>{collapsed.pickup ? '›' : '⌄'}</button></div></header>{!collapsed.pickup ? model.readyForPickup.slice(0, 5).map(record => <button className="command-center-row" key={record.id} onClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><i className="good" /><span><strong>{record.title}</strong><small>{record.customerName} · {record.remaining ? `${money(record.remaining)} due` : 'Paid'}</small></span><em>Open</em></button>) : null}</section>
     </div>
-    {panel ? <div className="command-center-panel-layer" onMouseDown={event => { if (event.target === event.currentTarget) setPanel(null); }}><section className="command-center-panel"><header><h2>{panel.title}</h2><div><button title="Open in separate window" onClick={() => window.open(window.location.href, '_blank', 'width=1100,height=800')}>↗</button><button aria-label="Close" onClick={() => setPanel(null)}>×</button></div></header><div className="command-center-panel-table"><table><thead><tr><th>Record</th><th>Device / Client</th><th>Status</th><th>Technician</th><th>Balance</th><th>Activity</th></tr></thead><tbody>{(panel.records || []).map(record => <tr key={`${record.kind}-${record.id}`} onDoubleClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><td>{record.kind === 'workorder' ? `WO #${record.id}` : `Invoice #${record.id}`}</td><td><CommandCenterRecordHoverCard record={record} className="command-center-panel-record"><strong>{recordLabel(record)}</strong><small>{record.kind === 'workorder' ? `${record.customerName} · ${record.problem}` : record.customerName}</small></CommandCenterRecordHoverCard></td><td>{record.stage || record.status}</td><td>{record.technician}</td><td>{money(record.remaining)}</td><td>{relativeAge(record.activityAt)}</td></tr>)}</tbody></table></div>{!(panel.records || []).length ? <p className="command-center-empty">No matching records.</p> : null}</section></div> : null}
+    {panel ? <div className="command-center-panel-layer" onMouseDown={event => { if (event.target === event.currentTarget) setPanel(null); }}><section className="command-center-panel"><header><h2>{panel.title}</h2><div><button title="Open in separate window" onClick={() => window.open(window.location.href, '_blank', 'width=1100,height=800')}>↗</button><button aria-label="Close" onClick={() => setPanel(null)}>×</button></div></header><div className="command-center-panel-table"><table><thead><tr><th>Record</th><th>Device / Client</th><th>Status</th><th>Technician</th><th>Balance</th><th>Activity</th></tr></thead><tbody>{(panel.records || []).map(record => <tr className={record.expedited ? 'expedited' : ''} key={`${record.kind}-${record.id}`} onDoubleClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><td>{record.kind === 'workorder' ? `WO #${record.id}` : `Invoice #${record.id}`}</td><td><CommandCenterRecordHoverCard record={record} className="command-center-panel-record"><strong>{recordLabel(record)}{record.expedited ? <b className="command-center-expedited-badge">Expedited</b> : null}</strong><small>{record.kind === 'workorder' ? `${record.customerName} · ${record.problem}` : record.customerName}</small></CommandCenterRecordHoverCard></td><td>{record.stage || record.status}</td><td>{record.technician}</td><td>{money(record.remaining)}</td><td>{relativeAge(record.activityAt)}</td></tr>)}</tbody></table></div>{!(panel.records || []).length ? <p className="command-center-empty">No matching records.</p> : null}</section></div> : null}
     <ContextMenu id="command-center-record-menu" open={recordMenu.state.open} x={recordMenu.state.x} y={recordMenu.state.y} items={recordMenuItems} onClose={recordMenu.close} zIndex={240} />
+    {selectedResponse ? <div className="command-center-panel-layer" onMouseDown={event=>{if(event.target===event.currentTarget)setSelectedResponse(null)}}><section className="command-center-panel command-center-reply"><header><h2>Client Reply · WO #{selectedResponse.legacy_record_id}</h2><button aria-label="Close" onClick={()=>setSelectedResponse(null)}>×</button></header><div className="command-center-reply-body"><strong>{responseRecord(selectedResponse)?.customerName||'Client'} · {responseRecord(selectedResponse)?.deviceLabel||'Device'}</strong><p>{selectedResponse.message||`Client ${selectedResponse.response_type} the repair.`}</p><label>Send Reply<textarea value={staffReply} onChange={event=>setStaffReply(event.target.value)} placeholder="Type a response to the client…" /></label><div><button onClick={()=>{const record=responseRecord(selectedResponse);if(record)void openRecord(record)}}>Open Work Order</button><button onClick={()=>void resolveResponse(selectedResponse)}>Mark Resolved</button><button className="send" disabled={replyBusy||!staffReply.trim()} onClick={()=>void sendReply()}>{replyBusy?'Sending…':'Send Reply'}</button></div></div></section></div>:null}
   </div>;
 }

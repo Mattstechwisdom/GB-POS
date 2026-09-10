@@ -422,7 +422,15 @@ const NewWorkOrderWindow: React.FC = () => {
     void (async () => {
       const rows = await (window as any).api?.dbGet?.('repairCategories').catch(() => []);
       if (!active) return;
-      setDiagnosticOptions((Array.isArray(rows) ? rows : []).filter((item: RepairItem) => /diagnostic/i.test(`${item.repairCategory || ''} ${item.title || ''}`)));
+      const diagnostics = (Array.isArray(rows) ? rows : []).filter((item: RepairItem) => /diagnostic/i.test(`${item.repairCategory || ''} ${item.title || ''}`));
+      const unique = new Map<string, RepairItem>();
+      diagnostics.forEach((item: RepairItem) => {
+        const label = String(item.title || item.repairCategory || 'Diagnostic').trim().toLowerCase().replace(/\s+/g, ' ');
+        const amount = Math.max(0, Number(item.laborCost || 0) + Number(item.partCost || 0)).toFixed(2);
+        const key = `${label}|${amount}`;
+        if (!unique.has(key)) unique.set(key, item);
+      });
+      setDiagnosticOptions([...unique.values()]);
     })();
     return () => { active = false; };
   }, []);
@@ -644,6 +652,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const onSaveRef = useRef<() => void>(() => {});
   const onCancelRef = useRef<() => void>(() => {});
   const woRef = useRef<any>(wo);
+  const persistedIdRef = useRef<number>(Number((wo as any).id || 0) || 0);
   const isEditingExistingRef = useRef<boolean>(isEditingExisting);
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
@@ -714,12 +723,14 @@ const NewWorkOrderWindow: React.FC = () => {
       (async () => {
         try {
           const api = (window as any).api || {};
-          if (isEditingExistingRef.current || (current.id && current.id !== 0)) {
+          const persistedId = persistedIdRef.current || Number(current.id || 0);
+          if (isEditingExistingRef.current || persistedId) {
+            current.id = persistedId;
             if (typeof api.update === 'function') await api.update('workOrders', { ...current });
             else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', current.id, { ...current });
           } else {
-            if (typeof api.addWorkOrder === 'function') await api.addWorkOrder({ ...current });
-            else if (typeof api.dbAdd === 'function') await api.dbAdd('workOrders', { ...current });
+            const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...current }) : await api.dbAdd('workOrders', { ...current });
+            if (added?.id) persistedIdRef.current = Number(added.id);
           }
           try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
         } catch (err) {
@@ -751,7 +762,7 @@ const NewWorkOrderWindow: React.FC = () => {
         if (!hasMeaningful) return;
         const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...val }) : await api.dbAdd('workOrders', { ...val });
         saved = added;
-        if (added?.id) setWo(w => ({ ...w, id: added.id }));
+        if (added?.id) { persistedIdRef.current = Number(added.id); woRef.current = { ...woRef.current, ...added, id: added.id }; setWo(w => ({ ...w, id: added.id })); }
       }
       setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
       try { window.opener?.postMessage({ type: 'workorders:changed', id: (val as any).id }, '*'); } catch {}
@@ -891,6 +902,7 @@ const NewWorkOrderWindow: React.FC = () => {
           console.log('Work order added', saved);
         }
         const savedId = Number(saved?.id || wo.id || 0);
+        if(savedId){ persistedIdRef.current=savedId; woRef.current={...woRef.current,...saved,id:savedId}; }
         try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
 
@@ -1078,6 +1090,8 @@ const NewWorkOrderWindow: React.FC = () => {
       const added = await api.addWorkOrder({ ...current });
       if (added?.id) {
         const newId = Number(added.id) || 0;
+        persistedIdRef.current = newId;
+        woRef.current = { ...woRef.current, ...added, id: newId };
         // Sync React state so the autosave takes the UPDATE path, not CREATE again
         setWo(w => ({ ...w, id: newId }));
         return newId;

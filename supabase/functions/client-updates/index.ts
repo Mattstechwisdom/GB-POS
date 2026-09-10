@@ -22,9 +22,15 @@ const STATUS_OPTIONS: Record<UpdateType, Record<string, string>> = {
     repair_complete: "Repair Complete",
     not_possible: "Repair Not Possible",
     repair_approval: "Repair Approval Requested",
+    approval_received: "Repair Approved",
+    repair_declined: "Repair Declined",
     customer_promise: "Customer Promise Scheduled",
     technician_progress: "Technician Progress",
     testing_in_progress: "Testing In Progress",
+    schedule_pickup: "Pickup Scheduled",
+    picked_up: "Picked Up / Ticket Closed",
+    approve_storage_fee: "Storage Fee Approved",
+    items_delivered: "Items Delivered",
   },
   sale: {
     pickup_reminder: "Pickup Reminder",
@@ -32,6 +38,7 @@ const STATUS_OPTIONS: Record<UpdateType, Record<string, string>> = {
     product_ordered: "Product Ordered",
     shipping_delayed: "Shipping Delay",
     product_in_shop: "Product Arrived",
+    items_delivered: "Items Delivered",
   },
   consult: {
     consultation_reminder: "Consultation Reminder",
@@ -48,10 +55,14 @@ const REPAIR_STATUS: Record<string, string> = {
   part_ordered: "Part Ordered",
   waiting_part: "Waiting on Part Delivery",
   part_delivered: "Part Delivered - Repairs Starting",
-  repair_complete: "Repair Complete",
-  not_possible: "Repair Not Possible",
+  repair_complete: "Repair Complete - Ready for Pickup",
+  not_possible: "Repair Not Possible - Awaiting Pickup",
   repair_approval: "Awaiting Repair Approval",
+  approval_received: "Repair In Progress",
+  repair_declined: "Repair Declined - Awaiting Pickup",
   testing_in_progress: "Testing In Progress",
+  schedule_pickup: "Pickup Scheduled",
+  picked_up: "Picked Up",
 };
 
 const SALE_STATUS: Record<string, string> = {
@@ -126,6 +137,13 @@ function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, es
     return { tech_notes: notes, last_update_note: notes, last_update_at: now };
   }
   if (!preserveTechNotes) patch.tech_notes = notes || "";
+  if (type === "repair" && (statusKey === "part_ordered" || statusKey === "waiting_part")) {
+    patch.parts_est_delivery = estimatedDate || null;
+    patch.parts_estimated_delivery = estimatedDate || null;
+  }
+  if(type==='repair' && statusKey==='schedule_pickup') patch.scheduled_pickup_at=estimatedDate ? new Date(`${estimatedDate}T${estimatedTime||'12:00'}:00`).toISOString() : null;
+  if(type==='repair' && (statusKey==='repair_complete'||statusKey==='not_possible'||statusKey==='repair_declined')) patch.pickup_ready_at=now;
+  if(type==='repair' && statusKey==='picked_up') Object.assign(patch,{status:'closed',picked_up_at:now,client_pickup_date:now});
   if (manual) {
     patch.last_update_note = notes || statusLabel;
     patch.last_update_at = now;
@@ -141,7 +159,7 @@ function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, es
   return patch;
 }
 
-function emailCopy(details: ReturnType<typeof customerDetails>, statusKey: string, statusLabel: string, estimatedDate: string, estimatedTime: string, notes: string) {
+function emailCopy(details: ReturnType<typeof customerDetails>, statusKey: string, statusLabel: string, estimatedDate: string, estimatedTime: string, notes: string, responseUrl = '') {
   const manual = statusKey === "manual_update";
   const subject = manual ? `Update from GadgetBoy - ${details.order}` : `${statusLabel} - ${details.order}`;
   const updateText = manual ? (notes || statusLabel) : statusLabel;
@@ -150,7 +168,8 @@ function emailCopy(details: ReturnType<typeof customerDetails>, statusKey: strin
   const dateText = estimatedDate ? `\n${dateLabel}: ${estimatedDate}${estimatedTime ? ` at ${estimatedTime}` : ""}` : "";
   const noteText = !manual && notes ? `\n${noteLabel}: ${notes}` : "";
   const text = `Hi ${details.name},\n\nHere is an update for ${details.item} (${details.order}):\n\n${updateText}${dateText}${noteText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`;
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b"><div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #d4d4d8"><div style="padding:18px 22px;background:#18181b;border-bottom:4px solid #39ff14;color:#fff"><div style="font-size:18px;font-weight:800">GADGETBOY Repair &amp; Retail</div><div style="margin-top:4px;font-size:12px;color:#d4d4d8">2822 Devine Street, Columbia, SC 29205 | (803) 708-0101</div></div><div style="padding:24px"><p style="margin-top:0">Hi <strong>${escapeHtml(details.name)}</strong>,</p><p>Here is an update for <strong>${escapeHtml(details.item)}</strong> (${escapeHtml(details.order)}).</p><div style="margin:20px 0;padding:16px;border:1px solid #a1a1aa;border-left:5px solid #8b5cf6;background:#fafafa"><div style="font-size:12px;font-weight:800;text-transform:uppercase;color:#52525b">Current update</div><div style="margin-top:6px;font-size:18px;font-weight:800">${escapeHtml(updateText)}</div>${estimatedDate ? `<div style="margin-top:10px"><strong>${dateLabel}:</strong> ${escapeHtml(estimatedDate)}${estimatedTime ? ` at ${escapeHtml(estimatedTime)}` : ""}</div>` : ""}${!manual && notes ? `<div style="margin-top:10px"><strong>${noteLabel}:</strong> ${escapeHtml(notes)}</div>` : ""}</div><p style="font-size:13px;color:#52525b">Questions? Call (803) 708-0101 or reply to this email.</p></div></div></body></html>`;
+  const actions = statusKey === 'repair_approval' && responseUrl ? `<div style="margin:22px 0;display:flex;gap:9px;flex-wrap:wrap"><a href="${escapeHtml(responseUrl)}&action=approve" style="padding:12px 16px;background:#15803d;color:white;text-decoration:none;font-weight:bold">Approve Repair</a><a href="${escapeHtml(responseUrl)}&action=decline" style="padding:12px 16px;background:#be123c;color:white;text-decoration:none;font-weight:bold">Decline Repair</a><a href="${escapeHtml(responseUrl)}&action=view" style="padding:12px 16px;background:#7e22ce;color:white;text-decoration:none;font-weight:bold">Ask a Question</a></div>` : '';
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b"><div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #d4d4d8"><div style="padding:18px 22px;background:#18181b;border-bottom:4px solid #39ff14;color:#fff"><div style="font-size:18px;font-weight:800">GADGETBOY Repair &amp; Retail</div><div style="margin-top:4px;font-size:12px;color:#d4d4d8">2822 Devine Street, Columbia, SC 29205 | (803) 708-0101</div></div><div style="padding:24px"><p style="margin-top:0">Hi <strong>${escapeHtml(details.name)}</strong>,</p><p>Here is an update for <strong>${escapeHtml(details.item)}</strong> (${escapeHtml(details.order)}).</p><div style="margin:20px 0;padding:16px;border:1px solid #a1a1aa;border-left:5px solid #8b5cf6;background:#fafafa"><div style="font-size:12px;font-weight:800;text-transform:uppercase;color:#52525b">Current update</div><div style="margin-top:6px;font-size:18px;font-weight:800">${escapeHtml(updateText)}</div>${estimatedDate ? `<div style="margin-top:10px"><strong>${dateLabel}:</strong> ${escapeHtml(estimatedDate)}${estimatedTime ? ` at ${escapeHtml(estimatedTime)}` : ""}</div>` : ""}${!manual && notes ? `<div style="margin-top:10px"><strong>${noteLabel}:</strong> ${escapeHtml(notes)}</div>` : ""}</div>${actions}<p style="font-size:13px;color:#52525b">Questions? Call (803) 708-0101 or reply to this email.</p></div></div></body></html>`;
   return { subject, text, html };
 }
 
@@ -165,6 +184,8 @@ function smsCopy(details: ReturnType<typeof customerDetails>, statusKey: string,
     repair_complete: "Great news! Your repair is complete and your device is ready for pickup.",
     not_possible: "We completed our assessment, but unfortunately the repair could not be completed.",
     repair_approval: "We have completed the estimate for your repair and need your approval before proceeding.",
+    approval_received: "Your repair approval has been recorded, and we are moving forward with the next step.",
+    repair_declined: "Your decision not to proceed with the repair has been recorded. We will keep the device ready for pickup.",
     customer_promise: "We have scheduled the following update or follow-up commitment for your repair.",
     testing_in_progress: "Your repair is now in testing. We are verifying proper operation before the next step.",
     product_ordered: "Your product has been ordered. We will let you know as soon as it arrives.",
@@ -258,6 +279,33 @@ Deno.serve(async (req: Request) => {
     if (statusKey === "manual_update" && !notes) throw httpError(400, "Enter the message you want to send to the client.");
     if (statusKey === "technician_progress" && !notes) throw httpError(400, "Enter the technician progress notes.");
     if (statusKey === "customer_promise" && (!estimatedDate || !notes)) throw httpError(400, "Enter the promise date and what was promised.");
+    if (statusKey === "schedule_pickup" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the scheduled pickup date and time.");
+    if(statusKey==='picked_up') { const remaining=Number((record.totals as JsonRecord)?.remaining || record.balance || 0); if(remaining>0 && body.managerOverride!==true) throw httpError(409,`This ticket still has a $${remaining.toFixed(2)} balance. Complete checkout or use a manager override.`); }
+    if(statusKey==='approve_storage_fee'){
+      const anchor=new Date(record.scheduled_pickup_at||record.pickup_ready_at||record.repair_completion_date||0).getTime();
+      const days=anchor?Math.floor(Math.max(0,Date.now()-anchor)/86400000):0, fee=Math.max(0,record.scheduled_pickup_at?days:days-7)*25;
+      if(fee<=0) throw httpError(409,'No storage fee is currently due.');
+      const items=Array.isArray(record.items)?record.items:[];
+      if(items.some((item:JsonRecord)=>safeString(item.feeType)==='storage')) throw httpError(409,'A storage fee is already on this ticket.');
+      const totals=(record.totals as JsonRecord)||{}, nextTotal=Number(totals.total||0)+fee, nextRemaining=Number(totals.remaining||0)+fee;
+      const {data:feeRows,error:feeError}=await admin.from(table).update({items:[...items,{id:`storage-${Date.now()}`,repair:'Storage Fee',description:`Storage Fee (${days-7} days × $25)`,labor:fee,parts:0,taxable:false,feeType:'storage'}],totals:{...totals,total:nextTotal,remaining:nextRemaining},storage_fee_reviewed_at:new Date().toISOString()}).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
+      if(feeError||!feeRows?.[0]) throw httpError(500,'The storage fee could not be added.');
+      return json(200,{ok:true,statusSaved:true,deliveryStatus:'internal',message:`$${fee.toFixed(2)} storage fee approved and added.`,record:feeRows[0]});
+    }
+    if(statusKey==='items_delivered'){
+      const indexes=Array.isArray(body.itemIndexes)?body.itemIndexes.map(Number).filter(Number.isInteger):[];
+      if(!indexes.length) throw httpError(400,'Select at least one delivered item.');
+      const priorItems=Array.isArray(record.items)?record.items:[]; const deliveredAt=new Date().toISOString();
+      const nextItems=priorItems.map((item:JsonRecord,index:number)=>indexes.includes(index)?{...item,orderStatus:'received',partStatus:'delivered',receivedAt:deliveredAt,partDeliveredAt:deliveredAt}:item);
+      const ordered=nextItems.filter((item:JsonRecord)=>item.requiresOrder===true || /needed|ordered|received|delivered/i.test(safeString(item.orderStatus||item.partStatus)));
+      const allDelivered=ordered.length>0&&ordered.every((item:JsonRecord)=>/received|delivered|in.?stock/i.test(safeString(item.orderStatus||item.partStatus)));
+      const deliveryPatch:JsonRecord={items:nextItems,status_update:allDelivered?(type==='repair'?'All Parts Delivered':'All Products Delivered'):'Some Items Delivered',status_updated_at:deliveredAt};
+      if(allDelivered&&type==='repair')deliveryPatch.repair_status='Part Delivered - Repairs Starting';
+      if(allDelivered&&type==='sale')deliveryPatch.status='Product Arrived';
+      const {data:itemRows,error:itemError}=await admin.from(table).update(deliveryPatch).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
+      if(itemError||!itemRows?.[0]) throw httpError(500,'Delivered items could not be saved.');
+      Object.assign(record,itemRows[0]);
+    }
     if (statusKey === "consultation_delayed" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the proposed consultation date and time.");
 
     const details = customerDetails(type, record, customer, legacyRecordId);
@@ -274,7 +322,14 @@ Deno.serve(async (req: Request) => {
       .select("*");
     if (saveError || !savedRows?.[0]) throw httpError(500, "The ticket status could not be updated.");
 
-    const email = emailCopy(details, statusKey, statusLabel, estimatedDate, estimatedTime, notes);
+    let responseUrl = '';
+    if(type==='repair' && statusKey==='repair_approval'){
+      const raw=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','');
+      const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+      await admin.from('client_response_tokens').insert({shop_id:profile.shop_id,work_order_id:record.id,legacy_record_id:legacyRecordId,token_hash:digest,expires_at:new Date(Date.now()+30*86400000).toISOString()});
+      responseUrl=`${supabaseUrl}/functions/v1/client-response?token=${encodeURIComponent(raw)}`;
+    }
+    const email = emailCopy(details, statusKey, statusLabel, estimatedDate, estimatedTime, notes, responseUrl);
     const textMessage = smsCopy(details, statusKey, statusLabel, estimatedDate, estimatedTime, notes);
     const historyRow: JsonRecord = {
       shop_id: profile.shop_id,

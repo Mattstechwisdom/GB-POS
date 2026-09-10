@@ -17,6 +17,7 @@ function json(status: number, payload: Record<string, unknown>) {
 function safe(value: unknown, maxLength = 500) {
   return String(value ?? "").trim().slice(0, maxLength);
 }
+function htmlEscape(value:unknown){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 
 function icsEscape(value: unknown) {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
@@ -49,8 +50,21 @@ Deno.serve(async (req: Request) => {
     if (!/^[A-Za-z0-9_-]{24,200}$/.test(token)) return json(400, { ok: false, error: "This QR status link is invalid." });
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    if (!supabaseUrl || !serviceRoleKey) return json(503, { ok: false, error: "The QR status service is not configured." });
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) return json(503, { ok: false, error: "The QR status service is not configured." });
+    const publicClientView = url.searchParams.get("view") === "client";
+    const publicCalendarDownload = url.searchParams.get("format") === "ics";
+    if (!publicClientView && !publicCalendarDownload) {
+      const authorization = req.headers.get("Authorization") || "";
+      if (!authorization) return json(401, { ok: false, error: "Sign in before opening this staff QR workflow." });
+      const userClient = createClient(supabaseUrl, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: authorization } },
+      });
+      const { data: userData, error: userError } = await userClient.auth.getUser();
+      if (userError || !userData.user) return json(401, { ok: false, error: "Sign in before opening this staff QR workflow." });
+    }
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const { data: tokenRow, error: tokenError } = await admin
@@ -98,6 +112,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const reference = type === "sale" ? `INV-${tokenRow.legacy_record_id}` : type === "consult" ? `CONS-${tokenRow.legacy_record_id}` : `WO-${tokenRow.legacy_record_id}`;
+    if(publicClientView){
+      const {data:history}=await admin.from('client_update_history').select('status_label,message,estimated_date,created_at').eq('shop_id',tokenRow.shop_id).eq('record_type',type).eq('legacy_record_id',tokenRow.legacy_record_id).neq('status_key','technician_progress').order('created_at',{ascending:false}).limit(8);
+      const updates=(history||[]).map((row:any)=>`<li style="padding:12px 0;border-bottom:1px solid #3f3f46"><strong>${htmlEscape(row.status_label)}</strong><div style="color:#a1a1aa;font-size:13px">${htmlEscape(new Date(row.created_at).toLocaleString())}${row.estimated_date?` · ETA ${htmlEscape(row.estimated_date)}`:''}</div>${row.message?`<p style="white-space:pre-wrap">${htmlEscape(row.message)}</p>`:''}</li>`).join('');
+      return new Response(`<!doctype html><html><meta name="viewport" content="width=device-width"><body style="margin:0;background:#09090b;color:#f4f4f5;font-family:Arial"><main style="max-width:620px;margin:28px auto;padding:22px"><header style="border-bottom:4px solid #39ff14"><h1>GADGETBOY</h1><p>Repair Status</p></header><section style="margin-top:18px;padding:18px;background:#18181b;border:1px solid #3f3f46;border-radius:10px"><small>${htmlEscape(reference)}</small><h2>${htmlEscape(titleFor(type,record))}</h2><div style="color:#39ff14;font-size:18px;font-weight:800">${htmlEscape(statusFor(type,record))}</div>${record.scheduled_pickup_at?`<p>Scheduled pickup: ${htmlEscape(new Date(record.scheduled_pickup_at).toLocaleString())}</p>`:''}${record.estimated_date?`<p>Estimated date: ${htmlEscape(record.estimated_date)}</p>`:''}</section><section style="margin-top:18px"><h3>Updates</h3><ul style="list-style:none;padding:0">${updates||'<li>No customer updates have been posted yet.</li>'}</ul></section><p style="color:#a1a1aa">Questions? Call (803) 708-0101 or use the question link in your latest approval email.</p></main></body></html>`,{headers:{...corsHeaders,'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
+    }
     return json(200, {
       ok: true,
       type,

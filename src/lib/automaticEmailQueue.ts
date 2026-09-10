@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabaseRuntimeConfig, supabase } from './supabase';
 import type { AutomaticClientEmailKind } from './automaticClientEmail';
 import { acknowledgmentAmount, classifyAcknowledgment, consultationChanges, consultationDigest, renderAutomaticClientEmail } from './automaticClientEmail';
 
@@ -59,6 +59,8 @@ export async function queueInitialPaymentAcknowledgment(input: {
     const customer = input.customer || {};
     const device = [record.productDescription || record.productCategory, record.model].filter(Boolean).join(' - ') || 'your device';
     const items = Array.isArray(record.items) ? record.items : [];
+    let clientStatusUrl='';
+    try{const source=new URL(String(input.statusUrl||''));const token=source.searchParams.get('clientUpdateToken')||source.searchParams.get('token')||'';const {supabaseUrl}=getSupabaseRuntimeConfig();if(token&&supabaseUrl)clientStatusUrl=`${supabaseUrl.replace(/\/+$/,'')}/functions/v1/qr-status?token=${encodeURIComponent(token)}&view=client`;}catch{}
     const rendered = renderAutomaticClientEmail(kind, {
       firstName: customer.firstName || String(record.customerName || '').trim().split(/\s+/)[0] || 'there',
       recordNumber: legacyRecordId,
@@ -67,7 +69,7 @@ export async function queueInitialPaymentAcknowledgment(input: {
       problem: record.problemInfo || 'Not provided',
       part: items.find((item: any) => item?.inStock === false)?.description || items[0]?.description || 'Repair part',
       itemSummary: items.map((item: any) => item.description || item.repair).filter(Boolean).join(', ') || record.itemDescription || 'Purchase',
-      statusUrl: input.statusUrl,
+      statusUrl: clientStatusUrl,
     });
     return await queueAutomaticClientEmail({
       recordType: input.recordType,

@@ -1,6 +1,7 @@
 export interface CleanupSettings { enabled: boolean; diagnosticOnlyDays: number; closeAllDays: number; notRepairableAttentionDays: number }
 export interface CleanupClassification { reason: 'diagnostic-only' | 'universal-age'; ageDays: number }
 export interface AttentionReason { code: string; label: string }
+export interface PickupLifecycle { active:boolean; anchor:string; daysWaiting:number; reminderDue:boolean; needsAttention:boolean; suggestedStorageFee:number }
 export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = { enabled: true, diagnosticOnlyDays: 20, closeAllDays: 30, notRepairableAttentionDays: 1 };
 const text = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const days = (value: unknown, fallback: number) => Math.max(0, Math.floor(Number(value ?? fallback) || fallback));
@@ -34,6 +35,20 @@ export function buildLegacyClosePatch(classification: CleanupClassification, now
   return { status: 'closed', legacyCleanup: { rule: classification.reason, ageDays: classification.ageDays, diagnosticOnlyDays: settings.diagnosticOnlyDays, closeAllDays: settings.closeAllDays, closedAt: now.toISOString() }, updatedAt: now.toISOString() };
 }
 export function isRepairNotPossible(workOrder: any) { return /repair not possible|not repairable|cannot be repaired|unrepairable/.test(text(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status)); }
+export function pickupLifecycleFor(workOrder:any, now=new Date()):PickupLifecycle {
+  const closed=text(workOrder?.status)==='closed' || !!(workOrder?.pickedUpAt || workOrder?.clientPickupDate || workOrder?.checkoutDate);
+  const anchorValue=workOrder?.scheduledPickupAt || workOrder?.pickupReadyAt || workOrder?.repairCompletionDate || workOrder?.repairStatusAt;
+  const anchor=new Date(anchorValue || 0); const valid=Number.isFinite(anchor.getTime()) && anchor.getTime()>0;
+  if(closed || !valid) return {active:false,anchor:'',daysWaiting:0,reminderDue:false,needsAttention:false,suggestedStorageFee:0};
+  const daysWaiting=Math.floor(Math.max(0,now.getTime()-anchor.getTime())/86400000);
+  const scheduled=!!workOrder?.scheduledPickupAt;
+  return {active:true,anchor:anchor.toISOString(),daysWaiting,reminderDue:daysWaiting>=8 && !workOrder?.pickupReminderSentAt,needsAttention:daysWaiting>=12,suggestedStorageFee:Math.max(0,scheduled?daysWaiting:daysWaiting-7)*25};
+}
+export function buildPickedUpPatch(workOrder:any, actor:string, now=new Date(), allowBalance=false) {
+  const remaining=Number(workOrder?.totals?.remaining ?? workOrder?.balance ?? 0)||0;
+  if(remaining>0 && !allowBalance) throw new Error(`This work order has a remaining balance of $${remaining.toFixed(2)}.`);
+  const at=now.toISOString(); return {status:'closed',repairStatus:'Picked Up',statusUpdate:'Picked Up / Ticket Closed',pickedUpAt:at,clientPickupDate:at,pickedUpBy:String(actor||'Technician'),updatedAt:at};
+}
 export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Date; settings?: any; technicianState?: string } = {}): AttentionReason[] {
   const now = context.now || new Date(); const settings = normalizeCleanupSettings(context.settings); const result: AttentionReason[] = [];
   const status = text(workOrder?.status); const pickup = workOrder?.clientPickupDate || workOrder?.pickupDate || workOrder?.checkoutDate;
@@ -45,5 +60,6 @@ export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Da
     if (markedAt && now.getTime() - markedAt >= settings.notRepairableAttentionDays * 86400000) result.push({ code:'not-repairable-awaiting-pickup', label:'Not repairable and still awaiting pickup' });
   }
   if (isRepairNotPossible(workOrder) && status === 'closed' && !pickup && !workOrder?.legacyCleanup?.closedAt) result.push({ code:'not-repairable-closed-without-pickup', label:'Not-repairable ticket closed without pickup' });
+  const lifecycle=pickupLifecycleFor(workOrder,now); if(lifecycle.needsAttention) result.push({code:'pickup-storage-review',label:`Pickup overdue — review suggested $${lifecycle.suggestedStorageFee} storage fee`});
   return result;
 }

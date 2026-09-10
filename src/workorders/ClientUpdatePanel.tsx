@@ -42,6 +42,7 @@ const SALE_STATUSES: StatusOption[] = [
   { key: 'product_ordered', label: 'Product Ordered', tone: 'amber', detail: 'date' },
   { key: 'shipping_delayed', label: 'Shipping Delay', tone: 'orange', detail: 'dateNotes' },
   { key: 'product_in_shop', label: 'Product Arrived', tone: 'green' },
+  { key: 'items_delivered', label: 'Mark Items Delivered', tone: 'green', detail: 'items' },
 ];
 
 const CONSULT_STATUSES: StatusOption[] = [
@@ -79,6 +80,8 @@ function mapCloudRow(type: UpdateType, row: any): any {
       techNotes: row.tech_notes || '',
       lastUpdateNote: row.last_update_note || '',
       lastUpdateAt: row.last_update_at || '',
+      items: Array.isArray(row.items) ? row.items : [],
+      totals: row.totals || {},
     };
   }
   if (type === 'consult') {
@@ -124,6 +127,13 @@ function mapCloudRow(type: UpdateType, row: any): any {
     techNotes: row.tech_notes || '',
     lastUpdateNote: row.last_update_note || '',
     lastUpdateAt: row.last_update_at || '',
+    pickupReadyAt: row.pickup_ready_at || '',
+    scheduledPickupAt: row.scheduled_pickup_at || '',
+    pickupReminderSentAt: row.pickup_reminder_sent_at || '',
+    pickedUpAt: row.picked_up_at || '',
+    pickedUpBy: row.picked_up_by || '',
+    items: Array.isArray(row.items) ? row.items : [],
+    totals: row.totals || {},
   };
 }
 
@@ -165,9 +175,11 @@ function repairStatusLabel(key: string): string {
     part_ordered: 'Part Ordered',
     waiting_part: 'Waiting on Part Delivery',
     part_delivered: 'Part Delivered - Repairs Starting',
-    repair_complete: 'Repair Complete',
-    not_possible: 'Repair Not Possible',
+    repair_complete: 'Repair Complete - Ready for Pickup',
+    not_possible: 'Repair Not Possible - Awaiting Pickup',
     repair_approval: 'Awaiting Repair Approval',
+    approval_received: 'Repair In Progress',
+    repair_declined: 'Repair Declined - Awaiting Pickup',
     testing_in_progress: 'Testing In Progress',
     storage_fee: 'Storage Fee Notice',
   };
@@ -202,6 +214,12 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
     Object.assign(patch, repairActionPatch(option.key, extra, now));
     const repairStatus = repairStatusLabel(option.key);
     if (repairStatus && !isManual) patch.repairStatus = repairStatus;
+    if (option.key === 'part_ordered' || option.key === 'waiting_part') {
+      patch.partsEstDelivery = extra.estimatedDate || '';
+      patch.partsEstimatedDelivery = extra.estimatedDate || '';
+    }
+    if(option.key==='schedule_pickup') patch.scheduledPickupAt=extra.estimatedDate ? new Date(`${extra.estimatedDate}T${extra.estimatedTime||'12:00'}:00`).toISOString() : '';
+    if(option.key==='repair_complete'||option.key==='not_possible'||option.key==='repair_declined') patch.pickupReadyAt=now;
   } else if (type === 'sale') {
     const saleStatus = saleStatusLabel(option.key);
     if (saleStatus && !isManual) patch.status = saleStatus;
@@ -264,6 +282,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('email');
   const [partsEstimate, setPartsEstimate] = useState('');
   const [laborEstimate, setLaborEstimate] = useState('');
+  const [selectedItemIndexes,setSelectedItemIndexes]=useState<number[]>([]);
 
   const isMobileApp = useMemo(() => {
     try {
@@ -479,6 +498,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
   const saveStatus = useCallback(async (option: StatusOption) => {
     if (!record) return;
+    if(option.key==='picked_up' && !window.confirm('Mark this device picked up and close the ticket without adding a payment?')) return;
+    if(option.key==='approve_storage_fee' && !window.confirm('Review and approve the currently accrued $25/day storage fee? The fee will be added only after this confirmation.')) return;
     if (option.key === 'technician_progress' && !notes.trim()) {
       setResult({ ok: false, message: 'Enter the technician progress notes before saving.', deliveryStatus: 'failed', statusSaved: false });
       return;
@@ -487,6 +508,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
       setResult({ ok: false, message: 'Enter the promise date and what was promised.', deliveryStatus: 'failed', statusSaved: false });
       return;
     }
+    if(option.key==='schedule_pickup' && (!estimatedDate || !estimatedTime)){setResult({ok:false,message:'Enter the scheduled pickup date and time.',deliveryStatus:'failed',statusSaved:false});return;}
+    if(option.key==='items_delivered' && !selectedItemIndexes.length){setResult({ok:false,message:'Select at least one delivered item.',deliveryStatus:'failed',statusSaved:false});return;}
     const approvalTotal = (Number(partsEstimate || 0) + Number(laborEstimate || 0)).toFixed(2);
     const effectiveNotes = option.key === 'repair_approval'
       ? `Parts: $${Number(partsEstimate || 0).toFixed(2)}\nLabor: $${Number(laborEstimate || 0).toFixed(2)}\nEstimated total: $${approvalTotal}${notes.trim() ? `\n${notes.trim()}` : ''}`
@@ -511,6 +534,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         estimatedTime: extra.estimatedTime || undefined,
         notes: extra.notes || undefined,
         deliveryMode: selectedDelivery,
+        itemIndexes: option.key==='items_delivered' ? selectedItemIndexes : undefined,
       });
 
       if (delivery?.record) {
@@ -554,6 +578,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       setNotes('');
       setPartsEstimate('');
       setLaborEstimate('');
+      setSelectedItemIndexes([]);
       void loadHistory();
     } catch (e: any) {
       const message = e?.name === 'AbortError'
@@ -563,7 +588,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
     } finally {
       setSavingKey('');
     }
-  }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, laborEstimate, loadHistory, notes, onUpdated, openTextMessage, partsEstimate, phoneRaw, record, recordId, token, type]);
+  }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, laborEstimate, loadHistory, notes, onUpdated, openTextMessage, partsEstimate, phoneRaw, record, recordId, selectedItemIndexes, token, type]);
 
   const exitUpdateScreen = useCallback(() => {
     if (onClose) {
@@ -610,7 +635,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
               <label><span>Promise date</span><input type="date" value={estimatedDate} onChange={event => setEstimatedDate(event.target.value)} /></label>
               <label><span>Promise time</span><input type="time" value={estimatedTime} onChange={event => setEstimatedTime(event.target.value)} /></label>
               <label><span>What was promised</span><textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Example: Call client with a diagnostic update by this time..." /></label>
-            </> : option.detail === 'date' || option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? (
+            </> : option.detail === 'items' ? <div className="grid gap-2">{(Array.isArray(record?.items)?record.items:[]).map((item:any,index:number)=><label key={String(item?.id||index)} className="flex items-center gap-2 rounded border border-zinc-700 p-2"><input type="checkbox" checked={selectedItemIndexes.includes(index)} disabled={/received|delivered|in.?stock/i.test(String(item?.orderStatus||item?.partStatus||''))} onChange={event=>setSelectedItemIndexes(current=>event.target.checked?[...current,index]:current.filter(value=>value!==index))}/><span>{item?.repair||item?.description||item?.title||`Item ${index+1}`} <small className="text-zinc-400">({item?.orderStatus||item?.partStatus||'pending'})</small></span></label>)}</div> : option.detail === 'pickup' ? <><label><span>Pickup date</span><input type="date" value={estimatedDate} onChange={event=>setEstimatedDate(event.target.value)}/></label><label><span>Pickup time</span><input type="time" value={estimatedTime} onChange={event=>setEstimatedTime(event.target.value)}/></label><label><span>Pickup notes</span><textarea value={notes} onChange={event=>setNotes(event.target.value)} placeholder="Client availability or pickup arrangements…"/></label></> : option.detail === 'date' || option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? (
               <label>
                 <span>{option.key === 'consultation_delayed' ? 'Proposed consultation date' : option.key === 'waiting_part' ? 'Estimated arrival date' : 'Estimated delivery date'}</span>
                 <input type="date" value={estimatedDate} onChange={(event) => setEstimatedDate(event.target.value)} />

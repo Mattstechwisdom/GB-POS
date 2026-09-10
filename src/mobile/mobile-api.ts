@@ -329,6 +329,11 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       techNotes: row.tech_notes || '',
       lastUpdateNote: row.last_update_note || '',
       lastUpdateAt: cloudDate(row.last_update_at),
+      pickupReadyAt: cloudDate(row.pickup_ready_at),
+      scheduledPickupAt: cloudDate(row.scheduled_pickup_at),
+      pickupReminderSentAt: cloudDate(row.pickup_reminder_sent_at),
+      pickedUpAt: cloudDate(row.picked_up_at),
+      pickedUpBy: row.picked_up_by || '',
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -690,6 +695,11 @@ function toCloudRow(key: string, item: any): any | null {
       tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
       last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
       last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
+      pickup_ready_at: typeof item.pickupReadyAt === 'undefined' ? undefined : toCloudIso(item.pickupReadyAt),
+      scheduled_pickup_at: typeof item.scheduledPickupAt === 'undefined' ? undefined : toCloudIso(item.scheduledPickupAt),
+      pickup_reminder_sent_at: typeof item.pickupReminderSentAt === 'undefined' ? undefined : toCloudIso(item.pickupReminderSentAt),
+      picked_up_at: typeof item.pickedUpAt === 'undefined' ? undefined : toCloudIso(item.pickedUpAt),
+      picked_up_by: typeof item.pickedUpBy === 'undefined' ? undefined : toCloudString(item.pickedUpBy),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),
@@ -1081,6 +1091,8 @@ async function ensureCloudQrStatusUrl(typeInput: any, idInput: any): Promise<str
     .eq('record_type', type)
     .eq('legacy_record_id', id)
     .is('revoked_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) {

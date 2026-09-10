@@ -27,3 +27,27 @@ export function repairPresentationFor(record: any): RepairPresentation {
 export function shouldOpenAttentionPanel(previousRequest: number, currentRequest: number) {
   return currentRequest > 0 && currentRequest !== previousRequest;
 }
+
+export function isExpeditedWorkOrder(record: any) {
+  const items = Array.isArray(record?.items) ? record.items : [];
+  return items.some((item: any) => /\b(expedit(?:e|ed|ing)?|rush)\b/i.test([
+    item?.repairCategory,
+    item?.repair,
+    item?.description,
+    item?.title,
+    item?.name,
+  ].filter(Boolean).join(' ')));
+}
+
+export function compareRepairQueuePriority(a: { expedited?: boolean; activityAt?: string }, b: { expedited?: boolean; activityAt?: string }) {
+  if (!!a.expedited !== !!b.expedited) return a.expedited ? -1 : 1;
+  return new Date(a.activityAt || 0).getTime() - new Date(b.activityAt || 0).getTime();
+}
+
+export function partEtaFor(record: any) {
+  const explicit = clean(record?.partsEstDelivery || record?.partsEstimatedDelivery || record?.partEta || record?.expectedDeliveryDate);
+  if (explicit) return explicit;
+  return /part.*(ordered|delivery)|waiting.*part/i.test(clean(record?.repairStatus || record?.workflowStatus || record?.statusUpdate))
+    ? clean(record?.estimatedDate)
+    : '';
+}

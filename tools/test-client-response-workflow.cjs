@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
+const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
+const migrations=fs.readdirSync(path.join(__dirname,'..','supabase','migrations')).filter(x=>x.includes('client_replies_and_pickup')).map(x=>read(`supabase/migrations/${x}`)).join('\n');
+const fn=read('supabase/functions/client-response/index.ts'); const updates=read('supabase/functions/client-updates/index.ts'); const center=read('src/components/CommandCenter.tsx');
+for(const phrase of ['client_response_tokens','token_hash','client_responses','scheduled_pickup_at','pickup_ready_at','picked_up_at','row level security']) assert.match(migrations,new RegExp(phrase,'i'));
+for(const phrase of ['crypto.subtle.digest','approve','decline','question']) assert.match(fn,new RegExp(phrase,'i'));
+for(const phrase of ['Approve Repair','Decline Repair','Ask a Question','client-response']) assert.match(updates,new RegExp(phrase,'i'));
+for(const phrase of ['Client Replies','Send Reply','Mark Resolved','client_responses']) assert.match(center,new RegExp(phrase,'i'));
+assert.ok(!fn.includes('qr_status_tokens'), 'Public client response must not reuse staff QR tokens.');
+console.log('Client response workflow checks passed.');
