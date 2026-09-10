@@ -32,6 +32,15 @@ export function clientDeliveryForRepairAction(key: string): 'client' | 'internal
   return key === 'technician_progress' || key === 'picked_up' || key === 'approve_storage_fee' ? 'internal' : 'client';
 }
 
+export function groupRepairUpdateOptions(options: ClientUpdateOption[] = REPAIR_UPDATE_OPTIONS) {
+  const ticketKeys = new Set(['picked_up', 'approve_storage_fee']);
+  return {
+    client: options.filter((option) => clientDeliveryForRepairAction(option.key) === 'client'),
+    technician: options.filter((option) => option.key === 'technician_progress'),
+    ticket: options.filter((option) => ticketKeys.has(option.key)),
+  };
+}
+
 export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
   if (key === 'customer_promise') {

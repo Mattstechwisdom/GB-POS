@@ -19,6 +19,8 @@ assert.doesNotMatch(main, /autoUpdater\.quitAndInstall\(false/, 'The automatic u
 assert.match(main, /Open Download Page/);
 assert.equal(packageJson.devDependencies['electron-builder'], '24.13.1', 'Windows installer builds must avoid the NSIS 24.13.2+ uninstall regression.');
 assert.match(main, /await prepareForUpdateInstall\(\)/, 'The updater must finish shutdown preparation before handing off to NSIS.');
+assert.match(main, /buildWindowsUpdateHandoff\(downloadedUpdateInstallerPath, process\.pid\)/, 'Windows updates must wait for the POS process to exit before launching NSIS.');
+assert.match(main, /setTimeout\(\(\) => app\.exit\(0\), 150\)/, 'The prepared app must exit decisively so no installed files remain locked.');
 assert.match(main, /await drainDbWrites\(\)/, 'Update shutdown must flush local database writes.');
 assert.match(main, /drainCloudSyncQueue\(\)/, 'Update shutdown must attempt pending cloud synchronization.');
 assert.match(main, /disposeCloverConnector\(\)/, 'Update shutdown must release the Clover connection.');

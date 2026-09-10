@@ -9,6 +9,7 @@ const {
   REPAIR_UPDATE_OPTIONS,
   clientDeliveryForRepairAction,
   repairActionPatch,
+  groupRepairUpdateOptions,
 } = require('../src/lib/clientUpdateOptions.ts');
 
 const keys = REPAIR_UPDATE_OPTIONS.map((option) => option.key);
@@ -22,6 +23,13 @@ assert.equal(clientDeliveryForRepairAction('repair_approval'), 'client');
 assert.equal(clientDeliveryForRepairAction('customer_promise'), 'client');
 assert.equal(clientDeliveryForRepairAction('picked_up'), 'internal');
 assert.equal(clientDeliveryForRepairAction('items_delivered'), 'client');
+
+const grouped = groupRepairUpdateOptions(REPAIR_UPDATE_OPTIONS);
+assert.deepEqual(Object.keys(grouped), ['client', 'technician', 'ticket']);
+assert.ok(grouped.client.every((option) => clientDeliveryForRepairAction(option.key) === 'client'));
+assert.deepEqual(grouped.technician.map((option) => option.key), ['technician_progress']);
+assert.deepEqual(grouped.ticket.map((option) => option.key), ['picked_up', 'approve_storage_fee']);
+assert.equal(grouped.client.length + grouped.technician.length + grouped.ticket.length, REPAIR_UPDATE_OPTIONS.length);
 
 assert.deepEqual(
   repairActionPatch('technician_progress', { notes: 'Removed shield and tested PSU.' }, '2026-09-10T18:00:00.000Z'),
