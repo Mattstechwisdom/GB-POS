@@ -52,4 +52,12 @@ assert.deepEqual(
   },
 );
 
+assert.deepEqual(
+  repairActionPatch('customer_promise', { estimatedDate: '2026-09-11', estimatedTime: '13:30', notes: 'Diagnostic update by 1:30 PM.' }, '2026-09-10T18:00:00.000Z'),
+  {
+    promisedAt: new Date('2026-09-11T13:30:00').toISOString(),
+    promiseNote: 'Diagnostic update by 1:30 PM.',
+  },
+);
+
 console.log('Repair QR workflow action contract checks passed.');

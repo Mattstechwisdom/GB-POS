@@ -74,6 +74,7 @@ const CustomerReceiptWindow: React.FC = () => {
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [qrReady, setQrReady] = useState(false);
+  const [qrError, setQrError] = useState<string>('');
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
   const qrImgRef = useRef<HTMLImageElement | null>(null);
@@ -82,6 +83,7 @@ const CustomerReceiptWindow: React.FC = () => {
 
   useEffect(() => {
     setQrDataUrl('');
+    setQrError('');
     setQrReady(false);
     if (!shouldRenderSaleQr) {
       setQrReady(true);
@@ -90,6 +92,7 @@ const CustomerReceiptWindow: React.FC = () => {
 
     const recordId = Number((data as any).id || (data as any).invoiceId || 0) || 0;
     if (!recordId) {
+      setQrError('Save the sale before printing so its QR code can be created.');
       setQrReady(true);
       return;
     }
@@ -110,8 +113,8 @@ const CustomerReceiptWindow: React.FC = () => {
           errorCorrectionLevel: 'M',
         });
         if (alive && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
-      } catch {
-        // The receipt remains printable if cloud access is temporarily unavailable.
+      } catch (error: any) {
+        if (alive) setQrError(error?.message || 'The sale QR code could not be created. Check the connection and retry.');
       } finally {
         if (alive) setQrReady(true);
       }
@@ -200,7 +203,7 @@ const CustomerReceiptWindow: React.FC = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!flags.autoPrint || flags.silent || !qrReady) return;
+    if (!flags.autoPrint || flags.silent || !qrReady || (shouldRenderSaleQr && !qrDataUrl)) return;
 
     if (didAutoPrintRef.current) return;
 
@@ -229,10 +232,10 @@ const CustomerReceiptWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrReady, qrDataUrl]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrReady, qrDataUrl, shouldRenderSaleQr]);
 
   useEffect(() => {
-    if (!flags.autoPrint || !flags.silent || !qrReady) return;
+    if (!flags.autoPrint || !flags.silent || !qrReady || (shouldRenderSaleQr && !qrDataUrl)) return;
 
     let cancelled = false;
     let fallbackTimer: number | undefined;
@@ -285,7 +288,7 @@ const CustomerReceiptWindow: React.FC = () => {
       cancelled = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [flags.autoPrint, flags.silent, logoSrc, qrReady, qrDataUrl]);
+  }, [flags.autoPrint, flags.silent, logoSrc, qrReady, qrDataUrl, shouldRenderSaleQr]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
@@ -505,9 +508,11 @@ const CustomerReceiptWindow: React.FC = () => {
         <div className="page-inner">
         <div className="toolbar">
           <button
+            disabled={shouldRenderSaleQr && (!qrReady || !qrDataUrl)}
             onClick={() => { try { window.focus(); window.print(); } catch {} }}
             style={{ background:'#111', color:'#39FF14', border:'1px solid #39FF14', padding:'6px 12px', borderRadius:6, fontSize:'10pt', cursor:'pointer' }}
           >Print</button>
+          {qrError ? <span style={{ color: '#b91c1c', fontWeight: 700, fontSize: '9pt' }}>{qrError}</span> : null}
           <button
             onClick={async () => {
               try {

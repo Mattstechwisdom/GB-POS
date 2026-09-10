@@ -39,8 +39,12 @@ export function isExpeditedWorkOrder(record: any) {
   ].filter(Boolean).join(' ')));
 }
 
-export function compareRepairQueuePriority(a: { expedited?: boolean; activityAt?: string }, b: { expedited?: boolean; activityAt?: string }) {
+export function compareRepairQueuePriority(a: { expedited?: boolean; promisedAt?: string; activityAt?: string }, b: { expedited?: boolean; promisedAt?: string; activityAt?: string }) {
   if (!!a.expedited !== !!b.expedited) return a.expedited ? -1 : 1;
+  const aPromise = new Date(a.promisedAt || 0).getTime();
+  const bPromise = new Date(b.promisedAt || 0).getTime();
+  if (!!aPromise !== !!bPromise) return aPromise ? -1 : 1;
+  if (aPromise && bPromise && aPromise !== bPromise) return aPromise - bPromise;
   return new Date(a.activityAt || 0).getTime() - new Date(b.activityAt || 0).getTime();
 }
 

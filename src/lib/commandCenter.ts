@@ -22,6 +22,8 @@ export interface CommandCenterRecord {
   activityAt: string;
   stage?: string;
   partEta?: string;
+  promisedAt?: string;
+  promiseNote?: string;
   searchText: string;
   source: any;
 }
@@ -100,7 +102,10 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const title = lineTitle(record);
     const presentation = repairPresentationFor(record);
     const activityAt = text(record?.activityAt || record?.updatedAt || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, ...presentation, expedited: isExpeditedWorkOrder(record), status: text(record?.status || stage), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, stage, partEta: partEtaFor(record), searchText: `${record?.id} ${customerName} ${title} ${presentation.deviceLabel} ${presentation.problem} ${presentation.serial} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    const isPromise = /promise/i.test(text(record?.statusUpdate));
+    const promisedAt = text(record?.promisedAt || (isPromise ? record?.estimatedDate : ''));
+    const promiseNote = text(record?.promiseNote || (isPromise ? record?.techNotes : ''));
+    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, ...presentation, expedited: isExpeditedWorkOrder(record), status: text(record?.status || stage), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, stage, partEta: partEtaFor(record), promisedAt, promiseNote, searchText: `${record?.id} ${customerName} ${title} ${presentation.deviceLabel} ${presentation.problem} ${presentation.serial} ${promiseNote} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const sales = (input.sales || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);

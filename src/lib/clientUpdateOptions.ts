@@ -32,8 +32,14 @@ export function clientDeliveryForRepairAction(key: string): 'client' | 'internal
   return key === 'technician_progress' || key === 'picked_up' || key === 'approve_storage_fee' ? 'internal' : 'client';
 }
 
-export function repairActionPatch(key: string, extra: { notes?: string }, now = new Date().toISOString()) {
+export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
+  if (key === 'customer_promise') {
+    return {
+      promisedAt: extra.estimatedDate ? new Date(`${extra.estimatedDate}T${extra.estimatedTime || '12:00'}:00`).toISOString() : '',
+      promiseNote: notes,
+    };
+  }
   if (key === 'technician_progress') {
     return { techNotes: notes, lastUpdateNote: notes, lastUpdateAt: now };
   }

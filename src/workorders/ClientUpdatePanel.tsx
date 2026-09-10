@@ -129,6 +129,8 @@ function mapCloudRow(type: UpdateType, row: any): any {
     lastUpdateAt: row.last_update_at || '',
     pickupReadyAt: row.pickup_ready_at || '',
     scheduledPickupAt: row.scheduled_pickup_at || '',
+    promisedAt: /promise/i.test(String(row.status_update || '')) ? row.estimated_date || '' : '',
+    promiseNote: /promise/i.test(String(row.status_update || '')) ? row.tech_notes || '' : '',
     pickupReminderSentAt: row.pickup_reminder_sent_at || '',
     pickedUpAt: row.picked_up_at || '',
     pickedUpBy: row.picked_up_by || '',
