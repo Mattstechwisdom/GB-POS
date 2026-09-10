@@ -1,14 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
+import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
-type StatusOption = {
-  key: string;
-  label: string;
-  tone: string;
-  detail?: 'date' | 'notes' | 'dateNotes' | 'dateTimeNotes';
-};
+type StatusOption = ClientUpdateOption;
 
 type UpdateHistoryRow = {
   id: string;
@@ -25,7 +21,7 @@ type UpdateHistoryRow = {
   created_at: string;
 };
 
-type DeliveryMode = 'email' | 'text';
+type DeliveryMode = 'email' | 'text' | 'internal';
 
 type Props = {
   token?: string;
@@ -38,17 +34,7 @@ type Props = {
   onUpdated?: (record: any) => void;
 };
 
-const REPAIR_STATUSES: StatusOption[] = [
-  { key: 'pickup_reminder', label: 'Pickup Reminder', tone: 'cyan' },
-  { key: 'manual_update', label: 'Send Update', tone: 'purple', detail: 'notes' },
-  { key: 'diagnosis', label: 'Diagnosis In Process', tone: 'blue' },
-  { key: 'waiting_device', label: 'Waiting on Device', tone: 'blue' },
-  { key: 'part_ordered', label: 'Part Ordered', tone: 'amber', detail: 'date' },
-  { key: 'waiting_part', label: 'Waiting on Part Delivery', tone: 'orange', detail: 'date' },
-  { key: 'part_delivered', label: 'Part Delivered', tone: 'green' },
-  { key: 'repair_complete', label: 'Repair Complete', tone: 'green', detail: 'notes' },
-  { key: 'not_possible', label: 'Repair Not Possible', tone: 'red', detail: 'notes' },
-];
+const REPAIR_STATUSES: StatusOption[] = REPAIR_UPDATE_OPTIONS;
 
 const SALE_STATUSES: StatusOption[] = [
   { key: 'pickup_reminder', label: 'Pickup Reminder', tone: 'cyan' },
@@ -165,6 +151,7 @@ function recordTitle(type: UpdateType, record: any) {
 }
 
 function deliveryLabel(entry: UpdateHistoryRow): string {
+  if (entry.status_key === 'technician_progress') return 'Internal note';
   if (entry.delivery_status === 'sent') return 'Email sent';
   if (entry.delivery_status === 'failed') return 'Email failed';
   if (entry.delivery_status === 'pending' || entry.delivery_status === 'sending') return 'Email queued';
@@ -180,6 +167,8 @@ function repairStatusLabel(key: string): string {
     part_delivered: 'Part Delivered - Repairs Starting',
     repair_complete: 'Repair Complete',
     not_possible: 'Repair Not Possible',
+    repair_approval: 'Awaiting Repair Approval',
+    testing_in_progress: 'Testing In Progress',
     storage_fee: 'Storage Fee Notice',
   };
   return map[key] || '';
@@ -210,6 +199,7 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
     patch.statusUpdate = option.label;
   }
   if (type === 'repair') {
+    Object.assign(patch, repairActionPatch(option.key, extra, now));
     const repairStatus = repairStatusLabel(option.key);
     if (repairStatus && !isManual) patch.repairStatus = repairStatus;
   } else if (type === 'sale') {
@@ -272,6 +262,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [historyShopId, setHistoryShopId] = useState('');
   const [historyRetrying, setHistoryRetrying] = useState(false);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('email');
+  const [partsEstimate, setPartsEstimate] = useState('');
+  const [laborEstimate, setLaborEstimate] = useState('');
 
   const isMobileApp = useMemo(() => {
     try {
@@ -487,7 +479,19 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
   const saveStatus = useCallback(async (option: StatusOption) => {
     if (!record) return;
-    const extra = { estimatedDate, estimatedTime, notes };
+    if (option.key === 'technician_progress' && !notes.trim()) {
+      setResult({ ok: false, message: 'Enter the technician progress notes before saving.', deliveryStatus: 'failed', statusSaved: false });
+      return;
+    }
+    if (option.key === 'customer_promise' && (!estimatedDate || !notes.trim())) {
+      setResult({ ok: false, message: 'Enter the promise date and what was promised.', deliveryStatus: 'failed', statusSaved: false });
+      return;
+    }
+    const approvalTotal = (Number(partsEstimate || 0) + Number(laborEstimate || 0)).toFixed(2);
+    const effectiveNotes = option.key === 'repair_approval'
+      ? `Parts: $${Number(partsEstimate || 0).toFixed(2)}\nLabor: $${Number(laborEstimate || 0).toFixed(2)}\nEstimated total: $${approvalTotal}${notes.trim() ? `\n${notes.trim()}` : ''}`
+      : notes;
+    const extra = { estimatedDate, estimatedTime, notes: effectiveNotes };
     setSavingKey(option.key);
     setResult(null);
     try {
@@ -495,7 +499,9 @@ const ClientUpdatePanel: React.FC<Props> = ({
       const sessionResult = await supabase.auth.getSession();
       const accessToken = sessionResult.data.session?.access_token || '';
       if (!accessToken) throw new Error('Your login session expired. Sign in again before sending an update.');
-      const selectedDelivery: DeliveryMode = isMobileApp ? deliveryMode : 'email';
+      const selectedDelivery: DeliveryMode = type === 'repair' && clientDeliveryForRepairAction(option.key) === 'internal'
+        ? 'internal'
+        : isMobileApp ? deliveryMode : 'email';
       const delivery = await invokeClientUpdate({
         token: token || undefined,
         recordType: type,
@@ -546,6 +552,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
       setEstimatedDate('');
       setEstimatedTime('');
       setNotes('');
+      setPartsEstimate('');
+      setLaborEstimate('');
       void loadHistory();
     } catch (e: any) {
       const message = e?.name === 'AbortError'
@@ -555,7 +563,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
     } finally {
       setSavingKey('');
     }
-  }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, loadHistory, notes, onUpdated, openTextMessage, phoneRaw, record, recordId, token, type]);
+  }, [deliveryMode, estimatedDate, estimatedTime, isMobileApp, laborEstimate, loadHistory, notes, onUpdated, openTextMessage, partsEstimate, phoneRaw, record, recordId, token, type]);
 
   const exitUpdateScreen = useCallback(() => {
     if (onClose) {
@@ -594,21 +602,29 @@ const ClientUpdatePanel: React.FC<Props> = ({
         </button>
         {option.detail && open ? (
           <div className="gb-client-update-detail">
-            {option.detail === 'date' || option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? (
+            {option.detail === 'approval' ? <>
+              <div className="gb-client-update-estimate-grid"><label><span>Parts estimate</span><input type="number" min="0" step="0.01" value={partsEstimate} onChange={event => setPartsEstimate(event.target.value)} placeholder="0.00" /></label><label><span>Labor estimate</span><input type="number" min="0" step="0.01" value={laborEstimate} onChange={event => setLaborEstimate(event.target.value)} placeholder="0.00" /></label></div>
+              <label><span>Expected completion / part arrival</span><input type="date" value={estimatedDate} onChange={event => setEstimatedDate(event.target.value)} /></label>
+              <label><span>Approval message</span><textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Explain the repair, parts, expected wait, and anything the client should know..." /></label>
+            </> : option.detail === 'promise' ? <>
+              <label><span>Promise date</span><input type="date" value={estimatedDate} onChange={event => setEstimatedDate(event.target.value)} /></label>
+              <label><span>Promise time</span><input type="time" value={estimatedTime} onChange={event => setEstimatedTime(event.target.value)} /></label>
+              <label><span>What was promised</span><textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Example: Call client with a diagnostic update by this time..." /></label>
+            </> : option.detail === 'date' || option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? (
               <label>
                 <span>{option.key === 'consultation_delayed' ? 'Proposed consultation date' : option.key === 'waiting_part' ? 'Estimated arrival date' : 'Estimated delivery date'}</span>
                 <input type="date" value={estimatedDate} onChange={(event) => setEstimatedDate(event.target.value)} />
               </label>
             ) : (
               <label>
-                <span>{option.key === 'manual_update' ? 'Message for customer' : 'Notes for customer'}</span>
+                <span>{option.key === 'technician_progress' ? 'Internal repair notes' : option.key === 'manual_update' ? 'Message for customer' : 'Notes for customer'}</span>
                 <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Type the update..." />
               </label>
             )}
             {option.detail === 'dateTimeNotes' ? <label><span>Proposed consultation time</span><input type="time" value={estimatedTime} onChange={(event) => setEstimatedTime(event.target.value)} /></label> : null}
             {option.detail === 'dateNotes' || option.detail === 'dateTimeNotes' ? <label><span>{option.key === 'consultation_delayed' ? 'Reason or schedule details' : 'Shipping delay details'}</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={option.key === 'consultation_delayed' ? 'Explain the proposed change and ask the client to confirm...' : 'Explain the delay and the revised delivery expectation...'} /></label> : null}
             <button type="button" className="gb-client-update-send" disabled={!!savingKey} onClick={() => void saveStatus(option)}>
-              {savingKey === option.key ? 'Saving...' : 'Save Update'}
+              {savingKey === option.key ? 'Saving...' : option.key === 'technician_progress' ? 'Save Internal Note' : option.key === 'repair_approval' ? 'Send Approval Request' : 'Save Update'}
             </button>
           </div>
         ) : null}
@@ -651,12 +667,12 @@ const ClientUpdatePanel: React.FC<Props> = ({
           <section className="gb-client-update-confirmation sending" role="status" aria-live="polite">
             <div className="gb-client-update-progress" aria-hidden="true"><span /></div>
             <h3>Sending Client Update</h3>
-            <p>Saving the ticket status and delivering the email. Keep this window open for a moment.</p>
+            <p>{savingKey === 'technician_progress' ? 'Saving the internal repair notes. No client message will be sent.' : 'Saving the ticket status and delivering the client update. Keep this window open for a moment.'}</p>
           </section>
         ) : result ? (
           <section className={result.ok ? 'gb-client-update-confirmation success' : 'gb-client-update-confirmation failure'} role="alert">
             <div className="gb-client-update-confirmation-mark" aria-hidden="true">{result.ok ? 'OK' : '!'}</div>
-            <h3>{result.ok ? (result.deliveryStatus === 'text_prepared' ? 'Text Message Ready' : result.deliveryStatus === 'queued' ? 'Update Queued' : 'Email Sent') : 'Email Not Sent'}</h3>
+            <h3>{result.ok ? (result.deliveryStatus === 'internal' ? 'Progress Saved' : result.deliveryStatus === 'text_prepared' ? 'Text Message Ready' : result.deliveryStatus === 'queued' ? 'Update Queued' : 'Email Sent') : 'Email Not Sent'}</h3>
             <p>{result.message}</p>
             {!result.ok && result.statusSaved ? (
               <div className="gb-client-update-saved-note">The ticket status was saved, but the client was not emailed.</div>

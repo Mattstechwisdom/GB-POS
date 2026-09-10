@@ -21,6 +21,10 @@ const STATUS_OPTIONS: Record<UpdateType, Record<string, string>> = {
     part_delivered: "Part Delivered",
     repair_complete: "Repair Complete",
     not_possible: "Repair Not Possible",
+    repair_approval: "Repair Approval Requested",
+    customer_promise: "Customer Promise Scheduled",
+    technician_progress: "Technician Progress",
+    testing_in_progress: "Testing In Progress",
   },
   sale: {
     pickup_reminder: "Pickup Reminder",
@@ -46,6 +50,8 @@ const REPAIR_STATUS: Record<string, string> = {
   part_delivered: "Part Delivered - Repairs Starting",
   repair_complete: "Repair Complete",
   not_possible: "Repair Not Possible",
+  repair_approval: "Awaiting Repair Approval",
+  testing_in_progress: "Testing In Progress",
 };
 
 const SALE_STATUS: Record<string, string> = {
@@ -116,6 +122,9 @@ function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, es
     status_updated_at: now,
     estimated_date: estimatedDate || null,
   };
+  if (type === "repair" && statusKey === "technician_progress") {
+    return { tech_notes: notes, last_update_note: notes, last_update_at: now };
+  }
   if (!preserveTechNotes) patch.tech_notes = notes || "";
   if (manual) {
     patch.last_update_note = notes || statusLabel;
@@ -136,11 +145,12 @@ function emailCopy(details: ReturnType<typeof customerDetails>, statusKey: strin
   const manual = statusKey === "manual_update";
   const subject = manual ? `Update from GadgetBoy - ${details.order}` : `${statusLabel} - ${details.order}`;
   const updateText = manual ? (notes || statusLabel) : statusLabel;
-  const dateLabel = statusKey === "consultation_delayed" ? "Proposed date" : "Estimated date";
+  const dateLabel = statusKey === "consultation_delayed" ? "Proposed date" : statusKey === "customer_promise" ? "Promised date" : "Estimated date";
+  const noteLabel = statusKey === "repair_approval" ? "Estimate details" : statusKey === "customer_promise" ? "Our promise" : "Technician note";
   const dateText = estimatedDate ? `\n${dateLabel}: ${estimatedDate}${estimatedTime ? ` at ${estimatedTime}` : ""}` : "";
-  const noteText = !manual && notes ? `\nTechnician note: ${notes}` : "";
+  const noteText = !manual && notes ? `\n${noteLabel}: ${notes}` : "";
   const text = `Hi ${details.name},\n\nHere is an update for ${details.item} (${details.order}):\n\n${updateText}${dateText}${noteText}\n\nQuestions? Call (803) 708-0101 or reply to this email.\n\nGadgetBoy Repair & Retail\n2822 Devine Street, Columbia, SC 29205`;
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b"><div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #d4d4d8"><div style="padding:18px 22px;background:#18181b;border-bottom:4px solid #39ff14;color:#fff"><div style="font-size:18px;font-weight:800">GADGETBOY Repair &amp; Retail</div><div style="margin-top:4px;font-size:12px;color:#d4d4d8">2822 Devine Street, Columbia, SC 29205 | (803) 708-0101</div></div><div style="padding:24px"><p style="margin-top:0">Hi <strong>${escapeHtml(details.name)}</strong>,</p><p>Here is an update for <strong>${escapeHtml(details.item)}</strong> (${escapeHtml(details.order)}).</p><div style="margin:20px 0;padding:16px;border:1px solid #a1a1aa;border-left:5px solid #8b5cf6;background:#fafafa"><div style="font-size:12px;font-weight:800;text-transform:uppercase;color:#52525b">Current update</div><div style="margin-top:6px;font-size:18px;font-weight:800">${escapeHtml(updateText)}</div>${estimatedDate ? `<div style="margin-top:10px"><strong>${dateLabel}:</strong> ${escapeHtml(estimatedDate)}${estimatedTime ? ` at ${escapeHtml(estimatedTime)}` : ""}</div>` : ""}${!manual && notes ? `<div style="margin-top:10px"><strong>Technician note:</strong> ${escapeHtml(notes)}</div>` : ""}</div><p style="font-size:13px;color:#52525b">Questions? Call (803) 708-0101 or reply to this email.</p></div></div></body></html>`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b"><div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #d4d4d8"><div style="padding:18px 22px;background:#18181b;border-bottom:4px solid #39ff14;color:#fff"><div style="font-size:18px;font-weight:800">GADGETBOY Repair &amp; Retail</div><div style="margin-top:4px;font-size:12px;color:#d4d4d8">2822 Devine Street, Columbia, SC 29205 | (803) 708-0101</div></div><div style="padding:24px"><p style="margin-top:0">Hi <strong>${escapeHtml(details.name)}</strong>,</p><p>Here is an update for <strong>${escapeHtml(details.item)}</strong> (${escapeHtml(details.order)}).</p><div style="margin:20px 0;padding:16px;border:1px solid #a1a1aa;border-left:5px solid #8b5cf6;background:#fafafa"><div style="font-size:12px;font-weight:800;text-transform:uppercase;color:#52525b">Current update</div><div style="margin-top:6px;font-size:18px;font-weight:800">${escapeHtml(updateText)}</div>${estimatedDate ? `<div style="margin-top:10px"><strong>${dateLabel}:</strong> ${escapeHtml(estimatedDate)}${estimatedTime ? ` at ${escapeHtml(estimatedTime)}` : ""}</div>` : ""}${!manual && notes ? `<div style="margin-top:10px"><strong>${noteLabel}:</strong> ${escapeHtml(notes)}</div>` : ""}</div><p style="font-size:13px;color:#52525b">Questions? Call (803) 708-0101 or reply to this email.</p></div></div></body></html>`;
   return { subject, text, html };
 }
 
@@ -154,6 +164,9 @@ function smsCopy(details: ReturnType<typeof customerDetails>, statusKey: string,
     part_delivered: "Your part has arrived, and your repair is moving into the next stage.",
     repair_complete: "Great news! Your repair is complete and your device is ready for pickup.",
     not_possible: "We completed our assessment, but unfortunately the repair could not be completed.",
+    repair_approval: "We have completed the estimate for your repair and need your approval before proceeding.",
+    customer_promise: "We have scheduled the following update or follow-up commitment for your repair.",
+    testing_in_progress: "Your repair is now in testing. We are verifying proper operation before the next step.",
     product_ordered: "Your product has been ordered. We will let you know as soon as it arrives.",
     shipping_delayed: "Shipping has been delayed. We are monitoring the order and will keep you updated.",
     product_in_shop: "Great news! Your product has arrived and is ready for pickup.",
@@ -243,10 +256,13 @@ Deno.serve(async (req: Request) => {
     const notes = safeString(body.notes, 5000);
     const preserveTechNotes = body.preserveTechNotes === true;
     if (statusKey === "manual_update" && !notes) throw httpError(400, "Enter the message you want to send to the client.");
+    if (statusKey === "technician_progress" && !notes) throw httpError(400, "Enter the technician progress notes.");
+    if (statusKey === "customer_promise" && (!estimatedDate || !notes)) throw httpError(400, "Enter the promise date and what was promised.");
     if (statusKey === "consultation_delayed" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the proposed consultation date and time.");
 
     const details = customerDetails(type, record, customer, legacyRecordId);
-    const deliveryMode = safeString(body.deliveryMode, 20).toLowerCase() === "text" ? "text" : "email";
+    const requestedDelivery = safeString(body.deliveryMode, 20).toLowerCase();
+    const deliveryMode = statusKey === "technician_progress" ? "internal" : requestedDelivery === "text" ? "text" : "email";
     if (deliveryMode === "email" && !details.email) throw httpError(400, "The client does not have an email address on file.");
     if (deliveryMode === "text" && !details.phone) throw httpError(400, "The client does not have a phone number on file.");
 
@@ -281,6 +297,17 @@ Deno.serve(async (req: Request) => {
     };
     const { data: history, error: historyError } = await admin.from("client_update_history").insert(historyRow).select("*").single();
     if (historyError || !history) throw httpError(500, "The update was saved, but its history entry could not be created.");
+
+    if (deliveryMode === "internal") {
+      return json(200, {
+        ok: true,
+        statusSaved: true,
+        deliveryStatus: "internal",
+        message: "Technician progress saved internally. No client message was sent.",
+        record: savedRows[0],
+        history,
+      });
+    }
 
     if (deliveryMode === "text") {
       return json(200, {

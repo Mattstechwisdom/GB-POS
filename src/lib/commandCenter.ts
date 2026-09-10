@@ -1,4 +1,5 @@
 import { buildTechnicianIndex, resolveTechnician } from './technicianIdentity';
+import { repairPresentationFor } from './commandCenterPresentation';
 
 export type CommandCenterKind = 'workorder' | 'sale' | 'consultation';
 
@@ -8,6 +9,11 @@ export interface CommandCenterRecord {
   customerId?: string | number;
   customerName: string;
   title: string;
+  deviceLabel: string;
+  deviceCategory: string;
+  problem: string;
+  model: string;
+  serial: string;
   status: string;
   technician: string;
   total: number;
@@ -90,8 +96,9 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const stage = stageFor(record, remaining);
     const customerName = customerNameFor(record, customers);
     const title = lineTitle(record);
+    const presentation = repairPresentationFor(record);
     const activityAt = text(record?.activityAt || record?.updatedAt || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, status: text(record?.status || stage), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, stage, partEta: text(record?.partEta || record?.expectedDeliveryDate), searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, ...presentation, status: text(record?.status || stage), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, stage, partEta: text(record?.partEta || record?.expectedDeliveryDate), searchText: `${record?.id} ${customerName} ${title} ${presentation.deviceLabel} ${presentation.problem} ${presentation.serial} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const sales = (input.sales || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
@@ -100,7 +107,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const title = lineTitle(record);
     const kind: CommandCenterKind = lower(record?.type || record?.saleType).includes('consult') ? 'consultation' : 'sale';
     const activityAt = text(record?.activityAt || record?.checkoutDate || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, status: text(record?.status), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, deviceLabel: title, deviceCategory: '', problem: '', model: '', serial: '', status: text(record?.status), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const stages: Record<string, CommandCenterRecord[]> = Object.fromEntries(['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed'].map(stage => [stage, []]));
   workOrders.forEach(record => stages[record.stage || 'Checked in']?.push(record));
