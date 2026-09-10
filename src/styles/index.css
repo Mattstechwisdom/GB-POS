@@ -1217,6 +1217,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   text-transform: uppercase;
 }
 
+.gb-client-update-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.8rem; margin-bottom: 0.75rem; }
+.gb-client-update-section-heading h3 { margin-bottom: 0.2rem; }
+.gb-client-update-section-heading p { margin: 0; color: #a1a1aa; font-size: 0.72rem; line-height: 1.4; }
+.gb-client-update-section-heading > span { flex: 0 0 auto; border-radius: 999px; padding: 0.25rem 0.5rem; font-size: 0.64rem; font-weight: 900; text-transform: uppercase; }
+.gb-client-update-section.client-facing { border-color: rgba(168, 85, 247, 0.45); }
+.gb-client-update-section.client-facing .gb-client-update-section-heading > span { background: rgba(168, 85, 247, 0.18); color: #e9d5ff; }
+.gb-client-update-section.technician-only { border-color: rgba(59, 130, 246, 0.45); }
+.gb-client-update-section.technician-only .gb-client-update-section-heading > span,
+.gb-client-update-section.ticket-controls .gb-client-update-section-heading > span { background: rgba(59, 130, 246, 0.15); color: #bfdbfe; }
+.gb-client-update-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.gb-client-update-action-grid .gb-client-update-action { margin: 0; min-width: 0; }
+.gb-client-update-action-grid .gb-client-update-action.open { grid-column: 1 / -1; }
+
 .gb-client-update-delivery {
   margin-bottom: 0.85rem;
   padding: 0.8rem;
@@ -1306,6 +1319,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.gb-client-update-button-meta { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.45rem; flex: 0 0 auto; }
+.gb-client-update-button-meta em { border-radius: 999px; padding: 0.18rem 0.42rem; font-size: 0.61rem; font-style: normal; font-weight: 900; letter-spacing: 0.03em; text-transform: uppercase; }
+.gb-client-update-button-meta .delivery-client { background: rgba(168, 85, 247, 0.18); color: #e9d5ff; }
+.gb-client-update-button-meta .delivery-internal { background: rgba(59, 130, 246, 0.16); color: #bfdbfe; }
+
+@media (max-width: 640px) {
+  .gb-client-update-action-grid { grid-template-columns: 1fr; }
+  .gb-client-update-action-grid .gb-client-update-action.open { grid-column: auto; }
+  .gb-client-update-section-heading { align-items: center; }
+  .gb-client-update-button { gap: 0.45rem; padding-inline: 0.7rem; }
+  .gb-client-update-button-meta { gap: 0.3rem; }
 }
 
 .gb-client-update-button.tone-cyan { border-left-color: #06b6d4; }

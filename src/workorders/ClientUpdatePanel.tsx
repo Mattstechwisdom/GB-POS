@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
-import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
+import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, groupRepairUpdateOptions, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
 type StatusOption = ClientUpdateOption;
@@ -299,6 +299,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const options = type === 'sale' ? SALE_STATUSES : type === 'consult' ? CONSULT_STATUSES : REPAIR_STATUSES;
   const quickOptions = options.filter((o) => o.key === 'pickup_reminder' || o.key === 'manual_update');
   const mainOptions = options.filter((o) => !quickOptions.some((q) => q.key === o.key));
+  const repairGroups = useMemo(() => groupRepairUpdateOptions(REPAIR_STATUSES), []);
 
   const loadFromDirectSupabase = useCallback(async (qrToken: string) => {
     const tokenRes = await supabase
@@ -609,8 +610,9 @@ const ClientUpdatePanel: React.FC<Props> = ({
 
   const renderOption = (option: StatusOption) => {
     const open = openKey === option.key;
+    const clientFacing = type !== 'repair' || clientDeliveryForRepairAction(option.key) === 'client';
     return (
-      <div key={option.key} className="gb-client-update-action">
+      <div key={option.key} className={open ? 'gb-client-update-action open' : 'gb-client-update-action'}>
         <button
           type="button"
           className={`gb-client-update-button tone-${option.tone}`}
@@ -625,7 +627,10 @@ const ClientUpdatePanel: React.FC<Props> = ({
           disabled={!!savingKey}
         >
           <span>{option.label}</span>
-          {option.detail ? <b>{open ? 'Close' : 'Details'}</b> : null}
+          <span className="gb-client-update-button-meta">
+            <em className={clientFacing ? 'delivery-client' : 'delivery-internal'}>{clientFacing ? (isMobileApp ? 'Email / Text' : 'Email') : 'POS Only'}</em>
+            {option.detail ? <b>{open ? 'Close' : 'Details'}</b> : null}
+          </span>
         </button>
         {option.detail && open ? (
           <div className="gb-client-update-detail">
@@ -742,15 +747,23 @@ const ClientUpdatePanel: React.FC<Props> = ({
               </section>
             ) : null}
 
-            <section className="gb-client-update-section">
-              <h3>Quick Actions</h3>
-              {quickOptions.map(renderOption)}
-            </section>
-
-            <section className="gb-client-update-section">
-              <h3>Status Updates</h3>
-              {mainOptions.map(renderOption)}
-            </section>
+            {type === 'repair' ? <>
+              <section className="gb-client-update-section client-facing">
+                <div className="gb-client-update-section-heading"><div><h3>Client Updates</h3><p>These actions save the status and send the client an {isMobileApp ? 'email or prepared text message' : 'email'}.</p></div><span>Email{isMobileApp ? ' / Text' : ''}</span></div>
+                <div className="gb-client-update-action-grid">{repairGroups.client.map(renderOption)}</div>
+              </section>
+              <section className="gb-client-update-section technician-only">
+                <div className="gb-client-update-section-heading"><div><h3>Technician Progress</h3><p>Internal repair notes for other technicians. Nothing in this section contacts the client.</p></div><span>POS Only</span></div>
+                <div className="gb-client-update-action-grid">{repairGroups.technician.map(renderOption)}</div>
+              </section>
+              <section className="gb-client-update-section ticket-controls">
+                <div className="gb-client-update-section-heading"><div><h3>Ticket Controls</h3><p>Internal pickup, closing, and storage-fee controls. No client message is sent.</p></div><span>POS Only</span></div>
+                <div className="gb-client-update-action-grid">{repairGroups.ticket.map(renderOption)}</div>
+              </section>
+            </> : <>
+              <section className="gb-client-update-section"><h3>Quick Actions</h3>{quickOptions.map(renderOption)}</section>
+              <section className="gb-client-update-section"><h3>Status Updates</h3>{mainOptions.map(renderOption)}</section>
+            </>}
           </>
         )}
 
