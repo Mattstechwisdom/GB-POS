@@ -795,12 +795,6 @@ const AppInner: React.FC<{
                   </button>
                 </header>
 
-                <div className="desktop-drawer-priority">
-                  <button type="button" className="eod" onClick={() => openDrawerModal('eod')}>
-                    <span>End of Day Report</span><small>Review today and purchasing</small>
-                  </button>
-                </div>
-
                 <div className="desktop-drawer-primary">
                   <button type="button" className="quote" onClick={() => openDrawerModal('quoteGenerator')}>Generate Quote</button>
                   <button type="button" className="consult" onClick={openDrawerConsultation}>Consultation</button>
@@ -926,7 +920,6 @@ const AppInner: React.FC<{
               attentionRequest={desktopAttentionRequest}
               onOpenInvoices={(nextMode = 'all') => { setMode(nextMode); setDesktopView('invoices'); }}
               onOpenModal={openModal}
-              onOpenFilters={() => setDesktopFiltersOpen(open => !open)}
             /> : null}
             {(!desktopNavigationEnabled || desktopView === 'invoices') ? <>
             {keyword === 'GADGETBOY' ? (

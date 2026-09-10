@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.68 (2026-09-09)
+
+- Closed confirmed legacy work orders older than 30 days in the live shop without adding payments or deleting client, invoice, or repair history.
+- Made legacy cleanup write complete records, verify each save, and immediately remove newly closed tickets from Command Center counts and queues.
+- Preserved the 20-day diagnostic-only and 30-day universal cleanup settings for future automatic reconciliation.
+- Restored reliable calendar loading with retries and prevented a transient Supabase failure plus an empty local cache from appearing as an empty calendar.
+- Added familiar right-click actions to Command Center invoice and repair rows, including the expanded View All lists.
+- Removed the redundant Command Center Filters control and side-menu EOD shortcut, enlarged Quote and Consultation actions, and refined the Command Center title and date styling.
+
 ## v0.6.67 (2026-09-09)
 
 - Replaced the legacy mobile landing page with the responsive Shop Command Center used on desktop.

@@ -737,8 +737,19 @@ const CalendarWindow: React.FC = () => {
     };
     const refreshEvents = async () => {
       try {
+        const loadCalendarEvents = async () => {
+          let lastError: any = null;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try { return await (window as any).api.dbGet('calendarEvents'); }
+            catch (error) {
+              lastError = error;
+              if (attempt < 2) await new Promise(resolve => window.setTimeout(resolve, 300 * (attempt + 1)));
+            }
+          }
+          throw lastError || new Error('Calendar events could not be loaded.');
+        };
         const [list, customers] = await Promise.all([
-          (window as any).api.dbGet('calendarEvents'),
+          loadCalendarEvents(),
           (window as any).api.dbGet('customers').catch(() => []),
         ]);
         const customerById = new Map((Array.isArray(customers) ? customers : []).map((customer: any) => [Number(customer?.id || 0), customer]));

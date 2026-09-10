@@ -30,6 +30,8 @@ assert.match(journal, /setInterval\(refreshSharedNotes, 30_000\)/, 'Journal must
 assert.match(calendar, /dailyLookData\.importantNotes/, 'Daily Look must include important notes.');
 assert.match(calendar, /Streaming\/Content Schedule/, 'Adding notes must preserve the content schedule.');
 assert.match(calendar, /calendarView === 'week'/, 'Adding notes must preserve the mobile weekly calendar.');
+assert.match(calendar, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/, 'Calendar loads must retry transient cloud failures.');
+assert.match(electron, /key === 'calendarEvents'[\s\S]*cachedCalendar[\s\S]*throw e/, 'Desktop must not silently replace a populated cloud calendar with an empty cache.');
 assert.match(journal, /calendarNotes/, 'Journal must read calendar notes.');
 assert.match(journal, /internalNotesLog/, 'Journal must include work-order repair notes.');
 assert.match(journal, /sales/, 'Journal must include sale notes.');

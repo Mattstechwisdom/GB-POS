@@ -5504,6 +5504,13 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
+      // An empty local calendar cache must not masquerade as a successful cloud
+      // read. Let CalendarWindow retry instead of replacing a populated calendar
+      // with an unexplained blank view during a transient Supabase failure.
+      if (key === 'calendarEvents') {
+        const cachedCalendar = readDb()?.calendarEvents;
+        if (!Array.isArray(cachedCalendar) || cachedCalendar.length === 0) throw e;
+      }
     }
   }
   const db = readDb();

@@ -1299,7 +1299,6 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
               setHomeView('invoices');
             }}
             onOpenModal={openModal}
-            onOpenFilters={() => setFiltersOpen(true)}
           />
           <button type="button" className="mobile-all-invoices-button" onClick={() => setHomeView('invoices')}>All Invoices</button>
         </section>
@@ -1484,7 +1483,6 @@ function MobileDrawer(props: {
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
           <DrawerButton label="Generate Quote" tone="green" featured onClick={() => handleOpenModal('quoteGenerator')} />
           <DrawerButton label="Consultation" tone="blue" featured onClick={() => handleOpenModal('consultation')} />
-          <DrawerButton label="End of Day Report" tone="amber" featured onClick={() => handleOpenModal('eod')} />
         </div>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>

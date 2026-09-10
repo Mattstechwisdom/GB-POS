@@ -8,4 +8,4 @@ const rows=[
 ];
 assert.deepEqual(previewWorkOrderCleanup(rows,{diagnosticOnlyDays:20,closeAllDays:30},now),{scanned:3,diagnosticOnly:1,universal:1,total:2});
 const updates=[]; const api={dbGet:async key=>key==='workOrders'?rows:[{id:1,ticketCleanupSettings:{diagnosticOnlyDays:20,closeAllDays:30}}],dbUpdate:async(key,id,patch)=>{updates.push({key,id,patch});return patch;}};
-(async()=>{const result=await reconcileLegacyWorkOrders(api,{now});assert.equal(result.updated,2);assert.equal(updates.length,2);assert.equal(updates[0].patch.payments,undefined);assert.equal(updates[1].patch.totals,undefined);console.log('Work-order cleanup reconciliation checks passed.');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{const result=await reconcileLegacyWorkOrders(api,{now});assert.equal(result.updated,2);assert.equal(updates.length,2);assert.deepEqual(updates[0].patch.payments,[{amount:50}]);assert.equal(updates[0].patch.status,'closed');assert.equal(result.updatedRecords.length,2);console.log('Work-order cleanup reconciliation checks passed.');})().catch(error=>{console.error(error);process.exitCode=1;});
