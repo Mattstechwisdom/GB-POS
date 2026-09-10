@@ -10,6 +10,7 @@ const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
+const { buildWindowsUpdateHandoff } = require('./update-launcher');
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -1082,6 +1083,7 @@ let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
 let autoInstallAfterDownload = false;
+let downloadedUpdateInstallerPath = '';
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1543,6 +1545,15 @@ async function installDownloadedUpdate() {
   await prepareForUpdateInstall();
   setTimeout(() => {
     try {
+      if (process.platform === 'win32' && downloadedUpdateInstallerPath && fs.existsSync(downloadedUpdateInstallerPath)) {
+        const handoff = buildWindowsUpdateHandoff(downloadedUpdateInstallerPath, process.pid);
+        const child = spawn(handoff.executable, handoff.args, { detached: true, stdio: 'ignore', windowsHide: true });
+        child.unref();
+        // Writes and external connections were drained above. Force the final
+        // process exit so the waiting installer never races locked app files.
+        setTimeout(() => app.exit(0), 150);
+        return;
+      }
       // Run NSIS silently for the one-click update-and-relaunch experience.
       // The packaged elevation helper remains available if Windows needs it.
       autoUpdater.quitAndInstall(true, true);
@@ -1628,6 +1639,7 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('update-downloaded', (info: any) => {
     try { console.log('[AutoUpdate] update downloaded:', info?.version || info); } catch {}
+    downloadedUpdateInstallerPath = String(info?.downloadedFile || '').trim();
     void promptToInstallDownloadedUpdate(info);
   });
   autoUpdater.on('error', (err: any) => {

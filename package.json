@@ -1,6 +1,6 @@
 {
   "name": "gadgetboy-pos",
-  "version": "0.6.74",
+  "version": "0.6.75",
   "description": "Minimal desktop POS for tech repair shop (Electron + Vite + React + TS)",
   "main": "app/electron-main.js",
   "repository": {
@@ -41,6 +41,7 @@
     "test:notifications:windows": "electron tools/test-native-notifications.cjs",
     "test:notifications:routing": "node tools/test-notification-routing.cjs",
     "test:windows-update-install": "node tools/test-windows-update-install.cjs",
+    "test:windows-update-handoff": "node tools/test-windows-update-handoff.cjs",
     "test:desktop-navigation": "node tools/test-desktop-navigation.cjs",
     "test:admin-multiwindow": "node tools/test-admin-multiwindow.cjs",
     "test:context-menu-layer": "node tools/test-context-menu-layer.cjs",
