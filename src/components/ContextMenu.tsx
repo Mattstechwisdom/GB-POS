@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { resolveContextMenuZIndex } from '../lib/contextMenuLayer';
+import { closeMenuBeforeAction } from '../lib/reliability';
 
 export type ContextMenuItem =
 	| { type?: 'item'; label: string; onClick?: () => void | Promise<void>; disabled?: boolean; danger?: boolean; hint?: string }
@@ -108,11 +109,7 @@ export default function ContextMenu(props: {
 							disabled={disabled}
 							onClick={async () => {
 								if (disabled) return;
-								try {
-									await item.onClick?.();
-								} finally {
-									onClose();
-								}
+								await closeMenuBeforeAction(onClose, item.onClick);
 							}}
 							role={isInteractive(item) ? 'menuitem' : undefined}
 						>

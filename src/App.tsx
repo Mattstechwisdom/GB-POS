@@ -10,13 +10,14 @@ import Pagination from './components/Pagination';
 import RecentCustomers from './components/RecentCustomers';
 import CustomerSearchWindow from './components/CustomerSearchWindow';
 import GidgetChat from './components/GidgetChat';
-import DesktopNotificationDrawer from './components/DesktopNotificationDrawer';
+import CommandCenter from './components/CommandCenter';
 import ContextMenu, { ContextMenuItem } from './components/ContextMenu';
 import { useContextMenu } from './lib/useContextMenu';
 import { formatPhone } from './lib/format';
 import { PaginationProvider, usePagination } from './lib/pagination';
 import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib/modalBus';
 import { storeWindowPayload } from './lib/windowPayload';
+import { openAdminTool, type AdminToolKey } from './lib/adminWindowNavigation';
 import { LoginScreen } from './auth/LoginScreen';
 import DurantApp from './durant/DurantApp';
 import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
@@ -100,6 +101,24 @@ interface ModalEntry { id: string; type: string; }
 // ── Overlay close button + content shell ─────────────────────────────────
 function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: number; onClose: () => void }) {
   const contentOwnsClose = entry.type === 'customerSearch' || entry.type === 'customerOverview' || entry.type === 'addClient';
+  const daughterWindow = !['newWorkOrder', 'newSale', 'consultation', 'repairCategories', 'inventory', 'reporting', 'dataTools', 'devMenu'].includes(entry.type);
+  const windowProfile = entry.type === 'calendar'
+    ? 'calendar'
+    : ['quoteGenerator', 'eod', 'products', 'vendors', 'workOrderRepairPicker', 'backup', 'technicians'].includes(entry.type)
+      ? 'dense'
+      : ['notifications', 'notificationSettings', 'clockIn', 'journal', 'reportEmail', 'charts', 'releaseForm', 'customerReceipt', 'feedback'].includes(entry.type)
+        ? 'compact'
+        : 'standard';
+  const popOut = async () => {
+    const api: any = (window as any).api;
+    const method = Object.entries(API_TO_MODAL).find(([, type]) => type === entry.type)?.[0];
+    if (method && typeof api?.[method] === 'function') {
+      await api[method]();
+      onClose();
+      return;
+    }
+    window.open(window.location.href, '_blank', 'width=1100,height=820,resizable=yes,scrollbars=yes');
+  };
   // Close on Escape – only the top-most modal should fire.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -111,15 +130,23 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
 
   return (
     <div
-      className="fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12"
+      className={daughterWindow ? 'gb-daughter-modal-layer fixed inset-0 overflow-y-auto overflow-x-hidden p-3 pt-12 sm:p-6 sm:pt-12' : 'fixed inset-0 bg-zinc-900 overflow-y-auto overflow-x-auto p-3 pt-12 sm:p-6 sm:pt-12'}
       style={{ zIndex }}
       data-modal-shell="1"
+      data-modal-type={entry.type}
     >
       {/* Floating actions + close button */}
       <div
         className="fixed top-2 flex items-center gap-2"
         style={{ zIndex: zIndex + 1, right: 'calc(0.75rem + 32px)' }}
       >
+        {daughterWindow ? <button
+          type="button"
+          onClick={() => void popOut()}
+          title="Open in separate window"
+          aria-label="Open in separate window"
+          className="w-8 h-8 rounded bg-zinc-800 hover:border-blue-400 text-zinc-200 flex items-center justify-center text-base border border-zinc-600"
+        >↗</button> : null}
         {entry.type === 'products' && (
           <button
             type="button"
@@ -140,11 +167,11 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
           </button>
         )}
       </div>
-      <React.Suspense fallback={
+      <div className={daughterWindow ? `gb-daughter-modal-panel gb-window-profile-${windowProfile}` : undefined}><React.Suspense fallback={
         <div className="flex min-h-[100dvh] items-center justify-center text-zinc-500">Loading…</div>
       }>
         <ModalContent type={entry.type} onClose={onClose} />
-      </React.Suspense>
+      </React.Suspense></div>
     </div>
   );
 }
@@ -388,6 +415,23 @@ const App: React.FC = () => {
   }, [cloudReady, staffProfile?.shop_id]);
 
   useEffect(() => {
+    const shopId = staffProfile?.shop_id;
+    const api = (window as any).api;
+    if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
+    const tables: Array<[string, string]> = [
+      ['customers', 'customers'],
+      ['work_orders', 'workOrders'],
+      ['sales', 'sales'],
+    ];
+    const channel = tables.reduce((current, [table, collection]) => current.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter: `shop_id=eq.${shopId}` },
+      () => { void api.cloudCollectionChanged(collection); },
+    ), supabase.channel(`gbpos-desktop-records-${shopId}`)).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [cloudReady, staffProfile?.shop_id]);
+
+  useEffect(() => {
     if (!cloudReady || !staffProfile?.shop_id) return;
     void (async () => {
       await reconcilePaidSaleInventory((window as any).api);
@@ -530,7 +574,8 @@ const AppInner: React.FC<{
   const [desktopDrawerClosing, setDesktopDrawerClosing] = useState(false);
   const [desktopDrawerPinned, setDesktopDrawerPinned] = useState(desktopDrawerPreviewOpen);
   const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
-  const [desktopNotificationsOpen, setDesktopNotificationsOpen] = useState(false);
+  const [desktopAttentionRequest, setDesktopAttentionRequest] = useState(0);
+  const [desktopView, setDesktopView] = useState<'command' | 'invoices'>('command');
   const desktopFiltersRef = useRef<HTMLDivElement>(null);
   const desktopDrawerCloseTimerRef = useRef<number | null>(null);
 
@@ -711,6 +756,18 @@ const AppInner: React.FC<{
     openModal(type, payload);
   };
 
+  const openDrawerAdmin = (tool: AdminToolKey) => {
+    closeDesktopDrawer(true);
+    void openAdminTool(tool, (window as any).api, key => openModal(key));
+  };
+
+  const openDrawerConsultation = () => {
+    closeDesktopDrawer(true);
+    const api: any = (window as any).api;
+    if (typeof api?.openConsultation === 'function') void api.openConsultation();
+    else openModal('consultation');
+  };
+
   return (
     <div className={`bg-zinc-900 min-h-screen text-white flex flex-col relative${desktopNavigationEnabled ? ' desktop-nav-preview' : ''}`}>
       {desktopNavigationEnabled ? (
@@ -738,25 +795,14 @@ const AppInner: React.FC<{
                   </button>
                 </header>
 
-                <div className="desktop-drawer-priority">
-                  <button type="button" className="eod" onClick={() => openDrawerModal('eod')}>
-                    <span>End of Day Report</span><small>Review today and purchasing</small>
-                  </button>
-                  <button type="button" className="daily" onClick={() => openDrawerModal('dailyLook')}>
-                    <span>Daily Look</span><small>Schedule, notes and priorities</small>
-                  </button>
-                </div>
-
                 <div className="desktop-drawer-primary">
                   <button type="button" className="quote" onClick={() => openDrawerModal('quoteGenerator')}>Generate Quote</button>
-                  <button type="button" className="consult" onClick={() => openDrawerModal('consultation')}>Consultation</button>
+                  <button type="button" className="consult" onClick={openDrawerConsultation}>Consultation</button>
                 </div>
 
                 <details className="desktop-drawer-section" open>
                   <summary>Technician Tools <span>+</span></summary>
                   <div>
-                    <button type="button" onClick={() => openDrawerModal('calendar')}>Calendar</button>
-                    <button type="button" onClick={() => openDrawerModal('clockIn')}>Clock In / Out</button>
                     <button type="button" onClick={() => openDrawerModal('technicians')}>Technicians</button>
                     <button type="button" onClick={() => openDrawerModal('journal')}>Journal</button>
                     <button type="button" onClick={() => openDrawerModal('diagnosticTools')}>Diagnostic Tools</button>
@@ -766,11 +812,11 @@ const AppInner: React.FC<{
                 <details className="desktop-drawer-section admin">
                   <summary>Admin <span>+</span></summary>
                   <div>
-                    <button type="button" onClick={() => openDrawerModal('repairCategories')}>Repairs</button>
-                    <button type="button" onClick={() => openDrawerModal('inventory')}>Inventory</button>
-                    <button type="button" onClick={() => openDrawerModal('reporting')}>Reporting</button>
-                    <button type="button" onClick={() => openDrawerModal('dataTools')}>Data Tools</button>
-                    <button type="button" onClick={() => openDrawerModal('devMenu')}>Dev Menu</button>
+                    <button type="button" onClick={() => openDrawerAdmin('repairCategories')}>Repairs</button>
+                    <button type="button" onClick={() => openDrawerAdmin('inventory')}>Inventory</button>
+                    <button type="button" onClick={() => openDrawerAdmin('reporting')}>Reporting</button>
+                    <button type="button" onClick={() => openDrawerAdmin('dataTools')}>Data Tools</button>
+                    <button type="button" onClick={() => openDrawerAdmin('devMenu')}>Dev Menu</button>
                   </div>
                 </details>
 
@@ -781,15 +827,6 @@ const AppInner: React.FC<{
               </aside>
             </div>
           ) : null}
-          <DesktopNotificationDrawer
-            open={desktopNotificationsOpen}
-            onOpen={() => {
-              closeDesktopDrawer(true);
-              setDesktopFiltersOpen(false);
-              setDesktopNotificationsOpen(true);
-            }}
-            onClose={() => setDesktopNotificationsOpen(false)}
-          />
         </>
       ) : null}
       <div className={`flex flex-1${desktopNavigationEnabled ? ' desktop-preview-workspace' : ''}`}>
@@ -828,31 +865,24 @@ const AppInner: React.FC<{
             onKeywordChange={setKeyword}
             drawerMode={desktopNavigationEnabled}
             onOpenMenu={() => {
-              setDesktopNotificationsOpen(false);
               setDesktopFiltersOpen(false);
               showDesktopDrawer(true);
             }}
             onOpenNotifications={() => {
               closeDesktopDrawer(true);
               setDesktopFiltersOpen(false);
-              setDesktopNotificationsOpen(true);
+              openModal('notifications');
             }}
             onSearchClient={() => openModal('customerSearch')}
             onAddClient={() => openModal('customerOverview', 0)}
           />
           {desktopNavigationEnabled ? (
             <div className="desktop-preview-tabs" aria-label="Record type">
+              <button type="button" className={desktopView === 'command' ? 'active' : ''} onClick={() => setDesktopView('command')}>Command Center</button>
+              <button type="button" className={desktopView === 'invoices' && mode === 'all' ? 'active' : ''} onClick={() => { setDesktopView('invoices'); setMode('all'); }}>All Invoices</button>
+              <span className="desktop-preview-tabs-spacer" />
+              <button type="button" className="attention" onClick={() => { setDesktopView('command'); setDesktopAttentionRequest(value => value + 1); }}>Needs Attention</button>
               <div className="desktop-preview-filter-control" ref={desktopFiltersRef}>
-                <button
-                  type="button"
-                  className={`filters${desktopFiltersOpen ? ' active-filter-menu' : ''}`}
-                  aria-expanded={desktopFiltersOpen}
-                  aria-haspopup="dialog"
-                  onClick={() => {
-                    setDesktopNotificationsOpen(false);
-                    setDesktopFiltersOpen(open => !open);
-                  }}
-                >Filters</button>
                 {desktopFiltersOpen ? (
                   <div className="desktop-preview-filter-menu" role="dialog" aria-label="List filters">
                     <header>
@@ -880,12 +910,18 @@ const AppInner: React.FC<{
                   </div>
                 ) : null}
               </div>
-              <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All Activity</button>
-              <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
-              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button>
+              {desktopView === 'invoices' ? <><button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+              <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales & Consultations</button></> : null}
             </div>
           ) : null}
           <div className="flex-1 min-h-0 overflow-auto">
+            {desktopNavigationEnabled && desktopView === 'command' ? <CommandCenter
+              keyword={keyword}
+              attentionRequest={desktopAttentionRequest}
+              onOpenInvoices={(nextMode = 'all') => { setMode(nextMode); setDesktopView('invoices'); }}
+              onOpenModal={openModal}
+            /> : null}
+            {(!desktopNavigationEnabled || desktopView === 'invoices') ? <>
             {keyword === 'GADGETBOY' ? (
               <button
                 type="button"
@@ -909,10 +945,11 @@ const AppInner: React.FC<{
             {keyword !== 'GADGETBOY' && mode === 'all' && (
               <UnifiedList statusFilter={statusFilter} technicianFilter={technicianFilter} dateFrom={dateFrom} dateTo={dateTo} keyword={keyword} />
             )}
+            </> : null}
           </div>
-          <div className="border-t border-zinc-700 p-2 flex items-center justify-end bg-zinc-900">
+          {(!desktopNavigationEnabled || desktopView === 'invoices') ? <div className="border-t border-zinc-700 p-2 flex items-center justify-end bg-zinc-900">
             <Pagination />
-          </div>
+          </div> : null}
         </main>
       </div>
       {/* Footer removed; table and pagination now consume extra space */}
@@ -1291,7 +1328,7 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
   }, [ctxRow, computeWOTotals]);
 
   return (
-    <div className="p-2 overflow-x-auto">
+    <div className="gb-responsive-record-list p-2 overflow-x-auto">
       <table className="w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
@@ -1329,31 +1366,31 @@ const UnifiedList: React.FC<{ statusFilter?: 'all' | 'open' | 'closed'; technici
                   } catch (e) { console.error('Open editor failed', e); }
                 }}
               >
-                <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
-                <td className="px-2 py-1 capitalize">{r.status}</td>
-                <td className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
+                <td data-label="Invoice" className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
+                <td data-label="Date" className="px-2 py-1" title={r.type === 'workorder' && (r as any).originalDate && !isNaN((r as any).originalDate.getTime()) ? `Checked in: ${(r as any).originalDate.toISOString().slice(0,10)}` : undefined}>{isNaN(r.date.getTime()) ? '' : r.date.toISOString().slice(0,10)}</td>
+                <td data-label="Status" className="px-2 py-1 capitalize">{r.status}</td>
+                <td data-label="Type" className="px-2 py-1 font-semibold truncate" title={mainRecordTypeLabel(r.displayType)}>
                   <span className="xl:hidden">{mainRecordTypeLabel(r.displayType, true)}</span>
                   <span className="hidden xl:inline">{mainRecordTypeLabel(r.displayType)}</span>
                 </td>
-                <td className="px-2 py-1">{r.tech}</td>
-                <td className="px-2 py-1" title={r.customer}>
+                <td data-label="Technician" className="px-2 py-1">{r.tech}</td>
+                <td data-label="Client" className="px-2 py-1" title={r.customer}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{r.customer || (r.type === 'sale' ? ('Customer #' + r.id) : '')}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.items || ''}>
+                <td data-label="Items" className="px-2 py-1" title={r.items || ''}>
                   <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
                     <div className="truncate">{r.items || ''}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.desc}>
+                <td data-label="Description" className="px-2 py-1" title={r.desc}>
                   <ItemsDescriptionHoverCard items={String(r.items || '')} description={String(r.desc || '')} problem={String((r as any).problem || '')} className="min-w-0">
                     <div className="truncate">{r.desc}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
+                <td data-label="Total" className="px-2 py-1 text-right">${r.total.toFixed(2)}</td>
+                <td data-label="Remaining" className="px-2 py-1 text-right">${r.remaining.toFixed(2)}</td>
               </tr>
             );
           })}

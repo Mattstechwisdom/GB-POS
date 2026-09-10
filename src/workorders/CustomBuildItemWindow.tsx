@@ -3,17 +3,22 @@ import MoneyInput from '../components/MoneyInput';
 
 export type CustomBuildItemPayload = {
   title?: string;
-  item?: {
-    description?: string;
-    price?: number;
-    isParts?: boolean;
-  } | null;
+  item?: Partial<CustomBuildItemResult> | null;
 };
 
 export type CustomBuildItemResult = {
   description: string;
+  itemType: 'part' | 'labor';
+  quantity: number;
   price: number;
-  isParts: boolean;
+  internalCost?: number;
+  partSource?: string;
+  distributorSku?: string;
+  orderSourceUrl?: string;
+  orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
+  orderDate?: string;
+  estimatedDeliveryDate?: string;
+  trackingUrl?: string;
 };
 
 function parsePayload(): CustomBuildItemPayload {
@@ -39,9 +44,20 @@ const CustomBuildItemWindow: React.FC = () => {
   const [price, setPrice] = useState<number>(
     existing?.price != null && Number.isFinite(Number(existing.price)) ? round2(Number(existing.price)) : 0
   );
-  const [isParts, setIsParts] = useState<boolean>(existing?.isParts !== false);
+  const [itemType, setItemType] = useState<'part' | 'labor'>(existing?.itemType === 'labor' ? 'labor' : 'part');
+  const [quantity, setQuantity] = useState(Math.max(1, Number(existing?.quantity || 1) || 1));
+  const [internalCost, setInternalCost] = useState(Math.max(0, Number(existing?.internalCost || 0) || 0));
+  const [partSource, setPartSource] = useState(String(existing?.partSource || ''));
+  const [distributorSku, setDistributorSku] = useState(String(existing?.distributorSku || ''));
+  const [orderSourceUrl, setOrderSourceUrl] = useState(String(existing?.orderSourceUrl || ''));
+  const [orderStatus, setOrderStatus] = useState<CustomBuildItemResult['orderStatus']>(existing?.orderStatus || 'in_stock');
+  const [orderDate, setOrderDate] = useState(String(existing?.orderDate || ''));
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState(String(existing?.estimatedDeliveryDate || ''));
+  const [trackingUrl, setTrackingUrl] = useState(String(existing?.trackingUrl || ''));
 
-  const canSave = description.trim().length > 0 && price >= 0;
+  const validUrl = (value: string) => !value.trim() || /^https?:\/\//i.test(value.trim());
+  const canSave = description.trim().length > 0 && price >= 0 && quantity > 0
+    && (itemType === 'labor' || (validUrl(orderSourceUrl) && validUrl(trackingUrl)));
 
   useEffect(() => {
     try {
@@ -53,8 +69,19 @@ const CustomBuildItemWindow: React.FC = () => {
     if (!canSave) return;
     const res: CustomBuildItemResult = {
       description: description.trim(),
+      itemType,
+      quantity: itemType === 'part' ? quantity : 1,
       price,
-      isParts,
+      ...(itemType === 'part' ? {
+        internalCost,
+        partSource: partSource.trim(),
+        distributorSku: distributorSku.trim(),
+        orderSourceUrl: orderSourceUrl.trim(),
+        orderStatus,
+        orderDate,
+        estimatedDeliveryDate,
+        trackingUrl: trackingUrl.trim(),
+      } : {}),
     };
     (window as any).api?._emitCustomBuildItemSave?.(res);
   }
@@ -64,7 +91,7 @@ const CustomBuildItemWindow: React.FC = () => {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-100 p-4">
+    <div className="h-screen w-screen overflow-y-auto bg-zinc-900 text-zinc-100 p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-lg font-bold text-[#39FF14]">{payload?.title || 'Line Item'}</div>
@@ -87,7 +114,14 @@ const CustomBuildItemWindow: React.FC = () => {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Price</label>
+            <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Line type</label>
+            <select className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={itemType} onChange={(e) => setItemType(e.target.value as 'part' | 'labor')}>
+              <option value="part">Part (taxed)</option>
+              <option value="labor">Labor (not taxed)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Customer price</label>
             <MoneyInput
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-neon-green"
               value={price}
@@ -96,18 +130,21 @@ const CustomBuildItemWindow: React.FC = () => {
             <div className="text-[11px] text-zinc-500 mt-1">Saved as ${price.toFixed(2)}</div>
           </div>
 
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input
-                className="scale-95"
-                type="checkbox"
-                checked={isParts}
-                onChange={(e) => setIsParts(e.target.checked)}
-              />
-              This is a parts line item (taxed)
-            </label>
-          </div>
         </div>
+
+        {itemType === 'part' ? (
+          <div className="grid grid-cols-2 gap-3 rounded border border-zinc-700 bg-zinc-950/30 p-3">
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Quantity</label><input type="number" min="1" step="1" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Internal cost</label><MoneyInput className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={internalCost} onValueChange={(v) => setInternalCost(round2(Number(v || 0)))} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Supplier / distributor</label><input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={partSource} onChange={(e) => setPartSource(e.target.value)} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Supplier SKU</label><input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={distributorSku} onChange={(e) => setDistributorSku(e.target.value)} /></div>
+            <div className="col-span-2"><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Order URL</label><input type="url" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="https://supplier.example/item" value={orderSourceUrl} onChange={(e) => setOrderSourceUrl(e.target.value)} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Order status</label><select className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={orderStatus} onChange={(e) => setOrderStatus(e.target.value as CustomBuildItemResult['orderStatus'])}><option value="in_stock">In stock</option><option value="needed">Needs ordering</option><option value="ordered">Ordered</option><option value="received">Received</option></select></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Ordered date</label><input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Estimated delivery</label><input type="date" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={estimatedDeliveryDate} onChange={(e) => setEstimatedDeliveryDate(e.target.value)} /></div>
+            <div><label className="block text-[11px] uppercase tracking-wide text-zinc-500 mb-1">Tracking URL</label><input type="url" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} /></div>
+          </div>
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <button className="px-4 py-2 rounded bg-zinc-800 border border-zinc-700 text-sm" onClick={cancel}>Cancel</button>

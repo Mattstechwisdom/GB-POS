@@ -27,7 +27,7 @@ for (const source of [desktop, mobile]) {
   assert.match(source, /items:\s*toCloudArray\(item\.items\)/, 'Supabase writes must include complete work-order items JSON.');
   assert.match(source, /items:\s*cloudArray\(row\.items\)/, 'Supabase reads must restore complete work-order items JSON.');
 }
-assert.match(desktop, /await syncCloudWriteOrQueue\('upsert', key, updatedItem\)/, 'Desktop updates must finish a Supabase attempt or durable offline queue before reporting success.');
+assert.match(desktop, /queueCloudWriteForBackgroundSync\('upsert', key, updatedItem\)/, 'Desktop updates must durably queue Supabase synchronization before reporting success.');
 assert.match(desktop, /ipcMain\.handle\('db-find'[\s\S]*mergeCloudRowsIntoLocalCache\(key, cloudRows\)/, 'Cloud records opened through Find must be cached locally before desktop Update can persist them.');
 
 assert.match(workOrder, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Work orders must hard-block Save and Checkout without a technician.');

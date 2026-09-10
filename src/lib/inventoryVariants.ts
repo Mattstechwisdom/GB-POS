@@ -42,6 +42,26 @@ export function inventoryAggregateStock(items: InventoryVariantLike[], parentId:
   }, 0);
 }
 
+export function inventoryHierarchyRows<T extends InventoryVariantLike>(items: T[], expandedParentIds: Set<number>): T[] {
+  const parentIds = new Set(items.filter(isInventoryParent).map(item => Number(item.id)).filter(id => Number.isFinite(id) && id > 0));
+  const children = new Map<number, T[]>();
+  items.forEach(item => {
+    const parentId = inventoryParentId(item);
+    if (parentId && parentIds.has(parentId)) children.set(parentId, [...(children.get(parentId) || []), item]);
+  });
+  const result: T[] = [];
+  items.forEach(item => {
+    const parentId = inventoryParentId(item);
+    if (parentId && parentIds.has(parentId)) return;
+    result.push(item);
+    const ownId = Number(item.id);
+    if (isInventoryParent(item) && expandedParentIds.has(ownId)) {
+      result.push(...(children.get(ownId) || []).sort((left, right) => Number(left.id || 0) - Number(right.id || 0)));
+    }
+  });
+  return result;
+}
+
 export function eligibleInventoryVariants<T extends InventoryVariantLike>(
   items: T[],
   parentId: string | number,

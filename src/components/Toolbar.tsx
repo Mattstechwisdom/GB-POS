@@ -153,12 +153,20 @@ const Toolbar: React.FC<{
 
         <button
           className="px-4 py-2 bg-blue-600 text-white font-semibold rounded shadow-sm border border-blue-500 hover:bg-blue-500 text-sm"
-          onClick={() => dispatchOpenModal('consultation')}
+          onClick={() => {
+            const api: any = (window as any).api;
+            if (typeof api?.openConsultation === 'function') void api.openConsultation();
+            else dispatchOpenModal('consultation');
+          }}
         >
           Consultation
         </button>
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
+        {drawerMode ? <button
+          className="desktop-command-eod"
+          onClick={() => dispatchOpenModal('eod')}
+        >EOD</button> : null}
         {!drawerMode ? <button
           className="px-3 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
           onClick={() => dispatchOpenModal('eod')}
@@ -177,22 +185,25 @@ const Toolbar: React.FC<{
         >
           Calendar
         </button> : null}
-        {!drawerMode ? <button
+        <button
           type="button"
-          className="relative flex h-9 w-9 items-center justify-center rounded border border-zinc-700 bg-zinc-800 text-lg font-bold text-zinc-100 hover:border-[#39FF14] hover:text-[#39FF14]"
+          className="desktop-command-icon relative flex h-9 w-9 items-center justify-center rounded border border-zinc-700 bg-zinc-800 text-lg font-bold text-zinc-100 hover:border-[#39FF14] hover:text-[#39FF14]"
           onClick={() => onOpenNotifications ? onOpenNotifications() : dispatchOpenModal('notifications')}
           aria-label="Open notifications"
           title="Notifications"
         >
-          <span aria-hidden="true">!</span>
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center border border-zinc-900">
               {unread > 99 ? '99+' : unread}
             </span>
           )}
+        </button>
+        {drawerMode ? <button type="button" className="desktop-command-icon" onClick={() => dispatchOpenModal('calendar')} title="Calendar" aria-label="Open calendar">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
         </button> : null}
         <button
-          className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm flex items-center justify-center"
+          className="desktop-command-icon px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm flex items-center justify-center"
           title={isFull ? 'Exit full screen' : 'Enter full screen'}
           onClick={async () => {
             try { await (window as any).api.toggleFullScreen?.(); const v = await (window as any).api.getFullScreen?.(); setIsFull(!!v); } catch (e) { console.error('toggleFullScreen failed', e); }
@@ -215,6 +226,11 @@ const Toolbar: React.FC<{
          <button type="button" className="search" onClick={onSearchClient}>Search Client</button>
          <button type="button" className="add" onClick={onAddClient}>Add Client</button>
          <button type="button" className="checkout" onClick={() => dispatchOpenModal('quickSale')}>Quick Checkout</button>
+         <button type="button" className="dropoff" onClick={() => {
+           const api: any = (window as any).api;
+           if (typeof api?.openNewWorkOrder === 'function') void api.openNewWorkOrder({ clientDropoff: true });
+           else dispatchOpenModal('newWorkOrder');
+         }}>Client Dropoff</button>
        </div>
      </div>
    ) : null}

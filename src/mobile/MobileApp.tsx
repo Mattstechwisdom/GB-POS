@@ -17,7 +17,9 @@ import GidgetChat from '../components/GidgetChat';
 import { installMobileLongPressContextMenu } from './longPressContextMenu';
 import { mainRecordKind, mainRecordTypeLabel, type MainRecordKind } from '../lib/consultationRecord';
 import { reconcilePaidSaleInventory, reconcilePaidWorkOrderInventory } from '../lib/inventoryConsumption';
+import { reconcileLegacyWorkOrders } from '../lib/workOrderCleanup';
 import DurantApp from '../durant/DurantApp';
+import CommandCenter from '../components/CommandCenter';
 
 const NewWorkOrderWindow = React.lazy(() => import('../workorders/NewWorkOrderWindow'));
 const SaleWindow = React.lazy(() => import('../sales/SaleWindow'));
@@ -57,6 +59,7 @@ const CustomBuildItemWindow = React.lazy(() => import('../workorders/CustomBuild
 const TechniciansWindow = React.lazy(() => import('../components/TechniciansWindow'));
 const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
 const GameMenuWindow = React.lazy(() => import('../components/GameMenuWindow'));
+const RepairTutorialWindow = React.lazy(() => import('../repairs/RepairTutorialWindow'));
 
 type StaffProfile = {
   id: string;
@@ -329,6 +332,7 @@ function useSheetDrag(onClose: () => void) {
 
 function MobileModalContent({ type, onClose }: { type: string; onClose: () => void }) {
   switch (type) {
+    case 'repairTutorial': return <RepairTutorialWindow onClose={onClose} />;
     case 'clientUpdate': return (
       <ClientUpdatePanel
         embedded
@@ -491,9 +495,10 @@ function useMobileRecords(refreshKey: number) {
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const loadedOnceRef = useRef(false);
 
   const loadCore = useCallback(async () => {
-    setLoading(true);
+    if (!loadedOnceRef.current) setLoading(true);
     setError('');
     try {
       const api = window.api as any;
@@ -510,6 +515,7 @@ function useMobileRecords(refreshKey: number) {
     } catch (e: any) {
       setError(e?.message || 'Mobile data load failed.');
     } finally {
+      loadedOnceRef.current = true;
       setLoading(false);
     }
   }, []);
@@ -692,6 +698,7 @@ const MobileAppRuntime: React.FC = () => {
     void (async () => {
       await reconcilePaidSaleInventory(window.api as any);
       await reconcilePaidWorkOrderInventory(window.api as any);
+      await reconcileLegacyWorkOrders(window.api as any);
     })().catch((error) => {
       console.error('Mobile startup inventory reconciliation failed', error);
     });
@@ -792,6 +799,7 @@ function MobileBrandTitle() {
 function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { profile: StaffProfile; cloudWarning: string; onSignOut: () => void; initialWindow?: string }) {
   const [drawerOpen, setDrawerOpen] = useState(shouldOpenMobileDrawer);
   const [mode, setMode] = useState<MobileMode>('all');
+  const [homeView, setHomeView] = useState<'command' | 'invoices'>('command');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [technicianFilter, setTechnicianFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -972,6 +980,7 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
       openDeviceCategories: 'deviceCategories',
       openClearDatabase: 'clearDb',
       openCustomBuildItem: 'customBuildItem',
+      openRepairTutorial: 'repairTutorial',
     } as Record<string, string>;
     const originals = new Map<string, any>();
     Object.entries(methods).forEach(([method, type]) => {
@@ -1278,16 +1287,33 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
         </section>
       ) : null}
 
-      <section className="mobile-tabbar" aria-label="Record type">
-        <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All</button>
-        <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
-        <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales</button>
-      </section>
-
       {cloudWarning ? <div className="mobile-cloud-warning">{cloudWarning}</div> : null}
       {error ? <div className="mobile-cloud-warning danger">{error}</div> : null}
 
-      <section className="mobile-record-list" aria-live="polite">
+      {homeView === 'command' ? (
+        <section className="mobile-command-center" aria-live="polite">
+          <CommandCenter
+            keyword={deferredQuery}
+            onOpenInvoices={(nextMode = 'all') => {
+              setMode(nextMode);
+              setHomeView('invoices');
+            }}
+            onOpenModal={openModal}
+          />
+          <button type="button" className="mobile-all-invoices-button" onClick={() => setHomeView('invoices')}>All Invoices</button>
+        </section>
+      ) : (
+        <>
+          <div className="mobile-invoice-heading">
+            <button type="button" onClick={() => setHomeView('command')}>‹ Command Center</button>
+            <strong>All Invoices</strong>
+          </div>
+          <section className="mobile-tabbar" aria-label="Record type">
+            <button type="button" className={mode === 'all' ? 'active' : ''} onClick={() => setMode('all')}>All</button>
+            <button type="button" className={mode === 'workorders' ? 'active' : ''} onClick={() => setMode('workorders')}>Work Orders</button>
+            <button type="button" className={mode === 'sales' ? 'active' : ''} onClick={() => setMode('sales')}>Sales</button>
+          </section>
+          <section className="mobile-record-list" aria-live="polite">
         {query === 'GADGETBOY' ? <button type="button" className="gb-secret-game-result mobile" onClick={() => openModal('gameMenu')}><strong>GAME MENU</strong><span>Secret system entry</span></button> : null}
         {loading ? <div className="mobile-loading-inline">Loading shop data...</div> : null}
         {!loading && visibleRows.length === 0 && query !== 'GADGETBOY' ? (
@@ -1309,7 +1335,9 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
             Load {Math.min(35, filteredRows.length - visibleRows.length)} more
           </button>
         ) : null}
-      </section>
+          </section>
+        </>
+      )}
 
       <nav className="mobile-quickbar" aria-label="Quick actions">
         <button type="button" className="quick-sale" onClick={() => openModal('quickSale')}>Quick Checkout</button>
@@ -1455,7 +1483,6 @@ function MobileDrawer(props: {
         <div className="mobile-drawer-hero-actions" aria-label="Priority actions">
           <DrawerButton label="Generate Quote" tone="green" featured onClick={() => handleOpenModal('quoteGenerator')} />
           <DrawerButton label="Consultation" tone="blue" featured onClick={() => handleOpenModal('consultation')} />
-          <DrawerButton label="End of Day Report" tone="amber" featured onClick={() => handleOpenModal('eod')} />
         </div>
 
         <DrawerSection title="Technician Tools" open={openSections.technician} tone="blue" onToggle={() => toggleSection('technician')}>

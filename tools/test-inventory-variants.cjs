@@ -19,6 +19,7 @@ const {
   inventoryVariantAttributes,
   inventoryVariantsForParent,
   isInventoryParent,
+  inventoryHierarchyRows,
 } = moduleShim.exports;
 
 const parent = { id: 100, itemDescription: 'iPhone 7 Screen', isParentPart: true, stockCount: 99 };
@@ -36,5 +37,7 @@ assert.deepEqual(inventoryVariantsForParent(rows, 100).map((row) => row.id), [10
 assert.equal(inventoryAggregateStock(rows, 100), 7);
 assert.deepEqual(eligibleInventoryVariants(rows, 100, { color: 'white' }).map((row) => row.id), [102]);
 assert.deepEqual(eligibleInventoryVariants(rows, 100, { quality: 'PREMIUM' }).map((row) => row.id), [101]);
+assert.deepEqual(inventoryHierarchyRows(rows, new Set()).map((row) => row.id), [104, 103, 100], 'collapsed variants must not appear as standalone rows');
+assert.deepEqual(inventoryHierarchyRows(rows, new Set([100])).map((row) => row.id), [104, 103, 100, 101, 102], 'expanded variants must remain directly below their parent');
 
 console.log('Inventory variant checks passed.');

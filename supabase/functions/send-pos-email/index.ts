@@ -33,6 +33,10 @@ type RequestBody = {
   attachments?: unknown;
 };
 
+// Automatic acknowledgments use client_update_history as the same retry-safe
+// outbox as staff-authored QR updates. The queue RPC inserts only pending rows,
+// and this worker's conditional pending -> sending claim prevents double sends.
+
 function json(status: number, payload: Record<string, unknown>) {
   return new Response(JSON.stringify(payload), {
     status,

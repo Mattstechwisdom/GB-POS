@@ -29,6 +29,7 @@ try {
 
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
+let stopQrStatusServerForUpdate: () => Promise<void> = async () => {};
 
 function isTrustedRendererPermissionRequest(requestingUrl: string) {
   try {
@@ -1422,7 +1423,7 @@ function updateUiHtml(initialState: any): string {
         primaryBtn.textContent = 'Close';
         primaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'skip');
         downloadBtn.style.display = 'none';
-        secondaryBtn.textContent = 'Releases';
+        secondaryBtn.textContent = 'Open Download Page';
         secondaryBtn.onclick = () => ipcRenderer.send('updater-window-action', 'releases');
       }
     };
@@ -1539,8 +1540,11 @@ async function startUpdateDownload() {
 async function installDownloadedUpdate() {
   if (!autoUpdater) return;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
+  await prepareForUpdateInstall();
   setTimeout(() => {
     try {
+      // Run NSIS silently for the one-click update-and-relaunch experience.
+      // The packaged elevation helper remains available if Windows needs it.
       autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
       try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
@@ -1550,6 +1554,30 @@ async function installDownloadedUpdate() {
       });
     }
   }, 450);
+}
+
+async function prepareForUpdateInstall() {
+  // Finish writes before NSIS starts replacing application files.
+  try { await drainDbWrites(); } catch {}
+  try {
+    await Promise.race([
+      drainCloudSyncQueue(),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  } catch {}
+
+  // Release background resources that can keep Electron or installed files open.
+  try { disposeCloverConnector(); } catch {}
+  try { await stopQrStatusServerForUpdate(); } catch {}
+
+  // Daughter windows can retain their own renderer processes. Close those now;
+  // quitAndInstall will close the main and updater windows during handoff.
+  try {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win === mainWindow || win === updateUiWindow || win.isDestroyed()) continue;
+      try { win.destroy(); } catch {}
+    }
+  } catch {}
 }
 
 async function promptToDownloadUpdate(info: any) {
@@ -4440,6 +4468,19 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       payments: cloudArray(row.payments),
       internalNotes: row.internal_notes || '',
       internalNotesLog: cloudArray(row.internal_notes_log),
+      statusUpdate: row.status_update || '',
+      statusUpdatedAt: cloudDate(row.status_updated_at),
+      repairStatus: row.repair_status || '',
+      estimatedDate: row.estimated_date || '',
+      techNotes: row.tech_notes || '',
+      lastUpdateNote: row.last_update_note || '',
+      lastUpdateAt: cloudDate(row.last_update_at),
+      pickupReadyAt: cloudDate(row.pickup_ready_at),
+      scheduledPickupAt: cloudDate(row.scheduled_pickup_at),
+      pickupReminderSentAt: cloudDate(row.pickup_reminder_sent_at),
+      pickedUpAt: cloudDate(row.picked_up_at),
+      clientPickupDate: cloudDate(row.client_pickup_date),
+      pickedUpBy: row.picked_up_by || '',
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -4632,6 +4673,9 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       estDelivery: row.est_delivery || '',
       partSource: row.part_source || '',
       orderSourceUrl: row.order_source_url || '',
+      tutorialUrl: row.tutorial_url || '',
+      tutorialMediaType: row.tutorial_media_type || '',
+      tutorialUpdatedAt: cloudDate(row.tutorial_updated_at),
       type: row.type || '',
       model: row.model || '',
       trackStock: !!row.track_stock,
@@ -4771,6 +4815,19 @@ function toCloudRow(key: string, item: any): any | null {
       payments: toCloudArray(item.payments),
       internal_notes: toCloudString(item.internalNotes),
       internal_notes_log: toCloudArray(item.internalNotesLog),
+      status_update: typeof item.statusUpdate === 'undefined' ? undefined : toCloudString(item.statusUpdate),
+      status_updated_at: typeof item.statusUpdatedAt === 'undefined' ? undefined : toCloudIso(item.statusUpdatedAt),
+      repair_status: typeof item.repairStatus === 'undefined' ? undefined : toCloudString(item.repairStatus),
+      estimated_date: typeof item.estimatedDate === 'undefined' ? undefined : toCloudString(item.estimatedDate),
+      tech_notes: typeof item.techNotes === 'undefined' ? undefined : toCloudString(item.techNotes),
+      last_update_note: typeof item.lastUpdateNote === 'undefined' ? undefined : toCloudString(item.lastUpdateNote),
+      last_update_at: typeof item.lastUpdateAt === 'undefined' ? undefined : toCloudIso(item.lastUpdateAt),
+      pickup_ready_at: typeof item.pickupReadyAt === 'undefined' ? undefined : toCloudIso(item.pickupReadyAt),
+      scheduled_pickup_at: typeof item.scheduledPickupAt === 'undefined' ? undefined : toCloudIso(item.scheduledPickupAt),
+      pickup_reminder_sent_at: typeof item.pickupReminderSentAt === 'undefined' ? undefined : toCloudIso(item.pickupReminderSentAt),
+      picked_up_at: typeof item.pickedUpAt === 'undefined' ? undefined : toCloudIso(item.pickedUpAt),
+      client_pickup_date: typeof item.clientPickupDate === 'undefined' ? undefined : toCloudIso(item.clientPickupDate),
+      picked_up_by: typeof item.pickedUpBy === 'undefined' ? undefined : toCloudString(item.pickedUpBy),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),
@@ -4979,6 +5036,9 @@ function toCloudRow(key: string, item: any): any | null {
       est_delivery: toCloudString(item.estDelivery),
       part_source: toCloudString(item.partSource),
       order_source_url: toCloudString(item.orderSourceUrl),
+      tutorial_url: toCloudString(item.tutorialUrl),
+      tutorial_media_type: toCloudString(item.tutorialMediaType),
+      tutorial_updated_at: toCloudIso(item.tutorialUpdatedAt),
       type: toCloudString(item.type),
       model: toCloudString(item.model),
       track_stock: toCloudBool(item.trackStock),
@@ -5205,16 +5265,18 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   return rows;
 }
 
-function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
+function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
   try {
-    if (!Array.isArray(rows)) return;
+    if (!Array.isArray(rows)) return [];
     const db: any = readDb();
     if (key === 'technicians') {
       writeDb({ ...db, technicians: rows.slice() });
-      return;
+      return rows.slice();
     }
-    if (rows.length === 0) return;
     const existing = Array.isArray(db[key]) ? db[key] : [];
+    const pending = readCloudSyncQueue().filter((op) => op.key === key);
+    const pendingDeletes = new Set(pending.filter((op) => op.op === 'delete').map((op) => String(op.legacyId)));
+    const pendingUpserts = new Set(pending.filter((op) => op.op === 'upsert').map((op) => String(op.legacyId)));
     const byId = new Map<string, any>();
     for (const item of existing) {
       const id = item?.id;
@@ -5224,7 +5286,12 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
     for (const row of rows) {
       const id = row?.id;
       if (id === null || typeof id === 'undefined') continue;
-      byId.set(String(id), row);
+      const idKey = String(id);
+      if (pendingDeletes.has(idKey)) continue;
+      const previous = byId.get(idKey);
+      const previousTime = Date.parse(String(previous?.updatedAt || '')) || 0;
+      const rowTime = Date.parse(String(row?.updatedAt || '')) || 0;
+      if (!previous || (!pendingUpserts.has(idKey) && rowTime >= previousTime)) byId.set(idKey, row);
     }
     const nextList = Array.from(byId.values());
     const nextDb: any = { ...db, [key]: nextList };
@@ -5235,8 +5302,10 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]) {
       if (Number.isFinite(maxId)) nextDb.invoiceSeq = maxId;
     }
     writeDb(nextDb);
+    return nextList;
   } catch {
     // Local cloud-read cache is best effort.
+    return Array.isArray(rows) ? rows : [];
   }
 }
 
@@ -5359,29 +5428,16 @@ function scheduleCloudSyncQueueDrain(delayMs = 1500) {
   }
 }
 
-async function syncCloudWriteOrQueue(op: 'upsert' | 'delete', key: string, itemOrId: any) {
-  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return { synced: false, queued: false };
+function queueCloudWriteForBackgroundSync(op: 'upsert' | 'delete', key: string, itemOrId: any) {
+  if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return;
   const legacyId = op === 'delete' ? itemOrId : legacyIdForCloudItem(key, itemOrId);
-  if (legacyId === null || typeof legacyId === 'undefined') return { synced: false, queued: false };
-  try {
-    if (!shouldUseCloudDb(key)) throw new Error('Cloud session is not ready.');
-    if (op === 'delete') await cloudDbDelete(key, legacyId);
-    else await cloudDbUpsert(key, itemOrId);
-    scheduleCloudSyncQueueDrain(100);
-    return { synced: true, queued: false };
-  } catch (e: any) {
-    queueCloudSyncOperation({
-      id: cloudSyncOperationId(),
-      op,
-      key,
-      item: op === 'upsert' ? itemOrId : undefined,
-      legacyId,
-      createdAt: new Date().toISOString(),
-      attempts: 0,
-      lastError: e?.message || String(e),
-    });
-    return { synced: false, queued: true };
-  }
+  if (legacyId === null || typeof legacyId === 'undefined') return;
+  queueCloudSyncOperation({
+    id: cloudSyncOperationId(), op, key,
+    item: op === 'upsert' ? itemOrId : undefined,
+    legacyId, createdAt: new Date().toISOString(), attempts: 0,
+  });
+  scheduleCloudSyncQueueDrain(100);
 }
 
 ipcMain.handle('db-reset-all', async () => {
@@ -5469,11 +5525,18 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
     try {
       const cloudRows = await cloudDbGet(key, opts);
       if (Array.isArray(cloudRows)) {
-        mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return cloudRows;
+        const mergedRows = mergeCloudRowsIntoLocalCache(key, cloudRows);
+        return opts ? cloudRows : mergedRows;
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
+      // An empty local calendar cache must not masquerade as a successful cloud
+      // read. Let CalendarWindow retry instead of replacing a populated calendar
+      // with an unexplained blank view during a transient Supabase failure.
+      if (key === 'calendarEvents') {
+        const cachedCalendar = readDb()?.calendarEvents;
+        if (!Array.isArray(cachedCalendar) || cachedCalendar.length === 0) throw e;
+      }
     }
   }
   const db = readDb();
@@ -5577,7 +5640,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
   const ok = writeDb(nextDb);
   if (ok) {
-    await syncCloudWriteOrQueue('upsert', key, nextItem);
+    queueCloudWriteForBackgroundSync('upsert', key, nextItem);
     scheduleCollectionChanged(key);
     return nextItem;
   }
@@ -5589,8 +5652,7 @@ ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
     try {
       const cloudRows = await cloudDbGet(key);
       if (Array.isArray(cloudRows)) {
-        mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return cloudRows.filter((it: any) => matchesDbQuery(it, q));
+        return mergeCloudRowsIntoLocalCache(key, cloudRows).filter((it: any) => matchesDbQuery(it, q));
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-find fallback:', key, e?.message || e); } catch {}
@@ -5876,7 +5938,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
-    await syncCloudWriteOrQueue('upsert', key, updatedItem);
+    queueCloudWriteForBackgroundSync('upsert', key, updatedItem);
     scheduleCollectionChanged(key);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
@@ -5925,7 +5987,7 @@ ipcMain.handle('db-delete', async (_e: any, key: string, id: any) => {
   const ok = writeDb(nextDb);
   dbLog('[DB-DELETE] Deleted', key, 'id=', id, 'ok=', ok);
   if (ok) {
-    await syncCloudWriteOrQueue('delete', key, id);
+    queueCloudWriteForBackgroundSync('delete', key, id);
     scheduleCollectionChanged(key);
   }
   return ok;
@@ -6837,6 +6899,18 @@ const httpMod = require('http');
 
 const QR_PORT = 7777;
 let qrHttpServer: any = null;
+stopQrStatusServerForUpdate = async () => {
+  if (!qrHttpServer) return;
+  const server = qrHttpServer;
+  qrHttpServer = null;
+  try { server.closeAllConnections?.(); } catch {}
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      try { server.close(() => resolve()); } catch { resolve(); }
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, 750)),
+  ]);
+};
 
 function getLanIp(): string {
   try {
@@ -6932,6 +7006,17 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
   const client = getCloudClient();
   if (!client || !cloudSession?.shopId || !id) return null;
 
+  // A freshly checked-out ticket may still be waiting in the background sync
+  // queue. Persist this exact record first so a newly printed QR never points
+  // at a token whose sale/work order is not available on the receiving device.
+  const recordKey = cloudRecordKeyForQrType(type);
+  const localRecords = (readDb() as any)?.[recordKey];
+  const localRecord = Array.isArray(localRecords)
+    ? localRecords.find((record: any) => Number(record?.id || 0) === id)
+    : null;
+  if (!localRecord) throw new Error('The saved record could not be found for this QR code.');
+  await cloudDbUpsert(recordKey, localRecord);
+
   const existing = await client
     .from('qr_status_tokens')
     .select('token')
@@ -6939,11 +7024,13 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
     .eq('record_type', type)
     .eq('legacy_record_id', id)
     .is('revoked_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (existing.error) throw new Error(`Cloud QR token lookup failed: ${existing.error.message}`);
   if (existing.data?.token) return cloudQrUrl(type, existing.data.token);
 
-  const recordTable = CLOUD_TABLE_BY_KEY[cloudRecordKeyForQrType(type)];
+  const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
   let recordCloudId: string | null = null;
   try {
     const record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();
@@ -8347,6 +8434,35 @@ ipcMain.handle('open-repair-categories', async (_event: any, payload?: any) => {
   return { ok: true };
 });
 
+ipcMain.handle('open-repair-tutorial', async (event: any, payload: any) => {
+  const rawUrl = String(payload?.normalizedUrl || '');
+  if (!/^https:\/\//i.test(rawUrl)) return { ok: false, error: 'A valid HTTPS tutorial URL is required.' };
+  const parent = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getAllWindows()[0] || undefined;
+  const child = new BrowserWindow({
+    width: 920,
+    height: 680,
+    minWidth: 560,
+    minHeight: 420,
+    parent,
+    modal: false,
+    resizable: true,
+    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
+    backgroundColor: '#09090b',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
+    },
+    show: false,
+    title: windowTitle('Repair Tutorial'),
+  });
+  showWindowFast(child, () => centerWindow(child));
+  const query = `repairTutorial=${encodeURIComponent(rawUrl)}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?${query}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?${query}`;
+  await child.loadURL(url);
+  return { ok: true };
+});
+
 // IPC handler for opening the WorkOrderRepairPicker window
 ipcMain.handle('open-workorder-repair-picker', async (_event: any) => {
   const child = new BrowserWindow({
@@ -8607,10 +8723,12 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
     child.loadURL(url);
 
     const saveHandler = (_e: any, result: any) => {
+      if (_e?.sender !== child.webContents) return;
       resolve(result);
       cleanup();
     };
-    const cancelHandler = () => {
+    const cancelHandler = (_e: any) => {
+      if (_e?.sender !== child.webContents) return;
       resolve(null);
       cleanup();
     };

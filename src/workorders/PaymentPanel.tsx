@@ -7,10 +7,11 @@ interface Props {
   workOrder: WorkOrderFull;
   onChange: (p: Partial<WorkOrderFull>) => void;
   onCheckout: () => void;
+  checkoutBusy?: boolean;
   salesMode?: boolean; // when true, hide labor/parts and discount; show single Product row
 }
 
-const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesMode = false }) => {
+const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, checkoutBusy = false, salesMode = false }) => {
   const t = workOrder.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
   const lastNonZeroTaxRateRef = React.useRef<number>(Number(workOrder.taxRate) || 0);
   const currentTaxRate = Number(workOrder.taxRate) || 0;
@@ -174,7 +175,7 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, salesM
       </div>
 
       <div className="mt-3">
-        <button className="w-full px-3 py-2 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110" onClick={() => onCheckout()}>Checkout</button>
+        <button disabled={checkoutBusy} className="w-full px-3 py-2 rounded bg-neon-green text-zinc-900 font-semibold hover:brightness-110 disabled:opacity-60 disabled:cursor-wait" onClick={() => onCheckout()}>{checkoutBusy ? 'Processing…' : 'Checkout'}</button>
       </div>
     </div>
   );
@@ -186,6 +187,7 @@ export default React.memo(PaymentPanel, (prev, next) => {
   const at = a.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
   const bt = b.totals || { subTotal: 0, tax: 0, total: 0, remaining: 0 };
   return prev.salesMode === next.salesMode
+    && prev.checkoutBusy === next.checkoutBusy
     && prev.onChange === next.onChange
     && prev.onCheckout === next.onCheckout
     && String(a.discountType || '') === String(b.discountType || '')

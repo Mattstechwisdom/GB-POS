@@ -1,0 +1,135 @@
+import { getSupabaseRuntimeConfig, supabase } from './supabase';
+import type { AutomaticClientEmailKind } from './automaticClientEmail';
+import { acknowledgmentAmount, classifyAcknowledgment, consultationChanges, consultationDigest, renderAutomaticClientEmail } from './automaticClientEmail';
+
+export type AutomaticEmailQueueInput = {
+  recordType: 'repair' | 'sale' | 'consult';
+  legacyRecordId: number;
+  eventType: AutomaticClientEmailKind;
+  eventDigest: string;
+  recipientEmail?: string;
+  emailDeclined?: boolean;
+  statusLabel: string;
+  subject: string;
+  text: string;
+  html: string;
+};
+
+export async function queueAutomaticClientEmail(input: AutomaticEmailQueueInput) {
+  const { data, error } = await supabase.rpc('queue_automatic_client_email', {
+    p_record_type: input.recordType,
+    p_legacy_record_id: input.legacyRecordId,
+    p_event_type: input.eventType,
+    p_event_digest: input.eventDigest,
+    p_payload: {
+      recipient_email: input.recipientEmail || null,
+      email_declined: Boolean(input.emailDeclined),
+      status_label: input.statusLabel,
+      email_subject: input.subject,
+      email_text: input.text,
+      email_html: input.html,
+    },
+  });
+  if (error) return { ok: false, queued: false, error: error.message };
+  const history = Array.isArray(data) ? data[0] : data;
+  if (!history || history.delivery_status === 'not_sent' || history.delivery_status === 'sent') {
+    return { ok: true, queued: false, history };
+  }
+  const shopId = String(history.shop_id || '');
+  const { data: delivery, error: deliveryError } = await supabase.functions.invoke('send-pos-email', {
+    body: { action: 'send-client-update', shopId, historyId: history.id },
+  });
+  return deliveryError
+    ? { ok: true, queued: true, history, error: deliveryError.message }
+    : { ok: true, queued: !delivery?.ok, history, delivery };
+}
+
+export async function queueInitialPaymentAcknowledgment(input: {
+  recordType: 'repair' | 'sale';
+  record: Record<string, any>;
+  payment: Record<string, any>;
+  customer?: Record<string, any> | null;
+  statusUrl?: string;
+}) {
+  try {
+    const record: Record<string, any> = { ...input.record, recordType: input.recordType };
+    const kind = classifyAcknowledgment(record, input.payment);
+    const legacyRecordId = Number(record.id || 0);
+    if (!kind || !(legacyRecordId > 0)) return { ok: true, queued: false };
+    const customer = input.customer || {};
+    const device = [record.productDescription || record.productCategory, record.model].filter(Boolean).join(' - ') || 'your device';
+    const items = Array.isArray(record.items) ? record.items : [];
+    let clientStatusUrl='';
+    try{const source=new URL(String(input.statusUrl||''));const token=source.searchParams.get('clientUpdateToken')||source.searchParams.get('token')||'';const {supabaseUrl}=getSupabaseRuntimeConfig();if(token&&supabaseUrl)clientStatusUrl=`${supabaseUrl.replace(/\/+$/,'')}/functions/v1/qr-status?token=${encodeURIComponent(token)}&view=client`;}catch{}
+    const rendered = renderAutomaticClientEmail(kind, {
+      firstName: customer.firstName || String(record.customerName || '').trim().split(/\s+/)[0] || 'there',
+      recordNumber: legacyRecordId,
+      device,
+      amount: acknowledgmentAmount(record, input.payment, kind),
+      problem: record.problemInfo || 'Not provided',
+      part: items.find((item: any) => item?.inStock === false)?.description || items[0]?.description || 'Repair part',
+      itemSummary: items.map((item: any) => item.description || item.repair).filter(Boolean).join(', ') || record.itemDescription || 'Purchase',
+      statusUrl: clientStatusUrl,
+    });
+    return await queueAutomaticClientEmail({
+      recordType: input.recordType,
+      legacyRecordId,
+      eventType: kind,
+      eventDigest: 'initial-payment-v1',
+      recipientEmail: customer.email || record.customerEmail || '',
+      emailDeclined: Boolean(customer.emailDeclined || customer.declinedEmail),
+      statusLabel: kind === 'diagnostic-intake' ? 'Diagnostic intake acknowledgment' : kind === 'part-awaiting-delivery' ? 'Ordered part payment acknowledgment' : kind === 'repair-completed' ? 'Completed repair thank-you' : 'Completed sale thank-you',
+      ...rendered,
+    });
+  } catch (error) {
+    console.warn('Automatic client acknowledgment could not be queued; checkout remains saved.', error);
+    return { ok: false, queued: false, error: String((error as any)?.message || error) };
+  }
+}
+
+export function consultationEmailDetails(record: Record<string, any>) {
+  const start = String(record.appointmentTime || record.time || '').trim();
+  const end = String(record.appointmentEndTime || record.endTime || '').trim();
+  const hours = Number(record.consultationHours || 0);
+  return {
+    date: String(record.appointmentDate || record.date || '').trim(),
+    time: [start, end].filter(Boolean).join(' – '),
+    location: String(record.consultationAddress || record.location || record.consultationType || '').trim(),
+    topic: String(record.itemDescription || record.title || 'Consultation').trim(),
+    device: String(record.device || record.productDescription || '').trim(),
+    duration: hours > 0 ? `${hours} hour${hours === 1 ? '' : 's'}` : (start && end ? `${start} – ${end}` : ''),
+    consultant: String(record.assignedTo || record.technician || '').trim(),
+  };
+}
+
+export async function queueConsultationEmail(input: {
+  kind: 'consultation-scheduled' | 'consultation-updated';
+  record: Record<string, any>;
+  previous?: Record<string, any> | null;
+  customer?: Record<string, any> | null;
+}) {
+  try {
+    const legacyRecordId = Number(input.record.id || 0);
+    if (!(legacyRecordId > 0)) return { ok: false, queued: false, error: 'Consultation must be saved first.' };
+    const details = consultationEmailDetails(input.record);
+    const digest = consultationDigest(details);
+    const priorDetails = input.previous ? consultationEmailDetails(input.previous) : null;
+    if (input.kind === 'consultation-updated' && priorDetails && consultationDigest(priorDetails) === digest) return { ok: true, queued: false };
+    const customer = input.customer || {};
+    const rendered = renderAutomaticClientEmail(input.kind, {
+      ...details,
+      firstName: customer.firstName || String(input.record.customerName || '').trim().split(/\s+/)[0] || 'there',
+      changes: priorDetails ? consultationChanges(priorDetails, details) : [],
+    });
+    return await queueAutomaticClientEmail({
+      recordType: 'consult', legacyRecordId, eventType: input.kind, eventDigest: digest,
+      recipientEmail: customer.email || input.record.customerEmail || '',
+      emailDeclined: Boolean(customer.emailDeclined || customer.declinedEmail),
+      statusLabel: input.kind === 'consultation-scheduled' ? 'Automatic · Consultation scheduled' : 'Automatic · Consultation updated',
+      ...rendered,
+    });
+  } catch (error) {
+    console.warn('Automatic consultation email could not be queued; consultation remains saved.', error);
+    return { ok: false, queued: false, error: String((error as any)?.message || error) };
+  }
+}

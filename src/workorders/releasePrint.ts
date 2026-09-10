@@ -34,6 +34,7 @@ export type WorkOrder = {
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { discountedWorkOrderItemAmounts } from '../lib/ticketAccounting';
+import { printPageProtectionCss } from '../lib/reliability';
 
 export function buildPatternSvg(seq: number[], size: number = 140): string {
   const padding = 12;
@@ -177,10 +178,11 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
       .totals .label { width:60%; color:#444; }
       .terms { font-size:9pt; text-align:center; color:#222; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
-      .final-block { page-break-inside: avoid; margin-top:12px; }
+      .final-block { break-inside: avoid-page; page-break-inside: avoid; margin-top:12px; }
       .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
       .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
       .muted-label { color:#444; font-size:10pt; }
+      ${printPageProtectionCss()}
     </style>
   </head>
   <body>

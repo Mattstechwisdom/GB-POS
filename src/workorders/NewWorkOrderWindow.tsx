@@ -1,5 +1,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createSingleFlight } from '../lib/reliability';
 import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
@@ -21,6 +22,7 @@ import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticket
 import DurantProposalReview from './DurantProposalReview';
 import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
 import { TechnicianAvatar } from '../lib/technicianIcons';
+import { queueInitialPaymentAcknowledgment } from '../lib/automaticEmailQueue';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -400,6 +402,14 @@ const NewWorkOrderWindow: React.FC = () => {
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
   const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const checkoutSingleFlightRef = useRef<(() => Promise<void>) | null>(null);
+  if (!checkoutSingleFlightRef.current) {
+    checkoutSingleFlightRef.current = createSingleFlight(async () => {
+      setCheckoutBusy(true);
+      try { await handleCheckoutRef.current(); } finally { setCheckoutBusy(false); }
+    });
+  }
   const [addonSale, setAddonSale] = useState<any | null>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
@@ -412,7 +422,15 @@ const NewWorkOrderWindow: React.FC = () => {
     void (async () => {
       const rows = await (window as any).api?.dbGet?.('repairCategories').catch(() => []);
       if (!active) return;
-      setDiagnosticOptions((Array.isArray(rows) ? rows : []).filter((item: RepairItem) => /diagnostic/i.test(`${item.repairCategory || ''} ${item.title || ''}`)));
+      const diagnostics = (Array.isArray(rows) ? rows : []).filter((item: RepairItem) => /diagnostic/i.test(`${item.repairCategory || ''} ${item.title || ''}`));
+      const unique = new Map<string, RepairItem>();
+      diagnostics.forEach((item: RepairItem) => {
+        const label = String(item.title || item.repairCategory || 'Diagnostic').trim().toLowerCase().replace(/\s+/g, ' ');
+        const amount = Math.max(0, Number(item.laborCost || 0) + Number(item.partCost || 0)).toFixed(2);
+        const key = `${label}|${amount}`;
+        if (!unique.has(key)) unique.set(key, item);
+      });
+      setDiagnosticOptions([...unique.values()]);
     })();
     return () => { active = false; };
   }, []);
@@ -634,6 +652,7 @@ const NewWorkOrderWindow: React.FC = () => {
   const onSaveRef = useRef<() => void>(() => {});
   const onCancelRef = useRef<() => void>(() => {});
   const woRef = useRef<any>(wo);
+  const persistedIdRef = useRef<number>(Number((wo as any).id || 0) || 0);
   const isEditingExistingRef = useRef<boolean>(isEditingExisting);
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
@@ -704,12 +723,14 @@ const NewWorkOrderWindow: React.FC = () => {
       (async () => {
         try {
           const api = (window as any).api || {};
-          if (isEditingExistingRef.current || (current.id && current.id !== 0)) {
+          const persistedId = persistedIdRef.current || Number(current.id || 0);
+          if (isEditingExistingRef.current || persistedId) {
+            current.id = persistedId;
             if (typeof api.update === 'function') await api.update('workOrders', { ...current });
             else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', current.id, { ...current });
           } else {
-            if (typeof api.addWorkOrder === 'function') await api.addWorkOrder({ ...current });
-            else if (typeof api.dbAdd === 'function') await api.dbAdd('workOrders', { ...current });
+            const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...current }) : await api.dbAdd('workOrders', { ...current });
+            if (added?.id) persistedIdRef.current = Number(added.id);
           }
           try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
         } catch (err) {
@@ -741,7 +762,7 @@ const NewWorkOrderWindow: React.FC = () => {
         if (!hasMeaningful) return;
         const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...val }) : await api.dbAdd('workOrders', { ...val });
         saved = added;
-        if (added?.id) setWo(w => ({ ...w, id: added.id }));
+        if (added?.id) { persistedIdRef.current = Number(added.id); woRef.current = { ...woRef.current, ...added, id: added.id }; setWo(w => ({ ...w, id: added.id })); }
       }
       setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
       try { window.opener?.postMessage({ type: 'workorders:changed', id: (val as any).id }, '*'); } catch {}
@@ -881,6 +902,7 @@ const NewWorkOrderWindow: React.FC = () => {
           console.log('Work order added', saved);
         }
         const savedId = Number(saved?.id || wo.id || 0);
+        if(savedId){ persistedIdRef.current=savedId; woRef.current={...woRef.current,...saved,id:savedId}; }
         try { window.opener?.postMessage({ type: 'workorders:changed', id: savedId }, '*'); } catch {}
         setSavedAt(new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true }));
 
@@ -1068,6 +1090,8 @@ const NewWorkOrderWindow: React.FC = () => {
       const added = await api.addWorkOrder({ ...current });
       if (added?.id) {
         const newId = Number(added.id) || 0;
+        persistedIdRef.current = newId;
+        woRef.current = { ...woRef.current, ...added, id: newId };
         // Sync React state so the autosave takes the UPDATE path, not CREATE again
         setWo(w => ({ ...w, id: newId }));
         return newId;
@@ -1662,6 +1686,26 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         }
 
+        if (workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0) {
+          try {
+            const customerRows = wo.customerId && api?.findCustomers ? await api.findCustomers({ id: wo.customerId }) : [];
+            const customer = Array.isArray(customerRows) ? customerRows[0] : null;
+            const statusResult = api?.qrGetStatusUrl ? await api.qrGetStatusUrl('repair', effectiveId).catch(() => null) : null;
+            const grossLaborBeforePayment = round2(Math.max(0, Number(wo.laborCost || 0) - Number(wo.discount || 0)));
+            const priorLaborPaid = round2(Math.max(0, grossLaborBeforePayment - Number(checkoutPayload.laborDue || 0)));
+            const appliedParts = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedParts || 0)), 0));
+            const appliedLabor = round2(woPaymentAdds.reduce((sum: number, payment: any) => sum + Math.max(0, Number(payment?.appliedLabor || 0)), 0));
+            const isFinalPayment = Number(updatedTotals?.remaining || 0) <= 0.009;
+            await queueInitialPaymentAcknowledgment({
+              recordType: 'repair',
+              record: { ...nextWo, id: effectiveId, orderedPart: Boolean((nextWo as any).partsOrderDate || (nextWo as any).partsOrderUrl || updatedItems.some((item: any) => item?.inStock === false)) },
+              payment: { applied: appliedToWorkOrder, appliedParts, appliedLabor, priorLaborPaid, isFinalPayment },
+              customer,
+              statusUrl: statusResult?.url,
+            });
+          } catch (emailError) { console.warn('Automatic work-order email was not queued.', emailError); }
+        }
+
         const partsPaymentApplied = woPaymentAdds.some((payment: any) => Number(payment?.appliedParts || 0) > 0.009);
         if (workOrderPersisted && effectiveId > 0 && shouldConsumeWorkOrderInventory({ partsPaymentApplied, markClosed: result.markClosed, status })) {
           try {
@@ -1774,7 +1818,7 @@ const NewWorkOrderWindow: React.FC = () => {
   });
 
   const handleCheckout = useCallback(() => {
-    void handleCheckoutRef.current();
+    void checkoutSingleFlightRef.current?.();
   }, []);
 
   // (removed legacy printCustomerReceipt stub in favor of shared HTML builder)
@@ -2056,7 +2100,7 @@ const NewWorkOrderWindow: React.FC = () => {
               </div>
             ) : null}
           </div>
-          <PaymentPanel workOrder={paymentWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} />
+          <PaymentPanel workOrder={paymentWorkOrder} onChange={handlePaymentChange} onCheckout={handleCheckout} checkoutBusy={checkoutBusy} />
         </div>
       </div>
 

@@ -28,6 +28,7 @@ expect(panel.includes('Client Update History'), 'Update Client and QR panels mus
 expect(panel.includes('event.target === event.currentTarget'), 'The mobile history backdrop must close the daughter window.');
 expect(!panel.includes('gb-pos-production.up.railway.app'), 'Update Client still contains a Railway fallback.');
 expect(desktop.includes('https://mattstechwisdom.github.io/GB-POS'), 'Desktop QR links must use the free GitHub Pages app.');
+expect(desktop.includes('await cloudDbUpsert(recordKey, localRecord)'), 'QR creation must sync the underlying local ticket before issuing a cloud status link.');
 expect(mobile.includes('https://mattstechwisdom.github.io/GB-POS'), 'Mobile QR links must use the free GitHub Pages app.');
 expect(!mobile.includes('railway.app'), 'Mobile QR routing must not fall back to Railway.');
 expect(!read('src/components/GidgetChat.tsx').includes('railway.app'), 'Gidget must not fall back to Railway.');
@@ -47,8 +48,9 @@ expect(read('supabase/functions/send-pos-email/index.ts').includes(".eq(\"delive
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');
 expect(consultationPage.includes('/functions/v1/qr-status'), 'The consultation page must load through Supabase.');
 expect(salePrint.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales forms must use the Supabase-backed sale QR route.');
-expect(!saleReceipt.includes('qrGetStatusUrl'), 'Customer receipts must not generate status QR codes.');
-expect(!saleReceipt.includes('Sale update QR'), 'Customer receipts must not render sale update QR codes.');
+expect(saleReceipt.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales tickets must generate a Supabase-backed sale QR code.');
+expect(saleReceipt.includes('alt="Sale update QR"'), 'Printed sales tickets must render the sale update QR image.');
+expect(saleReceipt.includes('qrReady'), 'Automatic sales-ticket printing must wait for the QR attempt to finish.');
 expect(consultSheet.includes("qrGetStatusUrl?.('consult', eventId)"), 'Printed consultation sheets must use the consultation calendar-event QR route.');
 expect(consultSheet.includes('alt="Consultation update QR"'), 'Printed consultation sheets must render the consultation QR image.');
 expect(saleWindow.includes("recordType: 'sale'"), 'Sales must open their own Update Client workflow.');

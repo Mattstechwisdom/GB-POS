@@ -20,7 +20,7 @@ for (const source of [desktop, mobile]) {
 
 assert.match(inventory, /type="search"[\s\S]*aria-label="Search compatible devices"/, 'Compatible devices must provide a searchable picker.');
 assert.match(inventory, /existing\.includes\(model\)\s*\?\s*existing\.filter/, 'Compatible device selection must support toggling multiple devices.');
-assert.match(inventory, />Repair Type</, 'Parts inventory must expose the repair type field.');
+assert.match(inventory, />Linked Repair Service \(optional\)</, 'Parts inventory must expose the linked repair-service field without conflating it with the physical part type.');
 assert.match(inventory, /inventory-repair-types/, 'Repair type must use saved repair values for suggestions.');
 assert.match(inventory, /Optional for Used Parts/, 'Used parts must make distributor and cost optional.');
 assert.match(inventory, /Inventory save did not return a saved listing/, 'Inventory saves must reject false success responses.');

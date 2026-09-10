@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const inventory = fs.readFileSync(path.join(root, 'src', 'components', 'InventoryWindow.tsx'), 'utf8');
+const review = fs.readFileSync(path.join(root, 'src', 'components', 'InventoryPriceReviewWindow.tsx'), 'utf8');
+for (const text of ['Check All Prices', 'Check Selected', 'Check Price']) assert.match(inventory, new RegExp(text));
+for (const text of ['Changed', 'Unchanged', 'Needs Review', 'Login Required', 'Failed', 'Previous cost', 'Proposed cost', 'Open Part URL', 'Approve', 'Skip']) assert.match(review, new RegExp(text));
+assert.match(review, /type="number"[\s\S]*proposedCost/);
+assert.match(review, /internalCost:\s*approvedCost/);
+assert.doesNotMatch(review, /price:\s*approvedCost/);
+console.log('Inventory price review UI contract passed.');

@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const booking = fs.readFileSync(path.join(root, 'src', 'components', 'ConsultationBookingWindow.tsx'), 'utf8');
+const sale = fs.readFileSync(path.join(root, 'src', 'sales', 'SaleWindow.tsx'), 'utf8');
+const queue = fs.readFileSync(path.join(root, 'src', 'lib', 'automaticEmailQueue.ts'), 'utf8');
+const history = fs.readFileSync(path.join(root, 'src', 'workorders', 'ClientUpdatePanel.tsx'), 'utf8');
+assert.match(booking, /createdEvent[\s\S]*queueConsultationEmail/);
+assert.match(booking, /consultation-scheduled/);
+assert.match(sale, /initialConsultationRef/);
+assert.match(sale, /consultationDigest[\s\S]*consultation-updated/);
+assert.match(queue, /consultationChanges/);
+assert.match(history, /Automatic/);
+assert.match(history, /Preview email/);
+console.log('Consultation automatic email trigger and history contract passed.');

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import MoneyInput from '../components/MoneyInput';
 import { peekWindowPayload } from '../lib/windowPayload';
+import { checkoutCompletionState } from '../lib/checkoutCompletion';
 
 export type PaymentType = "Cash" | "Cash + Card" | "Card" | "Apple Pay" | "Google Pay" | "Other";
 
@@ -59,6 +60,7 @@ const CheckoutWindow: React.FC = () => {
   const [closeParent, setCloseParent] = useState(true);
   const [printReceipt, setPrintReceipt] = useState(true);
   const [markClosed, setMarkClosed] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState('');
 
   const [cloverEnabled, setCloverEnabled] = useState(false);
   const [cloverMode, setCloverMode] = useState<'local' | 'cloud'>('local');
@@ -126,12 +128,15 @@ const CheckoutWindow: React.FC = () => {
     : (isCashOnly ? cashApplied : nonCashApplied);
   const tendered = isCashLike ? numericCashReceived : undefined;
   const changeDue = isCashOnly ? Math.max(numericCashReceived - cashApplied, 0) : 0;
-  const canSave = !!paymentType
-    && appliedPaid > 0
-    && appliedPaid <= selectedDue + 0.0001
-    && (!hasPayFor || selectedDue > 0)
-    && (isCashLike ? numericCashReceived >= cashApplied : true)
-    && (!isSplit || (cashApplied > 0 && cardRemainder > 0));
+  const completionState = checkoutCompletionState({
+    amountDue: selectedDue,
+    amountPaid: appliedPaid,
+    paymentType,
+    markClosed,
+    cashApplied,
+    cardRemainder,
+  });
+  const canSave = completionState.allowed && (isCashLike ? numericCashReceived >= cashApplied : true);
 
   const allocation = useMemo(() => {
     if (!hasPayFor) return { appliedParts: undefined as any, appliedLabor: undefined as any };
@@ -188,7 +193,7 @@ const CheckoutWindow: React.FC = () => {
       amountPaid: appliedPaid,
       ...(isCashLike ? { tendered } : {}),
       changeDue,
-      paymentType: paymentType as PaymentType,
+      paymentType: (paymentType || 'Other') as PaymentType,
       payments,
       payFor: hasPayFor ? payFor : undefined,
       appliedParts: hasPayFor ? allocation.appliedParts : undefined,
@@ -201,7 +206,11 @@ const CheckoutWindow: React.FC = () => {
   }
 
   function save() {
-    if (!canSave) return;
+    if (!canSave) {
+      setCompletionMessage(completionState.reason || 'Review the payment details before completing checkout.');
+      return;
+    }
+    setCompletionMessage('');
     const result = buildCheckoutResult();
     // Fire Clover cash sale in background (opens drawer, records in Clover)
     if (isCashOnly && cloverEnabled) {
@@ -478,11 +487,12 @@ const CheckoutWindow: React.FC = () => {
         <div className="gb-checkout-actions sticky bottom-0 mt-auto flex gap-2 border-t border-zinc-800 bg-zinc-950/95 py-3 backdrop-blur">
           <button className="min-h-12 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 text-sm font-bold hover:border-zinc-500" onClick={cancel}>Cancel</button>
           <button
-            className={`min-h-12 flex-[1.6] rounded-xl px-4 text-sm font-black ${canSave ? 'bg-neon-green text-zinc-950 shadow-[0_0_20px_rgba(57,255,20,0.2)] hover:brightness-110' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
-            disabled={!canSave}
+            className={`min-h-12 flex-[1.6] rounded-xl px-4 text-sm font-black ${canSave ? 'bg-neon-green text-zinc-950 shadow-[0_0_20px_rgba(57,255,20,0.2)] hover:brightness-110' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+            aria-disabled={!canSave}
             onClick={save}
           >Complete Checkout</button>
         </div>
+        {completionMessage ? <div role="alert" className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-xs font-semibold text-amber-200">{completionMessage}</div> : null}
       </div>
     </div>
   );

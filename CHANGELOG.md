@@ -1,5 +1,109 @@
 # Changelog
 
+## v0.6.70 (2026-09-10)
+
+- Restored the one-click Windows Auto Update and Relaunch flow so downloaded updates install silently and reopen GadgetBoy POS without stepping through the installer.
+- Retained pre-update database flushing, cloud synchronization, background-service shutdown, locked-process cleanup, optional Windows elevation, and the manual download recovery path.
+
+## v0.6.69 (2026-09-09)
+
+- Immediately removes a closed or deleted record from the currently open Command Center daughter list as well as the live dashboard counts and queues.
+- Keeps desktop right-click and mobile/tablet long-press record actions synchronized with the visible list without requiring the window to be closed and reopened.
+
+## v0.6.68 (2026-09-09)
+
+- Closed confirmed legacy work orders older than 30 days in the live shop without adding payments or deleting client, invoice, or repair history.
+- Made legacy cleanup write complete records, verify each save, and immediately remove newly closed tickets from Command Center counts and queues.
+- Preserved the 20-day diagnostic-only and 30-day universal cleanup settings for future automatic reconciliation.
+- Restored reliable calendar loading with retries and prevented a transient Supabase failure plus an empty local cache from appearing as an empty calendar.
+- Added familiar right-click actions to Command Center invoice and repair rows, including the expanded View All lists.
+- Removed the redundant Command Center Filters control and side-menu EOD shortcut, enlarged Quote and Consultation actions, and refined the Command Center title and date styling.
+
+## v0.6.67 (2026-09-09)
+
+- Replaced the legacy mobile landing page with the responsive Shop Command Center used on desktop.
+- Kept All Invoices available as a dedicated mobile-friendly record view with Work Order and Sales filters.
+- Prevented background data synchronization from repeatedly flashing the “Loading shop data” message.
+- Reflowed Command Center stages and record panels for phones without sideways scrolling.
+
+## v0.6.66 (2026-09-09)
+
+- Added synchronized POS settings for automatically closing diagnostic-only legacy tickets after 20 days and all remaining open legacy tickets after 30 days, with editable timelines, a preview, and a manual run button.
+- Preserved payments, balances, client history, notes, and checkout information during cleanup; only the ticket status and cleanup audit marker are changed.
+- Restored readable mobile calendar cells using the established wide calendar layout instead of compressing seven columns into the phone width.
+- Improved technician identity resolution across local, legacy, and cloud IDs so unresolved assignments display as Unassigned or Unknown technician rather than raw identifiers.
+- Changed Windows updates to the assisted NSIS flow with elevation support, allowing Windows to replace protected or locked old files and providing a direct download-page recovery action.
+
+## v0.6.65 (2026-09-09)
+
+- Matched the production desktop Command Center navigation and layout to the approved responsive preview.
+- Added production window size profiles so calendars, catalog tools, quote generation, reporting, and compact utilities use the space their content needs without smushed controls.
+- Reflowed All Invoices, Work Orders, and Sales into labeled cards on phones, eliminating sideways table scrolling while preserving every field and record action.
+- Made embedded calendar layouts fill the available desktop space and fit seven readable date columns on mobile without horizontal overflow.
+- Standardized mobile daughter-window controls with readable wrapping and touch-friendly sizing.
+- Removed the redundant persistent notification rail while keeping the notification bell connected to the full Notifications window.
+- Corrected active and Checked In repair counts by excluding closed, checked-out, cancelled, voided, refunded, deleted, and archived work orders regardless of stale balances.
+- Resolved assigned technician legacy, local, and cloud identifiers to technician display names; unresolved identifiers now appear as Unknown technician in Needs Attention.
+- Kept inventory variants nested directly beneath their parent item instead of duplicating them as standalone rows.
+
+## v0.6.63 (2026-09-09)
+
+- Replaced the desktop landing list with a live Command Center derived from current customers, work orders, sales, consultations, calendar entries, payments, and purchasing records.
+- Added actionable Active Work Orders, Awaiting Parts, Ready for Pickup, Collected Today, repair-stage, repair-queue, calendar, and attention drill-downs without introducing sample customer data.
+- Kept repairs waiting on future part delivery out of the active daily repair route until their ETA is due, while surfacing delivered or overdue work.
+- Added live grouped main search results without replacing the Command Center and retained the existing All Invoices, Work Orders, and Sales & Consultations tables and record-opening behavior.
+- Added responsive desktop, tablet, and phone-width layouts with collapsible operational sections and full-width daughter panels on compact screens.
+- Preserved existing Quote Generator, Inventory, Repairs, Reporting, Technician, consultation, client, checkout, Admin, work-order, and sale components and their production handlers.
+- Updated the desktop toolbar with matching notification, calendar, and fullscreen controls plus EOD and Client Dropoff access.
+
+## v0.6.62 (2026-09-08)
+
+- Added working Supabase-backed QR codes to normal printed sales tickets and delayed automatic printing until QR generation completes.
+- Synchronized the underlying ticket before issuing a QR token so freshly created codes resolve correctly across devices.
+- Expanded Custom Build part entries with quantity, internal cost, supplier, SKU, order URL, order status, order date, estimated delivery, and tracking URL fields while keeping labor entries concise and non-taxable.
+- Preserved all Custom Build ordering metadata through editing, duplication, local persistence, and Supabase synchronization.
+- Hardened Windows update installation by flushing pending data, releasing background services, and closing daughter windows before the NSIS handoff.
+- Pinned the internal Windows installer builder away from the known NSIS uninstall regression; the GadgetBoy POS application version remains on the 0.6.x release line.
+
+## v0.6.61 (2026-09-08)
+
+- Fixed client searches missing locally queued or recently synchronized customer records.
+- Prevented repeated checkout actions and cross-window checkout responses from creating duplicate work orders.
+- Made normal saves and deletes return immediately after durable local persistence while Supabase synchronization continues from the retry queue.
+- Prevented context-menu deletion overlays from leaving form fields inaccessible.
+- Corrected print margins and page-break rules so terms and signature sections do not spill onto an unnecessary page.
+
+## v0.6.59 (2026-09-04)
+
+- Added a separate branded repair-completion thank-you email when the final labor payment clears the work-order balance at pickup.
+- Kept diagnostic/drop-off, ordered-part, and completed-repair acknowledgments as distinct idempotent events.
+- Final pickup acknowledgments take precedence when the last payment includes both parts and labor.
+
+## v0.6.58 (2026-09-04)
+
+- Fixed repair checkout acknowledgments so only an unpaid diagnostic fee triggers the device drop-off email.
+- Diagnostic catalog line items now qualify for the drop-off acknowledgment, including console diagnostics such as PS5 check-ins.
+- Later labor payments no longer appear as diagnostic fees, and ordered-part acknowledgments require an actual parts payment.
+- Mixed payments show only the amount applied to the diagnostic fee in the acknowledgment.
+
+## v0.6.57 (2026-09-04)
+- Repair Tutorials: repair catalog entries can save synchronized YouTube, direct-video, or webpage tutorial links and open them from a dedicated desktop or responsive mobile player with playback controls and browser fallback.
+- Branded Automatic Emails: diagnostic intake, ordered-part payment, completed in-stock sale, consultation scheduling, and meaningful consultation changes now create styled client messages with safe-sender and reply guidance.
+- Duplicate-Safe Delivery: initial acknowledgments and consultation versions use a shop-scoped database outbox identity, visible history/preview states, and the existing retry-safe sender without rolling back completed payments or bookings.
+- Supplier Cost Review: Inventory now offers Check All Prices, Check Selected, and per-item Check Price actions with categorized results, editable proposed costs, confidence warnings, source links, and explicit Approve/Skip controls.
+- Audited Cost Changes: approval updates only internal acquisition cost and records the previous, detected, and approved values with supplier-learning feedback for later review or reversal.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
+## v0.6.56 (2026-09-03)
+- Customer Identity Consistency: customer phone numbers, email addresses, and names now use shared normalization and match-classification rules instead of drifting between workflows.
+- Safer Duplicate Handling: exact contact matches are distinguished from name-only suggestions and conflicting contact records, preventing unsafe automatic merges.
+- Canonical Client Selection: duplicate resolution now favors the customer already linked to the most transactions, then the most complete and oldest record.
+- Transaction Name Recovery: shared label resolution preserves saved client names, resolves linked customer names, and uses a client-number fallback only when no name is available.
+- Regression Coverage: automated checks protect US phone normalization, extensions, conflict detection, canonical selection, and transaction customer labels.
+
+Web Interface: https://mattstechwisdom.github.io/GB-POS
+
 ## v0.6.55 (2026-09-02)
 - September 11 Calendar Artwork: the supplied memorial image now appears as a slightly translucent background only inside the September 11 month-calendar cell.
 - Readable and Responsive: the image is clipped to the date square, ignores pointer input, and stays beneath date controls and calendar entries on desktop and mobile.

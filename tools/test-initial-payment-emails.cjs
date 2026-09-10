@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const wo = fs.readFileSync(path.join(root, 'src', 'workorders', 'NewWorkOrderWindow.tsx'), 'utf8');
+const sale = fs.readFileSync(path.join(root, 'src', 'sales', 'SaleWindow.tsx'), 'utf8');
+const queue = fs.readFileSync(path.join(root, 'src', 'lib', 'automaticEmailQueue.ts'), 'utf8');
+assert.match(wo, /workOrderPersisted[\s\S]*queueInitialPaymentAcknowledgment/);
+assert.match(wo, /appliedToWorkOrder\s*>\s*0/);
+assert.match(wo, /payment:\s*\{\s*applied:\s*appliedToWorkOrder,\s*appliedParts,\s*appliedLabor,\s*priorLaborPaid,\s*isFinalPayment\s*\}/, 'Work-order checkout must pass payment buckets, prior labor, and final-payment state to the acknowledgment classifier.');
+assert.match(sale, /saved[\s\S]*queueInitialPaymentAcknowledgment/);
+assert.match(sale, /additionalPaid\s*>\s*0/);
+assert.match(queue, /classifyAcknowledgment/);
+assert.match(queue, /queueAutomaticClientEmail/);
+assert.match(queue, /catch[\s\S]*console\.warn/);
+console.log('Initial payment automatic email trigger contract passed.');

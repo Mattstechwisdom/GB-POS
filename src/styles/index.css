@@ -1349,6 +1349,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   padding: 0.65rem;
   outline: none;
 }
+.gb-client-update-estimate-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.gb-client-update-estimate-grid{grid-template-columns:1fr}}
 
 .gb-client-update-detail textarea {
   min-height: 5.5rem;

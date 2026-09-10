@@ -11,6 +11,8 @@ import SaleItemsTable, { SaleItemRow } from './SaleItemsTable';
 import { discountedLineTotal } from '@/lib/ticketAccounting';
 import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
+import { consultationDigest } from '@/lib/automaticClientEmail';
+import { consultationEmailDetails, queueConsultationEmail, queueInitialPaymentAcknowledgment } from '@/lib/automaticEmailQueue';
 
 type SalePayload = {
   customerId?: number;
@@ -272,6 +274,7 @@ const SaleWindow: React.FC = () => {
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const handleCheckoutRef = useRef<() => Promise<void>>(async () => {});
+  const initialConsultationRef = useRef<any>(null);
   const [armedValidationActions, setArmedValidationActions] = useState<Record<ValidationActionKey, boolean>>({
     save: false,
     checkout: false,
@@ -466,6 +469,7 @@ const SaleWindow: React.FC = () => {
         const list = await (window as any).api.dbGet('sales').catch(() => []);
         const found = (Array.isArray(list) ? list : []).find((s: any) => Number(s.id) === Number(pid));
         if (found) {
+          initialConsultationRef.current = { ...found };
           // Auto-migrate legacy single-item fields to items for editing
           if ((!Array.isArray(found.items) || found.items.length === 0) && (found.itemDescription || found.quantity || found.price)) {
             const row: SaleItemRow = {
@@ -727,6 +731,22 @@ const SaleWindow: React.FC = () => {
         try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         // Nudge any opener window (e.g., Customer Overview) to reload sales in fallback scenarios
         try { window.opener?.postMessage({ type: 'sales:changed', customerId: saved.customerId }, '*'); } catch {}
+
+        const isConsultation = Boolean((saved as any).consultationType) || String((saved as any).category || '').toLowerCase() === 'consultation';
+        if (isConsultation && initialConsultationRef.current) {
+          try {
+            const before = consultationEmailDetails(initialConsultationRef.current);
+            const after = consultationEmailDetails(saved);
+            if (consultationDigest(before) !== consultationDigest(after)) {
+              const eventId = await findConsultationEventId(Number(saved.id || 0));
+              const events = eventId ? await (window as any).api.dbGet('calendarEvents').catch(() => []) : [];
+              const event = Array.isArray(events) ? events.find((entry: any) => Number(entry?.id) === Number(eventId)) : null;
+              const customers = saved.customerId ? await (window as any).api.findCustomers?.({ id: saved.customerId }) : [];
+              await queueConsultationEmail({ kind: 'consultation-updated', record: { ...saved, ...(event || {}), id: eventId }, previous: initialConsultationRef.current, customer: Array.isArray(customers) ? customers[0] : null });
+              initialConsultationRef.current = { ...saved };
+            }
+          } catch (emailError) { console.warn('Automatic consultation update email was not queued.', emailError); }
+        }
 
         // After saving, return the user to the main/customer screen.
         await closeThisWindow({ focusMain: true });
@@ -1254,6 +1274,15 @@ const SaleWindow: React.FC = () => {
           try { await reflectSaleInCalendar(saved); } catch (e) { console.warn('calendar sync failed', e); }
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
+        }
+        if (saved && currentId && additionalPaid > 0) {
+          try {
+            const customerRows = recordToPersist.customerId && (window as any).api?.findCustomers
+              ? await (window as any).api.findCustomers({ id: recordToPersist.customerId }) : [];
+            const customer = Array.isArray(customerRows) ? customerRows[0] : null;
+            const savedRecord = { ...recordToPersist, ...saved, id: currentId, completed: String(status).toLowerCase() === 'closed', requiresOrder: recordToPersist.inStock === false };
+            await queueInitialPaymentAcknowledgment({ recordType: 'sale', record: savedRecord, payment: { applied: additionalPaid }, customer });
+          } catch (emailError) { console.warn('Automatic sale email was not queued.', emailError); }
         }
         if (currentId && additionalPaid > 0) {
           try {

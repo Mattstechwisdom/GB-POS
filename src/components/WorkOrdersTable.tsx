@@ -363,7 +363,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
   }, [ctxRow, customerIndex]);
 
   return (
-    <div className="w-full overflow-x-auto relative" ref={tableRef}>
+    <div className="gb-responsive-record-list w-full overflow-x-auto relative" ref={tableRef}>
       <table className="w-full table-fixed text-[13px] leading-tight border-separate border-spacing-0">
         <thead className="bg-zinc-800">
           <tr>
@@ -395,17 +395,17 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
                 onDoubleClick={async () => { await (window as any).api.openNewWorkOrder({ workOrderId: r.id }); }}
                 className={`odd:bg-zinc-900 even:bg-zinc-800/40 cursor-pointer transition-colors border-l-4 ${selectedId === r.id ? 'border-[#39FF14] bg-zinc-800/80 shadow-[inset_0_0_0_1px_#1f1f21,0_0_6px_1px_rgba(57,255,20,0.25)]' : 'border-transparent hover:bg-zinc-800/70'}`}
               >
-                <td className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
-                <td className="px-2 py-1" title={checkInIso ? `Checked in: ${checkInIso}` : undefined}>{activityIso}</td>
-                <td className="px-2 py-1 capitalize">{computedStatus}</td>
-                <td className="px-2 py-1 font-semibold">WO</td>
-                <td className="px-2 py-1"><span className="flex items-center gap-1.5"><TechnicianAvatar iconId={(techProfiles[String(r.assignedTo || '')] || techProfiles[String(techLabel || '').toLowerCase()])?.profileIcon} size={24} ariaLabel={techLabel || 'Unassigned'} /><span>{techLabel}</span></span></td>
-                <td className="px-2 py-1" title={clientName}>
+                <td data-label="Invoice" className="px-2 py-1 font-mono">GB{String(r.id).padStart(7,'0')}</td>
+                <td data-label="Date" className="px-2 py-1" title={checkInIso ? `Checked in: ${checkInIso}` : undefined}>{activityIso}</td>
+                <td data-label="Status" className="px-2 py-1 capitalize">{computedStatus}</td>
+                <td data-label="Type" className="px-2 py-1 font-semibold">WO</td>
+                <td data-label="Technician" className="px-2 py-1"><span className="flex items-center gap-1.5"><TechnicianAvatar iconId={(techProfiles[String(r.assignedTo || '')] || techProfiles[String(techLabel || '').toLowerCase()])?.profileIcon} size={24} ariaLabel={techLabel || 'Unassigned'} /><span>{techLabel}</span></span></td>
+                <td data-label="Client" className="px-2 py-1" title={clientName}>
                   <CustomerHoverCard customerId={r.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{clientName}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={repairs}>
+                <td data-label="Items" className="px-2 py-1" title={repairs}>
                   <ItemsDescriptionHoverCard
                     items={repairs}
                     description={String(r.productDescription || r.productCategory || '')}
@@ -415,7 +415,7 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
                     <div className="truncate">{repairs}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1" title={r.productDescription || r.productCategory || ''}>
+                <td data-label="Description" className="px-2 py-1" title={r.productDescription || r.productCategory || ''}>
                   <ItemsDescriptionHoverCard
                     items={repairs}
                     description={String(r.productDescription || r.productCategory || '')}
@@ -425,8 +425,8 @@ const WorkOrdersTable: React.FC<{ statusFilter?: StatusFilter; technicianFilter?
                     <div className="truncate">{r.productDescription || r.productCategory || ''}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
+                <td data-label="Total" className="px-2 py-1 text-right">${total.toFixed(2)}</td>
+                <td data-label="Remaining" className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>
             );
           })}

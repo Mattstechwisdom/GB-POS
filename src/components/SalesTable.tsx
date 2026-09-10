@@ -190,7 +190,7 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
   }, [page, safePage, setPage]);
 
   return (
-    <div className="p-2 overflow-x-auto">
+    <div className="gb-responsive-record-list p-2 overflow-x-auto">
       <table className="w-full table-fixed text-[13px] leading-tight">
         <thead className="bg-zinc-800 text-zinc-300">
           <tr>
@@ -230,28 +230,28 @@ const SalesTable: React.FC<Props> = ({ statusFilter = 'all', technicianFilter = 
                   } catch (e) { console.error('Open sale failed', e); }
                 }}
               >
-                <td className="px-2 py-1 font-mono">{typeof s.id === 'number' ? `GB${String(s.id).padStart(7,'0')}` : ''}</td>
-                <td className="px-2 py-1">{date}</td>
-                <td className="px-2 py-1 capitalize">{status}</td>
-                <td className="px-2 py-1 font-semibold">Sale</td>
-                <td className="px-2 py-1">{techLabel}</td>
-                <td className="px-2 py-1" title={customerLabel}>
+                <td data-label="Invoice" className="px-2 py-1 font-mono">{typeof s.id === 'number' ? `GB${String(s.id).padStart(7,'0')}` : ''}</td>
+                <td data-label="Date" className="px-2 py-1">{date}</td>
+                <td data-label="Status" className="px-2 py-1 capitalize">{status}</td>
+                <td data-label="Type" className="px-2 py-1 font-semibold">Sale</td>
+                <td data-label="Technician" className="px-2 py-1">{techLabel}</td>
+                <td data-label="Client" className="px-2 py-1" title={customerLabel}>
                   <CustomerHoverCard customerId={s.customerId} customer={customer} className="min-w-0">
                     <div className="truncate">{customerLabel}</div>
                   </CustomerHoverCard>
                 </td>
-                <td className="px-2 py-1" title={itemsText}>
+                <td data-label="Items" className="px-2 py-1" title={itemsText}>
                   <ItemsDescriptionHoverCard items={itemsText} description={String(desc || '')} className="min-w-0">
                     <div className="truncate">{itemsText}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1" title={desc}>
+                <td data-label="Description" className="px-2 py-1" title={desc}>
                   <ItemsDescriptionHoverCard items={itemsText} description={String(desc || '')} className="min-w-0">
                     <div className="truncate">{desc || 'Sale Item'}</div>
                   </ItemsDescriptionHoverCard>
                 </td>
-                <td className="px-2 py-1 text-right">${total.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
+                <td data-label="Total" className="px-2 py-1 text-right">${total.toFixed(2)}</td>
+                <td data-label="Remaining" className="px-2 py-1 text-right">${remaining.toFixed(2)}</td>
               </tr>
             );
           })}
