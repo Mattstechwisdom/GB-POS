@@ -4,13 +4,15 @@ const migrations=fs.readdirSync(path.join(__dirname,'..','supabase','migrations'
 const fn=read('supabase/functions/client-response/index.ts'); const updates=read('supabase/functions/client-updates/index.ts'); const center=read('src/components/CommandCenter.tsx'); const publicPage=read('public/client-response.html');
 for(const phrase of ['client_response_tokens','token_hash','client_responses','scheduled_pickup_at','pickup_ready_at','picked_up_at','row level security']) assert.match(migrations,new RegExp(phrase,'i'));
 for(const phrase of ['crypto.subtle.digest','approve','decline','question','confirm_pickup','request_pickup_change','add_information','allowed_actions']) assert.match(fn,new RegExp(phrase,'i'));
-for(const phrase of ['Approve Repair','Decline Repair','Ask a Question','Confirm Pickup','Request Another Time','Add Information','client-response']) assert.match(updates,new RegExp(phrase,'i'));
+assert.match(updates,/Click to Respond/i, 'Client emails must use one response button that opens the available choices page.');
+assert.doesNotMatch(updates,/actionLink\('approve'/, 'Client emails must not duplicate individual response choices already shown on the webpage.');
+assert.match(updates,/client-response/i);
 for(const phrase of ['Client Replies','Send Reply','Mark Resolved','Mark Unresolved','Acknowledge & Advance','Call Client','Copy Contact Information','client_responses','onContextMenu','onPointerDown']) assert.match(center,new RegExp(phrase,'i'));
 assert.ok(!fn.includes('qr_status_tokens'), 'Public client response must not reuse staff QR tokens.');
 assert.ok(!fn.includes('internal_notes'), 'Public client response pages must not expose internal work-order notes.');
 assert.match(fn,/from\('client_response_tokens'\)\.select\('\*'\)/,"Public response lookup must fetch the token independently so an embedded relationship failure cannot invalidate a valid link.");
 assert.match(fn,/from\('work_orders'\)\.select\(/,"Public response lookup must load the linked work order explicitly.");
-assert.match(updates,/&amp;action=/,"Email action URLs must HTML-encode their query separator so email clients preserve the full link.");
+assert.match(updates,/href="\$\{escapeHtml\(responseUrl\)\}"/,"The single email response URL must be escaped before entering HTML.");
 assert.match(updates,/tokenInsertError/,"Email delivery must stop if its public response token could not be saved.");
 assert.match(fn,/Response\.redirect/, 'Legacy email links must redirect from Supabase to the renderable public page.');
 assert.match(fn,/format.*json/i, 'The public page must explicitly request the JSON API mode.');
