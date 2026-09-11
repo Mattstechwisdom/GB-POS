@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'); const fs=require('node:fs'); const path=require('node:path');
 const read=p=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
 const migrations=fs.readdirSync(path.join(__dirname,'..','supabase','migrations')).filter(x=>x.includes('client_replies_and_pickup')).map(x=>read(`supabase/migrations/${x}`)).join('\n');
-const fn=read('supabase/functions/client-response/index.ts'); const updates=read('supabase/functions/client-updates/index.ts'); const center=read('src/components/CommandCenter.tsx');
+const fn=read('supabase/functions/client-response/index.ts'); const updates=read('supabase/functions/client-updates/index.ts'); const center=read('src/components/CommandCenter.tsx'); const publicPage=read('public/client-response.html');
 for(const phrase of ['client_response_tokens','token_hash','client_responses','scheduled_pickup_at','pickup_ready_at','picked_up_at','row level security']) assert.match(migrations,new RegExp(phrase,'i'));
 for(const phrase of ['crypto.subtle.digest','approve','decline','question','confirm_pickup','request_pickup_change','add_information','allowed_actions']) assert.match(fn,new RegExp(phrase,'i'));
 for(const phrase of ['Approve Repair','Decline Repair','Ask a Question','Confirm Pickup','Request Another Time','Add Information','client-response']) assert.match(updates,new RegExp(phrase,'i'));
@@ -12,4 +12,8 @@ assert.match(fn,/from\('client_response_tokens'\)\.select\('\*'\)/,"Public respo
 assert.match(fn,/from\('work_orders'\)\.select\(/,"Public response lookup must load the linked work order explicitly.");
 assert.match(updates,/&amp;action=/,"Email action URLs must HTML-encode their query separator so email clients preserve the full link.");
 assert.match(updates,/tokenInsertError/,"Email delivery must stop if its public response token could not be saved.");
+assert.match(fn,/Response\.redirect/, 'Legacy email links must redirect from Supabase to the renderable public page.');
+assert.match(fn,/format.*json/i, 'The public page must explicitly request the JSON API mode.');
+assert.match(publicPage,/functions\/v1\/client-response/, 'The public page must load and submit through the secure response API.');
+for(const phrase of ['Approve Repair','Decline Repair','Ask a Question','Confirm Pickup','Request Another Time','Add Information']) assert.match(publicPage,new RegExp(phrase,'i'));
 console.log('Client response workflow checks passed.');
