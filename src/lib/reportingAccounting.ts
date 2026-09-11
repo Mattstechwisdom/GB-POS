@@ -1,4 +1,5 @@
 import { itemFullCost } from './orderAccounting';
+export { buildRepairWorkflowTiming } from './repairWorkflowReporting';
 
 export type ReportingLedgerEntry = {
   recordKey: string;
