@@ -41,6 +41,21 @@ export function groupRepairUpdateOptions(options: ClientUpdateOption[] = REPAIR_
   };
 }
 
+export function groupClientRepairUpdateOptions(options: ClientUpdateOption[]) {
+  const groups = {
+    communication: new Set(['pickup_reminder', 'manual_update', 'customer_promise', 'schedule_pickup']),
+    approval: new Set(['repair_approval', 'approval_received', 'repair_declined']),
+    progress: new Set(['diagnosis', 'testing_in_progress', 'repair_complete', 'not_possible']),
+    parts: new Set(['waiting_device', 'part_ordered', 'waiting_part', 'part_delivered', 'items_delivered']),
+  };
+  return {
+    communication: options.filter((option) => groups.communication.has(option.key)),
+    approval: options.filter((option) => groups.approval.has(option.key)),
+    progress: options.filter((option) => groups.progress.has(option.key)),
+    parts: options.filter((option) => groups.parts.has(option.key)),
+  };
+}
+
 export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
   if (key === 'customer_promise') {
