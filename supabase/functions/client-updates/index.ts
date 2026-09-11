@@ -295,16 +295,15 @@ Deno.serve(async (req: Request) => {
     if(statusKey==='items_delivered'){
       const indexes=Array.isArray(body.itemIndexes)?body.itemIndexes.map(Number).filter(Number.isInteger):[];
       if(!indexes.length) throw httpError(400,'Select at least one delivered item.');
-      const priorItems=Array.isArray(record.items)?record.items:[]; const deliveredAt=new Date().toISOString();
-      const nextItems=priorItems.map((item:JsonRecord,index:number)=>indexes.includes(index)?{...item,orderStatus:'received',partStatus:'delivered',receivedAt:deliveredAt,partDeliveredAt:deliveredAt}:item);
-      const ordered=nextItems.filter((item:JsonRecord)=>item.requiresOrder===true || /needed|ordered|received|delivered/i.test(safeString(item.orderStatus||item.partStatus)));
-      const allDelivered=ordered.length>0&&ordered.every((item:JsonRecord)=>/received|delivered|in.?stock/i.test(safeString(item.orderStatus||item.partStatus)));
-      const deliveryPatch:JsonRecord={items:nextItems,status_update:allDelivered?(type==='repair'?'All Parts Delivered':'All Products Delivered'):'Some Items Delivered',status_updated_at:deliveredAt};
-      if(allDelivered&&type==='repair')deliveryPatch.repair_status='Part Delivered - Repairs Starting';
-      if(allDelivered&&type==='sale')deliveryPatch.status='Product Arrived';
-      const {data:itemRows,error:itemError}=await admin.from(table).update(deliveryPatch).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
-      if(itemError||!itemRows?.[0]) throw httpError(500,'Delivered items could not be saved.');
-      Object.assign(record,itemRows[0]);
+      if(type!=='repair'){
+        const priorItems=Array.isArray(record.items)?record.items:[]; const deliveredAt=new Date().toISOString();
+        const nextItems=priorItems.map((item:JsonRecord,index:number)=>indexes.includes(index)?{...item,orderStatus:'received',partStatus:'delivered',receivedAt:deliveredAt,partDeliveredAt:deliveredAt}:item);
+        const ordered=nextItems.filter((item:JsonRecord)=>item.requiresOrder===true || /needed|ordered|received|delivered/i.test(safeString(item.orderStatus||item.partStatus)));
+        const allDelivered=ordered.length>0&&ordered.every((item:JsonRecord)=>/received|delivered|in.?stock/i.test(safeString(item.orderStatus||item.partStatus)));
+        const {data:itemRows,error:itemError}=await admin.from(table).update({items:nextItems,status:allDelivered?'Product Arrived':record.status,status_update:allDelivered?'All Products Delivered':'Some Items Delivered',status_updated_at:deliveredAt}).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
+        if(itemError||!itemRows?.[0]) throw httpError(500,'Delivered items could not be saved.');
+        Object.assign(record,itemRows[0]);
+      }
     }
     if (statusKey === "consultation_delayed" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the proposed consultation date and time.");
 
@@ -314,13 +313,46 @@ Deno.serve(async (req: Request) => {
     if (deliveryMode === "email" && !details.email) throw httpError(400, "The client does not have an email address on file.");
     if (deliveryMode === "text" && !details.phone) throw httpError(400, "The client does not have a phone number on file.");
 
-    const { data: savedRows, error: saveError } = await admin
-      .from(table)
-      .update(buildPatch(type, statusKey, statusLabel, estimatedDate, estimatedTime, notes, preserveTechNotes))
-      .eq("shop_id", profile.shop_id)
-      .eq("legacy_id", legacyRecordId)
-      .select("*");
-    if (saveError || !savedRows?.[0]) throw httpError(500, "The ticket status could not be updated.");
+    let savedRecord: JsonRecord;
+    let workflowEvent: JsonRecord | null = null;
+    if (type === 'repair') {
+      const promisedAt = statusKey === 'customer_promise' && estimatedDate
+        ? new Date(`${estimatedDate}T${estimatedTime || '12:00'}:00`).toISOString()
+        : null;
+      const scheduledPickupAt = statusKey === 'schedule_pickup' && estimatedDate
+        ? new Date(`${estimatedDate}T${estimatedTime || '12:00'}:00`).toISOString()
+        : null;
+      const idempotencyKey = safeString(body.idempotencyKey, 160) || crypto.randomUUID();
+      const { data: workflow, error: workflowError } = await admin.rpc('apply_repair_workflow_event', {
+        p_shop_id: profile.shop_id,
+        p_work_order_id: record.id,
+        p_action: statusKey,
+        p_payload: {
+          note: notes,
+          estimatedDate,
+          estimatedTime,
+          promisedAt,
+          scheduledPickupAt,
+          itemIndexes: Array.isArray(body.itemIndexes) ? body.itemIndexes : [],
+          actor: safeString(userData.user.user_metadata?.display_name || userData.user.email || 'Technician', 200),
+        },
+        p_idempotency_key: idempotencyKey,
+        p_actor_user_id: userData.user.id,
+      });
+      if (workflowError || !workflow?.workOrder) throw httpError(500, safeString(workflowError?.message || 'The ticket workflow could not be updated.'));
+      savedRecord = workflow.workOrder as JsonRecord;
+      workflowEvent = (workflow.event || null) as JsonRecord | null;
+      Object.assign(record, savedRecord);
+    } else {
+      const { data: savedRows, error: saveError } = await admin
+        .from(table)
+        .update(buildPatch(type, statusKey, statusLabel, estimatedDate, estimatedTime, notes, preserveTechNotes))
+        .eq("shop_id", profile.shop_id)
+        .eq("legacy_id", legacyRecordId)
+        .select("*");
+      if (saveError || !savedRows?.[0]) throw httpError(500, "The ticket status could not be updated.");
+      savedRecord = savedRows[0] as JsonRecord;
+    }
 
     let responseUrl = '';
     if(type==='repair' && statusKey==='repair_approval'){
@@ -359,7 +391,8 @@ Deno.serve(async (req: Request) => {
         statusSaved: true,
         deliveryStatus: "internal",
         message: "Technician progress saved internally. No client message was sent.",
-        record: savedRows[0],
+        record: savedRecord,
+        workflowEvent,
         history,
       });
     }
@@ -372,7 +405,8 @@ Deno.serve(async (req: Request) => {
         message: "Status saved. Your messaging app is ready with the client and update filled in.",
         recipientPhone: details.phone,
         textMessage,
-        record: savedRows[0],
+        record: savedRecord,
+        workflowEvent,
         history,
       });
     }
@@ -396,7 +430,8 @@ Deno.serve(async (req: Request) => {
         statusSaved: true,
         deliveryStatus: "queued",
         message: `Status saved. Email to ${details.email} is queued for delivery.`,
-        record: savedRows[0],
+        record: savedRecord,
+        workflowEvent,
         history,
       });
     }
@@ -405,7 +440,8 @@ Deno.serve(async (req: Request) => {
       statusSaved: true,
       deliveryStatus: "sent",
       message: `Status saved and email sent to ${details.email}.`,
-      record: savedRows[0],
+      record: savedRecord,
+      workflowEvent,
       history,
     });
   } catch (error) {
