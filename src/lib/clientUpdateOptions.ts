@@ -66,6 +66,14 @@ export function deliverableItemIndexes(items: any[]): number[] {
   });
 }
 
+export function splitRepairUpdateHistory<T extends { status_key?: string }>(entries: T[]) {
+  const rows = Array.isArray(entries) ? entries : [];
+  return {
+    client: rows.filter((entry) => entry.status_key !== 'technician_progress'),
+    technician: rows.filter((entry) => entry.status_key === 'technician_progress'),
+  };
+}
+
 export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
   if (key === 'customer_promise') {

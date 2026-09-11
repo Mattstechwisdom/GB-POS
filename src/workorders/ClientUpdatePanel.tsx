@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
-import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, deliverableItemIndexes, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
+import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, deliverableItemIndexes, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, splitRepairUpdateHistory, type ClientUpdateOption } from '../lib/clientUpdateOptions';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
 type StatusOption = ClientUpdateOption;
@@ -276,6 +276,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
     statusSaved?: boolean;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'client' | 'technician'>('client');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
   const [historyRows, setHistoryRows] = useState<UpdateHistoryRow[]>([]);
@@ -455,10 +456,12 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const email = customer?.email || record?.customerEmail || '';
   const orderLabel = type === 'sale' ? `INV-${record?.id || recordId || ''}` : type === 'consult' ? `CONS-${record?.id || recordId || ''}` : `WO-${record?.id || recordId || ''}`;
   const historySummary = useMemo(() => ({
-    sent: historyRows.filter((entry) => entry.delivery_status === 'sent').length,
-    queued: historyRows.filter((entry) => entry.delivery_status === 'pending' || entry.delivery_status === 'sending').length,
-    failed: historyRows.filter((entry) => entry.delivery_status === 'failed').length,
+    sent: splitRepairUpdateHistory(historyRows).client.filter((entry) => entry.delivery_status === 'sent').length,
+    queued: splitRepairUpdateHistory(historyRows).client.filter((entry) => entry.delivery_status === 'pending' || entry.delivery_status === 'sending').length,
+    failed: splitRepairUpdateHistory(historyRows).client.filter((entry) => entry.delivery_status === 'failed').length,
   }), [historyRows]);
+  const historySections = useMemo(() => splitRepairUpdateHistory(historyRows), [historyRows]);
+  const visibleHistoryRows = type === 'repair' ? historySections[historyTab] : historyRows;
 
   const retryQueuedEmails = useCallback(async () => {
     let shopId = historyShopId || String(record?.shopId || record?.shop_id || '');
@@ -791,24 +794,29 @@ const ClientUpdatePanel: React.FC<Props> = ({
               <header className="gb-client-update-history-heading">
                 <div>
                   <div className="gb-client-update-kicker">{orderLabel}</div>
-                  <h3 id="gb-client-update-history-title">Client Update History</h3>
+                  <h3 id="gb-client-update-history-title">{type === 'repair' ? 'Work Order Activity' : 'Client Update History'}</h3>
                   <p>{name} | {recordTitle(type, record)}</p>
                 </div>
                 <button type="button" className="gb-client-update-history-close" onClick={() => setHistoryOpen(false)} aria-label="Close update history">x</button>
               </header>
 
-              <div className="gb-client-update-history-summary" aria-label="Update delivery summary">
-                <div><strong>{historyRows.length}</strong><span>Total</span></div>
+              {type === 'repair' ? <div className="gb-client-update-history-tabs" role="tablist" aria-label="Work order activity sections">
+                <button type="button" role="tab" aria-selected={historyTab === 'client'} className={historyTab === 'client' ? 'active client' : 'client'} onClick={() => setHistoryTab('client')}>Client Updates <b>{historySections.client.length}</b></button>
+                <button type="button" role="tab" aria-selected={historyTab === 'technician'} className={historyTab === 'technician' ? 'active technician' : 'technician'} onClick={() => setHistoryTab('technician')}>Tech Notes <b>{historySections.technician.length}</b></button>
+              </div> : null}
+
+              {historyTab === 'client' || type !== 'repair' ? <div className="gb-client-update-history-summary" aria-label="Update delivery summary">
+                <div><strong>{type === 'repair' ? historySections.client.length : historyRows.length}</strong><span>Total</span></div>
                 <div><strong>{historySummary.sent}</strong><span>Sent</span></div>
                 <div><strong>{historySummary.queued}</strong><span>Queued</span></div>
                 <div><strong>{historySummary.failed}</strong><span>Failed</span></div>
-              </div>
+              </div> : null}
 
               <div className="gb-client-update-history-toolbar">
                 <span>Newest updates first</span>
-                <button type="button" onClick={() => void retryQueuedEmails()} disabled={historyLoading || historyRetrying || historySummary.queued === 0}>
+                {historyTab === 'client' || type !== 'repair' ? <button type="button" onClick={() => void retryQueuedEmails()} disabled={historyLoading || historyRetrying || historySummary.queued === 0}>
                   {historyRetrying ? 'Retrying...' : 'Retry queued emails'}
-                </button>
+                </button> : <span className="gb-client-update-history-internal-label">Internal POS notes only</span>}
                 <button type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
                   {historyLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
@@ -817,10 +825,10 @@ const ClientUpdatePanel: React.FC<Props> = ({
               <div className="gb-client-update-history-list">
                 {historyLoading && historyRows.length === 0 ? <div className="gb-client-update-history-empty">Loading history...</div> : null}
                 {!historyLoading && historyError ? <div className="gb-client-update-error">{historyError}</div> : null}
-                {!historyLoading && !historyError && historyRows.length === 0 ? (
-                  <div className="gb-client-update-history-empty">No updates have been sent for this invoice yet.</div>
+                {!historyLoading && !historyError && visibleHistoryRows.length === 0 ? (
+                  <div className="gb-client-update-history-empty">{historyTab === 'technician' && type === 'repair' ? 'No technician progress notes have been added yet.' : 'No client updates have been sent for this invoice yet.'}</div>
                 ) : null}
-                {!historyError ? historyRows.map((entry) => (
+                {!historyError ? visibleHistoryRows.map((entry) => (
                   <article className="gb-client-update-history-item" key={entry.id}>
                     <div className="gb-client-update-history-item-top">
                       <strong>{entry.status_label}</strong>
