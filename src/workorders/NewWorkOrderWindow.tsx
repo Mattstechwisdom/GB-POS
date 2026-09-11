@@ -586,9 +586,27 @@ const NewWorkOrderWindow: React.FC = () => {
   const onCancelRef = useRef<() => void>(() => {});
   const woRef = useRef<any>(wo);
   const persistedIdRef = useRef<number>(Number((wo as any).id || 0) || 0);
+  const createWorkOrderPromiseRef = useRef<Promise<any> | null>(null);
   const isEditingExistingRef = useRef<boolean>(isEditingExisting);
   useEffect(() => { woRef.current = wo; }, [wo]);
   useEffect(() => { isEditingExistingRef.current = isEditingExisting; }, [isEditingExisting]);
+  const createWorkOrderOnce = useCallback(async (draft: any) => {
+    const existingId = persistedIdRef.current || Number(draft?.id || woRef.current?.id || 0);
+    if (existingId) return { ...draft, id: existingId };
+    if (createWorkOrderPromiseRef.current) return createWorkOrderPromiseRef.current;
+    const api: any = (window as any).api || {};
+    const request = (typeof api.addWorkOrder === 'function' ? api.addWorkOrder({ ...draft }) : api.dbAdd('workOrders', { ...draft }))
+      .then((added: any) => {
+        if (added?.id) {
+          persistedIdRef.current = Number(added.id);
+          woRef.current = { ...woRef.current, ...added, id: added.id };
+          setWo(current => ({ ...current, id: added.id }));
+        }
+        return added;
+      });
+    createWorkOrderPromiseRef.current = request;
+    try { return await request; } finally { if (createWorkOrderPromiseRef.current === request) createWorkOrderPromiseRef.current = null; }
+  }, []);
 
   const persistJournalNote = useCallback(async (text: string) => {
     const previous = woRef.current as WOState;
@@ -662,7 +680,7 @@ const NewWorkOrderWindow: React.FC = () => {
             if (typeof api.update === 'function') await api.update('workOrders', { ...current });
             else if (typeof api.dbUpdate === 'function') await api.dbUpdate('workOrders', current.id, { ...current });
           } else {
-            const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...current }) : await api.dbAdd('workOrders', { ...current });
+            const added = await createWorkOrderOnce(current);
             if (added?.id) persistedIdRef.current = Number(added.id);
           }
           try { window.opener?.postMessage({ type: 'workorders:changed', id: current.id }, '*'); } catch {}
@@ -677,7 +695,7 @@ const NewWorkOrderWindow: React.FC = () => {
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, []);
+  }, [createWorkOrderOnce]);
 
   // Autosave work order after a short idle period (keeps UI responsive during typing)
   useAutosave(wo, async (val) => {
@@ -686,14 +704,16 @@ const NewWorkOrderWindow: React.FC = () => {
       const api = (window as any).api || {};
       let saved: any = null;
       // Decide add vs update
-      if (isEditingExisting || (val.id && val.id !== 0)) {
-        if (typeof api.update === 'function') saved = await api.update('workOrders', { ...val });
-        else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', val.id, { ...val });
+      const persistedId = persistedIdRef.current || Number(val.id || 0);
+      if (isEditingExisting || persistedId) {
+        const updateValue = { ...val, id: persistedId };
+        if (typeof api.update === 'function') saved = await api.update('workOrders', updateValue);
+        else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', persistedId, updateValue);
       } else {
         // Only create a new record when some key fields have content
         const hasMeaningful = !!(val.productCategory || val.productDescription || val.customerId || (val.items && val.items.length));
         if (!hasMeaningful) return;
-        const added = typeof api.addWorkOrder === 'function' ? await api.addWorkOrder({ ...val }) : await api.dbAdd('workOrders', { ...val });
+        const added = await createWorkOrderOnce(val);
         saved = added;
         if (added?.id) { persistedIdRef.current = Number(added.id); woRef.current = { ...woRef.current, ...added, id: added.id }; setWo(w => ({ ...w, id: added.id })); }
       }
@@ -825,13 +845,14 @@ const NewWorkOrderWindow: React.FC = () => {
       try {
         const api = (window as any).api || {};
         let saved: any = null;
-        if (isEditingExisting || (wo.id && wo.id !== 0)) {
-          if (typeof api.update === 'function') saved = await api.update('workOrders', { ...wo });
-          else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', wo.id, { ...wo });
+        const persistedId = persistedIdRef.current || Number(wo.id || 0);
+        if (isEditingExisting || persistedId) {
+          const updateValue = { ...wo, id: persistedId };
+          if (typeof api.update === 'function') saved = await api.update('workOrders', updateValue);
+          else if (typeof api.dbUpdate === 'function') saved = await api.dbUpdate('workOrders', persistedId, updateValue);
           console.log('Work order updated', saved);
         } else {
-          if (typeof api.addWorkOrder === 'function') saved = await api.addWorkOrder({ ...wo });
-          else if (typeof api.dbAdd === 'function') saved = await api.dbAdd('workOrders', { ...wo });
+          saved = await createWorkOrderOnce(wo);
           console.log('Work order added', saved);
         }
         const savedId = Number(saved?.id || wo.id || 0);
@@ -1020,7 +1041,7 @@ const NewWorkOrderWindow: React.FC = () => {
     const api: any = (window as any).api;
     if (typeof api.addWorkOrder !== 'function') return 0;
     try {
-      const added = await api.addWorkOrder({ ...current });
+      const added = await createWorkOrderOnce(current);
       if (added?.id) {
         const newId = Number(added.id) || 0;
         persistedIdRef.current = newId;
@@ -1031,7 +1052,7 @@ const NewWorkOrderWindow: React.FC = () => {
       }
     } catch (e) { console.error('Force-save before receipt failed', e); }
     return 0;
-  }, []); // stable — reads latest workOrder from ref
+  }, [createWorkOrderOnce]); // stable — reads latest workOrder from ref
 
   const handleFormChange = useCallback((patch: Partial<WorkOrderFull>) => {
     setWo(w => ({ ...w, ...patch, items: w.items }));
@@ -1692,6 +1713,8 @@ const NewWorkOrderWindow: React.FC = () => {
 
             const payload = {
               id: effectiveId || (wo as any).id,
+              workOrderId: effectiveId || (wo as any).id,
+              receiptType: 'repair',
               customerId: (wo as any).customerId,
               customerName,
               customerPhone,

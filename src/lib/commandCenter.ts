@@ -60,6 +60,8 @@ const sameLocalDay = (value: any, now: Date) => {
   const date = new Date(value || 0);
   return Number.isFinite(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 };
+const calendarKind = (event: any) => lower(event?.category || event?.type || event?.eventType);
+const consultationDateFor = (record: CommandCenterRecord) => record.source?.appointmentDate || record.source?.appointment_date || record.source?.eventDate || record.source?.event_date || record.activityAt;
 
 function customerNameFor(record: any, customers: Map<string, any>) {
   const customer = customers.get(text(record?.customerId));
@@ -148,7 +150,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && lower(event?.category || event?.type).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery/.test(lower(event?.category || event?.type))), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(record.activityAt, now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && lower(event?.category || event?.type).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {

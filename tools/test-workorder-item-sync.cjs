@@ -29,8 +29,12 @@ for (const source of [desktop, mobile]) {
 }
 assert.match(desktop, /queueCloudWriteForBackgroundSync\('upsert', key, updatedItem\)/, 'Desktop updates must durably queue Supabase synchronization before reporting success.');
 assert.match(desktop, /ipcMain\.handle\('db-find'[\s\S]*mergeCloudRowsIntoLocalCache\(key, cloudRows\)/, 'Cloud records opened through Find must be cached locally before desktop Update can persist them.');
+assert.doesNotMatch(desktop, /return opts \? cloudRows : mergedRows/, 'Sorted cloud reads must not bypass locally pending work-order changes.');
+assert.match(desktop, /const mergedRows = mergeCloudRowsIntoLocalCache\(key, cloudRows\);[\s\S]*return mergedRows;/, 'Every cloud DB read must return conflict-aware merged rows.');
 
 assert.match(workOrder, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Work orders must hard-block Save and Checkout without a technician.');
+assert.match(workOrder, /createWorkOrderPromiseRef/, 'Concurrent autosave, print, and checkout paths must share one work-order creation request.');
+assert.match(workOrder, /createWorkOrderOnce/, 'Every new-work-order path must reuse the saved identity instead of creating duplicates.');
 assert.match(sale, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Sales must hard-block Save and Checkout without a technician.');
 assert.match(sidebar, /headerControl/, 'The work-order sidebar must host the desktop details menu.');
 assert.match(desktopCss, /\.gb-wo-sidebar-header[\s\S]*\.gb-wo-mobile-details-menu/, 'Desktop work-order header placement styles are missing.');

@@ -245,6 +245,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
 
                   const payload = {
                     id: effectiveId || (workOrder as any).id,
+                    workOrderId: effectiveId || (workOrder as any).id,
+                    receiptType: 'repair',
                     customerId: (workOrder as any).customerId,
                     customerName,
                     customerPhone,

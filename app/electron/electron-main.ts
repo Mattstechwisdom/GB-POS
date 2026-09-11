@@ -5575,7 +5575,7 @@ ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; s
       const cloudRows = await cloudDbGet(key, opts);
       if (Array.isArray(cloudRows)) {
         const mergedRows = mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return opts ? cloudRows : mergedRows;
+        return mergedRows;
       }
     } catch (e: any) {
       try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}

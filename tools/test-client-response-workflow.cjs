@@ -5,6 +5,10 @@ const fn=read('supabase/functions/client-response/index.ts'); const updates=read
 for(const phrase of ['client_response_tokens','token_hash','client_responses','scheduled_pickup_at','pickup_ready_at','picked_up_at','row level security']) assert.match(migrations,new RegExp(phrase,'i'));
 for(const phrase of ['crypto.subtle.digest','approve','decline','question','confirm_pickup','request_pickup_change','add_information','allowed_actions']) assert.match(fn,new RegExp(phrase,'i'));
 assert.match(updates,/Click to Respond/i, 'Client emails must use one response button that opens the available choices page.');
+assert.match(updates,/Have questions\/concerns\? Let us know below/i, 'Client update emails must explain the response button.');
+const qrStatus=read('supabase/functions/qr-status/index.ts');
+assert.match(qrStatus,/No updates at this time, feel free to check back later\./i, 'The public repair timeline must give a clear empty-history message.');
+assert.match(qrStatus,/view.*client/i, 'The client repair timeline must remain a public token-scoped page.');
 assert.doesNotMatch(updates,/actionLink\('approve'/, 'Client emails must not duplicate individual response choices already shown on the webpage.');
 assert.match(updates,/client-response/i);
 for(const phrase of ['Client Replies','Send Reply','Mark Resolved','Mark Unresolved','Acknowledge & Advance','Call Client','Copy Contact Information','client_responses','onContextMenu','onPointerDown']) assert.match(center,new RegExp(phrase,'i'));
