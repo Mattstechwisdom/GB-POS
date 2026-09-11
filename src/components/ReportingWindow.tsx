@@ -5,6 +5,7 @@ import { dispatchOpenModal } from '@/lib/modalBus';
 import { itemFullCost } from '@/lib/orderAccounting';
 import { buildReportingLedger, collectReportingPayments, reportingRecordKind, verifiedPurchaseTotal } from '@/lib/reportingAccounting';
 import { buildMonthEndWorkbookHtml } from '@/lib/monthEndWorkbook';
+import CategoryPerformanceView from './CategoryPerformanceView';
 import {
   DEFAULT_COMMISSION_SETTINGS,
   allocateMonthlySalesCommission,
@@ -500,7 +501,7 @@ const ReportingWindow: React.FC = () => {
   const [period, setPeriod] = useState<'day'|'week'|'month'|'year'>('day');
   const [from, setFrom] = useState<string>(() => todayInputValue());
   const [to, setTo] = useState<string>(() => todayInputValue());
-  const [reportView, setReportView] = useState<'summary' | 'monthEnd'>('summary');
+  const [reportView, setReportView] = useState<'summary' | 'monthEnd' | 'category'>('summary');
   const [monthEndMonth, setMonthEndMonth] = useState(() => new Date().toISOString().slice(0, 7));
   // Store filter removed
   const [tech, setTech] = useState<string>('');
@@ -508,6 +509,7 @@ const ReportingWindow: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
   const [commissionSettings, setCommissionSettings] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
   const [commissionSettingsRecordId, setCommissionSettingsRecordId] = useState<any>(null);
   const [commissionDraft, setCommissionDraft] = useState<CommissionSettings>(DEFAULT_COMMISSION_SETTINGS);
@@ -533,15 +535,17 @@ const ReportingWindow: React.FC = () => {
     const loadRecords = async (includeSettings = false) => {
     try {
       const wos = await (window as any).api.getWorkOrders();
-      const [sales, vendorRows, purchaseRows, eodRows] = await Promise.all([
+      const [sales, vendorRows, purchaseRows, inventoryRows, eodRows] = await Promise.all([
         (window as any).api.dbGet('sales').catch(() => []),
         (window as any).api.dbGet('vendors').catch(() => []),
         (window as any).api.dbGet('purchaseOrders').catch(() => []),
+        (window as any).api.dbGet('products').catch(() => []),
         includeSettings ? (window as any).api.dbGet('settings').catch(() => []) : Promise.resolve([]),
       ]);
       if (disposed) return;
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
+      setInventory(Array.isArray(inventoryRows) ? inventoryRows : []);
       let loadedReporting = reportingSettings;
       if (includeSettings) {
         const settingsRecord = Array.isArray(eodRows) ? eodRows[0] : null;
@@ -590,11 +594,13 @@ const ReportingWindow: React.FC = () => {
     });
     const offWorkOrders = (window as any).api?.onWorkOrdersChanged?.(() => { void loadRecords(false); });
     const offSales = (window as any).api?.onSalesChanged?.(() => { void loadRecords(false); });
+    const offProducts = (window as any).api?.onProductsChanged?.(() => { void loadRecords(false); });
     return () => {
       disposed = true;
       try { off && off(); } catch {}
       try { offWorkOrders && offWorkOrders(); } catch {}
       try { offSales && offSales(); } catch {}
+      try { offProducts && offProducts(); } catch {}
     };
   }, []);
 
@@ -1078,10 +1084,11 @@ const ReportingWindow: React.FC = () => {
                   dispatchOpenModal('eod');
                   return;
                 }
-                setReportView(e.target.value as 'summary' | 'monthEnd');
+                setReportView(e.target.value as 'summary' | 'monthEnd' | 'category');
               }}
             >
               <option value="summary">Summary Report</option>
+              <option value="category">Category Performance</option>
               <option value="eod">End of Day Report</option>
               <option value="monthEnd">End of the Month Report</option>
             </select>
@@ -1212,7 +1219,7 @@ const ReportingWindow: React.FC = () => {
           </section>
         </div>
       )}
-      {reportView === 'monthEnd' ? (
+      {reportView === 'category' ? <CategoryPerformanceView records={data} inventory={inventory} purchaseOrders={purchaseOrders} from={from} to={to} onFromChange={setFrom} onToChange={setTo} /> : reportView === 'monthEnd' ? (
         <>
           <div className="bg-zinc-950 border border-zinc-800 rounded p-4 space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-3">

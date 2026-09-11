@@ -1479,6 +1479,7 @@ const SaleWindow: React.FC = () => {
       const picked = data.product || {};
       const row: SaleItemRow = {
         id: crypto.randomUUID(),
+        inventoryProductId: picked.inventoryProductId,
         description: picked.itemDescription || picked.title || picked.name || 'Item',
         qty: Number(picked.quantity ?? 1) || 1,
         price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_BASE_RATE : 0),
@@ -1487,6 +1488,13 @@ const SaleWindow: React.FC = () => {
         condition: picked.condition || 'New',
         productUrl: picked.productUrl || picked.url || picked.link || '',
         category: picked.category,
+        itemType: picked.itemType,
+        distributor: picked.distributor,
+        distributorSku: picked.distributorSku,
+        vendorRelationship: picked.vendorRelationship,
+        vendorSharePct: picked.vendorSharePct,
+        trackStock: picked.trackStock,
+        stockCountAtSelection: picked.stockCount,
       };
       setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
     }
@@ -1499,6 +1507,7 @@ const SaleWindow: React.FC = () => {
           const picked = product || {};
           const row: SaleItemRow = {
             id: crypto.randomUUID(),
+            inventoryProductId: picked.inventoryProductId,
             description: picked.itemDescription || picked.title || picked.name || 'Item',
             qty: Number(picked.quantity ?? 1) || 1,
             price: Number(picked.price ?? 0) || (String(picked.category || '').toLowerCase().startsWith('consult') ? CONSULTATION_BASE_RATE : 0),
@@ -1507,6 +1516,13 @@ const SaleWindow: React.FC = () => {
             condition: picked.condition || 'New',
             productUrl: picked.productUrl || picked.url || picked.link || '',
             category: picked.category,
+            itemType: picked.itemType,
+            distributor: picked.distributor,
+            distributorSku: picked.distributorSku,
+            vendorRelationship: picked.vendorRelationship,
+            vendorSharePct: picked.vendorSharePct,
+            trackStock: picked.trackStock,
+            stockCountAtSelection: picked.stockCount,
           };
           setSale(s => ({ ...s, items: ([...(s.items || []), row]) }));
         });

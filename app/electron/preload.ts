@@ -168,8 +168,8 @@ contextBridge.exposeInMainWorld('api', {
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),
   _emitCustomBuildItemSave: (result: any) => ipcRenderer.send('customBuild:item:save', result),
   _emitCustomBuildItemCancel: () => ipcRenderer.send('customBuild:item:cancel'),
-  onWorkOrdersChanged: (cb: () => void) => {
-    const handler = () => cb();
+  onWorkOrdersChanged: (cb: (record?: any) => void) => {
+    const handler = (_event: any, record?: any) => cb(record);
     ipcRenderer.on('workorders:changed', handler);
     return () => ipcRenderer.removeListener('workorders:changed', handler);
   },

@@ -1,5 +1,6 @@
 import { buildTechnicianIndex, resolveTechnician } from './technicianIdentity';
 import { compareRepairQueuePriority, isExpeditedWorkOrder, partEtaFor, repairPresentationFor } from './commandCenterPresentation';
+import { expandRecurringEvent } from './calendarRecurrence';
 
 export type CommandCenterKind = 'workorder' | 'sale' | 'consultation';
 
@@ -52,6 +53,10 @@ const timestamp = (value: any) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const sameLocalDay = (value: any, now: Date) => {
+  const raw = text(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
   const date = new Date(value || 0);
   return Number.isFinite(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 };
@@ -137,7 +142,12 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     if (payments.length) return payments.filter((payment: any) => sameLocalDay(payment?.date || payment?.createdAt || payment?.paidAt, now)).map((payment: any) => number(payment?.amount));
     return sameLocalDay(record.source?.checkoutDate || record.source?.paidAt, now) ? [number(record.source?.amountPaid || record.total)] : [];
   });
-  const calendar = input.calendarEvents || [];
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const calendar = (input.calendarEvents || []).flatMap(event => {
+    if (!event?.recurrenceRule) return [event];
+    const occurrences = expandRecurringEvent(event, todayKey, todayKey);
+    return occurrences.length ? occurrences : [];
+  });
   return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && lower(event?.category || event?.type).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery/.test(lower(event?.category || event?.type))), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(record.activityAt, now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && lower(event?.category || event?.type).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
@@ -149,4 +159,24 @@ export function searchCommandCenterRecords(model: CommandCenterModel, query: str
 
 export function removeCommandCenterRecord<T extends Pick<CommandCenterRecord, 'id' | 'kind'>>(records: T[] = [], target: Pick<CommandCenterRecord, 'id' | 'kind'>) {
   return records.filter(record => !(String(record.id) === String(target.id) && record.kind === target.kind));
+}
+
+export function upsertCommandCenterWorkOrder(records: any[] = [], record: any) {
+  if (!record || record.id == null) return records;
+  const index = records.findIndex(row => String(row?.id) === String(record.id));
+  if (index < 0) return [record, ...records];
+  const next = records.slice();
+  next[index] = record;
+  return next;
+}
+
+export function liveCommandCenterPanelRecords(title: string, model: CommandCenterModel, fallback: CommandCenterRecord[] = []) {
+  if (title === 'Active Work Orders') return model.activeWorkOrders;
+  if (title === 'Awaiting Parts') return model.awaitingParts;
+  if (title === 'Ready for Pickup') return model.readyForPickup;
+  if (title === 'Today’s Repair Queue') return model.repairQueue;
+  const stageMatch = title.match(/^(Checked in|Diagnosing|Approval|Parts|Repair|Testing|Pickup) Repairs$/);
+  if (stageMatch) return model.stages[stageMatch[1]] || [];
+  const currentByKey = new Map(model.records.map(record => [`${record.kind}:${record.id}`, record]));
+  return fallback.map(record => currentByKey.get(`${record.kind}:${record.id}`)).filter(Boolean) as CommandCenterRecord[];
 }

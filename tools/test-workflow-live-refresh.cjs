@@ -1,4 +1,5 @@
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
 require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
 const {publishWorkOrderUpdate,subscribeWorkOrderUpdates}=require('../src/lib/workflowLiveRefresh.ts');
 
@@ -10,4 +11,10 @@ off(); received=null;
 publishWorkOrderUpdate({id:44,workflowStage:'Pickup'},target);
 assert.equal(received,null,'Unsubscribed views must not receive updates.');
 assert.throws(()=>publishWorkOrderUpdate(null,target),/work order/i);
+const preload=fs.readFileSync(require.resolve('../app/electron/preload.ts'),'utf8');
+const main=fs.readFileSync(require.resolve('../app/electron/electron-main.ts'),'utf8');
+const commandCenter=fs.readFileSync(require.resolve('../src/components/CommandCenter.tsx'),'utf8');
+assert.match(main,/scheduleCollectionChanged\(key,\s*nextItem\)/,'New records must be included in desktop change broadcasts.');
+assert.match(preload,/onWorkOrdersChanged:\s*\(cb:[^)]*record[^)]*\)[\s\S]*handler = \([^)]*record[^)]*\) => cb\(record\)/,'The preload bridge must preserve the changed work order payload.');
+assert.match(commandCenter,/upsertCommandCenterWorkOrder/,'Command Center must insert new work orders immediately instead of only replacing existing rows.');
 console.log('Workflow live refresh checks passed.');

@@ -18,6 +18,7 @@ export type SaleItemRow = {
   inStock?: boolean; // whether this specific item is in stock
   productUrl?: string;
   category?: 'Device' | 'Accessory' | 'Consultation' | 'Other' | string;
+  itemType?: 'Product' | 'Part';
   distributor?: string;
   vendorRelationship?: 'wholesale' | 'consignment';
   vendorSharePct?: number;

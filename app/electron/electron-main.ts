@@ -14,6 +14,7 @@ const { registerGidgetLocalIpc } = require('./gidget-local');
 registerGidgetLocalIpc({ ipcMain, app });
 
 let autoUpdater: any = null;
+let downloadedUpdateInstallerPath = '';
 try {
   autoUpdater = require('electron-updater').autoUpdater;
 } catch {
@@ -743,6 +744,46 @@ function createAutoUpdateLogger() {
     debug: (...values: any[]) => write('debug', values),
   };
 }
+
+function acknowledgeUpdateRelaunchGuard() {
+  try {
+    const marker = process.env.GBPOS_UPDATE_GUARD || path.join(os.tmpdir(), 'gbpos-update-guard.marker');
+    if (marker && fs.existsSync(marker)) fs.unlinkSync(marker);
+  } catch {}
+}
+
+function createUpdateRelaunchGuard(installerPath: string) {
+  if (process.platform !== 'win32' || !installerPath || !fs.existsSync(installerPath)) return false;
+  try {
+    const marker = path.join(os.tmpdir(), 'gbpos-update-guard.marker');
+    fs.writeFileSync(marker, JSON.stringify({ version: getUpdateLabel(updateUiInfo), installerPath, createdAt: new Date().toISOString() }), 'utf8');
+    const ps = [
+      `$parentPid=${process.pid}`,
+      `$marker=${JSON.stringify(marker)}`,
+      `$installer=${JSON.stringify(installerPath)}`,
+      `$deadline=(Get-Date).AddSeconds(75)`,
+      `while ((Get-Process -Id $parentPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }`,
+      `$deadline=(Get-Date).AddSeconds(75)`,
+      `while ((Test-Path -LiteralPath $marker) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }`,
+      `if (Test-Path -LiteralPath $marker) { Start-Process -FilePath $installer -ArgumentList '/S','--force-run' -WindowStyle Hidden; Start-Sleep -Seconds 5 }`,
+      `Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue`,
+    ].join('; ');
+    const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+    const guard = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], {
+      detached: true,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    guard.unref();
+    appendStartupLog(`auto-update relaunch guard armed marker=${marker}`);
+    return true;
+  } catch (error: any) {
+    appendStartupLog(`auto-update relaunch guard failed: ${String(error?.message || error)}`);
+    return false;
+  }
+}
+
+acknowledgeUpdateRelaunchGuard();
 
 function setupStartupCrashLogging() {
   // Capture the most common “Uncaught exception / SyntaxError” details.
@@ -1548,7 +1589,9 @@ async function startUpdateDownload() {
   autoUpdateDownloading = true;
   showUpdateUi({ phase: 'downloading', label: getUpdateLabel(updateUiInfo), percent: 0 });
   try {
-    await autoUpdater.downloadUpdate();
+    const downloaded = await autoUpdater.downloadUpdate();
+    const candidates = Array.isArray(downloaded) ? downloaded : [];
+    downloadedUpdateInstallerPath = String(candidates.find((value: any) => /\.exe$/i.test(String(value || ''))) || downloadedUpdateInstallerPath || '');
   } catch (e: any) {
     autoUpdateDownloading = false;
     showUpdateUi({
@@ -1562,6 +1605,7 @@ async function installDownloadedUpdate() {
   if (!autoUpdater) return;
   showUpdateUi({ phase: 'applying', label: getUpdateLabel(updateUiInfo), percent: 100 });
   await prepareForUpdateInstall();
+  createUpdateRelaunchGuard(downloadedUpdateInstallerPath);
   setTimeout(() => {
     try {
       appendStartupLog(`auto-update install requested version=${getUpdateLabel(updateUiInfo)} platform=${process.platform}`);
@@ -1650,6 +1694,7 @@ function setupAutoUpdater() {
     });
   });
   autoUpdater.on('update-downloaded', (info: any) => {
+    downloadedUpdateInstallerPath = String(info?.downloadedFile || info?.filePath || downloadedUpdateInstallerPath || '');
     try { console.log('[AutoUpdate] update downloaded:', info?.version || info); } catch {}
     void promptToInstallDownloadedUpdate(info);
   });
@@ -3891,11 +3936,13 @@ const COLLECTION_CHANGED_EVENT: Record<string, string> = {
 
 let changedEmitTimer: NodeJS.Timeout | null = null;
 const pendingChangedEvents = new Set<string>();
-function scheduleCollectionChanged(key: string) {
+const pendingChangedPayloads = new Map<string, any>();
+function scheduleCollectionChanged(key: string, payload?: any) {
   try {
     const ev = COLLECTION_CHANGED_EVENT[String(key || '')];
     if (!ev) return;
     pendingChangedEvents.add(ev);
+    if (payload !== undefined) pendingChangedPayloads.set(ev, payload);
     if (changedEmitTimer) return;
     // Coalesce rapid updates (autosaves/typing) to avoid renderer thrash.
     changedEmitTimer = setTimeout(() => {
@@ -3905,9 +3952,10 @@ function scheduleCollectionChanged(key: string) {
       const wins = BrowserWindow.getAllWindows();
       for (const w of wins) {
         for (const name of events) {
-          try { w.webContents.send(name); } catch {}
+          try { w.webContents.send(name, pendingChangedPayloads.get(name)); } catch {}
         }
       }
+      for (const name of events) pendingChangedPayloads.delete(name);
     }, 120);
   } catch {
     // ignore
@@ -5682,7 +5730,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   const ok = writeDb(nextDb);
   if (ok) {
     queueCloudWriteForBackgroundSync('upsert', key, nextItem);
-    scheduleCollectionChanged(key);
+    scheduleCollectionChanged(key, nextItem);
     return nextItem;
   }
   return null;
@@ -5980,7 +6028,7 @@ ipcMain.handle('db-update', async (_e: any, key: string, a: any, b?: any) => {
   dbLog('[DB-UPDATE] Updated', key, 'id=', targetId, 'ok=', ok);
   if (ok) {
     queueCloudWriteForBackgroundSync('upsert', key, updatedItem);
-    scheduleCollectionChanged(key);
+    scheduleCollectionChanged(key, updatedItem);
     try { maybeAutoTextOnStatusChange(key, previousItem, updatedItem, nextDb); } catch {}
     return updatedItem;
   }
