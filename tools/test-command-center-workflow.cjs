@@ -8,13 +8,17 @@ const input={now,workOrders:[
  wo(1,'Diagnosing'),wo(2,'Approval'),wo(3,'Parts',{partEta:'2026-09-15'}),wo(4,'Parts',{partEta:'2026-09-09'}),
  wo(5,'Repair',{items:[{description:'Expedited Service Fee'}]}),wo(6,'Testing'),wo(7,'Pickup',{pickupReadyAt:'2026-08-25'}),
  wo(8,'Completed',{status:'closed'}),wo(9,'Waiting Device'),wo(10,'Parts',{partEta:'2026-09-15',workflowException:true}),
+ wo(11,'Checked in',{repairStatus:'Repair Not Possible - Awaiting Pickup'}),
 ],customers:[],technicians:[]};
 const model=buildCommandCenterModel(input);
 assert.equal(model.stages.Diagnosing.length,1);
 assert.equal(model.stages.Approval.length,1);
 assert.equal(model.stages.Parts.length,3);
 assert.equal(model.stages.Testing.length,1);
-assert.equal(model.stages.Pickup.length,1);
+assert.equal(model.stages.Pickup.length,2);
+assert.ok(!model.stages['Checked in'].some(row=>row.id===11),'Repair-not-possible tickets must override a stale Checked In stage.');
+assert.ok(!model.repairQueue.some(row=>row.id===11),'Repair-not-possible tickets must leave today\'s actionable repair queue.');
+assert.ok(model.readyForPickup.some(row=>row.id===11),'Repair-not-possible tickets must appear in Ready for Pickup.');
 assert.ok(!model.repairQueue.some(row=>row.id===3),'Future-ETA parts must stay out of today queue.');
 assert.ok(model.repairQueue.some(row=>row.id===4),'Overdue parts must return to today queue.');
 assert.ok(model.repairQueue.some(row=>row.id===10),'Manually resumed exception must enter today queue.');

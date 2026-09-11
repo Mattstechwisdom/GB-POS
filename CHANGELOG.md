@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.84 (2026-09-11)
+
+- Treats Repair Not Possible, Not Repairable, Repair Declined, and Repair Complete outcomes as Ready for Pickup even when an older workflow stage still says Checked In or Diagnosing.
+- Removes all Ready for Pickup and Completed tickets from Today’s Repair Queue while retaining them in the dedicated Ready for Pickup view.
+- Publishes only the single signed universal Android APK through the release workflow.
+
 ## v0.6.70 (2026-09-10)
 
 - Restored the one-click Windows Auto Update and Relaunch flow so downloaded updates install silently and reopen GadgetBoy POS without stepping through the installer.

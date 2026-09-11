@@ -84,16 +84,18 @@ function stageFor(workOrder: any, remaining: number) {
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
   if (isFinishedWorkOrder(workOrder)) return 'Completed';
+  const raw = lower(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status);
+  // Outcome statuses are authoritative. A QR/client update may set the repair
+  // outcome while an older workflowStage still says Checked in or Diagnosing.
+  if (/repair.*(complete|declined)|not.*(possible|repairable)|ready.*pickup/.test(raw)) return 'Pickup';
   const explicit = text(workOrder?.workflowStage || workOrder?.workflow_stage);
   const known = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
   if (known.includes(explicit)) return explicit;
-  const raw = lower(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status);
   const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
   const waitingPart = /awaiting.*part|waiting.*part|part.*ordered/.test(raw) || lines.some((line: any) => /ordered|awaiting|in transit/.test(lower(line?.orderStatus || line?.partStatus)));
   const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
   if (/complete.*paid/.test(raw) && remaining <= 0) return 'Completed';
-  if (/repair.*(complete|declined)|not.*(possible|repairable)/.test(raw)) return 'Pickup';
-  if (/ready.*pickup|pickup/.test(raw)) return 'Pickup';
+  if (/pickup/.test(raw)) return 'Pickup';
   if (/testing/.test(raw)) return 'Testing';
   if (/repair/.test(raw) && !waitingPart) return 'Repair';
   if (waitingPart && !delivered) return 'Parts';
@@ -135,7 +137,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   const awaitingParts = stages.Parts;
   const readyForPickup = stages.Pickup;
   const repairQueue = activeWorkOrders.filter(record => {
-    if (record.stage === 'Waiting Device') return false;
+    if (record.stage === 'Waiting Device' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
     if (record.stage !== 'Parts') return true;
     return record.source?.workflowException === true || record.source?.workflow_exception === true || (!!record.partEta && timestamp(record.partEta) <= now.getTime());
   }).sort(compareRepairQueuePriority);
