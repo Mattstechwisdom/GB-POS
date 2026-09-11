@@ -1713,6 +1713,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   background: #3f3f46;
 }
 
+.gb-client-update-history-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.7rem 0.85rem 0; }
+.gb-client-update-history-tabs button { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.55rem; border: 1px solid #3f3f46; border-radius: 7px; background: #18181b; color: #a1a1aa; font-size: 0.78rem; font-weight: 850; }
+.gb-client-update-history-tabs button b { display: grid; min-width: 1.35rem; height: 1.35rem; place-items: center; border-radius: 999px; background: #27272a; font-size: 0.65rem; }
+.gb-client-update-history-tabs button.client.active { border-color: rgba(168, 85, 247, 0.7); background: rgba(168, 85, 247, 0.15); color: #f3e8ff; }
+.gb-client-update-history-tabs button.technician.active { border-color: rgba(59, 130, 246, 0.7); background: rgba(59, 130, 246, 0.15); color: #dbeafe; }
+.gb-client-update-history-internal-label { margin-left: auto; color: #93c5fd; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
+
 .gb-client-update-history-summary > div {
   min-width: 0;
   padding: 0.7rem;

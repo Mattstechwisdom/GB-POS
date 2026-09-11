@@ -14,6 +14,7 @@ const {
   groupRepairUpdateOptions,
   groupClientRepairUpdateOptions,
   deliverableItemIndexes,
+  splitRepairUpdateHistory,
 } = require('../src/lib/clientUpdateOptions.ts');
 
 const keys = REPAIR_UPDATE_OPTIONS.map((option) => option.key);
@@ -52,6 +53,16 @@ assert.deepEqual(deliverableItemIndexes([
   { description: 'Storage Fee', labor: 25, feeType: 'storage' },
   { description: 'Battery', parts: 30, requiresOrder: true, orderStatus: 'received' },
 ]), [1, 3, 6]);
+
+assert.deepEqual(splitRepairUpdateHistory([
+  { id: 'a', status_key: 'diagnosis' },
+  { id: 'b', status_key: 'technician_progress' },
+  { id: 'c', status_key: 'manual_update' },
+  { id: 'd', status_key: 'technician_progress' },
+]), {
+  client: [{ id: 'a', status_key: 'diagnosis' }, { id: 'c', status_key: 'manual_update' }],
+  technician: [{ id: 'b', status_key: 'technician_progress' }, { id: 'd', status_key: 'technician_progress' }],
+});
 
 const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'ClientUpdatePanel.tsx'), 'utf8');
 assert.match(panelSource, /<details className={`gb-client-update-subsection \${key}`}>/);
