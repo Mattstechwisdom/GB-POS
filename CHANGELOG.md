@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.85 (2026-09-11)
+
+- Removes completed and non-repairable devices from Active Work Orders as soon as they enter Ready for Pickup.
+- Keeps these tickets visible in Ready for Pickup until a technician selects Picked Up / Close Ticket.
+- Closing preserves the full client, invoice, workflow, update, and payment history while removing the ticket from operational queues.
+
 ## v0.6.84 (2026-09-11)
 
 - Treats Repair Not Possible, Not Repairable, Repair Declined, and Repair Complete outcomes as Ready for Pickup even when an older workflow stage still says Checked In or Diagnosing.

@@ -133,7 +133,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   });
   const stages: Record<string, CommandCenterRecord[]> = Object.fromEntries(['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'].map(stage => [stage, []]));
   workOrders.forEach(record => stages[record.stage || 'Checked in']?.push(record));
-  const activeWorkOrders = workOrders.filter(record => record.stage !== 'Completed');
+  const activeWorkOrders = workOrders.filter(record => record.stage !== 'Completed' && record.stage !== 'Pickup');
   const awaitingParts = stages.Parts;
   const readyForPickup = stages.Pickup;
   const repairQueue = activeWorkOrders.filter(record => {

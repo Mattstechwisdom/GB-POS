@@ -19,6 +19,8 @@ assert.equal(model.stages.Pickup.length,2);
 assert.ok(!model.stages['Checked in'].some(row=>row.id===11),'Repair-not-possible tickets must override a stale Checked In stage.');
 assert.ok(!model.repairQueue.some(row=>row.id===11),'Repair-not-possible tickets must leave today\'s actionable repair queue.');
 assert.ok(model.readyForPickup.some(row=>row.id===11),'Repair-not-possible tickets must appear in Ready for Pickup.');
+assert.ok(!model.activeWorkOrders.some(row=>row.id===11),'Repair-not-possible tickets must leave Active Work Orders while awaiting pickup.');
+assert.ok(!model.activeWorkOrders.some(row=>row.id===7),'Repair-complete pickup tickets must leave Active Work Orders.');
 assert.ok(!model.repairQueue.some(row=>row.id===3),'Future-ETA parts must stay out of today queue.');
 assert.ok(model.repairQueue.some(row=>row.id===4),'Overdue parts must return to today queue.');
 assert.ok(model.repairQueue.some(row=>row.id===10),'Manually resumed exception must enter today queue.');
