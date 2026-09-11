@@ -10,6 +10,7 @@ const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
+const { buildWindowsUpdateHandoff, resolveDownloadedInstallerPath } = require('./update-launcher');
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -1103,6 +1104,7 @@ let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
 let autoInstallAfterDownload = false;
+let downloadedUpdateInstallerPath = '';
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1548,7 +1550,9 @@ async function startUpdateDownload() {
   autoUpdateDownloading = true;
   showUpdateUi({ phase: 'downloading', label: getUpdateLabel(updateUiInfo), percent: 0 });
   try {
-    await autoUpdater.downloadUpdate();
+    const downloadedFiles = await autoUpdater.downloadUpdate();
+    downloadedUpdateInstallerPath = resolveDownloadedInstallerPath(downloadedFiles);
+    appendStartupLog(`auto-update downloaded installer path captured=${downloadedUpdateInstallerPath ? 'yes' : 'no'}`);
   } catch (e: any) {
     autoUpdateDownloading = false;
     showUpdateUi({
@@ -1565,6 +1569,14 @@ async function installDownloadedUpdate() {
   setTimeout(() => {
     try {
       appendStartupLog(`auto-update install requested version=${getUpdateLabel(updateUiInfo)} platform=${process.platform}`);
+      if (process.platform === 'win32' && downloadedUpdateInstallerPath && fs.existsSync(downloadedUpdateInstallerPath)) {
+        const handoff = buildWindowsUpdateHandoff(downloadedUpdateInstallerPath, process.pid);
+        const child = spawn(handoff.executable, handoff.args, { detached: true, stdio: 'ignore', windowsHide: true });
+        child.unref();
+        appendStartupLog(`auto-update waiting handoff launched installer=${path.basename(downloadedUpdateInstallerPath)}`);
+        setTimeout(() => app.exit(0), 150);
+        return;
+      }
       // electron-updater owns the NSIS launch, elevation fallback, and only
       // quits after it has successfully handed the installer to Windows.
       autoUpdater.quitAndInstall(true, true);
