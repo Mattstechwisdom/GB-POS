@@ -8,6 +8,12 @@ alter table public.work_orders add column if not exists part_eta date;
 alter table public.work_orders add column if not exists client_decision text;
 alter table public.work_orders add column if not exists client_decision_at timestamptz;
 alter table public.work_orders add column if not exists workflow_updated_at timestamptz;
+alter table public.client_response_tokens add column if not exists allowed_actions jsonb not null default '["question","add_information"]'::jsonb;
+alter table public.client_responses add column if not exists acknowledged_at timestamptz;
+alter table public.client_responses add column if not exists acknowledged_by uuid references auth.users(id) on delete set null;
+alter table public.client_responses add column if not exists conversation_id uuid;
+alter table public.client_responses drop constraint if exists client_responses_response_type_check;
+alter table public.client_responses add constraint client_responses_response_type_check check(response_type in ('approved','declined','question','confirmed_pickup','pickup_change_requested','information','staff_reply'));
 
 create table if not exists public.repair_workflow_events (
   id uuid primary key default gen_random_uuid(),
