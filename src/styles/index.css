@@ -31,6 +31,37 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   --neon-purple: #BC13FE;
 }
 
+/* Keep necessary overflow controls visually consistent with the POS theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #71717a #18181b;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #18181b;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 34px;
+  border: 2px solid #18181b;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #71717a, #52525b);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--neon-purple), #7e22ce);
+}
+
+*::-webkit-scrollbar-corner {
+  background: #18181b;
+}
+
 .gb-calendar-window {
   block-size: 100dvh;
   max-block-size: 100dvh;

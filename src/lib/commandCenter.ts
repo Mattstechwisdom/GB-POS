@@ -74,6 +74,9 @@ function isFinishedWorkOrder(workOrder: any) {
 }
 
 function stageFor(workOrder: any, remaining: number) {
+  // A closed/checked-out record must never be resurrected by an older workflow
+  // stage left on the work order (for example, "Checked in" or "Diagnosing").
+  if (isFinishedWorkOrder(workOrder)) return 'Completed';
   const explicit = text(workOrder?.workflowStage || workOrder?.workflow_stage);
   const known = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
   if (known.includes(explicit)) return explicit;
@@ -81,7 +84,7 @@ function stageFor(workOrder: any, remaining: number) {
   const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
   const waitingPart = /awaiting.*part|waiting.*part|part.*ordered/.test(raw) || lines.some((line: any) => /ordered|awaiting|in transit/.test(lower(line?.orderStatus || line?.partStatus)));
   const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
-  if (isFinishedWorkOrder(workOrder) || (/complete.*paid/.test(raw) && remaining <= 0)) return 'Completed';
+  if (/complete.*paid/.test(raw) && remaining <= 0) return 'Completed';
   if (/repair.*(complete|declined)|not.*(possible|repairable)/.test(raw)) return 'Pickup';
   if (/ready.*pickup|pickup/.test(raw)) return 'Pickup';
   if (/testing/.test(raw)) return 'Testing';

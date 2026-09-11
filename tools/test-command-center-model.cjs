@@ -16,10 +16,12 @@ const model = buildCommandCenterModel({
     { id: 12, status: 'cancelled', assignedTo: 'local-7' },
     { id: 13, status: 'open', assignedTo: '7', repairStatus: 'Diagnosing' },
     { id: 14, status: 'open', assignedTo: 'unresolved-random-id' },
+    { id: 15, status: 'closed', workflowStage: 'Diagnosing', assignedTo: '7' },
   ],
 });
 
 assert.deepEqual(model.activeWorkOrders.map((row) => row.id), [13, 14], 'closed, checked-out, and cancelled work orders must not be active');
+assert.equal(model.workOrders.find((row) => row.id === 15).stage, 'Completed', 'a terminal status must override a stale explicit workflow stage');
 assert.equal(model.stages['Checked in'].length, 1, 'only genuinely open unclassified work orders belong in Checked in');
 assert.equal(model.workOrders.find((row) => row.id === 13).technician, 'Matthew');
 assert.equal(model.workOrders.find((row) => row.id === 11).technician, 'Matthew');

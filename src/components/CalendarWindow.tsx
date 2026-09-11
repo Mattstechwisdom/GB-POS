@@ -13,6 +13,7 @@ import { useContextMenu } from '@/lib/useContextMenu';
 import { expandRecurringEvent, monthlyWeekdayPatternForDate, normalizeRecurrenceRule, type CalendarRecurrenceRule } from '@/lib/calendarRecurrence';
 import { replaceRecordById, taskCompletionPatch } from '@/lib/immediatePersistence';
 import { publicAsset } from '@/lib/publicAsset';
+import { enrichCalendarEventLabels } from '@/lib/calendarRecordLabels';
 
 function openConsultationAddressInMaps(address: string) {
   const destination = String(address || '').trim();
@@ -42,6 +43,8 @@ type CalendarEvent = {
   notes?: string;
   // Optional linkage
   workOrderId?: number;
+  workOrderLabel?: string;
+  saleLabel?: string;
   partName?: string;
   orderUrl?: string;
   trackingUrl?: string;
@@ -748,12 +751,16 @@ const CalendarWindow: React.FC = () => {
           }
           throw lastError || new Error('Calendar events could not be loaded.');
         };
-        const [list, customers] = await Promise.all([
+        const [list, customers, technicians, workOrders, sales] = await Promise.all([
           loadCalendarEvents(),
           (window as any).api.dbGet('customers').catch(() => []),
+          (window as any).api.dbGet('technicians').catch(() => []),
+          (window as any).api.dbGet('workOrders').catch(() => []),
+          (window as any).api.dbGet('sales').catch(() => []),
         ]);
         const customerById = new Map((Array.isArray(customers) ? customers : []).map((customer: any) => [Number(customer?.id || 0), customer]));
-        const enriched = (Array.isArray(list) ? list : []).map((event: CalendarEvent) => {
+        const linkedEvents = enrichCalendarEventLabels(list, technicians, workOrders, sales);
+        const enriched = linkedEvents.map((event: CalendarEvent) => {
           const normalizedEvent = event.category === 'consultation' ? {
             ...event,
             location: consultationLocationDisplay(event),
@@ -1770,7 +1777,8 @@ const CalendarWindow: React.FC = () => {
     }
     if (ev.category === 'parts') {
       const action = ev.partsStatus === 'delivery' || !ev.partsStatus ? 'Expected' : 'Ordered';
-      return `${time ? `${time} - ` : ''}${action}: ${ev.partName || ev.title || 'Part'}${ev.workOrderId ? ` (WO #${ev.workOrderId})` : ev.saleId ? ` (Sale #${ev.saleId})` : ''}`;
+      const linkedLabel = ev.workOrderLabel || ev.saleLabel || '';
+      return `${time ? `${time} - ` : ''}${action}: ${ev.partName || ev.title || 'Part'}${linkedLabel ? ` (${linkedLabel})` : ''}`;
     }
     if (ev.category === 'consultation') return `${time ? `${time} - ` : ''}${ev.customerName || 'Consultation'}${ev.title ? `: ${ev.title}` : ''}`;
     if (ev.category === 'content') {
@@ -2328,7 +2336,7 @@ const CalendarWindow: React.FC = () => {
               {viewing.category === 'consultation' && viewing.consultationAddress ? <div className="detail-wide"><span>Address</span><strong>{viewing.consultationAddress}</strong>{!/^at shop location$/i.test(viewing.consultationAddress) ? <button type="button" className="gb-mobile-map-button mt-2 rounded border border-blue-500 bg-blue-600 px-3 py-2 text-xs font-semibold" onClick={() => openConsultationAddressInMaps(viewing.consultationAddress || '')}>Open Maps</button> : null}</div> : null}
               {viewing.location ? <div><span>Platform / location</span><strong>{viewing.location}</strong></div> : null}
               {viewing.partName ? <div><span>Part / product</span><strong>{viewing.partName}</strong></div> : null}
-              {viewing.workOrderId ? <div><span>Work order</span><strong>#{viewing.workOrderId}</strong></div> : null}
+              {viewing.workOrderId ? <div><span>Work order</span><strong>{viewing.workOrderLabel || 'Work order unavailable'}</strong></div> : null}
               {viewing.notes ? <div className="detail-wide"><span>Notes</span><strong>{viewing.notes}</strong></div> : null}
             </div>
             {viewing.category !== 'schedule' ? (
@@ -2899,7 +2907,7 @@ const CalendarWindow: React.FC = () => {
                             <span className="text-zinc-100">{p.partName || p.title || 'Part'}</span>
                           </div>
                           <div className="text-xs text-zinc-400 whitespace-nowrap">
-                            {p.workOrderId ? `WO #${p.workOrderId}` : (p.saleId ? `Sale #${p.saleId}` : '')}
+                            {p.workOrderLabel || p.saleLabel || ''}
                           </div>
                         </div>
                         <div className="mt-1 flex gap-2">
@@ -3017,7 +3025,7 @@ const CalendarWindow: React.FC = () => {
                           <span className="text-zinc-100">{p.partName || p.title || 'Part'}</span>
                         </div>
                         <div className="text-xs text-zinc-400 mt-0.5">
-                          {p.workOrderId ? `WO #${p.workOrderId}` : (p.saleId ? `Sale #${p.saleId}` : '')}
+                          {p.workOrderLabel || p.saleLabel || ''}
                         </div>
                       </div>
                     ))}

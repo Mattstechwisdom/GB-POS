@@ -12,6 +12,9 @@ import { useContextMenu } from '../lib/useContextMenu';
 import { supabase } from '../lib/supabase';
 import { checkedOutPurchaseSpend, purchaseBudgetDayKey, purchaseBudgetSnapshot, selectedPurchaseCost } from '../lib/purchaseBudget';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import { taskAssignmentLabel, taskIsCompleted } from '../lib/calendarTasks';
+import { taskCompletionPatch } from '../lib/immediatePersistence';
+import { expandRecurringEvent } from '../lib/calendarRecurrence';
 
 type RangeKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'last7' | 'custom';
 type CommissionRangeKey = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom';
@@ -779,6 +782,7 @@ const EODWindow: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [shopSettingsRecord, setShopSettingsRecord] = useState<any>({});
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
   const [cartRefreshBusy, setCartRefreshBusy] = useState(false);
@@ -952,13 +956,14 @@ const EODWindow: React.FC = () => {
         const purchaseOrdersPromise = api.dbGet ? api.dbGet('purchaseOrders').catch(() => []) : Promise.resolve([]);
         const productsPromise = api.dbGet ? api.dbGet('products').catch(() => []) : Promise.resolve([]);
         const vendorsPromise = api.dbGet ? api.dbGet('vendors').catch(() => []) : Promise.resolve([]);
+        const calendarPromise = api.dbGet ? api.dbGet('calendarEvents').catch(() => []) : Promise.resolve([]);
         const batchPromise = api.getBatchOutInfo
           ? api.getBatchOutInfo().catch(() => null)
           : api.dbGet
             ? api.dbGet('batchInfo').catch(() => null)
             : Promise.resolve(null);
 
-        const [wo, sa, stored, shopSettingsRows, batch, customerRows, purchaseRows, productRows, vendorRows] = await Promise.all([woPromise, saPromise, settingsPromise, shopSettingsPromise, batchPromise, customersPromise, purchaseOrdersPromise, productsPromise, vendorsPromise]);
+        const [wo, sa, stored, shopSettingsRows, batch, customerRows, purchaseRows, productRows, vendorRows, calendarRows] = await Promise.all([woPromise, saPromise, settingsPromise, shopSettingsPromise, batchPromise, customersPromise, purchaseOrdersPromise, productsPromise, vendorsPromise, calendarPromise]);
         if (disposed) return;
 
         setWorkOrders(Array.isArray(wo) ? wo : []);
@@ -967,6 +972,7 @@ const EODWindow: React.FC = () => {
         setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
         setInventoryProducts(Array.isArray(productRows) ? productRows : []);
         setVendors(Array.isArray(vendorRows) ? vendorRows : []);
+        setCalendarEvents(Array.isArray(calendarRows) ? calendarRows : []);
 
         const storedSettings = Array.isArray(stored) ? stored[0] : stored;
         if (storedSettings && typeof storedSettings === 'object') {
@@ -994,6 +1000,7 @@ const EODWindow: React.FC = () => {
     const offWorkOrders = api.onWorkOrdersChanged?.(() => load());
     const offSales = api.onSalesChanged?.(() => load());
     const offSettings = api.onSettingsChanged?.(() => load());
+    const offCalendar = api.onCalendarEventsChanged?.(() => load());
     return () => {
       disposed = true;
       try { offPurchases?.(); } catch {}
@@ -1001,6 +1008,7 @@ const EODWindow: React.FC = () => {
       try { offWorkOrders?.(); } catch {}
       try { offSales?.(); } catch {}
       try { offSettings?.(); } catch {}
+      try { offCalendar?.(); } catch {}
     };
   }, []);
 
@@ -2737,6 +2745,29 @@ const EODWindow: React.FC = () => {
 
   const [activeList, setActiveList] = useState<keyof typeof filteredLists | null>(null);
   const [activityExpanded, setActivityExpanded] = useState(false);
+  const todayTaskDate = useMemo(() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }, [reportDayKey]);
+  const todayTasks = useMemo(() => calendarEvents
+    .flatMap(event => event?.recurrenceRule ? expandRecurringEvent(event, todayTaskDate, todayTaskDate) : [event])
+    .filter(event => event?.category === 'task' && String(event?.date || '').slice(0, 10) === todayTaskDate)
+    .sort((left, right) => Number(taskIsCompleted(left)) - Number(taskIsCompleted(right)) || String(left?.title || '').localeCompare(String(right?.title || ''))), [calendarEvents, todayTaskDate]);
+  const setEodTaskCompleted = useCallback(async (task: any, completed: boolean) => {
+    if (task?.id == null) return;
+    const master = task.recurrenceMaster || task;
+    const previous = calendarEvents.find(row => String(row?.id) === String(master.id)) || master;
+    const optimistic = taskCompletionPatch(master, completed, task.occurrenceDate || task.date || todayTaskDate, String(task?.technician || ''));
+    setCalendarEvents(rows => rows.map(row => String(row?.id) === String(master.id) ? optimistic : row));
+    try {
+      const saved = await (window as any).api?.dbUpdate('calendarEvents', master.id, optimistic);
+      if (!saved) throw new Error('Task update was not saved.');
+      setCalendarEvents(rows => rows.map(row => String(row?.id) === String(master.id) ? saved : row));
+    } catch (error) {
+      setCalendarEvents(rows => rows.map(row => String(row?.id) === String(master.id) ? previous : row));
+      console.error('EOD task completion failed', error);
+    }
+  }, [calendarEvents, todayTaskDate]);
 
   const listMeta = useMemo(() => {
     if (!activeList) return null;
@@ -3313,6 +3344,19 @@ const EODWindow: React.FC = () => {
                     <div className="text-[11px] text-zinc-400">closed in this business day</div>
                   </button>
                   <div className="col-span-2 pt-2 border-t border-zinc-800 text-xs text-zinc-400">Last Batch Out: {batchInfo?.lastBatchOutDate ? formatDate(batchInfo.lastBatchOutDate) : 'Not yet run'}</div>
+                  <section className="col-span-2 mt-1 rounded-lg border border-violet-500/40 bg-violet-950/20 p-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div><h4 className="text-sm font-semibold text-violet-100">Technician Task Checklist</h4><p className="text-[11px] text-zinc-400">Today’s Calendar tasks update everywhere when checked.</p></div>
+                      <span className="shrink-0 rounded border border-violet-400/40 bg-violet-950/50 px-2 py-1 text-[11px] font-semibold text-violet-100">{todayTasks.filter(task => !taskIsCompleted(task)).length} open</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {todayTasks.map(task => <label key={String(task.id)} className={`flex cursor-pointer items-start gap-2 rounded border px-2.5 py-2 text-left ${taskIsCompleted(task) ? 'border-zinc-700 bg-zinc-900/50 text-zinc-500' : 'border-violet-500/30 bg-zinc-900 text-zinc-100 hover:border-violet-400'}`}>
+                        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-violet-400" checked={taskIsCompleted(task)} onChange={event => void setEodTaskCompleted(task, event.target.checked)} />
+                        <span className="min-w-0"><strong className={`block truncate text-xs ${taskIsCompleted(task) ? 'line-through' : ''}`}>{task.title || 'Untitled task'}</strong><small className="block truncate text-[10px] text-zinc-500">{taskAssignmentLabel(task.technician)}</small></span>
+                      </label>)}
+                      {!todayTasks.length ? <p className="rounded border border-dashed border-zinc-700 px-3 py-3 text-center text-xs text-zinc-500">No technician tasks scheduled for today.</p> : null}
+                    </div>
+                  </section>
                 </div>
               </div>
             </div>

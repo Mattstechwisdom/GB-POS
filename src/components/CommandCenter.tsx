@@ -147,7 +147,7 @@ export default function CommandCenter(props: Props) {
         { label: 'Close Work Order', onClick: async () => {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
           if (!source || !window.confirm(`Close work order ${invoice}? No payment will be added.`)) return;
-          const closed = { ...source, status: 'closed', updatedAt: new Date().toISOString() };
+          const closed = { ...source, status: 'closed', workflowStage: 'Completed', updatedAt: new Date().toISOString() };
           setData(current => ({ ...current, workOrders: current.workOrders.map((record:any) => String(record.id) === String(menuRecord.id) ? closed : record) }));
           setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current);
           await api?.dbUpdate?.('workOrders', menuRecord.id, closed);

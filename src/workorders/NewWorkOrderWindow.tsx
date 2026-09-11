@@ -22,6 +22,7 @@ import DurantProposalReview from './DurantProposalReview';
 import { consumeInStockInventory, shouldConsumeWorkOrderInventory } from '../lib/inventoryConsumption';
 import { TechnicianAvatar } from '../lib/technicianIcons';
 import { queueInitialPaymentAcknowledgment } from '../lib/automaticEmailQueue';
+import ClientDropoffWindow from './ClientDropoffWindow';
 
 type RequiredKey = 'assignedTo' | 'productDescription' | 'problemInfo' | 'password' | 'model' | 'serial';
 
@@ -1760,6 +1761,8 @@ const NewWorkOrderWindow: React.FC = () => {
   }
 
   const saveDisabled = false;
+
+  if ((payload as any)?.clientDropoff) return <ClientDropoffWindow />;
 
   return (
     <div className="gb-wo-window h-screen overflow-hidden p-3 bg-zinc-900 text-zinc-200">
