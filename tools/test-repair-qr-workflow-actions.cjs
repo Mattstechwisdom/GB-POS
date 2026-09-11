@@ -10,6 +10,7 @@ const {
   clientDeliveryForRepairAction,
   repairActionPatch,
   groupRepairUpdateOptions,
+  groupClientRepairUpdateOptions,
 } = require('../src/lib/clientUpdateOptions.ts');
 
 const keys = REPAIR_UPDATE_OPTIONS.map((option) => option.key);
@@ -30,6 +31,14 @@ assert.ok(grouped.client.every((option) => clientDeliveryForRepairAction(option.
 assert.deepEqual(grouped.technician.map((option) => option.key), ['technician_progress']);
 assert.deepEqual(grouped.ticket.map((option) => option.key), ['picked_up', 'approve_storage_fee']);
 assert.equal(grouped.client.length + grouped.technician.length + grouped.ticket.length, REPAIR_UPDATE_OPTIONS.length);
+
+const clientSections = groupClientRepairUpdateOptions(grouped.client);
+assert.deepEqual(Object.keys(clientSections), ['communication', 'approval', 'progress', 'parts']);
+assert.deepEqual(clientSections.communication.map((option) => option.key), ['pickup_reminder', 'manual_update', 'customer_promise', 'schedule_pickup']);
+assert.deepEqual(clientSections.approval.map((option) => option.key), ['repair_approval', 'approval_received', 'repair_declined']);
+assert.deepEqual(clientSections.progress.map((option) => option.key), ['diagnosis', 'testing_in_progress', 'repair_complete', 'not_possible']);
+assert.deepEqual(clientSections.parts.map((option) => option.key), ['waiting_device', 'part_ordered', 'waiting_part', 'part_delivered', 'items_delivered']);
+assert.equal(Object.values(clientSections).flat().length, grouped.client.length);
 
 assert.deepEqual(
   repairActionPatch('technician_progress', { notes: 'Removed shield and tested PSU.' }, '2026-09-10T18:00:00.000Z'),

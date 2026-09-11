@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
-import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, groupRepairUpdateOptions, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
+import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, type ClientUpdateOption } from '../lib/clientUpdateOptions';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
 type StatusOption = ClientUpdateOption;
@@ -300,6 +300,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const quickOptions = options.filter((o) => o.key === 'pickup_reminder' || o.key === 'manual_update');
   const mainOptions = options.filter((o) => !quickOptions.some((q) => q.key === o.key));
   const repairGroups = useMemo(() => groupRepairUpdateOptions(REPAIR_STATUSES), []);
+  const clientRepairSections = useMemo(() => groupClientRepairUpdateOptions(repairGroups.client), [repairGroups.client]);
 
   const loadFromDirectSupabase = useCallback(async (qrToken: string) => {
     const tokenRes = await supabase
@@ -664,6 +665,16 @@ const ClientUpdatePanel: React.FC<Props> = ({
     );
   };
 
+  const renderClientSection = (key: keyof typeof clientRepairSections, title: string, description: string) => (
+    <details className={`gb-client-update-subsection ${key}`} open={key === 'communication'}>
+      <summary>
+        <span><strong>{title}</strong><small>{description}</small></span>
+        <b>{clientRepairSections[key].length}</b>
+      </summary>
+      <div className="gb-client-update-action-grid">{clientRepairSections[key].map(renderOption)}</div>
+    </details>
+  );
+
   return (
     <div className={embedded ? 'gb-client-update-shell embedded' : 'gb-client-update-shell'}>
       <div className="gb-client-update-panel">
@@ -750,7 +761,12 @@ const ClientUpdatePanel: React.FC<Props> = ({
             {type === 'repair' ? <>
               <section className="gb-client-update-section client-facing">
                 <div className="gb-client-update-section-heading"><div><h3>Client Updates</h3><p>These actions save the status and send the client an {isMobileApp ? 'email or prepared text message' : 'email'}.</p></div><span>Email{isMobileApp ? ' / Text' : ''}</span></div>
-                <div className="gb-client-update-action-grid">{repairGroups.client.map(renderOption)}</div>
+                <div className="gb-client-update-subsections">
+                  {renderClientSection('communication', 'Messages & Scheduling', 'General updates, reminders, promises, and pickup plans')}
+                  {renderClientSection('approval', 'Repair Approval', 'Request or record the client’s repair decision')}
+                  {renderClientSection('progress', 'Repair Progress', 'Diagnosis, testing, completion, and non-repairable updates')}
+                  {renderClientSection('parts', 'Parts & Delivery', 'Ordering, arrival dates, and delivered items')}
+                </div>
               </section>
               <section className="gb-client-update-section technician-only">
                 <div className="gb-client-update-section-heading"><div><h3>Technician Progress</h3><p>Internal repair notes for other technicians. Nothing in this section contacts the client.</p></div><span>POS Only</span></div>
