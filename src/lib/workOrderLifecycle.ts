@@ -52,8 +52,16 @@ export function buildPickedUpPatch(workOrder:any, actor:string, now=new Date(), 
 export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Date; settings?: any; technicianState?: string } = {}): AttentionReason[] {
   const now = context.now || new Date(); const settings = normalizeCleanupSettings(context.settings); const result: AttentionReason[] = [];
   const status = text(workOrder?.status); const pickup = workOrder?.clientPickupDate || workOrder?.pickupDate || workOrder?.checkoutDate;
+  const stage=text(workOrder?.workflowStage||workOrder?.workflow_stage);
+  const overdue=(value:any,days=0)=>{const at=new Date(value||0).getTime();return !!at&&Number.isFinite(at)&&now.getTime()-at>=days*86400000;};
   if (context.technicianState === 'unassigned') result.push({ code:'technician-unassigned', label:'No technician assigned' });
   if (context.technicianState === 'unknown') result.push({ code:'technician-unknown', label:'Technician assignment cannot be resolved' });
+  if(stage==='approval'&&overdue(workOrder?.approvalRequestedAt||workOrder?.approval_requested_at,2)&&!workOrder?.clientDecision&&!workOrder?.client_decision) result.push({code:'approval-overdue',label:'Repair approval has not received a response'});
+  if(overdue(workOrder?.promisedAt||workOrder?.promised_at)&&!workOrder?.promiseCompletedAt) result.push({code:'promise-overdue',label:'Customer promise is overdue'});
+  if(stage==='parts'&&overdue(workOrder?.partEta||workOrder?.part_eta||workOrder?.partsEstDelivery||workOrder?.parts_est_delivery)) result.push({code:'part-overdue',label:'Part delivery estimate has passed'});
+  if(text(workOrder?.emailDeliveryStatus||workOrder?.email_delivery_status)==='failed') result.push({code:'email-failed',label:'Client email delivery failed'});
+  if(Number(workOrder?.unreadClientReplies||workOrder?.unread_client_replies||0)>0) result.push({code:'client-reply-unread',label:'Unread client reply'});
+  if(workOrder?.pendingSync===true||workOrder?.pending_sync===true) result.push({code:'sync-pending',label:'Workflow update is waiting to synchronize'});
   if (pickup && status !== 'closed') result.push({ code:'pickup-still-open', label:'Pickup was recorded but the ticket is still open' });
   if (isRepairNotPossible(workOrder) && !pickup && status !== 'closed') {
     const markedAt = new Date(workOrder?.repairStatusAt || workOrder?.updatedAt || workOrder?.activityAt || workOrder?.checkInAt || 0).getTime();

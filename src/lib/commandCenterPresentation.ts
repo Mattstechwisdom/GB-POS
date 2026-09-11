@@ -49,7 +49,7 @@ export function compareRepairQueuePriority(a: { expedited?: boolean; promisedAt?
 }
 
 export function partEtaFor(record: any) {
-  const explicit = clean(record?.partsEstDelivery || record?.partsEstimatedDelivery || record?.partEta || record?.expectedDeliveryDate);
+  const explicit = clean(record?.partsEstDelivery || record?.partsEstimatedDelivery || record?.partEta || record?.part_eta || record?.expectedDeliveryDate);
   if (explicit) return explicit;
   return /part.*(ordered|delivery)|waiting.*part/i.test(clean(record?.repairStatus || record?.workflowStatus || record?.statusUpdate))
     ? clean(record?.estimatedDate)

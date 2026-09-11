@@ -182,7 +182,7 @@ export default function CommandCenter(props: Props) {
     const currentRequest = Number(props.attentionRequest || 0);
     const shouldOpen = shouldOpenAttentionPanel(lastAttentionRequest.current, currentRequest);
     lastAttentionRequest.current = currentRequest;
-    if (shouldOpen) setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned' || row.technician === 'Unknown technician' || attentionReasonsForWorkOrder(row.source).length>0) });
+    if (shouldOpen) setPanel({ title: 'Needs Attention', records: model.activeWorkOrders.filter(row => row.customerName.startsWith('Client #') || row.technician === 'Unassigned' || row.technician === 'Unknown technician' || clientResponses.some(reply=>String(reply.legacy_record_id)===String(row.id)&&(reply.unread||!reply.resolved_at)) || attentionReasonsForWorkOrder(row.source).length>0) });
   }, [model, props.attentionRequest,clientResponses]);
 
   return <div className="command-center">
