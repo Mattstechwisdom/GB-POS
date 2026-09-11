@@ -1,4 +1,4 @@
-appId: com.gadgetboy.pos
+appId: com.gadgetboy.pos.desktop
 productName: GadgetBoy POS
 # Keep the installer name predictable on GitHub Releases (no folder digging).
 artifactName: 'GB-POS-installerx64-${version}.${ext}'
@@ -27,8 +27,7 @@ win:
   icon: build/icon.ico
   requestedExecutionLevel: asInvoker
 nsis:
-  include: build/installer-options.nsh
-  oneClick: false
+  oneClick: true
   perMachine: false
   allowElevation: true
   packElevateHelper: true

@@ -5,7 +5,7 @@ import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { allocateCheckoutAdditionalCosts, applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, filterLedgerBackedOrderCartRows, groupOrderCartRows, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
 import { buildReportingLedger } from '../lib/reportingAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
-import { buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
+import { applyDeliveredInventoryPurchase, buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import { useContextMenu } from '../lib/useContextMenu';
@@ -1914,17 +1914,8 @@ const EODWindow: React.FC = () => {
           }
           if (!saved) throw new Error('Purchase ledger save returned no record.');
           if (row.sourceType === 'inventory' && row.inventoryId) {
-            const inventoryItem = inventoryProducts.find(item => Number(item?.id) === Number(row.inventoryId));
-            if (!inventoryItem) throw new Error('Linked inventory item was not found.');
-            const appliedKeys = Array.isArray(inventoryItem.purchaseRestockKeys) ? inventoryItem.purchaseRestockKeys.map(String) : [];
-            if (!appliedKeys.includes(row.key)) {
-              const updatedInventory = { ...inventoryItem, trackStock: true, stockCount: Math.max(0, Number(inventoryItem.stockCount) || 0) + row.quantity, purchaseRestockKeys: [...appliedKeys, row.key].slice(-100), updatedAt: now };
-              const inventorySaved = api.update ? await api.update('products', updatedInventory) : await api.dbUpdate?.('products', inventoryItem.id, updatedInventory);
-              if (!inventorySaved) throw new Error('Inventory stock update returned no record.');
-              setInventoryProducts(items => items.map(item => Number(item?.id) === Number(row.inventoryId) ? inventorySaved : item));
-            }
-            saved = await api.dbUpdate?.('purchaseOrders', saved.id, { ...saved, status: 'checked_out', inventoryApplied: true, checkedOutAt: now, updatedAt: now });
-            if (!saved) throw new Error('Purchase checkout could not be finalized after updating stock.');
+            saved = await api.dbUpdate?.('purchaseOrders', saved.id, { ...saved, status: 'checked_out', inventoryApplied: false, checkedOutAt: now, updatedAt: now });
+            if (!saved) throw new Error('Purchase checkout could not be finalized as incoming inventory.');
           }
           savedPurchaseRecords.push(saved);
           successfulPurchaseKeys.add(row.key);
@@ -2074,8 +2065,19 @@ const EODWindow: React.FC = () => {
     try {
       const sendsClientUpdate = sourceType === 'workOrder' || sourceType === 'sale';
       if (!sendsClientUpdate) {
-        const savedPurchase = await api.dbUpdate?.('purchaseOrders', purchaseId, { ...purchase, status: 'delivered', deliveredAt: now, updatedAt: now });
+        let inventorySaved: any = null;
+        if (sourceType === 'inventory' && Number(purchase?.inventoryId) > 0) {
+          const inventoryItem = inventoryProducts.find(item => Number(item?.id) === Number(purchase.inventoryId));
+          if (!inventoryItem) throw new Error('The linked inventory item could not be found, so stock was not changed.');
+          const updatedInventory = applyDeliveredInventoryPurchase(inventoryItem, purchase, now);
+          inventorySaved = updatedInventory === inventoryItem
+            ? inventoryItem
+            : (api.update ? await api.update('products', updatedInventory) : await api.dbUpdate?.('products', inventoryItem.id, updatedInventory));
+          if (!inventorySaved) throw new Error('The inventory stock update did not save.');
+        }
+        const savedPurchase = await api.dbUpdate?.('purchaseOrders', purchaseId, { ...purchase, status: 'delivered', deliveredAt: now, inventoryApplied: sourceType === 'inventory' ? true : purchase?.inventoryApplied, updatedAt: now });
         if (!savedPurchase) throw new Error('The purchase ledger did not confirm delivery.');
+        if (inventorySaved) setInventoryProducts((list) => list.map((item) => Number(item?.id) === Number(purchase.inventoryId) ? inventorySaved : item));
         setPurchaseOrders((list) => list.map((item) => Number(item?.id) === purchaseId ? savedPurchase : item));
         setDeliveryMessage(`${purchase?.title || 'Item'} marked delivered. No client update was required.`);
         return;
@@ -2128,7 +2130,7 @@ const EODWindow: React.FC = () => {
     } finally {
       setDeliveryBusyId(null);
     }
-  }, [deliveryBusyId, purchaseOrders, sales, workOrders]);
+  }, [deliveryBusyId, inventoryProducts, purchaseOrders, sales, workOrders]);
 
   const partsPurchaseTotals = useMemo(() => {
     const verified = partsPurchaseQueue.filter(row => row.hasCost);

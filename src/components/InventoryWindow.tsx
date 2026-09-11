@@ -5,7 +5,7 @@ import type { VendorRecord } from './VendorsWindow';
 import { applyInventoryUrlAutofill, scrapePartUrl } from '../lib/partOrdering';
 import { applyInventoryDefaults, normalizeInventoryDefaults, type InventoryDefaults } from '../lib/catalogDefaults';
 import { resolveCanonicalVendor } from '../lib/vendorCatalog';
-import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
+import { buildInventoryReorderPurchase, fillInventoryReorderUrl, inventoryIncomingQuantity, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { reconcilePaidSaleInventory } from '../lib/inventoryConsumption';
 import QRCode from 'qrcode';
@@ -157,6 +157,7 @@ export default function InventoryWindow() {
   }
   const [mode, setMode] = useState<InventoryMode>('parts');
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [vendors, setVendors] = useState<VendorRecord[]>([]);
   const [deviceCategories, setDeviceCategories] = useState<any[]>([]);
   const [repairCategories, setRepairCategories] = useState<any[]>([]);
@@ -245,8 +246,9 @@ export default function InventoryWindow() {
       await reconcilePaidSaleInventory(api).catch((error) => {
         console.error('Paid-sale inventory reconciliation failed', error);
       });
-      const [products, vendorRows, deviceRows, repairRows, repairTypeRows, settingsRows] = await Promise.all([
+      const [products, purchaseRows, vendorRows, deviceRows, repairRows, repairTypeRows, settingsRows] = await Promise.all([
         api?.dbGet?.('products').catch(() => []),
+        api?.dbGet?.('purchaseOrders').catch(() => []),
         api?.dbGet?.('vendors').catch(() => []),
         api?.dbGet?.('deviceCategories').catch(() => []),
         api?.dbGet?.('repairCategories').catch(() => []),
@@ -254,6 +256,7 @@ export default function InventoryWindow() {
         api?.dbGet?.('settings').catch(() => []),
       ]);
       setItems(Array.isArray(products) ? products : []);
+      setPurchaseOrders(Array.isArray(purchaseRows) ? purchaseRows : []);
       setVendors(Array.isArray(vendorRows) ? vendorRows : []);
       setDeviceCategories(Array.isArray(deviceRows) ? deviceRows : []);
       setRepairCategories(Array.isArray(repairRows) ? repairRows : []);
@@ -269,10 +272,11 @@ export default function InventoryWindow() {
   useEffect(() => {
     load();
     const off = api?.onProductsChanged?.(() => load());
+    const offPurchases = api?.onPurchaseOrdersChanged?.(() => load());
     const offTypes = api?.onRepairTypesChanged?.(() => load());
     const offRepairs = api?.onRepairCategoriesChanged?.(() => load());
     const offSettings = api?.onSettingsChanged?.(() => load());
-    return () => { try { off && off(); offTypes && offTypes(); offRepairs && offRepairs(); offSettings && offSettings(); } catch {} };
+    return () => { try { off && off(); offPurchases && offPurchases(); offTypes && offTypes(); offRepairs && offRepairs(); offSettings && offSettings(); } catch {} };
   }, [api, load]);
 
   useEffect(() => {
@@ -336,8 +340,9 @@ export default function InventoryWindow() {
       products: products.length,
       low: items.filter(isInventoryLowStock).length,
       tracked: items.filter((item) => item.trackStock).length,
+      incoming: items.reduce((total, item) => total + inventoryIncomingQuantity(Number(item.id || 0), purchaseOrders), 0),
     };
-  }, [items]);
+  }, [items, purchaseOrders]);
 
   useEffect(() => {
     const requestedId = requestedInventoryIdRef.current;
@@ -720,7 +725,7 @@ export default function InventoryWindow() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold tracking-wide">Inventory</h1>
-              <div className="text-xs text-zinc-400">{counts.tracked} tracked items, {counts.low} low-stock alerts</div>
+              <div className="text-xs text-zinc-400">{counts.tracked} tracked items, {counts.low} low-stock alerts, {counts.incoming} incoming</div>
             </div>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPriceReviewItems(items.filter(item => !isInventoryParent(item) && Boolean(String(item.reorderUrlTemplate || '').trim())))} className="rounded-lg bg-[#39FF14] px-4 py-2 text-sm font-black text-black">Check All Prices</button><button type="button" disabled={!priceCheckIds.size} onClick={() => setPriceReviewItems(items.filter(item => item.id && priceCheckIds.has(item.id)))} className="rounded-lg border border-[#39FF14] px-4 py-2 text-sm font-bold text-[#39FF14] disabled:opacity-40">Check Selected</button><button type="button" onClick={() => api?.openCatalogSettings ? void api.openCatalogSettings('inventory') : undefined} className="rounded-lg border border-purple-400/70 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-200 hover:bg-purple-500/20">⚙ Inventory Settings</button></div>
           </div>
@@ -802,7 +807,7 @@ export default function InventoryWindow() {
                         const rows = inventoryHierarchyRows(category.items, expandedParentIds);
                         return <section key={categoryKey} className="border-b border-zinc-800 last:border-b-0">
                           <button type="button" aria-expanded={categoryOpen} onClick={() => setExpandedDeviceCategories(current => { const next = new Set(current); if (categoryOpen) next.delete(categoryKey); else next.add(categoryKey); return next; })} className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm font-semibold text-fuchsia-200 hover:bg-zinc-900"><span>{category.category}</span><span className="text-xs text-zinc-500">{category.items.length} · {categoryOpen ? '−' : '+'}</span></button>
-                          {categoryOpen ? <div className="divide-y divide-zinc-800/70">{rows.map(item => { const parent = isInventoryParent(item); const parentId = Number(item.id || 0); const expanded = parent && expandedParentIds.has(parentId); const low = !parent && isInventoryLowStock(item); return <div key={`${group.device}-${category.category}-${item.id}`} onClick={() => selectItem(item)} onContextMenu={(event) => inventoryContext.openFromEvent(event, item)} className={`cursor-pointer border-l-4 px-4 py-2 ${inventoryParentId(item) ? 'pl-9' : ''} ${selectedId === item.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}><div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2">{parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={event => { event.stopPropagation(); setExpandedParentIds(current => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700">{expanded ? '−' : '+'}</button> : null}<strong className="truncate">{item.itemDescription || '(unnamed)'}</strong>{parent ? <span className="rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div><div className="mt-1 text-[11px] text-zinc-500">{item.condition || 'New'} · {item.distributorSku || 'No SKU'}</div></div><div className="shrink-0 text-right"><div className="text-xs font-bold">{parent ? inventoryAggregateStock(items, parentId) : item.trackStock ? item.stockCount ?? 0 : '—'} stock</div><div className="text-xs text-zinc-400">{money(item.price)}</div></div></div></div>; })}</div> : null}
+                          {categoryOpen ? <div className="divide-y divide-zinc-800/70">{rows.map(item => { const parent = isInventoryParent(item); const parentId = Number(item.id || 0); const expanded = parent && expandedParentIds.has(parentId); const low = !parent && isInventoryLowStock(item); const incoming = parent ? items.filter(candidate => inventoryParentId(candidate) === parentId).reduce((sum, candidate) => sum + inventoryIncomingQuantity(Number(candidate.id || 0), purchaseOrders), 0) : inventoryIncomingQuantity(Number(item.id || 0), purchaseOrders); return <div key={`${group.device}-${category.category}-${item.id}`} onClick={() => selectItem(item)} onContextMenu={(event) => inventoryContext.openFromEvent(event, item)} className={`cursor-pointer border-l-4 px-4 py-2 ${inventoryParentId(item) ? 'pl-9' : ''} ${selectedId === item.id ? 'bg-zinc-800' : 'hover:bg-zinc-900'} ${low ? 'border-red-500' : parent ? 'border-[#39FF14]' : 'border-transparent'}`}><div className="flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2">{parent ? <button type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} variants for ${item.itemDescription || 'parent part'}`} onClick={event => { event.stopPropagation(); setExpandedParentIds(current => { const next = new Set(current); if (expanded) next.delete(parentId); else next.add(parentId); return next; }); }} className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-zinc-700">{expanded ? '−' : '+'}</button> : null}<strong className="truncate">{item.itemDescription || '(unnamed)'}</strong>{parent ? <span className="rounded bg-[#39FF14]/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#39FF14]">Parent</span> : null}</div><div className="mt-1 text-[11px] text-zinc-500">{item.condition || 'New'} · {item.distributorSku || 'No SKU'}</div></div><div className="shrink-0 text-right"><div className="text-xs font-bold">{parent ? inventoryAggregateStock(items, parentId) : item.trackStock ? item.stockCount ?? 0 : '—'} on hand</div>{incoming > 0 ? <div className="text-[11px] font-semibold text-sky-300">+{incoming} incoming</div> : null}<div className="text-xs text-zinc-400">{money(item.price)}</div></div></div></div>; })}</div> : null}
                         </section>;
                       })}</div> : null}
                     </section>;
@@ -845,10 +850,11 @@ export default function InventoryWindow() {
                             <div className="font-mono text-sm font-semibold text-zinc-100">{money(item.price)}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-[10px] uppercase tracking-wide text-zinc-500">Stock</div>
+                            <div className="text-[10px] uppercase tracking-wide text-zinc-500">On Hand</div>
                             <div className={`font-mono text-sm font-semibold ${low ? 'text-red-300' : 'text-zinc-200'}`}>
                               {parent && item.id ? inventoryAggregateStock(items, item.id) : item.trackStock ? (item.stockCount ?? 0) : '-'}
                             </div>
+                            {(() => { const incoming = parent && item.id ? items.filter(candidate => inventoryParentId(candidate) === Number(item.id)).reduce((sum, candidate) => sum + inventoryIncomingQuantity(Number(candidate.id || 0), purchaseOrders), 0) : inventoryIncomingQuantity(Number(item.id || 0), purchaseOrders); return incoming > 0 ? <div className="text-[11px] font-semibold text-sky-300">+{incoming} incoming</div> : null; })()}
                           </div>
                           {parent ? <button type="button" onClick={(event) => { event.stopPropagation(); startVariant(item); }} className="col-span-2 rounded border border-[#BC13FE]/70 bg-[#BC13FE]/10 px-2 py-1.5 text-[11px] font-semibold text-fuchsia-200 hover:bg-[#BC13FE]/20 sm:col-span-1">Add Variant</button> : <button type="button" onClick={(event) => { event.stopPropagation(); setLabelItem(item); }} className="col-span-2 rounded border border-[#39FF14]/70 bg-[#39FF14]/10 px-2 py-1.5 text-[11px] font-semibold text-[#39FF14] hover:bg-[#39FF14]/20 sm:col-span-1">Print Label</button>}
                         </div>
@@ -1186,6 +1192,10 @@ export default function InventoryWindow() {
                       onChange={(event) => setEditing((current) => ({ ...current, stockCount: event.target.value === '' ? undefined : Number(event.target.value) }))}
                       className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none disabled:opacity-50 focus:border-[#39FF14]"
                     />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-zinc-400">Incoming</span>
+                    <input type="number" value={selectedId ? inventoryIncomingQuantity(selectedId, purchaseOrders) : 0} readOnly className="w-full rounded border border-sky-800 bg-sky-950/30 px-3 py-2 text-sm text-sky-200 outline-none" />
                   </label>
                   <label className="block">
                     <span className="mb-1 block text-xs text-zinc-400">Low Alert At</span>

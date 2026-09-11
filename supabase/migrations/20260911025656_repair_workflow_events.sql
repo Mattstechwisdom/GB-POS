@@ -49,7 +49,7 @@ create or replace function public.apply_repair_workflow_event(
   p_actor_user_id uuid
 ) returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare

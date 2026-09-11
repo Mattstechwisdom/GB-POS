@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const migrationPath = path.join(__dirname, '..', 'supabase', 'migrations', '20260910190000_repair_workflow_events.sql');
+const migrationPath = path.join(__dirname, '..', 'supabase', 'migrations', '20260911025656_repair_workflow_events.sql');
 assert.ok(fs.existsSync(migrationPath), 'Repair workflow migration is missing.');
 const sql = fs.readFileSync(migrationPath, 'utf8');
 

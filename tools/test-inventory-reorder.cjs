@@ -12,11 +12,13 @@ const build = esbuild.buildSync({
 const moduleShim = { exports: {} };
 new Function('module', 'exports', 'require', build.outputFiles[0].text)(moduleShim, moduleShim.exports, require);
 const {
+  applyDeliveredInventoryPurchase,
   buildInventoryReorderPurchase,
   fillInventoryReorderUrl,
   inventoryLowStockFingerprint,
   inventoryReorderQuantity,
   isInventoryLowStock,
+  inventoryIncomingQuantity,
 } = moduleShim.exports;
 
 const tracked = {
@@ -62,4 +64,14 @@ assert.deepEqual(purchase, {
 
 assert.throws(() => buildInventoryReorderPurchase({ ...tracked, distributor: '' }), /distributor/i);
 assert.throws(() => buildInventoryReorderPurchase({ ...tracked, internalCost: undefined }), /supplier cost/i);
+
+const checkedOutRestock = { id: 301, sourceType: 'inventory', inventoryId: 42, status: 'checked_out', quantity: 3, inventoryApplied: false };
+assert.equal(inventoryIncomingQuantity(42, [checkedOutRestock]), 3, 'checked-out restocks must be incoming, not on hand');
+assert.equal(inventoryIncomingQuantity(42, [{ ...checkedOutRestock, status: 'delivered', deliveredAt: '2026-08-06T12:00:00.000Z' }]), 0, 'delivered restocks must no longer be incoming');
+
+const delivered = applyDeliveredInventoryPurchase(tracked, checkedOutRestock, '2026-08-06T12:00:00.000Z');
+assert.equal(delivered.stockCount, 4, 'delivery must add the ordered quantity to on-hand stock');
+assert.deepEqual(delivered.purchaseRestockKeys, ['purchaseOrder:301'], 'delivery must record an idempotency key');
+const retried = applyDeliveredInventoryPurchase(delivered, checkedOutRestock, '2026-08-06T12:05:00.000Z');
+assert.equal(retried.stockCount, 4, 'retrying delivery must not add stock twice');
 console.log('Inventory reorder checks passed.');

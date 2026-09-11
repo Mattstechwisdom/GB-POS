@@ -40,7 +40,7 @@
 ### Task 2: Atomic Supabase workflow persistence
 
 **Files:**
-- Create: `supabase/migrations/20260910190000_repair_workflow_events.sql`
+- Create: `supabase/migrations/20260911025656_repair_workflow_events.sql`
 - Modify: `supabase/functions/client-updates/index.ts`
 - Test: `tools/test-repair-workflow-schema.cjs`
 
@@ -58,7 +58,7 @@
 ### Task 3: Client interaction and replies
 
 **Files:**
-- Modify: `supabase/migrations/20260910190000_repair_workflow_events.sql`
+- Modify: `supabase/migrations/20260911025656_repair_workflow_events.sql`
 - Modify: `supabase/functions/client-response/index.ts`
 - Modify: `supabase/functions/client-updates/index.ts`
 - Modify: `src/components/ClientRepliesPanel.tsx`

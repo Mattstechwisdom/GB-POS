@@ -11,7 +11,44 @@ export type ReorderInventoryItem = {
   stockCount?: number;
   lowStockThreshold?: number;
   vendorTaxExempt?: boolean;
+  purchaseRestockKeys?: string[];
 };
+
+type InventoryRestockPurchase = {
+  id?: number;
+  sourceType?: string;
+  inventoryId?: number;
+  status?: string;
+  quantity?: number;
+  deliveredAt?: string | null;
+  inventoryApplied?: boolean;
+};
+
+export function inventoryPurchaseRestockKey(purchase: InventoryRestockPurchase): string {
+  return `purchaseOrder:${Number(purchase.id || 0)}`;
+}
+
+export function inventoryIncomingQuantity(inventoryId: number, purchases: InventoryRestockPurchase[]): number {
+  return purchases.reduce((total, purchase) => {
+    if (purchase.sourceType !== 'inventory' || Number(purchase.inventoryId) !== Number(inventoryId)) return total;
+    if (!['checked_out', 'ordered'].includes(String(purchase.status || '').toLowerCase())) return total;
+    if (purchase.deliveredAt || purchase.inventoryApplied === true) return total;
+    return total + Math.max(1, Math.round(Number(purchase.quantity) || 1));
+  }, 0);
+}
+
+export function applyDeliveredInventoryPurchase<T extends ReorderInventoryItem>(item: T, purchase: InventoryRestockPurchase, now = new Date().toISOString()): T {
+  const key = inventoryPurchaseRestockKey(purchase);
+  const appliedKeys = Array.isArray(item.purchaseRestockKeys) ? item.purchaseRestockKeys.map(String) : [];
+  if (appliedKeys.includes(key) || purchase.inventoryApplied === true) return item;
+  return {
+    ...item,
+    trackStock: true,
+    stockCount: Math.max(0, Number(item.stockCount) || 0) + Math.max(1, Math.round(Number(purchase.quantity) || 1)),
+    purchaseRestockKeys: [...appliedKeys, key].slice(-100),
+    updatedAt: now,
+  } as T;
+}
 
 export function inventoryReorderQuantity(item: ReorderInventoryItem): number {
   return Math.max(1, Math.round(Number(item.reorderQty) || 1));
