@@ -7,6 +7,7 @@ import DeviceForm from '@/repairs/DeviceForm';
 import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import { deleteRepair, repairContextMenuZIndex } from '@/lib/repairDeletion';
+import { dedupeRepairCatalog, repairCatalogIdentity } from '@/lib/repairCompatibility';
 
 // No placeholder data for now
 
@@ -59,7 +60,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
     (async () => {
       if (window.api?.dbGet) {
         const items = await window.api.dbGet('repairCategories');
-        if (Array.isArray(items)) setRepairItems(items);
+        if (Array.isArray(items)) setRepairItems(dedupeRepairCatalog(items));
         const devs = await window.api.dbGet('deviceCategories');
         setDeviceCategories(Array.isArray(devs) ? devs : []);
       }
@@ -71,7 +72,7 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
       } catch (e) {}
     });
     const offRepairs = (window as any).api?.onRepairCategoriesChanged?.(async () => {
-      const items = await (window as any).api.dbGet('repairCategories').catch(() => []); if (Array.isArray(items)) setRepairItems(items);
+      const items = await (window as any).api.dbGet('repairCategories').catch(() => []); if (Array.isArray(items)) setRepairItems(dedupeRepairCatalog(items));
     });
     return () => { if (off) off(); if (offRepairs) offRepairs(); };
   }, []);
@@ -115,12 +116,16 @@ export default function RepairCategoriesWindow({ mode = 'admin' }: RepairCategor
         if (window.api?.dbUpdate) await window.api.dbUpdate('repairCategories', item.id, item);
       } else {
         // Add new item
-        const newItem = {
-          ...item,
-          id: item.id || Math.random().toString(36).slice(2, 10),
-        };
-        setRepairItems(prev => [...prev, newItem]);
-        if (window.api?.dbAdd) await window.api.dbAdd('repairCategories', newItem);
+        const existingService = repairItems.find(candidate => repairCatalogIdentity(candidate) === repairCatalogIdentity(item));
+        if (existingService?.id != null) {
+          const updated = { ...existingService, ...item, id: existingService.id };
+          setRepairItems(prev => dedupeRepairCatalog(prev.map(candidate => candidate.id === existingService.id ? updated : candidate)));
+          if (window.api?.dbUpdate) await window.api.dbUpdate('repairCategories', existingService.id, updated);
+        } else {
+          const newItem = { ...item, id: item.id || Math.random().toString(36).slice(2, 10) };
+          setRepairItems(prev => dedupeRepairCatalog([...prev, newItem]));
+          if (window.api?.dbAdd) await window.api.dbAdd('repairCategories', newItem);
+        }
       }
       setSelectedItem(null);
     }
