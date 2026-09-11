@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 require('ts-node').register({
   transpileOnly: true,
@@ -39,6 +41,10 @@ assert.deepEqual(clientSections.approval.map((option) => option.key), ['repair_a
 assert.deepEqual(clientSections.progress.map((option) => option.key), ['diagnosis', 'testing_in_progress', 'repair_complete', 'not_possible']);
 assert.deepEqual(clientSections.parts.map((option) => option.key), ['waiting_device', 'part_ordered', 'waiting_part', 'part_delivered', 'items_delivered']);
 assert.equal(Object.values(clientSections).flat().length, grouped.client.length);
+
+const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'ClientUpdatePanel.tsx'), 'utf8');
+assert.match(panelSource, /<details className={`gb-client-update-subsection \${key}`}>/);
+assert.doesNotMatch(panelSource, /<details[^>]+\sopen(?:=|\s|>)/, 'QR action sections must all start collapsed');
 
 assert.deepEqual(
   repairActionPatch('technician_progress', { notes: 'Removed shield and tested PSU.' }, '2026-09-10T18:00:00.000Z'),

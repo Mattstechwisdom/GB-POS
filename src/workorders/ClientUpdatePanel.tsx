@@ -666,7 +666,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   };
 
   const renderClientSection = (key: keyof typeof clientRepairSections, title: string, description: string) => (
-    <details className={`gb-client-update-subsection ${key}`} open={key === 'communication'}>
+    <details className={`gb-client-update-subsection ${key}`}>
       <summary>
         <span><strong>{title}</strong><small>{description}</small></span>
         <b>{clientRepairSections[key].length}</b>
