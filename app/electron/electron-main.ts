@@ -5366,11 +5366,16 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
     const pending = readCloudSyncQueue().filter((op) => op.key === key);
     const pendingDeletes = new Set(pending.filter((op) => op.op === 'delete').map((op) => String(op.legacyId)));
     const pendingUpserts = new Set(pending.filter((op) => op.op === 'upsert').map((op) => String(op.legacyId)));
+    // Repair definitions are a shared catalog. Once a cloud read succeeds, rows
+    // absent from that response are stale local orphans (commonly old per-variant
+    // copies left behind after consolidating a repair onto a parent part). Keep
+    // only genuine offline edits that are still queued for upload.
+    const cloudAuthoritative = key === 'repairCategories';
     const byId = new Map<string, any>();
     for (const item of existing) {
       const id = item?.id;
       if (id === null || typeof id === 'undefined') continue;
-      byId.set(String(id), item);
+      if (!cloudAuthoritative || pendingUpserts.has(String(id))) byId.set(String(id), item);
     }
     for (const row of rows) {
       const id = row?.id;
