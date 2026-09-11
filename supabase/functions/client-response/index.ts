@@ -3,16 +3,19 @@ const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"au
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 const hash=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
 const page=(title:string,body:string,status=200)=>new Response(`<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>${esc(title)}</title></head><body style="margin:0;background:#111114;color:#eee;font-family:Arial"><main style="max-width:580px;margin:30px auto;padding:24px;background:#18181b;border:1px solid #3f3f46;border-radius:14px"><h1 style="color:#39ff14">GadgetBoy</h1><h2>${esc(title)}</h2>${body}</main></body></html>`,{status,headers:{...cors,'content-type':'text/html;charset=utf-8','cache-control':'no-store'}});
-const button=(token:string,action:string,label:string,color:string)=>`<a href="?token=${encodeURIComponent(token)}&action=${action}" style="display:inline-block;margin:5px;padding:12px 15px;border-radius:7px;background:${color};color:white;text-decoration:none;font-weight:700">${esc(label)}</a>`;
+const button=(token:string,action:string,label:string,color:string)=>`<a href="?token=${encodeURIComponent(token)}&amp;action=${action}" style="display:inline-block;margin:5px;padding:12px 15px;border-radius:7px;background:${color};color:white;text-decoration:none;font-weight:700">${esc(label)}</a>`;
 Deno.serve(async req=>{
  if(req.method==='OPTIONS') return new Response(null,{status:204,headers:cors});
  try{
   const url=new URL(req.url),token=url.searchParams.get('token')||'',requestedAction=(url.searchParams.get('action')||'view').toLowerCase();
   if(!token)return page('Invalid link','<p>This response link is incomplete.</p>',400);
   const admin=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  const {data:tokenRow}=await admin.from('client_response_tokens').select('*,work_orders(id,shop_id,legacy_id,customer_id,product_category,product_description,model,serial,problem_info,repair_status,workflow_stage,scheduled_pickup_at)').eq('token_hash',await hash(token)).maybeSingle();
+  const {data:tokenRow,error:tokenLookupError}=await admin.from('client_response_tokens').select('*').eq('token_hash',await hash(token)).maybeSingle();
+  if(tokenLookupError)throw new Error('This response link could not be verified. Please contact the shop.');
   if(!tokenRow||new Date(tokenRow.expires_at).getTime()<Date.now())return page('Link expired','<p>Please contact the shop for a new response link.</p>',410);
-  const workOrder=tokenRow.work_orders||{},allowedActions=Array.isArray(tokenRow.allowed_actions)?tokenRow.allowed_actions.map(String):['question','add_information'];
+  const {data:workOrder,error:workOrderError}=await admin.from('work_orders').select('id,shop_id,legacy_id,customer_id,product_category,product_description,model,serial,problem_info,repair_status,workflow_stage,scheduled_pickup_at').eq('id',tokenRow.work_order_id).maybeSingle();
+  if(workOrderError||!workOrder)throw new Error('The linked work order could not be loaded. Please contact the shop.');
+  const allowedActions=Array.isArray(tokenRow.allowed_actions)?tokenRow.allowed_actions.map(String):['question','add_information'];
   const device=esc([workOrder.product_description,workOrder.model].filter(Boolean).join(' - ')||workOrder.product_category||'your device');
   const summary=`<p><strong>${device}</strong> · WO #${esc(tokenRow.legacy_record_id)}</p><p>Status: ${esc(workOrder.repair_status||workOrder.workflow_stage||'In progress')}</p>`;
   if(req.method==='GET'){

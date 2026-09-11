@@ -8,4 +8,8 @@ for(const phrase of ['Approve Repair','Decline Repair','Ask a Question','Confirm
 for(const phrase of ['Client Replies','Send Reply','Mark Resolved','Mark Unresolved','Acknowledge & Advance','Call Client','Copy Contact Information','client_responses','onContextMenu','onPointerDown']) assert.match(center,new RegExp(phrase,'i'));
 assert.ok(!fn.includes('qr_status_tokens'), 'Public client response must not reuse staff QR tokens.');
 assert.ok(!fn.includes('internal_notes'), 'Public client response pages must not expose internal work-order notes.');
+assert.match(fn,/from\('client_response_tokens'\)\.select\('\*'\)/,"Public response lookup must fetch the token independently so an embedded relationship failure cannot invalidate a valid link.");
+assert.match(fn,/from\('work_orders'\)\.select\(/,"Public response lookup must load the linked work order explicitly.");
+assert.match(updates,/&amp;action=/,"Email action URLs must HTML-encode their query separator so email clients preserve the full link.");
+assert.match(updates,/tokenInsertError/,"Email delivery must stop if its public response token could not be saved.");
 console.log('Client response workflow checks passed.');

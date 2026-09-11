@@ -14,8 +14,7 @@ import DroneChecklistPanel, { defaultDroneChecklist } from './DroneChecklistPane
 import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import ClientUpdatePanel from './ClientUpdatePanel';
 import { computeTotals, round2 } from '../lib/calc';
-import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, WorkOrderStatus, RepairItem } from '../lib/types';
-import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../lib/datetime';
+import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, RepairItem } from '../lib/types';
 import { listTechnicians } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticketAccounting';
@@ -220,72 +219,6 @@ const AssignedTechnicianField: React.FC<{
   );
 };
 
-const WorkOrderDetailsMenu: React.FC<{
-  open: boolean;
-  workOrder: WorkOrderFull;
-  onToggle: () => void;
-  onClose: () => void;
-  onChange: (patch: Partial<WorkOrderFull>) => void;
-}> = ({ open, workOrder, onToggle, onClose, onChange }) => {
-  return (
-    <div className="gb-wo-details-menu">
-      <button
-        type="button"
-        className={`gb-wo-menu-button ${open ? 'active' : ''}`}
-        onClick={onToggle}
-        aria-label="Open status and dates"
-        aria-expanded={open}
-      >
-        <span aria-hidden="true"><i /><i /><i /></span>
-      </button>
-      {open ? (
-        <div className="gb-wo-details-popover" role="dialog" aria-label="Status and dates">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
-              <div className="text-sm font-semibold text-zinc-100">Status & Dates</div>
-              <div className="text-[11px] text-zinc-500">Optional work order timing</div>
-            </div>
-            <button type="button" className="gb-wo-details-close" onClick={onClose} aria-label="Close status and dates">x</button>
-          </div>
-
-          <label className="block text-xs text-zinc-400">Status</label>
-          <select
-            className="w-full mt-1 mb-3 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
-            value={workOrder.status}
-            onChange={e => onChange({ status: e.target.value as WorkOrderStatus })}
-          >
-            <option value="open">open</option>
-            <option value="in progress">in progress</option>
-            <option value="closed">closed</option>
-          </select>
-
-          <label className="block text-xs text-zinc-400">Repair complete</label>
-          <div className="gb-wo-date-row mb-3">
-            <input
-              type="datetime-local"
-              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
-              value={toLocalDatetimeInput(workOrder.repairCompletionDate)}
-              onChange={e => onChange({ repairCompletionDate: fromLocalDatetimeInput(e.target.value) as any })}
-            />
-            <button type="button" className="bg-brand text-black rounded px-3 py-2 font-semibold" onClick={() => onChange({ repairCompletionDate: new Date().toISOString() })}>Now</button>
-          </div>
-
-          <label className="block text-xs text-zinc-400">Check-out</label>
-          <div className="gb-wo-date-row">
-            <input
-              type="datetime-local"
-              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-2"
-              value={toLocalDatetimeInput(workOrder.checkoutDate)}
-              onChange={e => onChange({ checkoutDate: fromLocalDatetimeInput(e.target.value) as any })}
-            />
-            <button type="button" className="bg-brand text-black rounded px-3 py-2 font-semibold" onClick={() => onChange({ checkoutDate: new Date().toISOString() })}>Now</button>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
 function isConsultationSaleItem(row: Partial<SaleItemRow> | null | undefined): boolean {
   const cat = (row as any)?.category;
   const s = (cat == null ? '' : String(cat)).trim().toLowerCase();
@@ -397,7 +330,6 @@ const NewWorkOrderWindow: React.FC = () => {
   const [validationActive, setValidationActive] = useState<boolean>(false);
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
-  const [detailsMenuOpen, setDetailsMenuOpen] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
   const warningRemoveTimer = useRef<number | undefined>(undefined);
   const lastPartsCalendarSyncKey = useRef<string>('');
@@ -1851,22 +1783,9 @@ const NewWorkOrderWindow: React.FC = () => {
         <WorkOrderSidebar
           workOrder={workOrderFull}
           onChange={handleSidebarChange}
-          hideStatus
-          hideDates
           hideAssigned
           validationFlags={sidebarValidationFlags}
           onRequestForceSave={handleSidebarForceSave}
-          headerControl={(
-            <div className="gb-wo-sidebar-menu">
-              <WorkOrderDetailsMenu
-                open={detailsMenuOpen}
-                workOrder={workOrderFull}
-                onToggle={() => setDetailsMenuOpen(open => !open)}
-                onClose={() => setDetailsMenuOpen(false)}
-                onChange={handleSidebarChange}
-              />
-            </div>
-          )}
         />
         <div className="gb-wo-main-scroll flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <div className="gb-wo-mobile-intake">
@@ -1880,15 +1799,6 @@ const NewWorkOrderWindow: React.FC = () => {
           </div>
           <div className="gb-wo-top-card bg-zinc-900 border border-zinc-700 rounded p-2">
             <div className="gb-wo-top-row">
-              <div className="gb-wo-mobile-details-menu">
-                <WorkOrderDetailsMenu
-                  open={detailsMenuOpen}
-                  workOrder={workOrderFull}
-                  onToggle={() => setDetailsMenuOpen(open => !open)}
-                  onClose={() => setDetailsMenuOpen(false)}
-                  onChange={handleSidebarChange}
-                />
-              </div>
               <AssignedTechnicianField
                 value={workOrderFull.assignedTo}
                 invalid={!!sidebarValidationFlags?.assignedTo}
