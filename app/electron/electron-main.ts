@@ -10,7 +10,6 @@ const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
-const { buildWindowsUpdateHandoff } = require('./update-launcher');
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -724,6 +723,27 @@ function appendStartupLog(line: string) {
   }
 }
 
+function createAutoUpdateLogger() {
+  const write = (level: string, values: any[]) => {
+    try {
+      const detail = values.map((value) => {
+        if (value instanceof Error) return value.stack || value.message;
+        if (typeof value === 'string') return value;
+        try { return JSON.stringify(value); } catch { return String(value); }
+      }).join(' ');
+      appendStartupLog(`auto-update ${level}: ${detail}`);
+    } catch {
+      // Logging must never interrupt an update.
+    }
+  };
+  return {
+    info: (...values: any[]) => write('info', values),
+    warn: (...values: any[]) => write('warn', values),
+    error: (...values: any[]) => write('error', values),
+    debug: (...values: any[]) => write('debug', values),
+  };
+}
+
 function setupStartupCrashLogging() {
   // Capture the most common “Uncaught exception / SyntaxError” details.
   try {
@@ -1083,7 +1103,6 @@ let autoUpdateCheckStarted = false;
 let autoUpdatePromptOpen = false;
 let autoUpdateDownloading = false;
 let autoInstallAfterDownload = false;
-let downloadedUpdateInstallerPath = '';
 let updateUiWindow: any | null = null;
 let updateUiInfo: any | null = null;
 let updateUiIpcRegistered = false;
@@ -1545,20 +1564,12 @@ async function installDownloadedUpdate() {
   await prepareForUpdateInstall();
   setTimeout(() => {
     try {
-      if (process.platform === 'win32' && downloadedUpdateInstallerPath && fs.existsSync(downloadedUpdateInstallerPath)) {
-        const handoff = buildWindowsUpdateHandoff(downloadedUpdateInstallerPath, process.pid);
-        const child = spawn(handoff.executable, handoff.args, { detached: true, stdio: 'ignore', windowsHide: true });
-        child.unref();
-        // Writes and external connections were drained above. Force the final
-        // process exit so the waiting installer never races locked app files.
-        setTimeout(() => app.exit(0), 150);
-        return;
-      }
-      // Run NSIS silently for the one-click update-and-relaunch experience.
-      // The packaged elevation helper remains available if Windows needs it.
+      appendStartupLog(`auto-update install requested version=${getUpdateLabel(updateUiInfo)} platform=${process.platform}`);
+      // electron-updater owns the NSIS launch, elevation fallback, and only
+      // quits after it has successfully handed the installer to Windows.
       autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
-      try { console.error('[AutoUpdate] quitAndInstall failed:', e?.message || e); } catch {}
+      appendStartupLog(`auto-update install request failed: ${String(e?.stack || e?.message || e)}`);
       showUpdateUi({
         phase: 'error',
         detail: `GadgetBoy POS could not apply the update. ${String(e?.message || e || 'Unknown update error.')}`,
@@ -1617,6 +1628,7 @@ function setupAutoUpdater() {
     return;
   }
 
+  autoUpdater.logger = createAutoUpdateLogger();
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.on('checking-for-update', () => {
@@ -1639,7 +1651,6 @@ function setupAutoUpdater() {
   });
   autoUpdater.on('update-downloaded', (info: any) => {
     try { console.log('[AutoUpdate] update downloaded:', info?.version || info); } catch {}
-    downloadedUpdateInstallerPath = String(info?.downloadedFile || '').trim();
     void promptToInstallDownloadedUpdate(info);
   });
   autoUpdater.on('error', (err: any) => {
@@ -4493,6 +4504,15 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       pickedUpAt: cloudDate(row.picked_up_at),
       clientPickupDate: cloudDate(row.client_pickup_date),
       pickedUpBy: row.picked_up_by || '',
+      workflowStage: row.workflow_stage || '',
+      diagnosisStartedAt: cloudDate(row.diagnosis_started_at),
+      testingStartedAt: cloudDate(row.testing_started_at),
+      lastTechnicianActivityAt: cloudDate(row.last_technician_activity_at),
+      promisedAt: cloudDate(row.promised_at),
+      promiseNote: row.promise_note || '',
+      partEta: row.part_eta || '',
+      clientDecision: row.client_decision || '',
+      clientDecisionAt: cloudDate(row.client_decision_at),
       patternSequence: cloudArray(row.pattern_sequence),
       droneChecklist: cloudObject(row.drone_checklist),
       dropoffAccessories: cloudArray(row.dropoff_accessories),
@@ -4840,6 +4860,15 @@ function toCloudRow(key: string, item: any): any | null {
       picked_up_at: typeof item.pickedUpAt === 'undefined' ? undefined : toCloudIso(item.pickedUpAt),
       client_pickup_date: typeof item.clientPickupDate === 'undefined' ? undefined : toCloudIso(item.clientPickupDate),
       picked_up_by: typeof item.pickedUpBy === 'undefined' ? undefined : toCloudString(item.pickedUpBy),
+      workflow_stage: typeof item.workflowStage === 'undefined' ? undefined : toCloudString(item.workflowStage),
+      diagnosis_started_at: typeof item.diagnosisStartedAt === 'undefined' ? undefined : toCloudIso(item.diagnosisStartedAt),
+      testing_started_at: typeof item.testingStartedAt === 'undefined' ? undefined : toCloudIso(item.testingStartedAt),
+      last_technician_activity_at: typeof item.lastTechnicianActivityAt === 'undefined' ? undefined : toCloudIso(item.lastTechnicianActivityAt),
+      promised_at: typeof item.promisedAt === 'undefined' ? undefined : toCloudIso(item.promisedAt),
+      promise_note: typeof item.promiseNote === 'undefined' ? undefined : toCloudString(item.promiseNote),
+      part_eta: typeof item.partEta === 'undefined' ? undefined : toCloudString(item.partEta),
+      client_decision: typeof item.clientDecision === 'undefined' ? undefined : toCloudString(item.clientDecision),
+      client_decision_at: typeof item.clientDecisionAt === 'undefined' ? undefined : toCloudIso(item.clientDecisionAt),
       pattern_sequence: toCloudArray(item.patternSequence),
       drone_checklist: toCloudObject(item.droneChecklist),
       dropoff_accessories: toCloudArray(item.dropoffAccessories),

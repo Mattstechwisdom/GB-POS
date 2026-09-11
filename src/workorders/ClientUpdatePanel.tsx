@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
 import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, deliverableItemIndexes, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, splitRepairUpdateHistory, type ClientUpdateOption } from '../lib/clientUpdateOptions';
+import { publishWorkOrderUpdate } from '../lib/workflowLiveRefresh';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
 type StatusOption = ClientUpdateOption;
@@ -129,11 +130,18 @@ function mapCloudRow(type: UpdateType, row: any): any {
     lastUpdateAt: row.last_update_at || '',
     pickupReadyAt: row.pickup_ready_at || '',
     scheduledPickupAt: row.scheduled_pickup_at || '',
-    promisedAt: /promise/i.test(String(row.status_update || '')) ? row.estimated_date || '' : '',
-    promiseNote: /promise/i.test(String(row.status_update || '')) ? row.tech_notes || '' : '',
+    promisedAt: row.promised_at || (/promise/i.test(String(row.status_update || '')) ? row.estimated_date || '' : ''),
+    promiseNote: row.promise_note || (/promise/i.test(String(row.status_update || '')) ? row.tech_notes || '' : ''),
     pickupReminderSentAt: row.pickup_reminder_sent_at || '',
     pickedUpAt: row.picked_up_at || '',
     pickedUpBy: row.picked_up_by || '',
+    workflowStage: row.workflow_stage || '',
+    diagnosisStartedAt: row.diagnosis_started_at || '',
+    testingStartedAt: row.testing_started_at || '',
+    lastTechnicianActivityAt: row.last_technician_activity_at || '',
+    partEta: row.part_eta || '',
+    clientDecision: row.client_decision || '',
+    clientDecisionAt: row.client_decision_at || '',
     items: Array.isArray(row.items) ? row.items : [],
     totals: row.totals || {},
   };
@@ -286,6 +294,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
   const [partsEstimate, setPartsEstimate] = useState('');
   const [laborEstimate, setLaborEstimate] = useState('');
   const [selectedItemIndexes,setSelectedItemIndexes]=useState<number[]>([]);
+  const pendingActionKeys=useRef<Record<string,string>>({});
 
   const isMobileApp = useMemo(() => {
     try {
@@ -532,6 +541,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
       const selectedDelivery: DeliveryMode = type === 'repair' && clientDeliveryForRepairAction(option.key) === 'internal'
         ? 'internal'
         : isMobileApp ? deliveryMode : 'email';
+      const idempotencyKey=pendingActionKeys.current[option.key]||(pendingActionKeys.current[option.key]=`${record.id}:${option.key}:${crypto.randomUUID()}`);
       const delivery = await invokeClientUpdate({
         token: token || undefined,
         recordType: type,
@@ -542,12 +552,14 @@ const ClientUpdatePanel: React.FC<Props> = ({
         notes: extra.notes || undefined,
         deliveryMode: selectedDelivery,
         itemIndexes: option.key==='items_delivered' ? selectedItemIndexes : undefined,
+        idempotencyKey,
       });
 
       if (delivery?.record) {
         const saved = mapCloudRow(type, delivery.record);
         setRecord(saved);
         onUpdated?.(saved);
+        if (type === 'repair') publishWorkOrderUpdate(saved);
         if (delivery?.statusSaved && api?.dbUpdate) {
           const key = type === 'sale' || type === 'consult' ? 'sales' : 'workOrders';
           const patch = localPatch(type, option, extra);
@@ -556,6 +568,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
               if (!localSaved) return;
               setRecord(localSaved);
               onUpdated?.(localSaved);
+              if (type === 'repair') publishWorkOrderUpdate(localSaved);
             })
             .catch((syncError: any) => {
               console.error('Client update was saved to Supabase, but the local cache refresh failed.', syncError);
@@ -567,6 +580,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         const saved = await api.dbUpdate(key, record.id, { ...record, ...patch });
         setRecord(saved || { ...record, ...patch });
         onUpdated?.(saved || { ...record, ...patch });
+        if (type === 'repair') publishWorkOrderUpdate(saved || { ...record, ...patch });
       }
 
       if (selectedDelivery === 'text' && delivery?.textMessage) {
@@ -579,6 +593,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         deliveryStatus: delivery?.deliveryStatus,
         statusSaved: !!delivery?.statusSaved,
       });
+      delete pendingActionKeys.current[option.key];
       setOpenKey('');
       setEstimatedDate('');
       setEstimatedTime('');

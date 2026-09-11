@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
 import { useContextMenu } from '@/lib/useContextMenu';
+import { subscribeWorkOrderUpdates } from '@/lib/workflowLiveRefresh';
 import '@/styles/command-center.css';
 
 type Props = {
@@ -75,6 +76,7 @@ export default function CommandCenter(props: Props) {
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load]);
   useEffect(()=>{const channel=supabase.channel('command-center-client-responses').on('postgres_changes',{event:'*',schema:'public',table:'client_responses'},()=>void load()).subscribe();return()=>{void supabase.removeChannel(channel)}},[load]);
+  useEffect(()=>subscribeWorkOrderUpdates(record=>setData(current=>({...current,workOrders:current.workOrders.map((row:any)=>String(row.id)===String(record.id)?record:row)}))),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
   const responseRecord=(reply:any)=>model.workOrders.find(row=>String(row.id)===String(reply.legacy_record_id));
