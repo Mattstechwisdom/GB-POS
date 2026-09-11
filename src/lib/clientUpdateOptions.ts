@@ -56,6 +56,16 @@ export function groupClientRepairUpdateOptions(options: ClientUpdateOption[]) {
   };
 }
 
+export function deliverableItemIndexes(items: any[]): number[] {
+  return (Array.isArray(items) ? items : []).flatMap((item, index) => {
+    const status = String(item?.orderStatus || item?.partStatus || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const orderedPhysicalItem = item?.requiresOrder === true
+      || item?.inStock === false
+      || ['needed', 'ordered', 'received', 'delivered', 'in_transit', 'awaiting_delivery'].includes(status);
+    return orderedPhysicalItem ? [index] : [];
+  });
+}
+
 export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
   if (key === 'customer_promise') {
