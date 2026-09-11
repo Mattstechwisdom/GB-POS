@@ -13,6 +13,7 @@ const {
   repairActionPatch,
   groupRepairUpdateOptions,
   groupClientRepairUpdateOptions,
+  deliverableItemIndexes,
 } = require('../src/lib/clientUpdateOptions.ts');
 
 const keys = REPAIR_UPDATE_OPTIONS.map((option) => option.key);
@@ -41,6 +42,16 @@ assert.deepEqual(clientSections.approval.map((option) => option.key), ['repair_a
 assert.deepEqual(clientSections.progress.map((option) => option.key), ['diagnosis', 'testing_in_progress', 'repair_complete', 'not_possible']);
 assert.deepEqual(clientSections.parts.map((option) => option.key), ['waiting_device', 'part_ordered', 'waiting_part', 'part_delivered', 'items_delivered']);
 assert.equal(Object.values(clientSections).flat().length, grouped.client.length);
+
+assert.deepEqual(deliverableItemIndexes([
+  { description: 'Diagnostic Fee', labor: 50 },
+  { description: 'HDMI Port', parts: 18, labor: 90, requiresOrder: true, orderStatus: 'ordered' },
+  { description: 'Expedited Service Fee', labor: 25, feeType: 'expedited' },
+  { description: 'Screen', parts: 45, inStock: false, orderStatus: 'needed' },
+  { description: 'In-stock Cable', parts: 10, inStock: true, orderStatus: 'in_stock' },
+  { description: 'Storage Fee', labor: 25, feeType: 'storage' },
+  { description: 'Battery', parts: 30, requiresOrder: true, orderStatus: 'received' },
+]), [1, 3, 6]);
 
 const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'ClientUpdatePanel.tsx'), 'utf8');
 assert.match(panelSource, /<details className={`gb-client-update-subsection \${key}`}>/);
