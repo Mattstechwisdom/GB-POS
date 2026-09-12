@@ -73,6 +73,12 @@ const collectedModel=buildCommandCenterModel({now,customers:[],technicians:[],wo
 assert.equal(collectedModel.collectedToday,140,'Collected Today must total applied payments recorded today across work orders and sales.');
 assert.equal(collectedModel.paymentsToday,3,'Collected Today must count every payment recorded today regardless of timestamp field.');
 
+const pickupBalanceModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
+ wo(83,'Pickup',{totals:{total:200,remaining:200},amountPaid:50,payments:[{at:'2026-09-10T13:00:00Z',applied:50,amount:50}]}),
+ wo(84,'Pickup',{totals:{total:200,remaining:200},amountPaid:0,payments:[{at:'2026-09-10T13:00:00Z',applied:70,amount:100,change:30}]}),
+]});
+assert.deepEqual(pickupBalanceModel.readyForPickup.map(row=>row.remaining),[150,130],'Ready for Pickup must derive balances from the total and applied payment ledger instead of stale saved remaining values.');
+
 const reasons=[
  ...attentionReasonsForWorkOrder({status:'open',workflowStage:'Approval',approvalRequestedAt:'2026-09-01',promisedAt:'2026-09-09',emailDeliveryStatus:'failed',unreadClientReplies:2,pendingSync:true},{now}),
  ...attentionReasonsForWorkOrder({status:'open',workflowStage:'Parts',partEta:'2026-09-08'},{now}),

@@ -124,6 +124,16 @@ function collectedPaymentAmount(payment: any) {
   return Math.max(0, tendered - number(payment?.change ?? payment?.changeDue));
 }
 
+function outstandingBalance(record: any, total: number) {
+  const payments = Array.isArray(record?.payments) ? record.payments : [];
+  const ledgerPaid = payments.reduce((sum: number, payment: any) => sum + collectedPaymentAmount(payment), 0);
+  const paid = Math.max(number(record?.amountPaid), number(record?.totals?.paid), ledgerPaid);
+  if (record?.totals?.total != null || record?.total != null) {
+    return Math.max(0, Math.round((total - paid) * 100) / 100);
+  }
+  return Math.max(0, number(record?.totals?.remaining ?? record?.balance));
+}
+
 function stageFor(workOrder: any, remaining: number, partState = orderedPartState(workOrder)) {
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
@@ -156,8 +166,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   const technicians = buildTechnicianIndex(input.technicians || []);
   const workOrders = (input.workOrders || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
-    const paid = number(record?.amountPaid ?? record?.totals?.paid);
-    const remaining = Math.max(0, number(record?.totals?.remaining ?? record?.balance ?? (total - paid)));
+    const remaining = outstandingBalance(record, total);
     const partState = orderedPartState(record);
     const stage = stageFor(record, remaining, partState);
     const customerName = customerNameFor(record, customers);
@@ -173,7 +182,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   });
   const sales = (input.sales || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
-    const remaining = Math.max(0, number(record?.totals?.remaining ?? record?.balance ?? (total - number(record?.amountPaid))));
+    const remaining = outstandingBalance(record, total);
     const customerName = customerNameFor(record, customers);
     const title = lineTitle(record);
     const kind: CommandCenterKind = lower(record?.type || record?.saleType).includes('consult') ? 'consultation' : 'sale';

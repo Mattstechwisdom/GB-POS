@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.90 (2026-09-12)
+
+- Corrects Collected Today so diagnostic payments, repair checkouts, and sales use every supported payment timestamp and the amount actually applied rather than cash tendered.
+- Corrects Ready for Pickup outstanding balances by deriving the live amount due from the ticket total and its payment ledger instead of a stale saved remaining value.
+
 ## v0.6.87 (2026-09-12)
 
 - Adds a compact Command Center Today strip for Tasks, Events, Notes, and Consultations, with accurate counts and at-a-glance daughter windows.
