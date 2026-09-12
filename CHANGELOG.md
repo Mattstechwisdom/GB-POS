@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.91 (2026-09-12)
+
+- Expands Today’s Repair Queue to eight visible tickets.
+- Recalculates and refills the priority queue whenever a work order is closed, picked up, moved to Waiting Parts or Testing, marked not repairable, or otherwise leaves active repair work.
+
 ## v0.6.90 (2026-09-12)
 
 - Corrects Collected Today so diagnostic payments, repair checkouts, and sales use every supported payment timestamp and the amount actually applied rather than cash tendered.

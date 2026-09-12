@@ -46,9 +46,14 @@ const ranked=buildCommandCenterModel({now,customers:[],technicians:[],workOrders
  wo(35,'Checked in',{checkInAt:'2026-09-05T12:00:00Z'}),
  ...Array.from({length:11},(_,index)=>wo(40+index,'Checked in',{activityAt:`2026-09-${String(index+1).padStart(2,'0')}T12:00:00Z`})),
 ]});
-assert.deepEqual(ranked.repairQueue.slice(0,7).map(row=>row.id),[30,36,33,31,35,40,41],'Queue order must be expedited, parts-arrived, diagnosing, historically quick, stagnant, then ordinary work; Testing is tracked separately.');
-assert.equal(ranked.repairQueuePreview.length,7,'Command Center queue preview must show at most seven work orders.');
+assert.deepEqual(ranked.repairQueue.slice(0,8).map(row=>row.id),[30,36,33,31,35,40,41,42],'Queue order must be expedited, parts-arrived, diagnosing, historically quick, stagnant, then ordinary work; Testing is tracked separately.');
+assert.equal(ranked.repairQueuePreview.length,8,'Command Center queue preview must show at most eight work orders.');
 assert.equal(ranked.repairQueue.length,17,'Open Full Queue must retain every eligible non-testing work order.');
+
+const promoted=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:ranked.workOrders.map(row=>row.id===30?{...row.source,status:'closed',workflowStage:'Completed'}:row.source)});
+assert.ok(!promoted.repairQueuePreview.some(row=>row.id===30),'Closed work must leave the live repair queue.');
+assert.equal(promoted.repairQueuePreview.length,8,'The next eligible repair must be promoted when a queue item leaves.');
+assert.equal(promoted.repairQueuePreview[0].id,36,'Queue priority must be recalculated after an item leaves.');
 
 const attentionModel=buildCommandCenterModel({now,customers:[{id:1,firstName:'Ada',lastName:'Lovelace',email:'ada@example.com'}],technicians:[{id:'tech-1',name:'Tech One'}],attentionSettings:{notStartedAttentionDays:2,staleAttentionDays:3,clientResponseAttentionDays:2},workOrders:[
  wo(60,'Checked in',{customerId:1,assignedTo:'tech-1',checkInAt:'2026-09-06T12:00:00Z'}),
