@@ -10,7 +10,7 @@ const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
-const { buildWindowsUpdateHandoff, resolveDownloadedInstallerPath } = require('./update-launcher');
+const { resolveDownloadedInstallerPath } = require('./update-launcher');
 const { createCheckoutSessionRegistry } = require('./checkout-session');
 
 registerGidgetLocalIpc({ ipcMain, app });
@@ -1570,16 +1570,8 @@ async function installDownloadedUpdate() {
   setTimeout(() => {
     try {
       appendStartupLog(`auto-update install requested version=${getUpdateLabel(updateUiInfo)} platform=${process.platform}`);
-      if (process.platform === 'win32' && downloadedUpdateInstallerPath && fs.existsSync(downloadedUpdateInstallerPath)) {
-        const handoff = buildWindowsUpdateHandoff(downloadedUpdateInstallerPath, process.pid);
-        const child = spawn(handoff.executable, handoff.args, { detached: true, stdio: 'ignore', windowsHide: true });
-        child.unref();
-        appendStartupLog(`auto-update waiting handoff launched installer=${path.basename(downloadedUpdateInstallerPath)}`);
-        setTimeout(() => app.exit(0), 150);
-        return;
-      }
-      // electron-updater owns the NSIS launch, elevation fallback, and only
-      // quits after it has successfully handed the installer to Windows.
+      // electron-updater preserves the actual install directory and handles
+      // per-user/per-machine elevation before quitting the current app.
       autoUpdater.quitAndInstall(true, true);
     } catch (e: any) {
       appendStartupLog(`auto-update install request failed: ${String(e?.stack || e?.message || e)}`);
