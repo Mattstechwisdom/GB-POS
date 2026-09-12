@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import MoneyInput from '../components/MoneyInput';
 import { peekWindowPayload } from '../lib/windowPayload';
 import { checkoutCompletionState } from '../lib/checkoutCompletion';
+import { deliverCheckoutResult } from '../lib/checkoutDelivery';
 
 export type PaymentType = "Cash" | "Cash + Card" | "Card" | "Apple Pay" | "Google Pay" | "Other";
 
@@ -61,6 +62,7 @@ const CheckoutWindow: React.FC = () => {
   const [printReceipt, setPrintReceipt] = useState(true);
   const [markClosed, setMarkClosed] = useState(false);
   const [completionMessage, setCompletionMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const [cloverEnabled, setCloverEnabled] = useState(false);
   const [cloverMode, setCloverMode] = useState<'local' | 'cloud'>('local');
@@ -205,7 +207,8 @@ const CheckoutWindow: React.FC = () => {
     return result;
   }
 
-  function save() {
+  async function save() {
+    if (submitting) return;
     if (!canSave) {
       setCompletionMessage(completionState.reason || 'Review the payment details before completing checkout.');
       return;
@@ -218,7 +221,13 @@ const CheckoutWindow: React.FC = () => {
       const tenderedCents = Math.round(numericCashReceived * 100);
       (window as any).api?.cloverCashSale?.({ amountCents, tenderedCents, label: payload?.title || 'Service' }).catch(() => {});
     }
-    (window as any).api._emitCheckoutSave(result); // will be bridged via ipc send
+    setSubmitting(true);
+    try {
+      await deliverCheckoutResult((window as any).api, result);
+    } catch (error: any) {
+      setCompletionMessage(error?.message || 'Checkout could not be completed. Try again.');
+      setSubmitting(false);
+    }
   }
   function cancel() {
     (window as any).api._emitCheckoutCancel();
@@ -303,7 +312,7 @@ const CheckoutWindow: React.FC = () => {
 
     if (!canSave) return;
     e.preventDefault();
-    save();
+    void save();
   }
 
   return (
@@ -488,9 +497,10 @@ const CheckoutWindow: React.FC = () => {
           <button className="min-h-12 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 text-sm font-bold hover:border-zinc-500" onClick={cancel}>Cancel</button>
           <button
             className={`min-h-12 flex-[1.6] rounded-xl px-4 text-sm font-black ${canSave ? 'bg-neon-green text-zinc-950 shadow-[0_0_20px_rgba(57,255,20,0.2)] hover:brightness-110' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
-            aria-disabled={!canSave}
-            onClick={save}
-          >Complete Checkout</button>
+            aria-disabled={!canSave || submitting}
+            disabled={submitting}
+            onClick={() => void save()}
+          >{submitting ? 'Completing…' : 'Complete Checkout'}</button>
         </div>
         {completionMessage ? <div role="alert" className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-xs font-semibold text-amber-200">{completionMessage}</div> : null}
       </div>

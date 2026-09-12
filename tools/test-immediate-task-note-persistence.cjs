@@ -66,6 +66,8 @@ assert.match(notesPanel, /Promise<void>/, 'The journal panel must await its asyn
 assert.match(notesPanel, /Saving\.\.\./, 'The journal panel must show when its explicit save is still running.');
 
 const updateHandler = electron.slice(electron.indexOf("ipcMain.handle('db-update'"), electron.indexOf("ipcMain.handle('db-delete'"));
-assert.ok(updateHandler.indexOf("await syncCloudWriteOrQueue('upsert'") < updateHandler.indexOf('scheduleCollectionChanged(key)'), 'Desktop updates must finish or queue Supabase persistence before broadcasting a refresh.');
+const queuedWriteIndex = updateHandler.search(/queueCloudWriteForBackgroundSync\('upsert',\s*key,\s*updatedItem\)/);
+const refreshIndex = updateHandler.search(/scheduleCollectionChanged\(key,\s*updatedItem\)/);
+assert.ok(queuedWriteIndex >= 0 && refreshIndex > queuedWriteIndex, 'Desktop updates must durably queue Supabase persistence before broadcasting a refresh.');
 
 console.log('Immediate task and note persistence regression checks passed.');

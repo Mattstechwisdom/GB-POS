@@ -1,14 +1,25 @@
-export interface CleanupSettings { enabled: boolean; diagnosticOnlyDays: number; closeAllDays: number; notRepairableAttentionDays: number }
+export interface CleanupSettings { enabled: boolean; diagnosticOnlyDays: number; closeAllDays: number; notRepairableAttentionDays: number; notStartedAttentionDays: number; staleAttentionDays: number; clientResponseAttentionDays: number; pickupReminderDays: number; pickupAttentionDays: number }
 export interface CleanupClassification { reason: 'diagnostic-only' | 'universal-age'; ageDays: number }
 export interface AttentionReason { code: string; label: string }
 export interface PickupLifecycle { active:boolean; anchor:string; daysWaiting:number; reminderDue:boolean; needsAttention:boolean; suggestedStorageFee:number }
-export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = { enabled: true, diagnosticOnlyDays: 20, closeAllDays: 30, notRepairableAttentionDays: 1 };
+export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = { enabled: true, diagnosticOnlyDays: 20, closeAllDays: 30, notRepairableAttentionDays: 1, notStartedAttentionDays: 2, staleAttentionDays: 3, clientResponseAttentionDays: 2, pickupReminderDays: 8, pickupAttentionDays: 12 };
 const text = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const days = (value: unknown, fallback: number) => Math.max(0, Math.floor(Number(value ?? fallback) || fallback));
 
 export function normalizeCleanupSettings(value: any): CleanupSettings {
   const diagnosticOnlyDays = Math.max(1, days(value?.diagnosticOnlyDays, 20));
-  return { enabled: value?.enabled !== false, diagnosticOnlyDays, closeAllDays: Math.max(diagnosticOnlyDays, days(value?.closeAllDays, 30)), notRepairableAttentionDays: days(value?.notRepairableAttentionDays, 1) };
+  const pickupReminderDays = days(value?.pickupReminderDays, 8);
+  return {
+    enabled: value?.enabled !== false,
+    diagnosticOnlyDays,
+    closeAllDays: Math.max(diagnosticOnlyDays, days(value?.closeAllDays, 30)),
+    notRepairableAttentionDays: days(value?.notRepairableAttentionDays, 1),
+    notStartedAttentionDays: days(value?.notStartedAttentionDays, 2),
+    staleAttentionDays: days(value?.staleAttentionDays, 3),
+    clientResponseAttentionDays: days(value?.clientResponseAttentionDays, 2),
+    pickupReminderDays,
+    pickupAttentionDays: Math.max(pickupReminderDays, days(value?.pickupAttentionDays, 12)),
+  };
 }
 export function workOrderAgeDays(workOrder: any, now = new Date()) {
   const anchor = new Date(workOrder?.checkInAt || workOrder?.createdAt || 0).getTime();
@@ -35,14 +46,15 @@ export function buildLegacyClosePatch(classification: CleanupClassification, now
   return { status: 'closed', legacyCleanup: { rule: classification.reason, ageDays: classification.ageDays, diagnosticOnlyDays: settings.diagnosticOnlyDays, closeAllDays: settings.closeAllDays, closedAt: now.toISOString() }, updatedAt: now.toISOString() };
 }
 export function isRepairNotPossible(workOrder: any) { return /repair not possible|not repairable|cannot be repaired|unrepairable/.test(text(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status)); }
-export function pickupLifecycleFor(workOrder:any, now=new Date()):PickupLifecycle {
+export function pickupLifecycleFor(workOrder:any, now=new Date(), input?:any):PickupLifecycle {
+  const settings=normalizeCleanupSettings(input);
   const closed=text(workOrder?.status)==='closed' || !!(workOrder?.pickedUpAt || workOrder?.clientPickupDate || workOrder?.checkoutDate);
   const anchorValue=workOrder?.scheduledPickupAt || workOrder?.pickupReadyAt || workOrder?.repairCompletionDate || workOrder?.repairStatusAt;
   const anchor=new Date(anchorValue || 0); const valid=Number.isFinite(anchor.getTime()) && anchor.getTime()>0;
   if(closed || !valid) return {active:false,anchor:'',daysWaiting:0,reminderDue:false,needsAttention:false,suggestedStorageFee:0};
   const daysWaiting=Math.floor(Math.max(0,now.getTime()-anchor.getTime())/86400000);
   const scheduled=!!workOrder?.scheduledPickupAt;
-  return {active:true,anchor:anchor.toISOString(),daysWaiting,reminderDue:daysWaiting>=8 && !workOrder?.pickupReminderSentAt,needsAttention:daysWaiting>=12,suggestedStorageFee:Math.max(0,scheduled?daysWaiting:daysWaiting-7)*25};
+  return {active:true,anchor:anchor.toISOString(),daysWaiting,reminderDue:daysWaiting>=settings.pickupReminderDays && !workOrder?.pickupReminderSentAt,needsAttention:daysWaiting>=settings.pickupAttentionDays,suggestedStorageFee:Math.max(0,scheduled?daysWaiting:daysWaiting-7)*25};
 }
 export function buildPickedUpPatch(workOrder:any, actor:string, now=new Date(), allowBalance=false) {
   const remaining=Number(workOrder?.totals?.remaining ?? workOrder?.balance ?? 0)||0;
@@ -54,20 +66,37 @@ export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Da
   const status = text(workOrder?.status); const pickup = workOrder?.clientPickupDate || workOrder?.pickupDate || workOrder?.checkoutDate;
   const stage=text(workOrder?.workflowStage||workOrder?.workflow_stage);
   const overdue=(value:any,days=0)=>{const at=new Date(value||0).getTime();return !!at&&Number.isFinite(at)&&now.getTime()-at>=days*86400000;};
+  const closed=status==='closed'||!!workOrder?.checkoutDate;
+  const checkInAt=workOrder?.checkInAt||workOrder?.createdAt;
+  const lastTechnicianAt=workOrder?.lastTechnicianActivityAt||workOrder?.last_technician_activity_at||workOrder?.lastUpdateAt||workOrder?.last_update_at;
+  const statusUpdatedAt=workOrder?.statusUpdatedAt||workOrder?.status_updated_at;
+  const internalNoteAt=workOrder?.lastUpdateAt||workOrder?.last_update_at;
+  const partEta=workOrder?.partEta||workOrder?.part_eta||workOrder?.partsEstDelivery||workOrder?.parts_est_delivery;
+  const futurePartEta=stage==='parts'&&!!partEta&&!overdue(partEta);
+  const futurePickup=stage==='pickup'&&!overdue(workOrder?.scheduledPickupAt||workOrder?.scheduled_pickup_at);
   if (context.technicianState === 'unassigned') result.push({ code:'technician-unassigned', label:'No technician assigned' });
   if (context.technicianState === 'unknown') result.push({ code:'technician-unknown', label:'Technician assignment cannot be resolved' });
   if(stage==='approval'&&overdue(workOrder?.approvalRequestedAt||workOrder?.approval_requested_at,2)&&!workOrder?.clientDecision&&!workOrder?.client_decision) result.push({code:'approval-overdue',label:'Repair approval has not received a response'});
   if(overdue(workOrder?.promisedAt||workOrder?.promised_at)&&!workOrder?.promiseCompletedAt) result.push({code:'promise-overdue',label:'Customer promise is overdue'});
-  if(stage==='parts'&&overdue(workOrder?.partEta||workOrder?.part_eta||workOrder?.partsEstDelivery||workOrder?.parts_est_delivery)) result.push({code:'part-overdue',label:'Part delivery estimate has passed'});
+  if(stage==='parts'&&!partEta) result.push({code:'part-missing-eta',label:'Ordered part has no delivery estimate'});
+  if(stage==='parts'&&overdue(partEta)) result.push({code:'part-overdue',label:'Part delivery estimate has passed'});
   if(text(workOrder?.emailDeliveryStatus||workOrder?.email_delivery_status)==='failed') result.push({code:'email-failed',label:'Client email delivery failed'});
   if(Number(workOrder?.unreadClientReplies||workOrder?.unread_client_replies||0)>0) result.push({code:'client-reply-unread',label:'Unread client reply'});
   if(workOrder?.pendingSync===true||workOrder?.pending_sync===true) result.push({code:'sync-pending',label:'Workflow update is waiting to synchronize'});
+  if(!closed&&stage==='checked in'&&!workOrder?.diagnosisStartedAt&&!workOrder?.diagnosis_started_at&&overdue(checkInAt,settings.notStartedAttentionDays)) result.push({code:'not-started',label:`Checked in for ${settings.notStartedAttentionDays}+ days without diagnosis starting`});
+  if(!closed&&!['checked in','approval','parts','pickup','completed','waiting device'].includes(stage)&&!futurePartEta&&!futurePickup&&overdue(lastTechnicianAt||statusUpdatedAt||checkInAt,settings.staleAttentionDays)) result.push({code:'workflow-stalled',label:`No repair progress for ${settings.staleAttentionDays}+ days`});
+  const statusTime=new Date(statusUpdatedAt||0).getTime();
+  const internalNoteTime=new Date(internalNoteAt||0).getTime();
+  const clientUpdateUnfollowed=!closed&&!!statusUpdatedAt&&(!internalNoteTime||internalNoteTime<statusTime)&&overdue(statusUpdatedAt,settings.clientResponseAttentionDays)&&(!lastTechnicianAt||new Date(lastTechnicianAt).getTime()<=statusTime)&&!workOrder?.clientDecisionAt&&!workOrder?.client_decision_at;
+  if(clientUpdateUnfollowed&&!futurePartEta&&!futurePickup&&!['pickup','completed','waiting device'].includes(stage)) result.push({code:'client-update-unfollowed',label:`Client update sent ${settings.clientResponseAttentionDays}+ days ago with no follow-up activity`});
   if (pickup && status !== 'closed') result.push({ code:'pickup-still-open', label:'Pickup was recorded but the ticket is still open' });
   if (isRepairNotPossible(workOrder) && !pickup && status !== 'closed') {
     const markedAt = new Date(workOrder?.repairStatusAt || workOrder?.updatedAt || workOrder?.activityAt || workOrder?.checkInAt || 0).getTime();
     if (markedAt && now.getTime() - markedAt >= settings.notRepairableAttentionDays * 86400000) result.push({ code:'not-repairable-awaiting-pickup', label:'Not repairable and still awaiting pickup' });
   }
   if (isRepairNotPossible(workOrder) && status === 'closed' && !pickup && !workOrder?.legacyCleanup?.closedAt) result.push({ code:'not-repairable-closed-without-pickup', label:'Not-repairable ticket closed without pickup' });
-  const lifecycle=pickupLifecycleFor(workOrder,now); if(lifecycle.needsAttention) result.push({code:'pickup-storage-review',label:`Pickup overdue — review suggested $${lifecycle.suggestedStorageFee} storage fee`});
+  const lifecycle=pickupLifecycleFor(workOrder,now,settings);
+  if(lifecycle.reminderDue) result.push({code:'pickup-reminder-due',label:`Pickup reminder is due after ${settings.pickupReminderDays} days`});
+  if(lifecycle.needsAttention) result.push({code:'pickup-storage-review',label:`Pickup overdue — review suggested $${lifecycle.suggestedStorageFee} storage fee`});
   return result;
 }

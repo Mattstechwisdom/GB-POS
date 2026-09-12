@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
+const {buildRepairStatistics,repairPatternKey}=require('../src/lib/repairStatistics.ts');
+const record=(id,repair,hours)=>({id,productCategory:'Game Console',items:[{repair}],diagnosisStartedAt:`2026-09-0${id}T08:00:00Z`,repairCompletionDate:new Date(new Date(`2026-09-0${id}T08:00:00Z`).getTime()+hours*3600000).toISOString()});
+const rows=[record(1,'HDMI Port Repair',4),record(2,'HDMI Port Repair',6),record(3,'Power Supply Repair',30)];
+const stats=buildRepairStatistics(rows);
+assert.equal(stats.completedSamples,3);
+assert.equal(stats.averageTurnaroundHours,13.33);
+assert.equal(stats.medianTurnaroundHours,6);
+assert.equal(stats.quickCompletedCount,2);
+assert.equal(stats.quickTurnaroundRate,66.67);
+assert.equal(stats.mostCommonRepairs[0].name,'HDMI Port Repair');
+assert.equal(stats.mostCommonRepairs[0].count,2);
+assert.ok(stats.quickPatternKeys.includes(repairPatternKey(rows[0])),'Two matching same-day repairs must establish a quick-turnaround pattern.');
+assert.ok(!stats.quickPatternKeys.includes(repairPatternKey(rows[2])),'One repair must not establish a learned pattern.');
+console.log('Repair statistics checks passed.');

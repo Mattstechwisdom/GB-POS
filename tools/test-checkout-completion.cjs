@@ -1,13 +1,6 @@
 const assert = require('node:assert/strict');
-const esbuild = require('esbuild');
-const path = require('node:path');
-
-const entry = path.join(__dirname, '..', 'src', 'lib', 'checkoutCompletion.ts');
-const built = esbuild.buildSync({ entryPoints: [entry], bundle: true, platform: 'node', format: 'cjs', write: false });
-const Module = module.constructor;
-const loaded = new Module();
-loaded._compile(built.outputFiles[0].text, entry);
-const { checkoutCompletionState } = loaded.exports;
+require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
+const { checkoutCompletionState } = require('../src/lib/checkoutCompletion.ts');
 
 assert.deepEqual(checkoutCompletionState({ amountDue: 100, amountPaid: 100, paymentType: 'Card' }), { allowed: true, reason: '' });
 assert.deepEqual(checkoutCompletionState({ amountDue: 0, amountPaid: 0, paymentType: '', markClosed: true }), { allowed: true, reason: '' });

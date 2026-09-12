@@ -41,6 +41,10 @@ assert.equal(shouldOpenAttentionPanel(0, 0), false);
 assert.equal(isExpeditedWorkOrder({ items: [{ repair: 'Expedited Service Fee', labor: 49 }] }), true);
 assert.equal(isExpeditedWorkOrder({ items: [{ repair: 'Diagnostic', labor: 50 }] }), false);
 assert.ok(compareRepairQueuePriority({ expedited: true, activityAt: '2026-09-10' }, { expedited: false, activityAt: '2026-09-01' }) < 0, 'Expedited work must sort before older standard work.');
+assert.ok(compareRepairQueuePriority({ stage:'Testing', activityAt: '2026-09-10' }, { expedited:false, quickTurnaround:true, activityAt:'2026-09-01' }) < 0, 'Diagnosing and testing work must sort before quick-turnaround work.');
+assert.ok(compareRepairQueuePriority({ quickTurnaround: true, activityAt: '2026-09-10' }, { stagnant:true, promisedAt: '2026-09-11', activityAt: '2026-09-01' }) < 0, 'Historically quick repairs must sort before stagnant work.');
+assert.ok(compareRepairQueuePriority({ stagnant:true, activityAt:'2026-09-10' }, { promisedAt: '2026-09-11', activityAt: '2026-09-01' }) < 0, 'Stagnant repairs must sort before ordinary timed work.');
+assert.ok(compareRepairQueuePriority({ promisedAt: '2026-09-11', activityAt: '2026-09-10' }, { activityAt: '2026-09-01' }) < 0, 'Timed repairs must sort before work with no timing data.');
 assert.equal(partEtaFor({ repairStatus: 'Waiting on Part Delivery', estimatedDate: '2026-09-18', partsEstDelivery: '2026-09-17' }), '2026-09-17');
 assert.equal(partEtaFor({ repairStatus: 'Customer Promise Scheduled', estimatedDate: '2026-09-18' }), '', 'A customer promise must not become a part ETA.');
 

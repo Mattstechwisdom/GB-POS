@@ -107,6 +107,13 @@ jobs:
           npm run test:vendor-catalog
           npm run test:catalog-defaults
           npm run test:checkout-layout
+          npm run test:checkout-completion
+          npm run test:checkout-delivery
+          npm run test:command-center-repair-details
+          npm run test:command-center-workflow
+          npm run test:work-order-lifecycle
+          npm run test:repair-statistics
+          npm run test:product-delivery
           npm run test:repair-compatibility
           npm run test:main-record-types
           npm run test:repair-device-filters

@@ -73,6 +73,7 @@ declare global {
   openQuickSale: () => Promise<any>;
   openConsultation: (payload?: any) => Promise<any>;
   openCheckout: (payload: any) => Promise<any>;
+  completeCheckout?: (result: any) => Promise<{ ok: boolean; error?: string }>;
   openEod: () => Promise<any>;
     getDeviceCategories: () => Promise<any[]>;
     addDeviceCategory: (c: any) => Promise<any>;

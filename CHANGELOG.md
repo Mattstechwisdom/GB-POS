@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.86 (2026-09-11)
+
+- Limits the live Command Center repair queue to seven tickets and ranks Expedited, Diagnosing/Testing, learned quick-turnaround, stagnant, and ordinary work in that order.
+- Learns repair patterns from completed work and adds Repair Statistics for average/median turnaround, quick-turnaround rate, common repairs, and learned quick patterns.
+- Refines Needs Attention into a reasoned exception inbox for stalled work, unanswered updates, overdue promises/parts/pickups, synchronization failures, and malformed work orders, sales, or consultations, with configurable timelines.
+- Adds Product Delivery for ordered sales items, including quick ticket details and individual or all-item delivery completion that immediately synchronizes and removes delivered lines.
+- Replaces the silent one-way Complete Checkout event with an acknowledged, window-scoped checkout session and visible processing/error feedback.
+
 ## v0.6.85 (2026-09-11)
 
 - Removes completed and non-repairable devices from Active Work Orders as soon as they enter Ready for Pickup.

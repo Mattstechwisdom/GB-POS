@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
 const { buildWindowsUpdateHandoff, resolveDownloadedInstallerPath } = require('./update-launcher');
+const { createCheckoutSessionRegistry } = require('./checkout-session');
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -8752,7 +8753,13 @@ ipcMain.handle('open-consultation', async (event: any, payload?: any) => {
   return { ok: true };
 });
 
-// Checkout window handler
+// Checkout window handler. Completion is acknowledged and scoped to the
+// checkout renderer so a missed one-way event can never leave the button inert.
+const checkoutSessions = createCheckoutSessionRegistry();
+ipcMain.handle('workorder:checkout:complete', (event: any, result: any) => {
+  const ok = checkoutSessions.complete(Number(event?.sender?.id), result);
+  return ok ? { ok: true } : { ok: false, error: 'This checkout session is no longer active. Reopen checkout and try again.' };
+});
 ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue: number }) => {
   return new Promise(resolve => {
     const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
@@ -8775,23 +8782,33 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
       title: 'Checkout',
       alwaysOnTop: false,
     });
+    const checkoutWebContentsId = Number(child.webContents.id);
   showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const url = isDev
       ? `${DEV_SERVER_URL}/?checkout=${encoded}`
       : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?checkout=${encoded}`;
-    child.loadURL(url);
-
-    const saveHandler = (_e: any, result: any) => {
-      if (_e?.sender !== child.webContents) return;
+    let settled = false;
+    const finish = (result: any) => {
+      if (settled) return;
+      settled = true;
       resolve(result);
       cleanup();
     };
+    checkoutSessions.register(checkoutWebContentsId, finish);
+    child.loadURL(url).catch((error: any) => {
+      console.error('[Checkout] loadURL failed', error);
+      checkoutSessions.cancel(checkoutWebContentsId);
+    });
+
+    const saveHandler = (_e: any, result: any) => {
+      if (_e?.sender !== child.webContents) return;
+      finish(result);
+    };
     const cancelHandler = (_e: any) => {
       if (_e?.sender !== child.webContents) return;
-      resolve(null);
-      cleanup();
+      finish(null);
     };
     function cleanup() {
       ipcMain.off('workorder:checkout:save', saveHandler);
@@ -8801,7 +8818,7 @@ ipcMain.handle('workorder:openCheckout', async (event: any, payload: { amountDue
     }
     ipcMain.on('workorder:checkout:save', saveHandler);
     ipcMain.on('workorder:checkout:cancel', cancelHandler);
-    child.on('closed', () => resolve(null));
+    child.on('closed', () => checkoutSessions.cancel(checkoutWebContentsId));
   });
 });
 

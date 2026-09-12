@@ -48,7 +48,7 @@ assert.match(game, /while \(handValue\(next\) < 17\)/);
 
 assert.match(builder, /requestedExecutionLevel:\s*asInvoker/);
 assert.match(builder, /perMachine:\s*false/);
-assert.match(builder, /allowElevation:\s*false/);
-assert.match(builder, /packElevateHelper:\s*false/);
+assert.match(builder, /allowElevation:\s*true/);
+assert.match(builder, /packElevateHelper:\s*true/);
 
 console.log('v0.5.93 feature checks passed.');

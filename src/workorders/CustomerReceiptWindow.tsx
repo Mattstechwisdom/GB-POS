@@ -101,8 +101,11 @@ const CustomerReceiptWindow: React.FC = () => {
     let alive = true;
     (async () => {
       try {
+        const statusRequest = qrRecordType === 'sale'
+          ? (window as any).api?.qrGetStatusUrl?.('sale', recordId)
+          : (window as any).api?.qrGetStatusUrl?.('repair', recordId);
         const statusResult: any = await Promise.race([
-          (window as any).api?.qrGetStatusUrl?.(qrRecordType, recordId),
+          statusRequest,
           new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
         ]);
         const qrUrl = String(statusResult?.url || '').trim();
@@ -556,7 +559,9 @@ const CustomerReceiptWindow: React.FC = () => {
           <div className="brand-center">
             {shouldRenderStatusQr && qrDataUrl ? (
               <>
-                <img ref={qrImgRef} src={qrDataUrl} alt={`${isSaleReceipt ? 'Sale' : 'Work order'} Update QR`} style={{ width: 76, height: 76, display: 'block' }} />
+                {isSaleReceipt
+                  ? <img ref={qrImgRef} src={qrDataUrl} alt="Sale update QR" style={{ width: 76, height: 76, display: 'block' }} />
+                  : <img ref={qrImgRef} src={qrDataUrl} alt="Work order update QR" style={{ width: 76, height: 76, display: 'block' }} />}
                 <div style={{ fontSize: '7pt', color: '#555', textAlign: 'center', letterSpacing: '0.35px' }}>TECH SCAN</div>
               </>
             ) : null}
