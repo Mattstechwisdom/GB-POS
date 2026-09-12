@@ -6736,37 +6736,31 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
       },
     });
 
-    // Fallback timer that only starts AFTER the page has finished loading
-    // (did-finish-load = HTML + initial JS bundle done). After that we give
-    // the lazy React chunk + component render another 1200 ms before forcing
-    // print. This prevents printing the dark "Loading…" Suspense fallback on
-    // slow disks or first-run Windows Defender scans.
-    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
-    const armFallback = () => {
-      fallbackTimer = setTimeout(startSilentPrint, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS);
-    };
-
     const handleReceiptReady = (readyEvent: any) => {
       if (readyEvent?.sender !== child.webContents) return;
       cleanupReceiptReadyListener();
       startSilentPrint();
     };
 
-    const cleanupReceiptReadyListener = () => {
-      try { clearTimeout(fallbackTimer); } catch {}
-      try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
+    const handleReceiptQrFailed = (failedEvent: any, message?: string) => {
+      if (failedEvent?.sender !== child.webContents) return;
+      cleanupReceiptReadyListener();
+      try {
+        if (!child.isDestroyed()) {
+          child.show();
+          child.focus();
+        }
+      } catch {}
+      try { child.webContents.send('customer-receipt:print-error', String(message || 'The QR code could not be created.')); } catch {}
     };
 
-    // Arm the fallback once the initial page load is complete, then fall back
-    // to an absolute backstop in case did-finish-load never fires.
-    child.webContents.once('did-finish-load', armFallback);
-    const absoluteBackstop = setTimeout(() => {
-      // did-finish-load never fired (navigation failed?) — force print anyway
-      if (fallbackTimer === undefined) armFallback();
-    }, app.isPackaged ? 5000 : 7000);
-    child.once('closed', () => { try { clearTimeout(absoluteBackstop); } catch {} });
+    const cleanupReceiptReadyListener = () => {
+      try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
+      try { ipcMain.removeListener('customer-receipt:qr-failed', handleReceiptQrFailed); } catch {}
+    };
 
     ipcMain.on('customer-receipt:ready', handleReceiptReady);
+    ipcMain.on('customer-receipt:qr-failed', handleReceiptQrFailed);
     child.once('closed', cleanupReceiptReadyListener);
   }
   return { ok: true };

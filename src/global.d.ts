@@ -143,6 +143,7 @@ declare global {
     openReleaseForm: (payload: any) => Promise<any>;
     openCustomerReceipt: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyCustomerReceiptReady: () => void;
+    notifyCustomerReceiptQrFailed: (message: string) => void;
     openConsultSheet: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyConsultSheetReady: () => void;
   openProductForm: (payload: any) => Promise<any>;

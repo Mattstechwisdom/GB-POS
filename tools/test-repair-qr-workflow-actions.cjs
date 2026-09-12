@@ -11,6 +11,7 @@ const {
   REPAIR_UPDATE_OPTIONS,
   clientDeliveryForRepairAction,
   repairActionPatch,
+  repairWorkflowStageForAction,
   groupRepairUpdateOptions,
   groupClientRepairUpdateOptions,
   deliverableItemIndexes,
@@ -21,6 +22,12 @@ const keys = REPAIR_UPDATE_OPTIONS.map((option) => option.key);
 for (const key of ['repair_approval', 'approval_received', 'repair_declined', 'customer_promise', 'technician_progress', 'testing_in_progress', 'schedule_pickup', 'picked_up', 'items_delivered']) {
   assert.ok(keys.includes(key), `Missing shared QR action: ${key}`);
 }
+
+assert.deepEqual(
+  ['diagnosis','repair_approval','approval_received','part_ordered','part_delivered','testing_in_progress','repair_complete','not_possible','picked_up'].map(repairWorkflowStageForAction),
+  ['Diagnosing','Approval','Repair','Parts','Repair','Testing','Pickup','Pickup','Completed'],
+  'Every routing action must have one canonical Command Center workflow stage.',
+);
 
 assert.equal(clientDeliveryForRepairAction('technician_progress'), 'internal');
 assert.equal(clientDeliveryForRepairAction('testing_in_progress'), 'client');

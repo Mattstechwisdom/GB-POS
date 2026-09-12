@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.92 (2026-09-12)
+
+- Prevents work-order and sales receipts from printing until the required QR code has been created and rendered, with retries for temporary cloud delays and a visible error instead of a QR-less printout.
+- Prevents stale refreshes from restoring work orders or client replies after they are closed or resolved in Command Center.
+- Verifies close and resolve writes and restores the row with an error message if persistence fails.
+- Routes QR/client updates to their authoritative Command Center stages even while an older synchronized workflow field is still present: Diagnosing, Approval, Parts, Repair, Testing, Pickup, and Completed.
+- Removes externally closed or picked-up tickets immediately and keeps them out while local/cloud synchronization catches up.
+
 ## v0.6.91 (2026-09-12)
 
 - Expands Today’s Repair Queue to eight visible tickets.

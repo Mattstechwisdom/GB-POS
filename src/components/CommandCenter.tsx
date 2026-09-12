@@ -41,8 +41,12 @@ export default function CommandCenter(props: Props) {
   const longPressTimer = useRef<number | null>(null);
   const longPressConsumed = useRef(false);
   const lastAttentionRequest = useRef(0);
+  const loadGenerationRef = useRef(0);
+  const closedWorkOrderIdsRef = useRef(new Set<string>());
+  const resolvedResponseIdsRef = useRef(new Set<string>());
 
   const load = useCallback(async () => {
+    const loadGeneration = loadGenerationRef.current += 1;
     const api: any = (window as any).api;
     if (!api) return setLoading(false);
     try {
@@ -59,10 +63,13 @@ export default function CommandCenter(props: Props) {
       ]);
       const cleanup = await reconcileLegacyWorkOrders(api, { workOrders: workOrders || [], settings: settingsRows?.[0]?.ticketCleanupSettings });
       const updatedById = new Map(cleanup.updatedRecords.map(record => [String(record.id), record]));
-      const reconciledWorkOrders = (workOrders || []).map((record: any) => updatedById.get(String(record.id)) || record);
+      const reconciledWorkOrders = (workOrders || [])
+        .map((record: any) => updatedById.get(String(record.id)) || record)
+        .filter((record: any) => !closedWorkOrderIdsRef.current.has(String(record.id)));
       const attentionSettings = settingsRows?.[0]?.ticketCleanupSettings;
+      if (loadGeneration !== loadGenerationRef.current) return;
       setData({ customers: customers || [], technicians: technicians || [], workOrders: reconciledWorkOrders, sales: sales || [], calendarEvents: calendarEvents || [], calendarNotes: calendarNotes || [], purchaseOrders: purchaseOrders || [], attentionSettings });
-      if(!responseResult.error) setClientResponses(responseResult.data||[]);
+      if(!responseResult.error) setClientResponses((responseResult.data||[]).filter((row:any)=>!resolvedResponseIdsRef.current.has(String(row.id))));
       for(const workOrder of reconciledWorkOrders){
         if(!pickupLifecycleFor(workOrder,new Date(),attentionSettings).reminderDue) continue;
         try{
@@ -77,20 +84,25 @@ export default function CommandCenter(props: Props) {
     void load();
     const api: any = (window as any).api;
     const onWorkOrderChanged = (record?: any) => {
-      if (record?.id != null) setData(current => ({ ...current, workOrders: upsertCommandCenterWorkOrder(current.workOrders, record) }));
+      if (record?.id != null) {
+        const key = String(record.id);
+        const terminal = String(record.status || '').toLowerCase() === 'closed' || !!record.pickedUpAt || !!record.clientPickupDate;
+        if (terminal) closedWorkOrderIdsRef.current.add(key);
+        setData(current => ({ ...current, workOrders: terminal ? current.workOrders.filter(row => String(row.id) !== key) : upsertCommandCenterWorkOrder(current.workOrders, record) }));
+      }
       void load();
     };
     const offs = [api?.onWorkOrdersChanged?.(onWorkOrderChanged), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onTechniciansChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onCalendarNotesChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load]);
   useEffect(()=>{const channel=supabase.channel('command-center-client-responses').on('postgres_changes',{event:'*',schema:'public',table:'client_responses'},()=>void load()).subscribe();return()=>{void supabase.removeChannel(channel)}},[load]);
-  useEffect(()=>subscribeWorkOrderUpdates(record=>setData(current=>({...current,workOrders:upsertCommandCenterWorkOrder(current.workOrders,record)}))),[]);
+  useEffect(()=>subscribeWorkOrderUpdates(record=>{const key=String(record?.id);const terminal=String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate;if(terminal)closedWorkOrderIdsRef.current.add(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
   const panelRecords = useMemo(() => panel ? liveCommandCenterPanelRecords(panel.title, model, panel.records || []) : [], [panel, model]);
   const responseRecord=(reply:any)=>model.workOrders.find(row=>String(row.id)===String(reply.legacy_record_id));
-  const resolveResponse=async(reply:any)=>{await supabase.from('client_responses').update({resolved_at:new Date().toISOString(),unread:false}).eq('id',reply.id);setClientResponses(rows=>rows.filter(row=>row.id!==reply.id));setSelectedResponse(null);};
-  const unresolveResponse=async(reply:any)=>{await supabase.from('client_responses').update({resolved_at:null,unread:true}).eq('id',reply.id);await load();};
+  const resolveResponse=async(reply:any)=>{const key=String(reply.id);resolvedResponseIdsRef.current.add(key);setClientResponses(rows=>rows.filter(row=>String(row.id)!==key));setSelectedResponse(null);const {data:updated,error}=await supabase.from('client_responses').update({resolved_at:new Date().toISOString(),unread:false}).eq('id',reply.id).select('id').maybeSingle();if(error||!updated){resolvedResponseIdsRef.current.delete(key);window.alert(error?.message||'The reply could not be marked resolved.');await load();}};
+  const unresolveResponse=async(reply:any)=>{resolvedResponseIdsRef.current.delete(String(reply.id));const {error}=await supabase.from('client_responses').update({resolved_at:null,unread:true}).eq('id',reply.id);if(error)window.alert(error.message);await load();};
   const acknowledgeResponse=async(reply:any)=>{const action=reply.response_type==='approved'?'approval_received':reply.response_type==='declined'?'repair_declined':'';if(action){const {error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(reply.legacy_record_id),statusKey:action,notes:`Client response acknowledged: ${reply.message||reply.response_type}`,deliveryMode:'email',idempotencyKey:`client-response:${reply.id}:acknowledge`}});if(error)throw error;}await supabase.from('client_responses').update({acknowledged_at:new Date().toISOString(),unread:false}).eq('id',reply.id);await load();};
   const sendReply=async()=>{if(!selectedResponse||!staffReply.trim())return;setReplyBusy(true);try{const {data:sent,error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(selectedResponse.legacy_record_id),statusKey:'manual_update',notes:staffReply.trim(),deliveryMode:'email'}});if(error||!sent?.ok)throw error||new Error(sent?.error||'Reply failed');await supabase.from('client_responses').insert({shop_id:selectedResponse.shop_id,work_order_id:selectedResponse.work_order_id,legacy_record_id:selectedResponse.legacy_record_id,customer_id:selectedResponse.customer_id,response_type:'staff_reply',message:staffReply.trim(),unread:false,resolved_at:new Date().toISOString(),delivery_status:sent.deliveryStatus||'sent'});setStaffReply('');await resolveResponse(selectedResponse);}catch(error:any){window.alert(error?.message||'Reply could not be sent.');}finally{setReplyBusy(false)}};
   const searchResults = useMemo(() => searchCommandCenterRecords(model, props.keyword), [model, props.keyword]);
@@ -186,9 +198,15 @@ export default function CommandCenter(props: Props) {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
           if (!source || !window.confirm(`Close work order ${invoice}? No payment will be added.`)) return;
           const closed = { ...source, status: 'closed', workflowStage: 'Completed', updatedAt: new Date().toISOString() };
+          const closedKey = String(menuRecord.id);
+          closedWorkOrderIdsRef.current.add(closedKey);
           setData(current => ({ ...current, workOrders: current.workOrders.map((record:any) => String(record.id) === String(menuRecord.id) ? closed : record) }));
           setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current);
-          await api?.dbUpdate?.('workOrders', menuRecord.id, closed);
+          const saved = await api?.dbUpdate?.('workOrders', menuRecord.id, closed);
+          if (!saved) {
+            closedWorkOrderIdsRef.current.delete(closedKey);
+            window.alert('The work order could not be closed. It has been restored so it is not lost.');
+          }
           await load();
         } } as ContextMenuItem,
         { label: 'Print Customer Receipt', onClick: async () => { await api?.openCustomerReceipt?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,

@@ -138,10 +138,17 @@ function stageFor(workOrder: any, remaining: number, partState = orderedPartStat
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
   if (isFinishedWorkOrder(workOrder)) return 'Completed';
-  const raw = lower(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status);
-  // Outcome statuses are authoritative. A QR/client update may set the repair
-  // outcome while an older workflowStage still says Checked in or Diagnosing.
+  const raw = lower([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.workflowStatus, workOrder?.status].filter(Boolean).join(' '));
+  // QR/client-update results are authoritative. Local/cloud synchronization can
+  // briefly leave workflowStage behind the newer repairStatus/statusUpdate.
   if (/repair.*(complete|declined)|not.*(possible|repairable)|ready.*pickup/.test(raw)) return 'Pickup';
+  if (/testing/.test(raw)) return 'Testing';
+  if (/waiting.*device/.test(raw)) return 'Waiting Device';
+  if (/awaiting.*part|waiting.*part|part.*ordered/.test(raw) && !partState.ready) return 'Parts';
+  if (/part.*delivered|ready.*repair/.test(raw)) return 'Repair';
+  if (/awaiting.*approval|repair.*approval/.test(raw)) return 'Approval';
+  if (/diagnos/.test(raw)) return 'Diagnosing';
+  if (/repair.*(in progress|approved)/.test(raw)) return 'Repair';
   const explicit = text(workOrder?.workflowStage || workOrder?.workflow_stage);
   const known = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
   if (known.includes(explicit)) return explicit === 'Parts' && partState.ready ? 'Repair' : explicit;
@@ -150,11 +157,10 @@ function stageFor(workOrder: any, remaining: number, partState = orderedPartStat
   const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
   if (/complete.*paid/.test(raw) && remaining <= 0) return 'Completed';
   if (/pickup/.test(raw)) return 'Pickup';
-  if (/testing/.test(raw)) return 'Testing';
   if (/repair/.test(raw) && !waitingPart) return 'Repair';
   if (waitingPart && !delivered) return 'Parts';
   if (/approv|estimate/.test(raw)) return 'Approval';
-  if (/diagnos|in progress/.test(raw)) return 'Diagnosing';
+  if (/in progress/.test(raw)) return 'Diagnosing';
   return 'Checked in';
 }
 

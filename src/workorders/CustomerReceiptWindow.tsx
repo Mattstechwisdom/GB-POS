@@ -4,6 +4,7 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
+const QR_LOOKUP_ATTEMPTS = 3;
 function getPayload() {
   try {
     const stored = consumeWindowPayload('customerReceipt');
@@ -101,15 +102,26 @@ const CustomerReceiptWindow: React.FC = () => {
     let alive = true;
     (async () => {
       try {
-        const statusRequest = qrRecordType === 'sale'
-          ? (window as any).api?.qrGetStatusUrl?.('sale', recordId)
-          : (window as any).api?.qrGetStatusUrl?.('repair', recordId);
-        const statusResult: any = await Promise.race([
-          statusRequest,
-          new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
-        ]);
+        let statusResult: any = null;
+        let lastError: any = null;
+        for (let attempt = 1; attempt <= QR_LOOKUP_ATTEMPTS; attempt += 1) {
+          try {
+            const statusRequest = qrRecordType === 'sale'
+              ? (window as any).api?.qrGetStatusUrl?.('sale', recordId)
+              : (window as any).api?.qrGetStatusUrl?.('repair', recordId);
+            statusResult = await Promise.race([
+              statusRequest,
+              new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
+            ]);
+            if (statusResult?.ok && String(statusResult?.url || '').trim()) break;
+            throw new Error(statusResult?.error || 'QR status URL is unavailable.');
+          } catch (error) {
+            lastError = error;
+            if (attempt < QR_LOOKUP_ATTEMPTS) await new Promise<void>((resolve) => window.setTimeout(resolve, attempt * 350));
+          }
+        }
         const qrUrl = String(statusResult?.url || '').trim();
-        if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'QR status URL is unavailable.');
+        if (!statusResult?.ok || !qrUrl) throw lastError || new Error(statusResult?.error || 'QR status URL is unavailable.');
         const dataUrl = await QRCode.toDataURL(qrUrl, {
           width: 176,
           margin: 1,
@@ -118,13 +130,19 @@ const CustomerReceiptWindow: React.FC = () => {
         });
         if (alive && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
       } catch (error: any) {
-        if (alive) setQrError(error?.message || 'The update QR code could not be created. Check the connection and retry.');
+        if (alive) {
+          const message = error?.message || 'The update QR code could not be created. Check the connection and retry.';
+          setQrError(message);
+          if (flags.autoPrint && flags.silent) {
+            try { (window as any).api?.notifyCustomerReceiptQrFailed?.(message); } catch {}
+          }
+        }
       } finally {
         if (alive) setQrReady(true);
       }
     })();
     return () => { alive = false; };
-  }, [shouldRenderStatusQr, qrRecordType, (data as any).workOrderId, (data as any).id, (data as any).invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shouldRenderStatusQr, qrRecordType, flags.autoPrint, flags.silent, (data as any).workOrderId, (data as any).id, (data as any).invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let alive = true;

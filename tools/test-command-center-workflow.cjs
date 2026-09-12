@@ -31,6 +31,19 @@ assert.equal(model.repairQueue[0].id,5,'Expedited ticket must sort first.');
 assert.ok(!model.activeWorkOrders.some(row=>row.id===8),'Completed ticket must not be active.');
 assert.ok(!model.repairQueue.some(row=>row.id===9),'Waiting-on-device ticket must not be actionable.');
 
+const routedUpdates=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
+ wo(13,'Checked in',{repairStatus:'Diagnosis In Process',statusUpdate:'Diagnosis In Process'}),
+ wo(14,'Diagnosing',{repairStatus:'Testing In Progress',statusUpdate:'Testing In Progress'}),
+ wo(15,'Diagnosing',{repairStatus:'Ready for Pickup',statusUpdate:'Repair Complete - Ready for Pickup'}),
+ wo(16,'Repair',{repairStatus:'Not Repairable - Awaiting Pickup',statusUpdate:'Repair Not Possible'}),
+ wo(17,'Pickup',{repairStatus:'Picked Up',status:'closed',statusUpdate:'Picked Up / Ticket Closed',pickedUpAt:'2026-09-10T14:00:00Z'}),
+]});
+assert.deepEqual(routedUpdates.stages.Diagnosing.map(row=>row.id),[13],'Diagnosis updates must override a stale Checked In stage.');
+assert.deepEqual(routedUpdates.stages.Testing.map(row=>row.id),[14],'Testing updates must override a stale Diagnosing stage.');
+assert.deepEqual(routedUpdates.readyForPickup.map(row=>row.id),[15,16],'Completed and not-repairable updates must route to Ready for Pickup.');
+assert.ok(!routedUpdates.activeWorkOrders.some(row=>[15,16,17].includes(Number(row.id))),'Pickup and closed tickets must leave Active Work Orders.');
+assert.ok(!routedUpdates.repairQueue.some(row=>[14,15,16,17].includes(Number(row.id))),'Testing, pickup, not-repairable, and closed tickets must leave Today’s Repair Queue.');
+
 const quickHistory=(id)=>wo(id,'Completed',{
  status:'closed',productCategory:'Game Console',items:[{repair:'HDMI Port Repair'}],
  diagnosisStartedAt:`2026-09-${id-7}T09:00:00Z`,repairCompletionDate:`2026-09-${id-7}T13:00:00Z`,

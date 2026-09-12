@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPhone } from '../lib/format';
-import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, deliverableItemIndexes, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, splitRepairUpdateHistory, type ClientUpdateOption } from '../lib/clientUpdateOptions';
+import { REPAIR_UPDATE_OPTIONS, clientDeliveryForRepairAction, deliverableItemIndexes, groupClientRepairUpdateOptions, groupRepairUpdateOptions, repairActionPatch, repairWorkflowStageForAction, splitRepairUpdateHistory, type ClientUpdateOption } from '../lib/clientUpdateOptions';
 import { publishWorkOrderUpdate } from '../lib/workflowLiveRefresh';
 
 type UpdateType = 'repair' | 'sale' | 'consult';
@@ -222,6 +222,8 @@ function localPatch(type: UpdateType, option: StatusOption, extra: { estimatedDa
   }
   if (type === 'repair') {
     Object.assign(patch, repairActionPatch(option.key, extra, now));
+    const workflowStage = repairWorkflowStageForAction(option.key);
+    if (workflowStage) patch.workflowStage = workflowStage;
     const repairStatus = repairStatusLabel(option.key);
     if (repairStatus && !isManual) patch.repairStatus = repairStatus;
     if (option.key === 'part_ordered' || option.key === 'waiting_part') {

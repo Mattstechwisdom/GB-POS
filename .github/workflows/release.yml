@@ -121,6 +121,7 @@ jobs:
           npm run test:technician-sync
           npm run test:windows-update-install
           npm run test:print-qr-readiness
+          npm run test:command-center-stale-refresh
           npm run test:command-center-scroll-regions
           npm run test:custom-build-ordering
           npm run test:release-0593-features

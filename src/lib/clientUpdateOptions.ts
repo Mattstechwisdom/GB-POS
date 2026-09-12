@@ -74,6 +74,27 @@ export function splitRepairUpdateHistory<T extends { status_key?: string }>(entr
   };
 }
 
+export function repairWorkflowStageForAction(key: string): string {
+  const stages: Record<string, string> = {
+    diagnosis: 'Diagnosing',
+    repair_approval: 'Approval',
+    approval_received: 'Repair',
+    part_ordered: 'Parts',
+    waiting_part: 'Parts',
+    waiting_device: 'Waiting Device',
+    part_delivered: 'Repair',
+    items_delivered: 'Repair',
+    testing_in_progress: 'Testing',
+    repair_complete: 'Pickup',
+    not_possible: 'Pickup',
+    repair_declined: 'Pickup',
+    schedule_pickup: 'Pickup',
+    pickup_reminder: 'Pickup',
+    picked_up: 'Completed',
+  };
+  return stages[key] || '';
+}
+
 export function repairActionPatch(key: string, extra: { notes?: string; estimatedDate?: string; estimatedTime?: string }, now = new Date().toISOString()) {
   const notes = String(extra.notes || '').trim();
   if (key === 'customer_promise') {

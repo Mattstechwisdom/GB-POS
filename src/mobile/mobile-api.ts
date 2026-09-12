@@ -2000,6 +2000,7 @@ function makeApi() {
     closeSelfWindow: async () => ({ ok: true }),
     focusMainWindow: async () => ({ ok: true }),
     notifyCustomerReceiptReady: () => undefined,
+    notifyCustomerReceiptQrFailed: (_message: string) => undefined,
     notifyConsultSheetReady: () => undefined,
     sendRepairSelected: () => undefined,
     pickSaleProduct: async () => null,

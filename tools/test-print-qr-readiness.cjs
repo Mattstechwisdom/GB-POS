@@ -12,9 +12,15 @@ assert.match(main, /const SILENT_PRINT_RENDERER_READY_TIMEOUT_MS = 7000;/,
   'Silent printing must allow enough time for a cloud-backed QR to be created and rendered.');
 assert.equal(
   (main.match(/setTimeout\(startSilentPrint, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS\)/g) || []).length,
-  2,
-  'Both receipt printing (work orders and sales) and consultation printing must wait for QR readiness.',
+  1,
+  'Work-order and sales receipts must never force-print before the required QR is ready.',
 );
+assert.match(main, /customer-receipt:qr-failed/,
+  'A silent receipt whose QR fails must surface the receipt window instead of printing without a QR.');
+assert.match(receipt, /notifyCustomerReceiptQrFailed/,
+  'The receipt renderer must report a required QR failure to the Electron print window.');
+assert.match(receipt, /QR_LOOKUP_ATTEMPTS = 3/,
+  'Required receipt QR generation must retry transient cloud failures.');
 assert.match(receipt, /QR status URL timed out[\s\S]{0,80}5000/,
   'Work-order and sales QR lookup must have a bounded failure path.');
 assert.match(consult, /QR status URL timed out[\s\S]{0,80}5000/,
