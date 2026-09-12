@@ -392,8 +392,14 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
   // Generate technician QR code pointing to the status page
   let qrSrc = '';
   const recordId = Number(workOrder.id || workOrder.invoiceId || 0) || 0;
+  if (recordId <= 0) {
+    const message = 'Printing stopped because the work order has not been saved and its QR code cannot be created.';
+    try { window.alert(message); } catch {}
+    throw new Error(message);
+  }
   if (recordId > 0) {
-    try {
+    let lastQrError: any = null;
+    for (let attempt = 1; attempt <= 3 && !qrSrc; attempt += 1) try {
       const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
       let qrUrl = '';
       if (workOrder.workOrderType === 'durantReport') {
@@ -410,7 +416,15 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
         errorCorrectionLevel: 'M',
       });
       if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
-    } catch { /* QR generation failed — print without it */ }
+    } catch (error) {
+      lastQrError = error;
+      if (attempt < 3) await new Promise<void>((resolve) => window.setTimeout(resolve, attempt * 350));
+    }
+    if (!qrSrc) {
+      const message = `Printing stopped because the work-order QR code could not be created. ${String(lastQrError?.message || 'Check the connection and try again.')}`;
+      try { window.alert(message); } catch {}
+      throw new Error('Printing stopped because the work-order QR code could not be created.', { cause: lastQrError });
+    }
   }
 
   const html = buildHtml(workOrder, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });

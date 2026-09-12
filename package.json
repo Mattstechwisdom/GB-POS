@@ -42,6 +42,7 @@
     "test:notifications:routing": "node tools/test-notification-routing.cjs",
     "test:windows-update-install": "node tools/test-windows-update-install.cjs",
     "test:print-qr-readiness": "node tools/test-print-qr-readiness.cjs",
+    "test:release-form-qr-runtime": "electron tools/test-release-form-qr-runtime.cjs",
     "test:command-center-stale-refresh": "node tools/test-command-center-stale-refresh.cjs",
     "test:command-center-scroll-regions": "node tools/test-command-center-scroll-regions.cjs",
     "test:desktop-navigation": "node tools/test-desktop-navigation.cjs",

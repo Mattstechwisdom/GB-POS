@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
+const QR_LOOKUP_ATTEMPTS = 3;
 
 function getPayload() {
   try {
@@ -29,7 +30,11 @@ const ReleaseFormWindow: React.FC = () => {
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrReady, setQrReady] = useState(false);
+  const [qrError, setQrError] = useState('');
   const didAutoPrintRef = useRef(false);
+  const logoImgRef = useRef<HTMLImageElement | null>(null);
+  const qrImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -44,21 +49,45 @@ const ReleaseFormWindow: React.FC = () => {
   // Generate technician QR code for status page
   useEffect(() => {
     const recordId = Number((data as any).id || (data as any).workOrderId || 0) || 0;
-    if (!recordId) return;
+    setQrReady(false);
+    setQrError('');
+    if (!recordId) {
+      setQrError('Save the work order before printing so its QR code can be created.');
+      setQrReady(true);
+      return;
+    }
     const type = (data as any).receiptType === 'sale' ? 'sale' : 'repair';
     let alive = true;
     (async () => {
       try {
-        const statusResult = await (window as any).api?.qrGetStatusUrl?.(type, recordId);
+        let statusResult: any = null;
+        let lastError: any = null;
+        for (let attempt = 1; attempt <= QR_LOOKUP_ATTEMPTS; attempt += 1) {
+          try {
+            statusResult = await Promise.race([
+              (window as any).api?.qrGetStatusUrl?.(type, recordId),
+              new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
+            ]);
+            if (statusResult?.ok && String(statusResult?.url || '').trim()) break;
+            throw new Error(statusResult?.error || 'QR status URL is unavailable.');
+          } catch (error) {
+            lastError = error;
+            if (attempt < QR_LOOKUP_ATTEMPTS) await new Promise<void>((resolve) => window.setTimeout(resolve, attempt * 350));
+          }
+        }
         const qrUrl = String(statusResult?.url || '').trim();
-        if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'QR status URL is unavailable.');
+        if (!statusResult?.ok || !qrUrl) throw lastError || new Error(statusResult?.error || 'QR status URL is unavailable.');
         const dataUrl: string = await QRCode.toDataURL(qrUrl, {
           width: 176, margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
           errorCorrectionLevel: 'M',
         });
         if (alive && dataUrl && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
-      } catch { /* QR generation failed silently */ }
+      } catch (error: any) {
+        if (alive) setQrError(error?.message || 'The work-order QR code could not be created. Check the connection and retry.');
+      } finally {
+        if (alive) setQrReady(true);
+      }
     })();
     return () => { alive = false; };
   }, [(data as any).id, (data as any).workOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -111,27 +140,27 @@ const ReleaseFormWindow: React.FC = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    // Give the logo a chance to resolve before printing, to avoid the broken-image icon.
     if (didAutoPrintRef.current) return;
-
-    // 100ms fallback — if logo hasn't loaded yet, print without it rather than waiting forever.
-    const fallback = window.setTimeout(() => {
-      if (didAutoPrintRef.current) return;
-      didAutoPrintRef.current = true;
-      try { window.print(); } catch {}
-    }, 100);
-
-    if (logoSrc) {
-      window.clearTimeout(fallback);
-      didAutoPrintRef.current = true;
-      // Single rAF is enough to ensure the logo img has been committed to DOM.
-      requestAnimationFrame(() => {
-        try { window.print(); } catch {}
-      });
-    }
-
-    return () => window.clearTimeout(fallback);
-  }, [logoSrc]);
+    if (!logoSrc || !qrReady || !qrDataUrl) return;
+    didAutoPrintRef.current = true;
+    let cancelled = false;
+    const printWhenDecoded = async () => {
+      await Promise.all([logoImgRef.current, qrImgRef.current].filter(Boolean).map(async (image) => {
+        try { await image!.decode(); } catch {
+          if (!image!.complete) await new Promise<void>((resolve) => {
+            image!.addEventListener('load', () => resolve(), { once: true });
+            image!.addEventListener('error', () => resolve(), { once: true });
+          });
+        }
+      }));
+      if (cancelled) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!cancelled) try { window.print(); } catch {}
+      }));
+    };
+    void printWhenDecoded();
+    return () => { cancelled = true; };
+  }, [logoSrc, qrReady, qrDataUrl]);
 
   const items = Array.isArray(data.items) ? data.items : [];
   const fullName = data.customerName || data.customer?.name || '';
@@ -157,11 +186,12 @@ const ReleaseFormWindow: React.FC = () => {
         }
       `}</style>
       <div className="page gb-release-page">
+        {qrError ? <div className="no-print" style={{ color:'#b91c1c', background:'#fee2e2', border:'1px solid #ef4444', borderRadius:6, padding:8, marginBottom:8, fontWeight:700 }}>Printing paused: {qrError}</div> : null}
         <div className="page-inner">
       <div className="gb-release-header" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'flex-start', gap: 0, marginBottom: 12 }}>
         {/* Left — logo + shop name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <img src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
+          <img ref={logoImgRef} src={logoSrc || publicAsset('logo.png')} alt="GadgetBoy" style={{ height: 60, width: 'auto' }} />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 0.2, lineHeight: 1.1 }}>GADGETBOY REPAIR</div>
             <div style={{ fontSize: 11, color: '#666' }}>Work Order Release Form</div>
@@ -173,7 +203,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: '0 16px' }}>
           {qrDataUrl ? (
             <>
-              <img src={qrDataUrl} alt="Tech Status QR" style={{ width: 72, height: 72, display: 'block' }} />
+              <img ref={qrImgRef} src={qrDataUrl} alt="Tech Status QR" style={{ width: 72, height: 72, display: 'block' }} />
               <div style={{ fontSize: 7, color: '#555', textAlign: 'center', marginTop: 3, letterSpacing: '0.4px' }}>TECH SCAN</div>
             </>
           ) : null}

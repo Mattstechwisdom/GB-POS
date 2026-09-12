@@ -7,6 +7,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const main = read('app/electron/electron-main.ts');
 const receipt = read('src/workorders/CustomerReceiptWindow.tsx');
 const consult = read('src/sales/ConsultSheetWindow.tsx');
+const releaseWindow = read('src/workorders/ReleaseFormWindow.tsx');
+const releasePrint = read('src/workorders/releasePrint.ts');
 
 assert.match(main, /const SILENT_PRINT_RENDERER_READY_TIMEOUT_MS = 7000;/,
   'Silent printing must allow enough time for a cloud-backed QR to be created and rendered.');
@@ -15,6 +17,18 @@ assert.equal(
   1,
   'Work-order and sales receipts must never force-print before the required QR is ready.',
 );
+assert.match(releaseWindow, /if \(!logoSrc \|\| !qrReady \|\| !qrDataUrl\) return;/,
+  'The work-order release window must wait for both the logo and required QR before printing.');
+assert.doesNotMatch(releaseWindow, /100ms fallback[\s\S]{0,500}window\.print/,
+  'The work-order release window must not use the old logo-only fallback that prints before QR generation finishes.');
+assert.match(releaseWindow, /await Promise\.all\(\[logoImgRef\.current, qrImgRef\.current\]/,
+  'The release form must wait for the QR image itself to decode before invoking print.');
+assert.match(releasePrint, /throw new Error\('Printing stopped because the work-order QR code could not be created\.'/,
+  'The legacy work-order print path must stop instead of intentionally printing without a QR.');
+assert.match(releasePrint, /if \(recordId <= 0\)[\s\S]{0,300}throw new Error\(message\)/,
+  'An unsaved work order must not print a release form without a QR.');
+assert.doesNotMatch(releasePrint, /QR generation failed[^\n]*print without it/,
+  'No work-order print path may silently omit a failed QR.');
 assert.match(main, /customer-receipt:qr-failed/,
   'A silent receipt whose QR fails must surface the receipt window instead of printing without a QR.');
 assert.match(receipt, /notifyCustomerReceiptQrFailed/,
