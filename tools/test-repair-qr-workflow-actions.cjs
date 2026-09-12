@@ -65,6 +65,7 @@ assert.deepEqual(splitRepairUpdateHistory([
 });
 
 const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'workorders', 'ClientUpdatePanel.tsx'), 'utf8');
+assert.match(panelSource, /api\.dbUpdate\(key, record\.id, \{ \.\.\.record, \.\.\.saved \}\)/, 'The local cache must retain the authoritative workflow stage returned by Supabase.');
 assert.match(panelSource, /<details className={`gb-client-update-subsection \${key}`}>/);
 assert.doesNotMatch(panelSource, /<details[^>]+\sopen(?:=|\s|>)/, 'QR action sections must all start collapsed');
 

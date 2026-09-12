@@ -16,6 +16,7 @@ assert.equal(model.stages.Diagnosing.length,1);
 assert.equal(model.stages.Approval.length,1);
 assert.equal(model.stages.Parts.length,3);
 assert.equal(model.stages.Testing.length,1);
+assert.ok(!model.repairQueue.some(row=>row.id===6),'Testing tickets belong in the Testing section and must leave today\'s repair queue.');
 assert.equal(model.stages.Pickup.length,2);
 assert.ok(!model.stages['Checked in'].some(row=>row.id===11),'Repair-not-possible tickets must override a stale Checked In stage.');
 assert.ok(!model.repairQueue.some(row=>row.id===11),'Repair-not-possible tickets must leave today\'s actionable repair queue.');
@@ -45,9 +46,9 @@ const ranked=buildCommandCenterModel({now,customers:[],technicians:[],workOrders
  wo(35,'Checked in',{checkInAt:'2026-09-05T12:00:00Z'}),
  ...Array.from({length:11},(_,index)=>wo(40+index,'Checked in',{activityAt:`2026-09-${String(index+1).padStart(2,'0')}T12:00:00Z`})),
 ]});
-assert.deepEqual(ranked.repairQueue.slice(0,7).map(row=>row.id),[30,36,34,33,31,35,40],'Queue order must be expedited, parts-arrived, testing/diagnosing, historically quick, stagnant, then ordinary work.');
+assert.deepEqual(ranked.repairQueue.slice(0,7).map(row=>row.id),[30,36,33,31,35,40,41],'Queue order must be expedited, parts-arrived, diagnosing, historically quick, stagnant, then ordinary work; Testing is tracked separately.');
 assert.equal(ranked.repairQueuePreview.length,7,'Command Center queue preview must show at most seven work orders.');
-assert.equal(ranked.repairQueue.length,18,'Open Full Queue must retain every eligible work order.');
+assert.equal(ranked.repairQueue.length,17,'Open Full Queue must retain every eligible non-testing work order.');
 
 const attentionModel=buildCommandCenterModel({now,customers:[{id:1,firstName:'Ada',lastName:'Lovelace',email:'ada@example.com'}],technicians:[{id:'tech-1',name:'Tech One'}],attentionSettings:{notStartedAttentionDays:2,staleAttentionDays:3,clientResponseAttentionDays:2},workOrders:[
  wo(60,'Checked in',{customerId:1,assignedTo:'tech-1',checkInAt:'2026-09-06T12:00:00Z'}),

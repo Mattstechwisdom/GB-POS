@@ -1770,6 +1770,8 @@ function showWindowFast(win: any, onBeforeShow?: () => void, opts?: { focus?: bo
   setTimeout(reveal, fallbackDelayMs);
 }
 
+const SILENT_PRINT_RENDERER_READY_TIMEOUT_MS = 7000;
+
 function scheduleSilentPrint(win: any, opts?: { delayMs?: number; onDone?: () => void }) {
   let started = false;
   const start = () => {
@@ -6741,7 +6743,7 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
     // slow disks or first-run Windows Defender scans.
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const armFallback = () => {
-      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 400 : 900);
+      fallbackTimer = setTimeout(startSilentPrint, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS);
     };
 
     const handleReceiptReady = (readyEvent: any) => {
@@ -6827,7 +6829,7 @@ ipcMain.handle('open-consult-sheet', async (event: any, payload: any) => {
 
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     const armFallback = () => {
-      fallbackTimer = setTimeout(startSilentPrint, app.isPackaged ? 400 : 900);
+      fallbackTimer = setTimeout(startSilentPrint, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS);
     };
 
     const handleReady = (readyEvent: any) => {

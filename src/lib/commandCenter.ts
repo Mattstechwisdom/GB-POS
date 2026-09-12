@@ -189,7 +189,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   const needsAttention = [...workOrders, ...sales].filter(record => record.attentionReasons.length > 0);
   const productDeliveries = sales.filter(record => record.kind === 'sale' && Number(record.productDelivery?.itemCount || 0) > 0);
   const repairQueue = activeWorkOrders.filter(record => {
-    if (record.stage === 'Waiting Device' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
+    if (record.stage === 'Waiting Device' || record.stage === 'Testing' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
   const todayPayments = [...workOrders, ...sales].flatMap(record => {

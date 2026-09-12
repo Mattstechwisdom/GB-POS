@@ -562,8 +562,7 @@ const ClientUpdatePanel: React.FC<Props> = ({
         if (type === 'repair') publishWorkOrderUpdate(saved);
         if (delivery?.statusSaved && api?.dbUpdate) {
           const key = type === 'sale' || type === 'consult' ? 'sales' : 'workOrders';
-          const patch = localPatch(type, option, extra);
-          void api.dbUpdate(key, record.id, { ...record, ...patch })
+          void api.dbUpdate(key, record.id, { ...record, ...saved })
             .then((localSaved: any) => {
               if (!localSaved) return;
               setRecord(localSaved);

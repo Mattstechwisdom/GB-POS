@@ -36,6 +36,7 @@ function getFlags() {
 const ConsultSheetWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
   const flags = useMemo(() => getFlags(), []);
+  const consultationRequiresQr = Number((data as any).eventId || 0) > 0;
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrSrc, setQrSrc] = useState<string>('');
@@ -60,7 +61,10 @@ const ConsultSheetWindow: React.FC = () => {
     let alive = true;
     void (async () => {
       try {
-        const result = await (window as any).api?.qrGetStatusUrl?.('consult', eventId);
+        const result: any = await Promise.race([
+          (window as any).api?.qrGetStatusUrl?.('consult', eventId),
+          new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
+        ]);
         const url = String(result?.url || '').trim();
         if (!result?.ok || !url) return;
         const value = await QRCode.toDataURL(url, {
@@ -82,6 +86,7 @@ const ConsultSheetWindow: React.FC = () => {
   useEffect(() => {
     if (!flags.autoPrint || flags.silent) return;
     if (!qrResolved) return;
+    if (consultationRequiresQr && !qrSrc) return;
     if (didAutoPrintRef.current) return;
 
     const fallback = window.setTimeout(() => {
@@ -105,12 +110,13 @@ const ConsultSheetWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrResolved]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrResolved, qrSrc, consultationRequiresQr]);
 
   // When silently printing, the main-process print pipeline waits for this signal
   useEffect(() => {
     if (!flags.autoPrint || !flags.silent) return;
     if (!qrResolved) return;
+    if (consultationRequiresQr && !qrSrc) return;
 
     let cancelled = false;
 
@@ -156,7 +162,7 @@ const ConsultSheetWindow: React.FC = () => {
 
     void signalReady();
     return () => { cancelled = true; };
-  }, [flags.autoPrint, flags.silent, logoSrc, qrResolved]);
+  }, [flags.autoPrint, flags.silent, logoSrc, qrResolved, qrSrc, consultationRequiresQr]);
 
   const customerName = String((data as any).customerName || '').trim();
   const phoneRaw = String((data as any).customerPhone || '').trim();
