@@ -113,6 +113,17 @@ function orderedPartState(workOrder: any) {
   return { waiting: items.some((item: any) => !delivered(item)), ready: items.length > 0 && items.every(delivered) };
 }
 
+function paymentRecordedAt(payment: any) {
+  return payment?.at || payment?.date || payment?.createdAt || payment?.paidAt || '';
+}
+
+function collectedPaymentAmount(payment: any) {
+  const applied = Number(payment?.applied);
+  if (Number.isFinite(applied) && applied >= 0) return applied;
+  const tendered = number(payment?.amount ?? payment?.tendered ?? payment?.tender ?? payment?.paid);
+  return Math.max(0, tendered - number(payment?.change ?? payment?.changeDue));
+}
+
 function stageFor(workOrder: any, remaining: number, partState = orderedPartState(workOrder)) {
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
@@ -194,7 +205,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   }).sort(compareRepairQueuePriority);
   const todayPayments = [...workOrders, ...sales].flatMap(record => {
     const payments = Array.isArray(record.source?.payments) ? record.source.payments : [];
-    if (payments.length) return payments.filter((payment: any) => sameLocalDay(payment?.date || payment?.createdAt || payment?.paidAt, now)).map((payment: any) => number(payment?.amount));
+    if (payments.length) return payments.filter((payment: any) => sameLocalDay(paymentRecordedAt(payment), now)).map(collectedPaymentAmount);
     return sameLocalDay(record.source?.checkoutDate || record.source?.paidAt, now) ? [number(record.source?.amountPaid || record.total)] : [];
   });
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

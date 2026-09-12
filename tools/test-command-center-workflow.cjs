@@ -66,6 +66,13 @@ const stalePanelRecord={...attentionModel.needsAttention.find(row=>row.id===60)}
 const cleanModel=buildCommandCenterModel({now,customers:[{id:1,firstName:'Ada',lastName:'Lovelace'}],technicians:[{id:'tech-1',name:'Tech One'}],workOrders:[wo(60,'Repair',{customerId:1,assignedTo:'tech-1',items:[{repair:'HDMI Port Repair'}],lastTechnicianActivityAt:'2026-09-10T14:00:00Z'})]});
 assert.equal(liveCommandCenterPanelRecords('Needs Attention',cleanModel,[stalePanelRecord]).length,0,'Resolved alerts must disappear from an already-open Needs Attention panel.');
 
+const collectedModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
+ wo(80,'Checked in',{payments:[{at:'2026-09-10T13:00:00Z',applied:50,amount:50,change:0}]}),
+ wo(81,'Completed',{status:'closed',payments:[{createdAt:'2026-09-10T14:00:00Z',applied:70,amount:100,change:30}]}),
+],sales:[{id:82,status:'closed',items:[{description:'Cable'}],payments:[{paidAt:'2026-09-10T14:30:00Z',applied:20}],amountPaid:20}]});
+assert.equal(collectedModel.collectedToday,140,'Collected Today must total applied payments recorded today across work orders and sales.');
+assert.equal(collectedModel.paymentsToday,3,'Collected Today must count every payment recorded today regardless of timestamp field.');
+
 const reasons=[
  ...attentionReasonsForWorkOrder({status:'open',workflowStage:'Approval',approvalRequestedAt:'2026-09-01',promisedAt:'2026-09-09',emailDeliveryStatus:'failed',unreadClientReplies:2,pendingSync:true},{now}),
  ...attentionReasonsForWorkOrder({status:'open',workflowStage:'Parts',partEta:'2026-09-08'},{now}),
