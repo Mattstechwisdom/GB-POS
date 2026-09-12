@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.87 (2026-09-12)
+
+- Adds a compact Command Center Today strip for Tasks, Events, Notes, and Consultations, with accurate counts and at-a-glance daughter windows.
+- Makes Command Center Refresh visibly reload customers, tickets, sales, calendar data, purchase orders, settings, and client replies.
+- Resets Repair Statistics to the new QR-driven workflow era and excludes diagnostics, extra fees, and non-repairable outcomes from learned repair patterns.
+- Keeps work orders with undelivered required parts out of Today’s Repair Queue; newly delivered-part jobs rank directly after expedited service.
+- Limits Product Delivery to genuinely ordered sales products and adds per-item delivered actions with optional client email.
+- Prevents Complete Checkout from hanging indefinitely by falling back to the compatible checkout handoff when desktop acknowledgement stalls.
+
 ## v0.6.86 (2026-09-11)
 
 - Limits the live Command Center repair queue to seven tickets and ranks Expedited, Diagnosing/Testing, learned quick-turnaround, stagnant, and ordinary work in that order.

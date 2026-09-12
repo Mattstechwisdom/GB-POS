@@ -9,6 +9,12 @@ const {createCheckoutSessionRegistry}=require('../app/electron/checkout-session.
   assert.deepEqual(delivered,[{amountPaid:75}],'Complete Checkout must await an acknowledged delivery.');
   await assert.rejects(deliverCheckoutResult({completeCheckout:async()=>({ok:false,error:'Checkout session expired.'})},{amountPaid:75}),/expired/i,'A rejected handoff must be visible to the checkout window.');
   await assert.rejects(deliverCheckoutResult({},{}),/bridge/i,'A missing desktop bridge must never fail silently.');
+  const fallback=[];
+  await deliverCheckoutResult({
+    completeCheckout:()=>new Promise(()=>{}),
+    _emitCheckoutSave:result=>fallback.push(result),
+  },{amountPaid:40},{acknowledgementTimeoutMs:10});
+  assert.deepEqual(fallback,[{amountPaid:40}],'A stalled acknowledged bridge must fall back instead of leaving checkout inert.');
 
   const registry=createCheckoutSessionRegistry();
   let result=null;

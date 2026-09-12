@@ -39,8 +39,9 @@ export function isExpeditedWorkOrder(record: any) {
   ].filter(Boolean).join(' ')));
 }
 
-export function compareRepairQueuePriority(a: { expedited?: boolean; stage?: string; quickTurnaround?: boolean; stagnant?: boolean; promisedAt?: string; activityAt?: string }, b: { expedited?: boolean; stage?: string; quickTurnaround?: boolean; stagnant?: boolean; promisedAt?: string; activityAt?: string }) {
+export function compareRepairQueuePriority(a: { expedited?: boolean; partsReady?: boolean; stage?: string; quickTurnaround?: boolean; stagnant?: boolean; promisedAt?: string; activityAt?: string }, b: { expedited?: boolean; partsReady?: boolean; stage?: string; quickTurnaround?: boolean; stagnant?: boolean; promisedAt?: string; activityAt?: string }) {
   if (!!a.expedited !== !!b.expedited) return a.expedited ? -1 : 1;
+  if (!!a.partsReady !== !!b.partsReady) return a.partsReady ? -1 : 1;
   const aInProgress = /^(Diagnosing|Testing)$/i.test(String(a.stage || ''));
   const bInProgress = /^(Diagnosing|Testing)$/i.test(String(b.stage || ''));
   if (aInProgress !== bInProgress) return aInProgress ? -1 : 1;

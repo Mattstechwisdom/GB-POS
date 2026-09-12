@@ -21,8 +21,9 @@ export interface CommandCenterRecord {
   expedited: boolean;
   quickTurnaround: boolean;
   stagnant: boolean;
+  partsReady: boolean;
   attentionReasons: AttentionReason[];
-  productDelivery?: { itemIndexes: number[]; itemCount: number; itemNames: string[]; items: Array<{index:number;name:string;eta:string}>; eta: string };
+  productDelivery?: { itemIndexes: number[]; itemCount: number; itemNames: string[]; items: Array<{index:number;name:string;eta:string;orderDate:string;orderUrl:string}>; eta: string };
   status: string;
   technician: string;
   total: number;
@@ -51,10 +52,10 @@ export interface CommandCenterModel {
   collectedToday: number;
   paymentsToday: number;
   stages: Record<string, CommandCenterRecord[]>;
-  today: { tasks: any[]; events: any[]; consultations: CommandCenterRecord[]; deliveries: any[] };
+  today: { tasks: any[]; events: any[]; notes: any[]; consultations: CommandCenterRecord[]; deliveries: any[] };
 }
 
-type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; purchaseOrders?: any[]; attentionSettings?: any; now?: Date };
+type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; now?: Date };
 
 const text = (value: any) => String(value ?? '').trim();
 const number = (value: any) => Number(value || 0) || 0;
@@ -103,7 +104,16 @@ function isFinishedWorkOrder(workOrder: any) {
   return !!workOrder?.checkoutDate || /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status);
 }
 
-function stageFor(workOrder: any, remaining: number) {
+function orderedPartState(workOrder: any) {
+  const items = (Array.isArray(workOrder?.items) ? workOrder.items : []).filter((item: any) => {
+    if (item?.labor === true || item?.isLabor === true || item?.feeType) return false;
+    return item?.requiresOrder === true || /needed|ordered|awaiting|in.?transit|delivered|received/i.test(lower(item?.orderStatus || item?.partStatus));
+  });
+  const delivered = (item: any) => /delivered|received|in.?stock/i.test(lower(item?.orderStatus || item?.partStatus));
+  return { waiting: items.some((item: any) => !delivered(item)), ready: items.length > 0 && items.every(delivered) };
+}
+
+function stageFor(workOrder: any, remaining: number, partState = orderedPartState(workOrder)) {
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
   if (isFinishedWorkOrder(workOrder)) return 'Completed';
@@ -113,7 +123,7 @@ function stageFor(workOrder: any, remaining: number) {
   if (/repair.*(complete|declined)|not.*(possible|repairable)|ready.*pickup/.test(raw)) return 'Pickup';
   const explicit = text(workOrder?.workflowStage || workOrder?.workflow_stage);
   const known = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
-  if (known.includes(explicit)) return explicit;
+  if (known.includes(explicit)) return explicit === 'Parts' && partState.ready ? 'Repair' : explicit;
   const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
   const waitingPart = /awaiting.*part|waiting.*part|part.*ordered/.test(raw) || lines.some((line: any) => /ordered|awaiting|in transit/.test(lower(line?.orderStatus || line?.partStatus)));
   const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
@@ -137,7 +147,8 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const total = number(record?.totals?.total ?? record?.total);
     const paid = number(record?.amountPaid ?? record?.totals?.paid);
     const remaining = Math.max(0, number(record?.totals?.remaining ?? record?.balance ?? (total - paid)));
-    const stage = stageFor(record, remaining);
+    const partState = orderedPartState(record);
+    const stage = stageFor(record, remaining, partState);
     const customerName = customerNameFor(record, customers);
     const title = lineTitle(record);
     const presentation = repairPresentationFor(record);
@@ -147,7 +158,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const promiseNote = text(record?.promiseNote || record?.promise_note || (isPromise ? record?.techNotes : ''));
     const technicianIdentity = resolveTechnician(record?.assignedTo, technicians);
     const attentionReasons = attentionReasonsForWorkOrder(record, { now, settings: input.attentionSettings, technicianState: technicianIdentity.state });
-    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, ...presentation, expedited: isExpeditedWorkOrder(record), quickTurnaround: quickPatterns.has(repairPatternKey(record)), stagnant: attentionReasons.some(reason => ['not-started','workflow-stalled','client-update-unfollowed'].includes(reason.code)), attentionReasons, status: text(record?.status || stage), technician: technicianIdentity.name, total, remaining, activityAt, stage, partEta: partEtaFor(record), promisedAt, promiseNote, searchText: `${record?.id} ${customerName} ${title} ${presentation.deviceLabel} ${presentation.problem} ${presentation.serial} ${promiseNote} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind: 'workorder', customerId: record?.customerId, customerName, title, ...presentation, expedited: isExpeditedWorkOrder(record), quickTurnaround: quickPatterns.has(repairPatternKey(record)), stagnant: attentionReasons.some(reason => ['not-started','workflow-stalled','client-update-unfollowed'].includes(reason.code)), partsReady: partState.ready, attentionReasons, status: text(record?.status || stage), technician: technicianIdentity.name, total, remaining, activityAt, stage, partEta: partEtaFor(record), promisedAt, promiseNote, searchText: `${record?.id} ${customerName} ${title} ${presentation.deviceLabel} ${presentation.problem} ${presentation.serial} ${promiseNote} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   const sales = (input.sales || []).map((record): CommandCenterRecord => {
     const total = number(record?.totals?.total ?? record?.total);
@@ -156,7 +167,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const title = lineTitle(record);
     const kind: CommandCenterKind = lower(record?.type || record?.saleType).includes('consult') ? 'consultation' : 'sale';
     const activityAt = text(record?.activityAt || record?.checkoutDate || record?.checkInAt || record?.createdAt);
-    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, deviceLabel: title, deviceCategory: '', problem: '', model: '', serial: '', expedited: false, quickTurnaround: false, stagnant: false, attentionReasons: [], status: text(record?.status), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
+    return { id: record?.id, kind, customerId: record?.customerId, customerName, title, deviceLabel: title, deviceCategory: '', problem: '', model: '', serial: '', expedited: false, quickTurnaround: false, stagnant: false, partsReady: false, attentionReasons: [], status: text(record?.status), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
   workOrders.forEach(record => {
     record.attentionReasons.push(...sharedRecordAttention(record, customers));
@@ -176,11 +187,10 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   const awaitingParts = stages.Parts;
   const readyForPickup = stages.Pickup;
   const needsAttention = [...workOrders, ...sales].filter(record => record.attentionReasons.length > 0);
-  const productDeliveries = sales.filter(record => Number(record.productDelivery?.itemCount || 0) > 0);
+  const productDeliveries = sales.filter(record => record.kind === 'sale' && Number(record.productDelivery?.itemCount || 0) > 0);
   const repairQueue = activeWorkOrders.filter(record => {
     if (record.stage === 'Waiting Device' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
-    if (record.stage !== 'Parts') return true;
-    return record.source?.workflowException === true || record.source?.workflow_exception === true || (!!record.partEta && timestamp(record.partEta) <= now.getTime());
+    return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
   const todayPayments = [...workOrders, ...sales].flatMap(record => {
     const payments = Array.isArray(record.source?.payments) ? record.source.payments : [];
@@ -193,7 +203,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 7), needsAttention, repairStatistics, productDeliveries, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 7), needsAttention, repairStatistics, productDeliveries, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {

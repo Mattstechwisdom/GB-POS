@@ -111,6 +111,7 @@ jobs:
           npm run test:checkout-delivery
           npm run test:command-center-repair-details
           npm run test:command-center-workflow
+          npm run test:command-center-agenda-delivery
           npm run test:work-order-lifecycle
           npm run test:repair-statistics
           npm run test:product-delivery

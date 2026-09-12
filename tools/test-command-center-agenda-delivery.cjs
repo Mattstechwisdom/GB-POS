@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const source=fs.readFileSync(path.join(__dirname,'..','src','components','CommandCenter.tsx'),'utf8');
+assert.match(source,/command-center-agenda-strip/,'Today agenda belongs in the Command Center header.');
+for(const label of ['Tasks','Events','Notes','Consultations'])assert.ok(source.includes(`'${label}'`),`Header agenda is missing ${label}.`);
+assert.doesNotMatch(source,/<header><strong>Today<\/strong>/,'The old middle Today button section must be removed.');
+assert.match(source,/Mark Delivered — Notify Client/,'Product lines need a notify-client delivery action.');
+assert.match(source,/Mark Delivered — Internal Only/,'Product lines need an internal-only delivery action.');
+assert.match(source,/onContextMenu=.*openDeliveryMenu/,'Product delivery rows need right-click actions.');
+assert.match(source,/refreshCommandCenter/,'The Command Center refresh button must run an explicit reload action.');
+assert.match(source,/Refreshing…/,'The refresh button must visibly report an active reload.');
+console.log('Command Center header agenda and delivery actions passed.');
