@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.93 (2026-09-13)
+
+- Fixes work-order release forms printing before their QR image has finished generating and decoding.
+- Retries temporary QR failures and stops printing with a visible error instead of producing a work-order sheet without its QR code.
+- Adds a production Electron runtime test that deliberately delays QR creation and verifies the rendered QR is present before printing begins.
+
 ## v0.6.92 (2026-09-12)
 
 - Prevents work-order and sales receipts from printing until the required QR code has been created and rendered, with retries for temporary cloud delays and a visible error instead of a QR-less printout.
