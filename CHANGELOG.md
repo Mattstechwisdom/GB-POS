@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.94 (2026-09-14)
+
+- Makes Command Center Tasks, Events, Notes, and Consultations open their actual calendar entry, note editor, work order, or sale.
+- Prevents a delayed active Supabase row from resurrecting a locally closed or picked-up work order after background synchronization completes.
+- Keeps resolved client replies suppressed until Supabase confirms they no longer belong in the unresolved list.
+- Makes the legacy sales-ticket print path retry QR creation and stop with a visible error instead of silently printing without a QR code.
+
 ## v0.6.93 (2026-09-13)
 
 - Fixes work-order release forms printing before their QR image has finished generating and decoding.

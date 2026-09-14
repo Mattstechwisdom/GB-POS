@@ -15,4 +15,10 @@ assert.match(source, /resolvedResponseIdsRef\.current\.has\(String\(row\.id\)\)/
 assert.match(source, /\.select\('id'\)\.maybeSingle\(\)/,
   'Resolving a reply must verify that Supabase actually updated the row.');
 
+const main = fs.readFileSync(path.resolve(__dirname, '..', 'app/electron/electron-main.ts'), 'utf8');
+assert.match(main, /terminalWorkOrderState\(previous\)[\s\S]{0,220}terminalWorkOrderState\(row\)/,
+  'A stale active cloud row must not overwrite a locally closed work order after the queue drains.');
+assert.match(source, /persistResolvedResponseIds/,
+  'Resolved client replies must keep a durable local guard until Supabase confirms they no longer qualify.');
+
 console.log('Command Center stale refresh checks passed.');

@@ -10,4 +10,6 @@ assert.match(source,/Mark Delivered — Internal Only/,'Product lines need an in
 assert.match(source,/onContextMenu=.*openDeliveryMenu/,'Product delivery rows need right-click actions.');
 assert.match(source,/refreshCommandCenter/,'The Command Center refresh button must run an explicit reload action.');
 assert.match(source,/Refreshing…/,'The refresh button must visibly report an active reload.');
+assert.match(source,/openTodayItem/,'Today daughter-window rows must route to their underlying record.');
+assert.match(source,/onClick=\{\(\)=>openTodayItem\(row\)\}/,'Each Today item must be directly clickable.');
 console.log('Command Center header agenda and delivery actions passed.');

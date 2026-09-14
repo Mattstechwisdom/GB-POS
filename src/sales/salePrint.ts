@@ -305,9 +305,18 @@ export async function printSaleReleaseForm(
   // Generate the sale-specific QR code from the shared Supabase status route.
   let qrSrc = '';
   const recordId = Number(sale.id || sale.invoiceId || 0) || 0;
-  if (recordId > 0) {
+  if (recordId <= 0) {
+    const message = 'Save the sales ticket before printing so its QR code can be created.';
+    window.alert(message);
+    throw new Error(message);
+  }
+  let lastQrError: any = null;
+  for (let attempt = 1; attempt <= 3 && !qrSrc; attempt += 1) {
     try {
-      const statusResult = await (window as any).api?.qrGetStatusUrl?.('sale', recordId);
+      const statusResult: any = await Promise.race([
+        (window as any).api?.qrGetStatusUrl?.('sale', recordId),
+        new Promise((_, reject) => window.setTimeout(() => reject(new Error('Sales-ticket QR lookup timed out.')), 5000)),
+      ]);
       const qrUrl = String(statusResult?.url || '').trim();
       if (!statusResult?.ok || !qrUrl) throw new Error(statusResult?.error || 'Sale QR status URL is unavailable.');
       const QRCode = (await import('qrcode')).default;
@@ -317,7 +326,15 @@ export async function printSaleReleaseForm(
         errorCorrectionLevel: 'M',
       });
       if (dataUrl && dataUrl.startsWith('data:')) qrSrc = dataUrl;
-    } catch { /* print without QR */ }
+    } catch (error) {
+      lastQrError = error;
+      if (attempt < 3) await new Promise<void>(resolve => window.setTimeout(resolve, attempt * 350));
+    }
+  }
+  if (!qrSrc) {
+    const message = `Printing stopped because the sales-ticket QR code could not be created. ${String(lastQrError?.message || 'Check the connection and try again.')}`;
+    window.alert(message);
+    throw new Error('Printing stopped because the sales-ticket QR code could not be created.');
   }
 
   const html = buildSaleHtml(sale, { ...opts, logoSrc: resolvedLogoSrc, qrSrc });

@@ -443,6 +443,7 @@ const CalendarWindow: React.FC = () => {
     const queryId = new URLSearchParams(window.location.search).get('calendarEventId');
     return Number(calendarPayload?.calendarEventId || queryId || 0) || 0;
   }, [calendarPayload]);
+  const targetNoteId = useMemo(() => String(calendarPayload?.calendarNoteId || ''), [calendarPayload]);
   const targetOpenedRef = useRef(false);
   const [current, setCurrent] = useState<Date>(new Date());
   const [calendarView, setCalendarView] = useState<'day' | 'week' | 'month'>('month');
@@ -642,6 +643,17 @@ const CalendarWindow: React.FC = () => {
     setCurrent(new Date(`${target.date}T12:00:00`));
     setViewing(target);
   }, [events, targetEventId]);
+
+  useEffect(() => {
+    if (!targetNoteId || targetOpenedRef.current || !calendarNotes.length) return;
+    const target = calendarNotes.find(note => String(note.id) === targetNoteId);
+    if (!target) return;
+    targetOpenedRef.current = true;
+    setCurrent(new Date(`${target.date}T12:00:00`));
+    setNotesDate(target.date);
+    setEditingNoteId(String(target.id));
+    setNoteDraft({ subject: target.subject || '', body: target.body || '' });
+  }, [calendarNotes, targetNoteId]);
 
   useEffect(() => {
     const detect = () => {

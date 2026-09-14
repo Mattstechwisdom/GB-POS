@@ -5316,6 +5316,12 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   return rows;
 }
 
+function terminalWorkOrderState(record: any): boolean {
+  const status = String(record?.status || '').trim().toLowerCase();
+  return /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status)
+    || !!record?.checkoutDate || !!record?.pickedUpAt || !!record?.clientPickupDate;
+}
+
 function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
   try {
     if (!Array.isArray(rows)) return [];
@@ -5345,6 +5351,7 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
       const idKey = String(id);
       if (pendingDeletes.has(idKey)) continue;
       const previous = byId.get(idKey);
+      if (key === 'workOrders' && terminalWorkOrderState(previous) && !terminalWorkOrderState(row)) continue;
       const previousTime = Date.parse(String(previous?.updatedAt || '')) || 0;
       const rowTime = Date.parse(String(row?.updatedAt || '')) || 0;
       if (!previous || (!pendingUpserts.has(idKey) && rowTime >= previousTime)) byId.set(idKey, row);

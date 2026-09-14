@@ -9,6 +9,7 @@ const receipt = read('src/workorders/CustomerReceiptWindow.tsx');
 const consult = read('src/sales/ConsultSheetWindow.tsx');
 const releaseWindow = read('src/workorders/ReleaseFormWindow.tsx');
 const releasePrint = read('src/workorders/releasePrint.ts');
+const salePrint = read('src/sales/salePrint.ts');
 
 assert.match(main, /const SILENT_PRINT_RENDERER_READY_TIMEOUT_MS = 7000;/,
   'Silent printing must allow enough time for a cloud-backed QR to be created and rendered.');
@@ -29,6 +30,10 @@ assert.match(releasePrint, /if \(recordId <= 0\)[\s\S]{0,300}throw new Error\(me
   'An unsaved work order must not print a release form without a QR.');
 assert.doesNotMatch(releasePrint, /QR generation failed[^\n]*print without it/,
   'No work-order print path may silently omit a failed QR.');
+assert.match(salePrint, /Printing stopped because the sales-ticket QR code could not be created/,
+  'The legacy sales-ticket print path must stop instead of printing without a QR.');
+assert.doesNotMatch(salePrint, /print without QR/,
+  'No sales-ticket print path may silently omit a failed QR.');
 assert.match(main, /customer-receipt:qr-failed/,
   'A silent receipt whose QR fails must surface the receipt window instead of printing without a QR.');
 assert.match(receipt, /notifyCustomerReceiptQrFailed/,
