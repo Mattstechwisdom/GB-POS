@@ -5672,6 +5672,10 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   if (!nextItem.createdAt) nextItem.createdAt = nowIso;
   if (!nextItem.updatedAt) nextItem.updatedAt = nowIso;
   if (key === 'workOrders' && !nextItem.activityAt) nextItem.activityAt = getWorkOrderActivityAt(nextItem) || nowIso;
+  if (key === 'workOrders' && !terminalWorkOrderState(nextItem) && !nextItem.workflowStage && !nextItem.repairStatus && !nextItem.statusUpdate) {
+    nextItem.workflowStage = 'Checked in';
+    nextItem.workflowUpdatedAt = nowIso;
+  }
 
   const nextDb: any = { ...prevDb };
 

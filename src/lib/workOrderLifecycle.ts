@@ -33,6 +33,33 @@ export function isDiagnosticOnlyWorkOrder(workOrder: any) {
   const hasOther = lineNames.some(name => name && !/diagnostic|evaluation|assessment/.test(name));
   return hasDiagnostic && !hasOther;
 }
+export function shouldCloseWorkOrderAfterPayment(workOrder: any, remaining: number, result: { markClosed?: boolean }) {
+  if (result.markClosed) return true;
+  if (!Number.isFinite(remaining) || remaining > 0.009) return false;
+  // A zero current balance is not device completion: diagnostics and parts can
+  // be prepaid at check-in. Only a pickup-ready device can auto-close on payment.
+  const stage = text(workOrder?.workflowStage || workOrder?.workflow_stage);
+  if (stage && (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at)) return stage === 'pickup';
+  const status = text([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.status].filter(Boolean).join(' '));
+  return stage === 'pickup' || /ready.*pickup|repair.*complete|not.*repairable|repair not possible/.test(status);
+}
+export function diagnosticCheckInClosureNeedsReview(workOrder: any, now = new Date()) {
+  if (text(workOrder?.status) !== 'closed' || !workOrder?.checkoutDate || !isDiagnosticOnlyWorkOrder(workOrder)) return false;
+  if (workOrder?.pickedUpAt || workOrder?.clientPickupDate || workOrder?.legacyCleanup?.closedAt) return false;
+  const stage = text(workOrder?.workflowStage || workOrder?.workflow_stage);
+  if (stage && stage !== 'checked in') return false;
+  if (workOrder?.repairStatus || workOrder?.statusUpdate || workOrder?.patternSequence?.length) return false;
+  if (workOrderAgeDays(workOrder, now) >= DEFAULT_CLEANUP_SETTINGS.diagnosticOnlyDays) return false;
+  const checkIn = Date.parse(workOrder?.checkInAt || workOrder?.createdAt || '');
+  const checkout = Date.parse(workOrder.checkoutDate);
+  const payments = Array.isArray(workOrder.payments) ? workOrder.payments : [];
+  return Number.isFinite(checkIn) && Number.isFinite(checkout) && checkout >= checkIn && checkout - checkIn <= 4 * 3600000
+    && payments.length > 0 && payments.every((payment: any) => Date.parse(payment?.at || '') === checkout);
+}
+export function buildDiagnosticCheckInReopenPatch(workOrder: any, now = new Date()) {
+  if (!diagnosticCheckInClosureNeedsReview(workOrder, now)) throw new Error('This ticket is not a recent diagnostic check-in closure.');
+  return { status: 'open', checkoutDate: null, workflowStage: 'Checked in', workflowUpdatedAt: now.toISOString(), updatedAt: now.toISOString() };
+}
 export function classifyLegacyCleanup(workOrder: any, input: any, now = new Date()): CleanupClassification | null {
   const settings = normalizeCleanupSettings(input);
   if (!settings.enabled || text(workOrder?.status) === 'closed' || workOrder?.checkoutDate || workOrder?.legacyCleanup?.closedAt) return null;
@@ -63,6 +90,7 @@ export function buildPickedUpPatch(workOrder:any, actor:string, now=new Date(), 
 }
 export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Date; settings?: any; technicianState?: string } = {}): AttentionReason[] {
   const now = context.now || new Date(); const settings = normalizeCleanupSettings(context.settings); const result: AttentionReason[] = [];
+  if (diagnosticCheckInClosureNeedsReview(workOrder, now)) result.push({ code: 'diagnostic-closed-at-checkin', label: 'Diagnostic payment closed the ticket at check-in — verify device is still here and restore if needed' });
   const status = text(workOrder?.status); const pickup = workOrder?.clientPickupDate || workOrder?.pickupDate || workOrder?.checkoutDate;
   const stage=text(workOrder?.workflowStage||workOrder?.workflow_stage);
   const overdue=(value:any,days=0)=>{const at=new Date(value||0).getTime();return !!at&&Number.isFinite(at)&&now.getTime()-at>=days*86400000;};

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildCommandCenterModel, liveCommandCenterPanelRecords, removeCommandCenterRecord, searchCommandCenterRecords, upsertCommandCenterWorkOrder, type CommandCenterRecord } from '@/lib/commandCenter';
 import { reconcileLegacyWorkOrders } from '@/lib/workOrderCleanup';
 import { shouldOpenAttentionPanel } from '@/lib/commandCenterPresentation';
-import { pickupLifecycleFor } from '@/lib/workOrderLifecycle';
+import { buildDiagnosticCheckInReopenPatch, diagnosticCheckInClosureNeedsReview, pickupLifecycleFor } from '@/lib/workOrderLifecycle';
 import { supabase } from '@/lib/supabase';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
@@ -101,8 +101,9 @@ export default function CommandCenter(props: Props) {
       loadGenerationRef.current += 1;
       if (record?.id != null) {
         const key = String(record.id);
-        const terminal = String(record.status || '').toLowerCase() === 'closed' || !!record.pickedUpAt || !!record.clientPickupDate;
+        const terminal = (String(record.status || '').toLowerCase() === 'closed' || !!record.pickedUpAt || !!record.clientPickupDate) && !diagnosticCheckInClosureNeedsReview(record);
         if (terminal) closedWorkOrderIdsRef.current.add(key);
+        else closedWorkOrderIdsRef.current.delete(key);
         setData(current => ({ ...current, workOrders: terminal ? current.workOrders.filter(row => String(row.id) !== key) : upsertCommandCenterWorkOrder(current.workOrders, record) }));
       }
       void load();
@@ -121,7 +122,7 @@ export default function CommandCenter(props: Props) {
     window.addEventListener('focus', refreshVisible);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshVisible); void supabase.removeChannel(channel); };
   }, [load]);
-  useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate;if(terminal)closedWorkOrderIdsRef.current.add(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
+  useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=(String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate)&&!diagnosticCheckInClosureNeedsReview(record);if(terminal)closedWorkOrderIdsRef.current.add(key);else closedWorkOrderIdsRef.current.delete(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
   const panelRecords = useMemo(() => panel ? liveCommandCenterPanelRecords(panel.title, model, panel.records || []) : [], [panel, model]);
@@ -166,11 +167,8 @@ export default function CommandCenter(props: Props) {
   const todayDetail = (row: any) => row?.body || row?.description || row?.notes || row?.customerName || row?.source?.customerName || row?.distributor || row?.category || row?.type || 'No additional details';
   const todayTime = (row: any) => row?.time || row?.eventTime || row?.appointmentTime || row?.source?.appointmentTime || row?.expectedDeliveryDate || row?.eta || 'Today';
   const openTodayItem = (row: any) => {
-    if (row?.kind === 'workorder' || row?.kind === 'sale' || row?.kind === 'consultation') return void openRecord(row);
-    const api: any = (window as any).api;
-    if (row?.workOrderId != null) return void api?.openNewWorkOrder?.({ workOrderId: Number(row.workOrderId) });
-    if (row?.saleId != null) return void api?.openNewSale?.({ id: Number(row.saleId) });
-    const isNote = data.calendarNotes.some(note => String(note?.id) === String(row?.id));
+    if (row?.source && (row?.kind === 'workorder' || row?.kind === 'sale' || row?.kind === 'consultation')) return void openRecord(row);
+    const isNote = panel?.title === 'Today · Notes';
     props.onOpenModal('calendar', isNote ? { calendarNoteId: row.id } : { calendarEventId: row.id });
   };
   const recordLabel = (record: CommandCenterRecord) => record.kind === 'workorder' ? record.deviceLabel : record.title;
@@ -227,6 +225,17 @@ export default function CommandCenter(props: Props) {
       { label: 'Copy Invoice #', onClick: async () => { try { await navigator.clipboard.writeText(invoice); } catch {} } },
       ...(isWorkOrder ? [
         { type: 'separator' } as ContextMenuItem,
+        ...(diagnosticCheckInClosureNeedsReview(menuRecord.source) ? [{ label: 'Restore Diagnostic Drop-Off to Active', onClick: async () => {
+          if (!window.confirm(`Is the device for ${invoice} still in the shop? Restore it to Checked in without changing its payments?`)) return;
+          const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
+          if (!source) return;
+          const restored = { ...source, ...buildDiagnosticCheckInReopenPatch(source) };
+          const saved = await api?.dbUpdate?.('workOrders', source.id, restored);
+          if (!saved) return window.alert('The ticket could not be restored. No payment has been changed.');
+          closedWorkOrderIdsRef.current.delete(String(source.id));
+          setData(current => ({ ...current, workOrders: upsertCommandCenterWorkOrder(current.workOrders, saved) }));
+          await load();
+        } } as ContextMenuItem] : []),
         { label: 'Close Work Order', onClick: async () => {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
           if (!source || !window.confirm(`Close work order ${invoice}? No payment will be added.`)) return;

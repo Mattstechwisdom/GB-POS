@@ -1,6 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSingleFlight } from '../lib/reliability';
+import { shouldCloseWorkOrderAfterPayment } from '../lib/workOrderLifecycle';
 import { useAutosave } from '../lib/useAutosave';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import WorkOrderSidebar from './WorkOrderSidebar';
@@ -1542,7 +1543,7 @@ const NewWorkOrderWindow: React.FC = () => {
         let status = wo.status;
         let checkoutDate = wo.checkoutDate;
         const hadOutstandingBalance = woRemaining > 0.009;
-        if (result.markClosed || (updatedTotals?.remaining || 0) <= 0) {
+        if (shouldCloseWorkOrderAfterPayment(wo, Number(updatedTotals?.remaining ?? NaN), result)) {
           status = 'closed';
           if (!checkoutDate || (appliedToWorkOrder > 0 && hadOutstandingBalance)) {
             checkoutDate = nowIso;
@@ -1608,6 +1609,9 @@ const NewWorkOrderWindow: React.FC = () => {
           checkoutDate,
           items: updatedItems,
           totals: updatedTotals,
+          ...(shouldCloseWorkOrderAfterPayment(wo, Number(updatedTotals?.remaining ?? NaN), result)
+            ? { workflowStage: 'Completed', workflowUpdatedAt: nowIso }
+            : {}),
         };
 
         setWo(() => nextWo);

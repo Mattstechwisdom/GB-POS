@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.99 (2026-09-15)
+
+- Fixes diagnostic and part prepayments incorrectly closing new work orders when their current balance reaches zero. Paid drop-offs remain active and eligible for the priority repair queue; only pickup-ready payment or explicit staff close completes the ticket.
+- Persists the initial Checked in workflow on desktop/mobile ticket creation so routing and not-started attention checks have a consistent starting stage.
+- Records an explicit Completed workflow on checkout closure. Recent diagnostic-only tickets closed by the older check-in bug appear in Needs Attention with a confirmed, payment-preserving Restore Diagnostic Drop-Off to Active action; genuinely picked-up/completed and legacy-cleaned tickets are excluded.
+- Fixes Tasks opening a blank work order from a zero-valued invoice link. Tasks/Events/Notes open their own calendar detail views, including linked tasks and overlapping event/note IDs; consultation invoices retain their existing opening behavior.
+- Adds actual Command Center UI regression coverage for new check-ins, live daughter lists, the eight-row priority queue, testing, waiting/delivered parts, not-repairable pickup, closure, safe restoration, and calendar item clicks.
+
 ## v0.6.98 (2026-09-15)
 
 - Customer receipts now print a Google Review QR with SCAN ME underneath, using the shop's review link. They never request an internal technician-update URL and do not depend on cloud ticket synchronization to generate their QR.

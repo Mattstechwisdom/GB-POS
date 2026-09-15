@@ -1686,6 +1686,10 @@ async function dbAdd(key: string, item: any): Promise<any> {
   if (!nextItem.createdAt) nextItem.createdAt = now;
   if (!nextItem.updatedAt) nextItem.updatedAt = now;
   if (key === 'workOrders' && !nextItem.activityAt) nextItem.activityAt = getWorkOrderActivityAt(nextItem) || now;
+  if (key === 'workOrders' && !/^(closed|cancelled|canceled|void|refunded|deleted|archived)$/i.test(String(nextItem.status || '')) && !nextItem.checkoutDate && !nextItem.pickedUpAt && !nextItem.clientPickupDate && !nextItem.workflowStage && !nextItem.repairStatus && !nextItem.statusUpdate) {
+    nextItem.workflowStage = 'Checked in';
+    nextItem.workflowUpdatedAt = now;
+  }
   if (!nextItem.id) nextItem.id = await nextLegacyId(key).catch(() => undefined);
   return cloudDbInsert(key, nextItem);
 }
