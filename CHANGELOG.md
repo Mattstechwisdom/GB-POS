@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.97 (2026-09-15)
+
+- Includes the work-order QR print fix from the withdrawn v0.6.96 build: reuses existing tokens and avoids re-uploading already-synchronized tickets merely to print.
+- Fixes blank part ETA values being sent as empty strings to a PostgreSQL date column, which blocked receipt/work-order QR creation and synchronization. Desktop and mobile now send a valid date or null.
+- Verifies both QR lookup paths and waits for the generated print QR image to render before printing.
+
 ## v0.6.96 (2026-09-15)
 
 - Fixes work-order QR printing being blocked by an unnecessary full-ticket Supabase upload. Existing QR tokens and already-synchronized tickets no longer require that write before printing.

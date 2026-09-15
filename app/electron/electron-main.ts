@@ -4878,7 +4878,7 @@ function toCloudRow(key: string, item: any): any | null {
       last_technician_activity_at: typeof item.lastTechnicianActivityAt === 'undefined' ? undefined : toCloudIso(item.lastTechnicianActivityAt),
       promised_at: typeof item.promisedAt === 'undefined' ? undefined : toCloudIso(item.promisedAt),
       promise_note: typeof item.promiseNote === 'undefined' ? undefined : toCloudString(item.promiseNote),
-      part_eta: typeof item.partEta === 'undefined' ? undefined : toCloudString(item.partEta),
+      part_eta: typeof item.partEta === 'undefined' ? undefined : toCloudDateOnly(item.partEta),
       client_decision: typeof item.clientDecision === 'undefined' ? undefined : toCloudString(item.clientDecision),
       client_decision_at: typeof item.clientDecisionAt === 'undefined' ? undefined : toCloudIso(item.clientDecisionAt),
       pattern_sequence: toCloudArray(item.patternSequence),

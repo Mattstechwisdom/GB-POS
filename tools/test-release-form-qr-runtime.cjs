@@ -14,6 +14,7 @@ async function waitFor(check, timeoutMs = 10000) {
 }
 
 app.whenReady().then(async () => {
+  const receiptMode = process.env.QR_PRINT_RUNTIME_KIND === 'receipt';
   let qrRequested = false;
   ipcMain.handle('app:getInfo', () => ({ version: 'runtime-test', platform: process.platform }));
   ipcMain.handle('db-find', () => []);
@@ -38,8 +39,8 @@ app.whenReady().then(async () => {
   });
 
   try {
-    const payload = encodeURIComponent(JSON.stringify({ id: 4321, workOrderId: 4321, customerName: 'Runtime Test', productCategory: 'Console', productDescription: 'Test Device' }));
-    const url = `${pathToFileURL(path.resolve(__dirname, '..', 'dist', 'index.html')).href}?releaseForm=${payload}`;
+    const payload = encodeURIComponent(JSON.stringify({ id: 4321, workOrderId: 4321, customerName: 'Runtime Test', productCategory: 'Console', productDescription: 'Test Device', partEta:'', payments:[{at:'invalid legacy date',applied:45,paymentType:'Cash'}] }));
+    const url = `${pathToFileURL(path.resolve(__dirname, '..', 'dist', 'index.html')).href}?${receiptMode ? 'customerReceipt' : 'releaseForm'}=${payload}${receiptMode ? '&autoPrint=1' : ''}`;
     await win.loadURL(url);
     await win.webContents.executeJavaScript(`window.print = () => { document.documentElement.dataset.releaseFormPrintCalled = 'true'; }; true;`);
 
@@ -48,13 +49,13 @@ app.whenReady().then(async () => {
     assert.equal(printedEarly, false, 'Release form printed before the delayed QR response arrived.');
 
     const rendered = await waitFor(() => win.webContents.executeJavaScript(`(() => {
-      const qr = document.querySelector('img[alt="Tech Status QR"]');
+      const qr = document.querySelector('img[alt="${receiptMode ? 'Work order update QR' : 'Tech Status QR'}"]');
       return !!qr && qr.complete && qr.naturalWidth > 0 && qr.src.startsWith('data:image/png')
         && document.documentElement.dataset.releaseFormPrintCalled === 'true';
     })()`));
     assert.equal(rendered, true);
     assert.equal(qrRequested, true);
-    console.log('Release-form runtime rendered and decoded its QR before printing.');
+    console.log(`${receiptMode ? 'Customer receipt' : 'Release-form'} runtime rendered and decoded its QR before printing.`);
   } finally {
     try { ipcMain.removeHandler('qr:getStatusUrl'); } catch {}
     try { ipcMain.removeHandler('app:getInfo'); } catch {}
