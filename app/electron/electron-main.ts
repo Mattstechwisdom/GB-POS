@@ -7071,17 +7071,8 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
   const client = getCloudClient();
   if (!client || !cloudSession?.shopId || !id) return null;
 
-  // A freshly checked-out ticket may still be waiting in the background sync
-  // queue. Persist this exact record first so a newly printed QR never points
-  // at a token whose sale/work order is not available on the receiving device.
   const recordKey = cloudRecordKeyForQrType(type);
-  const localRecords = (readDb() as any)?.[recordKey];
-  const localRecord = Array.isArray(localRecords)
-    ? localRecords.find((record: any) => Number(record?.id || 0) === id)
-    : null;
-  if (!localRecord) throw new Error('The saved record could not be found for this QR code.');
-  await cloudDbUpsert(recordKey, localRecord);
-
+  // Reprints must not depend on uploading the entire ticket again.
   const existing = await client
     .from('qr_status_tokens')
     .select('token')
@@ -7097,10 +7088,18 @@ async function ensureCloudQrStatusUrl(type: QrStatusType, id: number): Promise<s
 
   const recordTable = CLOUD_TABLE_BY_KEY[recordKey];
   let recordCloudId: string | null = null;
-  try {
-    const record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();
-    if (!record.error && record.data?.id) recordCloudId = record.data.id;
-  } catch {}
+  let record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();
+  if (record.error) throw new Error(`Cloud QR record lookup failed: ${record.error.message}`);
+  if (!record.data?.id) {
+    // Only a genuinely unsynchronized new ticket needs a write before printing.
+    const localRecords = (readDb() as any)?.[recordKey];
+    const localRecord = Array.isArray(localRecords) ? localRecords.find((row: any) => Number(row?.id || 0) === id) : null;
+    if (!localRecord) throw new Error('The saved record could not be found for this QR code.');
+    await cloudDbUpsert(recordKey, localRecord);
+    record = await client.from(recordTable).select('id').eq('shop_id', cloudSession.shopId).eq('legacy_id', id).maybeSingle();
+    if (record.error || !record.data?.id) throw new Error(`Cloud QR record lookup failed: ${record.error?.message || 'Record is not synchronized yet.'}`);
+  }
+  recordCloudId = record.data.id;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const inserted = await client

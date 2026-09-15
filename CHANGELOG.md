@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.96 (2026-09-15)
+
+- Fixes work-order QR printing being blocked by an unnecessary full-ticket Supabase upload. Existing QR tokens and already-synchronized tickets no longer require that write before printing.
+- Preserves QR image generation/decoding before printing and only synchronizes a ticket when it is genuinely missing from the cloud.
+
 ## v0.6.95 (2026-09-15)
 
 - Fixes Command Center routing after QR/client updates by using the newest cloud timestamp and timestamped workflow stage for diagnosis, testing, parts, and pickup.
