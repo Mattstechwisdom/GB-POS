@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.95 (2026-09-15)
+
+- Fixes Command Center routing after QR/client updates by using the newest cloud timestamp and timestamped workflow stage for diagnosis, testing, parts, and pickup.
+- Enables staff-only live work-order notifications and reconciles on reconnect/focus, while preventing stale desktop/mobile saves from overwriting newer QR workflow progress.
+- Keeps existing payment balances unchanged when routing not-repairable devices to Ready for Pickup.
+- Fits desktop calendar date controls to smaller laptop screens, grouping busy-date entries when cell height is limited; retains the mobile calendar layout.
+- Expands Category Performance (Sales & Stock), defaulting to Beverages, with on-hand/incoming/out-of-stock totals and filters for sold items, low stock, or out of stock alongside revenue, units, cost, profit, and margin.
+
 ## v0.6.94 (2026-09-14)
 
 - Makes Command Center Tasks, Events, Notes, and Consultations open their actual calendar entry, note editor, work order, or sale.

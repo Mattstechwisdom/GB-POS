@@ -63,6 +63,8 @@ assert.equal(beverages.knownCost, 1.5);
 assert.equal(beverages.grossProfit, 4.5);
 assert.equal(beverages.marginPct, 75);
 assert.equal(beverages.lowStockCount, 1);
+assert.equal(beverages.stockCount, 2, 'Beverage overview must total current on-hand stock.');
+assert.equal(beverages.outOfStockCount, 0);
 assert.equal(report.lines.find((row) => row.title === 'Cola').stockCount, 2);
 assert.equal(report.businessLines.find((row) => row.line === 'Consultations').revenue, 75);
 assert.equal(report.businessLines.find((row) => row.line === 'Repairs').revenue, 100);

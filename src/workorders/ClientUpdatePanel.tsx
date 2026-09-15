@@ -136,6 +136,7 @@ function mapCloudRow(type: UpdateType, row: any): any {
     pickedUpAt: row.picked_up_at || '',
     pickedUpBy: row.picked_up_by || '',
     workflowStage: row.workflow_stage || '',
+    workflowUpdatedAt: row.workflow_updated_at || '',
     diagnosisStartedAt: row.diagnosis_started_at || '',
     testingStartedAt: row.testing_started_at || '',
     lastTechnicianActivityAt: row.last_technician_activity_at || '',

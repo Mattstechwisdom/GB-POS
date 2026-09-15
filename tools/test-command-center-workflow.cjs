@@ -3,6 +3,8 @@ require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJ
 const {buildCommandCenterModel,liveCommandCenterPanelRecords}=require('../src/lib/commandCenter.ts');
 const {attentionReasonsForWorkOrder}=require('../src/lib/workOrderLifecycle.ts');
 const now=new Date('2026-09-10T15:00:00.000Z');
+const latestWorkflow=buildCommandCenterModel({now,workOrders:[{id:999,status:'open',workflowStage:'Testing',workflowUpdatedAt:'2026-09-10T14:00:00Z',repairStatus:'Repair Complete - Ready for Pickup',statusUpdate:'Testing In Progress'}]});
+assert.equal(latestWorkflow.workOrders[0].stage,'Testing','A timestamped workflow transition must not be overridden by stale descriptive fields.');
 const wo=(id,workflowStage,extra={})=>({id,status:'open',workflowStage,productDescription:`Device ${id}`,activityAt:'2026-09-09T12:00:00Z',items:[],...extra});
 const input={now,workOrders:[
  wo(1,'Diagnosing'),wo(2,'Approval'),wo(3,'Parts',{partEta:'2026-09-15',items:[{description:'HDMI port',requiresOrder:true,orderStatus:'ordered'}]}),wo(4,'Parts',{partEta:'2026-09-09',items:[{description:'Fan',requiresOrder:true,orderStatus:'ordered'}]}),

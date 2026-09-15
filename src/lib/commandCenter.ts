@@ -138,6 +138,12 @@ function stageFor(workOrder: any, remaining: number, partState = orderedPartStat
   // A closed/checked-out record must never be resurrected by an older workflow
   // stage left on the work order (for example, "Checked in" or "Diagnosing").
   if (isFinishedWorkOrder(workOrder)) return 'Completed';
+  const currentStage = text(workOrder?.workflowStage || workOrder?.workflow_stage);
+  if (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at) {
+    if (['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'].includes(currentStage)) {
+      return currentStage === 'Parts' && partState.ready ? 'Repair' : currentStage;
+    }
+  }
   const raw = lower([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.workflowStatus, workOrder?.status].filter(Boolean).join(' '));
   // QR/client-update results are authoritative. Local/cloud synchronization can
   // briefly leave workflowStage behind the newer repairStatus/statusUpdate.

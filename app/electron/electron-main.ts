@@ -12,6 +12,7 @@ const { seedTestDataIfNeeded } = require('./seed-test-data');
 const { registerGidgetLocalIpc } = require('./gidget-local');
 const { resolveDownloadedInstallerPath } = require('./update-launcher');
 const { createCheckoutSessionRegistry } = require('./checkout-session');
+import { preserveNewerWorkflow } from '../../src/lib/workorderWorkflowSync';
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -4515,6 +4516,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       clientPickupDate: cloudDate(row.client_pickup_date),
       pickedUpBy: row.picked_up_by || '',
       workflowStage: row.workflow_stage || '',
+      workflowUpdatedAt: cloudDate(row.workflow_updated_at),
       diagnosisStartedAt: cloudDate(row.diagnosis_started_at),
       testingStartedAt: cloudDate(row.testing_started_at),
       lastTechnicianActivityAt: cloudDate(row.last_technician_activity_at),
@@ -4528,7 +4530,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       dropoffAccessories: cloudArray(row.dropoff_accessories),
       activityAt: cloudDate(row.activity_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
-      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      updatedAt: cloudDate([row.legacy_updated_at, row.updated_at, row.workflow_updated_at].filter(Boolean).sort((a, b) => Date.parse(b) - Date.parse(a))[0]),
       cloudId: row.id,
     };
   }
@@ -5355,6 +5357,7 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
       const previousTime = Date.parse(String(previous?.updatedAt || '')) || 0;
       const rowTime = Date.parse(String(row?.updatedAt || '')) || 0;
       if (!previous || (!pendingUpserts.has(idKey) && rowTime >= previousTime)) byId.set(idKey, row);
+      else if (key === 'workOrders') byId.set(idKey, preserveNewerWorkflow(previous, row));
     }
     const nextList = Array.from(byId.values());
     const nextDb: any = { ...db, [key]: nextList };
@@ -5385,6 +5388,11 @@ async function cloudDbUpsert(key: string, item: any) {
   const client = getCloudClient();
   const table = CLOUD_TABLE_BY_KEY[String(key || '')];
   if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
+  if (key === 'workOrders') {
+    const latest = await client.from(table).select('*').eq('shop_id', cloudSession.shopId).eq('legacy_id', item.id).maybeSingle();
+    if (latest.error) throw new Error(`Cloud workflow reconciliation failed: ${latest.error.message}`);
+    if (latest.data) item = preserveNewerWorkflow(item, fromCloudRow(key, latest.data));
+  }
   const row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
   const res = await client.from(table).upsert(row, {

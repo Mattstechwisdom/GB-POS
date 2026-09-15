@@ -78,6 +78,9 @@ jobs:
           npm run test:mobile-long-press
           npm run test:mobile-navigation
           npm run test:mobile-command-center
+          npm run test:workorder-cloud-clock
+          npm run test:workorder-workflow-sync
+          npm run test:desktop-calendar-fit
           npm run test:order-accounting
           npm run test:workorder-item-sync
           npm run test:reliability-patch

@@ -98,6 +98,7 @@ export default function CommandCenter(props: Props) {
     void load();
     const api: any = (window as any).api;
     const onWorkOrderChanged = (record?: any) => {
+      loadGenerationRef.current += 1;
       if (record?.id != null) {
         const key = String(record.id);
         const terminal = String(record.status || '').toLowerCase() === 'closed' || !!record.pickedUpAt || !!record.clientPickupDate;
@@ -109,8 +110,18 @@ export default function CommandCenter(props: Props) {
     const offs = [api?.onWorkOrdersChanged?.(onWorkOrderChanged), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onTechniciansChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onCalendarNotesChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load]);
-  useEffect(()=>{const channel=supabase.channel('command-center-client-responses').on('postgres_changes',{event:'*',schema:'public',table:'client_responses'},()=>void load()).subscribe();return()=>{void supabase.removeChannel(channel)}},[load]);
-  useEffect(()=>subscribeWorkOrderUpdates(record=>{const key=String(record?.id);const terminal=String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate;if(terminal)closedWorkOrderIdsRef.current.add(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
+  useEffect(() => {
+    const channel = supabase.channel('command-center-live-records')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_responses' }, () => void load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => void load())
+      .subscribe();
+    // Reconcile after reconnects and when Realtime publication is unavailable.
+    const refreshVisible = () => { if (document.visibilityState === 'visible') void load(); };
+    const timer = window.setInterval(refreshVisible, 30000);
+    window.addEventListener('focus', refreshVisible);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshVisible); void supabase.removeChannel(channel); };
+  }, [load]);
+  useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate;if(terminal)closedWorkOrderIdsRef.current.add(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
   const panelRecords = useMemo(() => panel ? liveCommandCenterPanelRecords(panel.title, model, panel.records || []) : [], [panel, model]);

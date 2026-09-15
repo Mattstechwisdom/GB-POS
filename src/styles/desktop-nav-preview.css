@@ -441,8 +441,8 @@
 }
 
 .gb-daughter-modal-layer[data-modal-type="calendar"] .gb-calendar-month-grid {
-  grid-template-columns: repeat(7, minmax(105px, 1fr));
-  overflow: auto;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  overflow: hidden;
 }
 
 .gb-daughter-modal-panel :is(button, input, select, textarea) {

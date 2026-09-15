@@ -4,6 +4,7 @@ import { storeWindowPayload } from '../lib/windowPayload';
 import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePartOrderUrl, derivePartVendorFromUrl } from '../lib/partOrdering';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getCloudEmailStatus, sendCloudEmail } from '../lib/cloudEmail';
+import { preserveNewerWorkflow } from '../lib/workorderWorkflowSync';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
 type CloudSession = {
@@ -335,6 +336,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       pickedUpAt: cloudDate(row.picked_up_at),
       pickedUpBy: row.picked_up_by || '',
       workflowStage: row.workflow_stage || '',
+      workflowUpdatedAt: cloudDate(row.workflow_updated_at),
       diagnosisStartedAt: cloudDate(row.diagnosis_started_at),
       testingStartedAt: cloudDate(row.testing_started_at),
       lastTechnicianActivityAt: cloudDate(row.last_technician_activity_at),
@@ -348,7 +350,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       dropoffAccessories: cloudArray(row.dropoff_accessories),
       activityAt: cloudDate(row.activity_at),
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
-      updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
+      updatedAt: cloudDate([row.legacy_updated_at, row.updated_at, row.workflow_updated_at].filter(Boolean).sort((a, b) => Date.parse(b) - Date.parse(a))[0]),
       cloudId: row.id,
     };
   }
@@ -1496,9 +1498,14 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
   if (!table) {
     return upsertLocalOnly(key, item);
   }
-  const row = toCloudRow(key, item);
+  let row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
   try {
+    if (key === 'workOrders') {
+      const latest = await supabase.from(table).select('*').eq('shop_id', row.shop_id).eq('legacy_id', item.id).maybeSingle();
+      if (latest.error) throw new Error(`Cloud workflow reconciliation failed: ${latest.error.message}`);
+      if (latest.data) row = toCloudRow(key, preserveNewerWorkflow(item, fromCloudRow(key, latest.data)));
+    }
     let res = await supabase.from(table).upsert(row, {
       onConflict: cloudConflictForKey(key),
       ignoreDuplicates: false,

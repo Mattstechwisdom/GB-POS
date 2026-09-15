@@ -9,6 +9,7 @@ const money = (value: number) => Number(value || 0).toLocaleString('en-US', { st
 export default function CategoryPerformanceView({ records, inventory, purchaseOrders, from, to, onFromChange, onToChange }: Props) {
   const [businessFilter, setBusinessFilter] = useState<BusinessFilter>('Retail Sales');
   const [categoryFilter, setCategoryFilter] = useState('Beverages');
+  const [itemFilter, setItemFilter] = useState('All items');
   const report = useMemo(() => {
     const incoming = new Map<number, number>();
     for (const item of inventory || []) {
@@ -22,14 +23,16 @@ export default function CategoryPerformanceView({ records, inventory, purchaseOr
     });
   }, [records, inventory, purchaseOrders, from, to]);
 
-  const categories = report.categories.map(row => row.category);
-  const selectedCategory = categoryFilter === 'All categories' ? categoryFilter : (categories.includes(categoryFilter) ? categoryFilter : (categories[0] || 'Beverages'));
-  const visibleLines = report.lines.filter(line => selectedCategory === 'All categories' || line.category === selectedCategory);
+  const categories = Array.from(new Set(['Beverages', ...report.categories.map(row => row.category)]));
+  const selectedCategory = categoryFilter;
+  const visibleLines = report.lines.filter(line => (selectedCategory === 'All categories' || line.category === selectedCategory)
+    && (itemFilter === 'All items' || (itemFilter === 'Sold items' && line.unitsSold > 0) || (itemFilter === 'Low stock' && line.lowStock) || (itemFilter === 'Out of stock' && line.stockCount !== null && line.stockCount <= 0)));
   const selected = selectedCategory === 'All categories' ? report.categories.reduce((total, row) => ({
     category: 'All categories', unitsSold: total.unitsSold + row.unitsSold, revenue: total.revenue + row.revenue,
     knownCost: total.knownCost + row.knownCost, grossProfit: total.grossProfit + row.grossProfit,
     marginPct: 0, missingCostCount: total.missingCostCount + row.missingCostCount, lowStockCount: total.lowStockCount + row.lowStockCount,
-  }), { category: 'All categories', unitsSold: 0, revenue: 0, knownCost: 0, grossProfit: 0, marginPct: 0, missingCostCount: 0, lowStockCount: 0 }) : report.categories.find(row => row.category === selectedCategory);
+    stockCount: total.stockCount + row.stockCount, incoming: total.incoming + row.incoming, outOfStockCount: total.outOfStockCount + row.outOfStockCount,
+  }), { category: 'All categories', unitsSold: 0, revenue: 0, knownCost: 0, grossProfit: 0, marginPct: 0, missingCostCount: 0, lowStockCount: 0, stockCount: 0, incoming: 0, outOfStockCount: 0 }) : report.categories.find(row => row.category === selectedCategory);
   if (selected && selectedCategory === 'All categories') selected.marginPct = selected.missingCostCount || !selected.revenue ? null as any : selected.grossProfit / selected.revenue * 100;
   const businessRows = report.businessLines.filter(row => businessFilter === 'All' || row.line === businessFilter);
   const businessRevenue = businessRows.reduce((sum, row) => sum + row.revenue, 0);
@@ -40,7 +43,7 @@ export default function CategoryPerformanceView({ records, inventory, purchaseOr
     <section className="rounded-lg border border-zinc-700 bg-zinc-950 p-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Category Performance</h2>
+          <h2 className="text-lg font-bold text-white">Sales &amp; Stock · {selectedCategory}</h2>
           <p className="text-xs text-zinc-400">Collected sales, verified margin, and current inventory health for the selected reporting dates.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -62,6 +65,10 @@ export default function CategoryPerformanceView({ records, inventory, purchaseOr
     {(businessFilter === 'All' || businessFilter === 'Retail Sales') && <>
       <div className="flex flex-wrap gap-2">
         {['All categories', ...categories].map(category => <button key={category} type="button" onClick={() => setCategoryFilter(category)} className={`rounded-full border px-3 py-1.5 text-sm ${selectedCategory === category ? 'border-[#39FF14] bg-[#39FF14]/10 text-[#39FF14]' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>{category}</button>)}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span>On hand <strong className="text-[#39FF14]">{selected?.stockCount || 0}</strong></span><span>Incoming <strong>{selected?.incoming || 0}</strong></span><span>Out of stock <strong className={selected?.outOfStockCount ? 'text-red-300' : ''}>{selected?.outOfStockCount || 0}</strong></span></div>
+        <label className="flex items-center gap-2 text-sm">Show<select className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2" value={itemFilter} onChange={event => setItemFilter(event.target.value)}>{['All items', 'Sold items', 'Low stock', 'Out of stock'].map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Metric label="Revenue" value={money(selected?.revenue || 0)} />

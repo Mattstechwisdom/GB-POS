@@ -154,13 +154,16 @@ export function buildCategoryPerformance(records: any[], inventoryRows: any[], r
 
   const categoryMap = new Map<string, any>();
   for (const line of resultLines) {
-    const row = categoryMap.get(line.category) || { category: line.category, unitsSold: 0, revenue: 0, knownCost: 0, grossProfit: 0, marginPct: null, missingCostCount: 0, lowStockCount: 0 };
+    const row = categoryMap.get(line.category) || { category: line.category, unitsSold: 0, revenue: 0, knownCost: 0, grossProfit: 0, marginPct: null, missingCostCount: 0, lowStockCount: 0, stockCount: 0, incoming: 0, outOfStockCount: 0 };
     row.unitsSold = rounded(row.unitsSold + line.unitsSold);
     row.revenue = rounded(row.revenue + line.revenue);
     row.knownCost = rounded(row.knownCost + line.knownCost);
     row.grossProfit = rounded(row.revenue - row.knownCost);
     row.missingCostCount += line.missingCostCount;
     if (line.lowStock) row.lowStockCount += 1;
+    row.stockCount += line.stockCount ?? 0;
+    row.incoming += line.incoming;
+    if (line.stockCount !== null && line.stockCount <= 0) row.outOfStockCount += 1;
     row.marginPct = row.missingCostCount || !(row.revenue > 0) ? null : rounded((row.grossProfit / row.revenue) * 100);
     categoryMap.set(line.category, row);
   }

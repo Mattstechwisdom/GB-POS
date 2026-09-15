@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
+const { preserveNewerWorkflow } = require('../src/lib/workorderWorkflowSync.ts');
+const local={id:12,status:'open',workflowStage:'Diagnosing',workflowUpdatedAt:'2026-09-14T12:00:00Z',totals:{remaining:70},internalNotes:'New local note'};
+const cloud={id:12,status:'open',workflowStage:'Testing',repairStatus:'Testing In Progress',workflowUpdatedAt:'2026-09-15T12:00:00Z',totals:{remaining:0}};
+const result=preserveNewerWorkflow(local,cloud);
+assert.equal(result.workflowStage,'Testing');
+assert.equal(result.totals.remaining,70,'Workflow reconciliation must not change money.');
+assert.equal(result.internalNotes,'New local note');
+assert.equal(preserveNewerWorkflow({...local,status:'closed'},cloud).status,'closed','A local pickup/close must never reopen.');
+assert.equal(preserveNewerWorkflow(cloud,local).workflowStage,'Testing');
+console.log('Work-order workflow sync checks passed.');

@@ -1088,7 +1088,7 @@ const ReportingWindow: React.FC = () => {
               }}
             >
               <option value="summary">Summary Report</option>
-              <option value="category">Category Performance</option>
+              <option value="category">Category Performance · Sales &amp; Stock</option>
               <option value="eod">End of Day Report</option>
               <option value="monthEnd">End of the Month Report</option>
             </select>

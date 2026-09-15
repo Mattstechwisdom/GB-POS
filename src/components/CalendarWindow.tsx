@@ -375,8 +375,8 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
   }, new Map<string, CalendarEvent[]>()).values());
 
   return (
-    <div className="p-2 h-full min-h-0 flex flex-col overflow-hidden">
-      <div className="text-sm text-zinc-400 flex items-center justify-between mb-2">
+    <div className="gb-calendar-cell p-2 h-full min-h-0 flex flex-col overflow-hidden">
+      <div className="gb-calendar-cell-toolbar text-sm text-zinc-400 flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className={isToday ? 'inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-[#39FF14] text-[#39FF14] font-bold text-sm' : 'font-medium'}>{dayNum}</div>
           {scheduleEvents.length ? <button type="button" className={`shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold ${shiftsChanged ? 'border border-red-400/80 bg-red-500/15 text-red-100' : 'border border-[#39FF14]/70 bg-[#39FF14]/10 text-[#d9ffd2] hover:bg-[#39FF14]/20'}`} title={shiftsChanged ? 'Shift change saved for this day' : `Show ${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`} onClick={() => onOpenShifts(day)}><span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[8px] text-zinc-950 ${shiftsChanged ? 'bg-red-500' : 'bg-[#39FF14]'}`}>S</span>{activeShifts.length}</button> : null}
@@ -391,7 +391,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
       
       {/* Other event icons at bottom */}
       {groupedEvents.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-zinc-700">
+        <div className="gb-calendar-cell-events flex flex-wrap gap-1 mt-1 pt-1 border-t border-zinc-700">
           {groupedEvents.map((group) => {
             const ev = group[0];
             const b = blipFor(ev);
@@ -413,6 +413,7 @@ const Cell: React.FC<{ day: Date; events: CalendarEvent[]; notes: CalendarNote[]
           })}
         </div>
       )}
+      {groupedEvents.length > 0 && <button type="button" className="gb-calendar-cell-events-compact" onClick={() => onOpenGroup(otherEvents)} title="View all entries for this date">{otherEvents.length} entries</button>}
       {(notesVisible || tasksVisible) && <div className={`gb-calendar-day-actions mt-2 grid gap-1 ${notesVisible && tasksVisible ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {notesVisible && <button
             type="button"
