@@ -4,7 +4,7 @@ import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
-const QR_LOOKUP_ATTEMPTS = 3;
+const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJq5X1V5i7-IgR_P2o34Acjaw';
 function getPayload() {
   try {
     const stored = consumeWindowPayload('customerReceipt');
@@ -71,7 +71,6 @@ const CustomerReceiptWindow: React.FC = () => {
 
   const receiptType = String((data as any).receiptType || (data as any).type || '').toLowerCase();
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
-  const qrRecordType: 'sale' | 'repair' = isSaleReceipt ? 'sale' : 'repair';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -81,7 +80,7 @@ const CustomerReceiptWindow: React.FC = () => {
   const logoImgRef = useRef<HTMLImageElement | null>(null);
   const qrImgRef = useRef<HTMLImageElement | null>(null);
 
-  const shouldRenderStatusQr = !Boolean((data as any).consultationType);
+  const shouldRenderStatusQr = true;
 
   useEffect(() => {
     setQrDataUrl('');
@@ -92,37 +91,10 @@ const CustomerReceiptWindow: React.FC = () => {
       return;
     }
 
-    const recordId = Number((data as any).workOrderId || (data as any).id || (data as any).invoiceId || 0) || 0;
-    if (!recordId) {
-      setQrError(`Save the ${qrRecordType === 'sale' ? 'sale' : 'work order'} before printing so its QR code can be created.`);
-      setQrReady(true);
-      return;
-    }
-
     let alive = true;
     (async () => {
       try {
-        let statusResult: any = null;
-        let lastError: any = null;
-        for (let attempt = 1; attempt <= QR_LOOKUP_ATTEMPTS; attempt += 1) {
-          try {
-            const statusRequest = qrRecordType === 'sale'
-              ? (window as any).api?.qrGetStatusUrl?.('sale', recordId)
-              : (window as any).api?.qrGetStatusUrl?.('repair', recordId);
-            statusResult = await Promise.race([
-              statusRequest,
-              new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
-            ]);
-            if (statusResult?.ok && String(statusResult?.url || '').trim()) break;
-            throw new Error(statusResult?.error || 'QR status URL is unavailable.');
-          } catch (error) {
-            lastError = error;
-            if (attempt < QR_LOOKUP_ATTEMPTS) await new Promise<void>((resolve) => window.setTimeout(resolve, attempt * 350));
-          }
-        }
-        const qrUrl = String(statusResult?.url || '').trim();
-        if (!statusResult?.ok || !qrUrl) throw lastError || new Error(statusResult?.error || 'QR status URL is unavailable.');
-        const dataUrl = await QRCode.toDataURL(qrUrl, {
+        const dataUrl = await QRCode.toDataURL(GOOGLE_REVIEW_URL, {
           width: 176,
           margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
@@ -131,7 +103,7 @@ const CustomerReceiptWindow: React.FC = () => {
         if (alive && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
       } catch (error: any) {
         if (alive) {
-          const message = error?.message || 'The update QR code could not be created. Check the connection and retry.';
+          const message = error?.message || 'The Google Review QR code could not be created. Please retry printing.';
           setQrError(message);
           if (flags.autoPrint && flags.silent) {
             try { (window as any).api?.notifyCustomerReceiptQrFailed?.(message); } catch {}
@@ -142,7 +114,7 @@ const CustomerReceiptWindow: React.FC = () => {
       }
     })();
     return () => { alive = false; };
-  }, [shouldRenderStatusQr, qrRecordType, flags.autoPrint, flags.silent, (data as any).workOrderId, (data as any).id, (data as any).invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [flags.autoPrint, flags.silent]);
 
   useEffect(() => {
     let alive = true;
@@ -577,10 +549,8 @@ const CustomerReceiptWindow: React.FC = () => {
           <div className="brand-center">
             {shouldRenderStatusQr && qrDataUrl ? (
               <>
-                {isSaleReceipt
-                  ? <img ref={qrImgRef} src={qrDataUrl} alt="Sale update QR" style={{ width: 76, height: 76, display: 'block' }} />
-                  : <img ref={qrImgRef} src={qrDataUrl} alt="Work order update QR" style={{ width: 76, height: 76, display: 'block' }} />}
-                <div style={{ fontSize: '7pt', color: '#555', textAlign: 'center', letterSpacing: '0.35px' }}>TECH SCAN</div>
+                <img ref={qrImgRef} src={qrDataUrl} alt="Google Review QR" style={{ width: 76, height: 76, display: 'block' }} />
+                <div style={{ fontSize: '7pt', color: '#555', textAlign: 'center', letterSpacing: '0.35px', fontWeight: 700 }}>SCAN ME</div>
               </>
             ) : null}
           </div>

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.98 (2026-09-15)
+
+- Customer receipts now print a Google Review QR with SCAN ME underneath, using the shop's review link. They never request an internal technician-update URL and do not depend on cloud ticket synchronization to generate their QR.
+- Includes the work-order QR lookup and blank part ETA date fixes from the unpublished v0.6.96/v0.6.97 builds.
+- Verifies actual customer receipt and work-order print windows render their distinct QR images before printing, including malformed legacy receipt dates.
+
 ## v0.6.97 (2026-09-15)
 
 - Includes the work-order QR print fix from the withdrawn v0.6.96 build: reuses existing tokens and avoids re-uploading already-synchronized tickets merely to print.
